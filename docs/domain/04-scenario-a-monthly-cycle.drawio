@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-04-30T00:00:00.000Z" agent="Claude" version="22.0">
+  <diagram name="シナリオA: 月次サイクル全景" id="scenario-a">
+    <mxGraphModel dx="1422" dy="757" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="4400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="シナリオ A: 月次サイクル全景 — 時系列タイムライン" style="text;html=1;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;fontColor=#1B4F72;" vertex="1" parent="1">
+          <mxGeometry x="50" y="-30" width="1300" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="start" value="シナリオA&lt;br&gt;開始" style="ellipse;whiteSpace=wrap;html=1;fillColor=#5DADE2;strokeColor=#1B4F72;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="600" y="20" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1" value="🟢 4/1 00:00 — 月初リセット" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="120" width="1300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="経費種別の月次累計が&lt;br&gt;月初リセットされた" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB84D;strokeColor=#E07B00;fontColor=#000000;fontSize=11;" vertex="1" parent="p1">
+          <mxGeometry x="510" y="40" width="280" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p2" value="🟢 4/1〜4/30 — 月中: 日次取込ループ" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="260" width="1300" height="700" as="geometry" />
+        </mxCell>
+        <mxCell id="db1" value="日次バッチ起動&lt;br&gt;EventBridge スケジュール" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFADAD;strokeColor=#C44;fontColor=#000000;fontSize=11;" vertex="1" parent="p2">
+          <mxGeometry x="510" y="50" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="db2" value="Gmail 新着メール取得" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=11;" vertex="1" parent="p2">
+          <mxGeometry x="510" y="130" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="db3" value="メール種別" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" vertex="1" parent="p2">
+          <mxGeometry x="550" y="210" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ma" value="📩 SMBC カード利用通知&lt;br&gt;→ パース → 自動分類&lt;br&gt;→ 決済発生・未払金計上" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=10;" vertex="1" parent="p2">
+          <mxGeometry x="40" y="320" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mb" value="📩 SMBC 銀行入金通知&lt;br&gt;→ 用途判別&lt;br&gt;25万以上=給与/未満=経費精算" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=10;" vertex="1" parent="p2">
+          <mxGeometry x="360" y="320" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mc" value="📩 SMBC 銀行出金通知&lt;br&gt;→ 用途判別&lt;br&gt;別銀行/カード引落 等" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=10;" vertex="1" parent="p2">
+          <mxGeometry x="680" y="320" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="md" value="📩 口座引落 事前お知らせ&lt;br&gt;→ 引落予定抽出&lt;br&gt;予定日に SMBC残高/NISA 自動更新" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=10;" vertex="1" parent="p2">
+          <mxGeometry x="1000" y="320" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="me" value="📩 楽天証券 約定完了&lt;br&gt;→ 金額・日抽出&lt;br&gt;引落予定額とのズレ検知" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=10;" vertex="1" parent="p2">
+          <mxGeometry x="40" y="430" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mf" value="📩 SMBC カード返金通知&lt;br&gt;→ 返金・返品計上" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=10;" vertex="1" parent="p2">
+          <mxGeometry x="360" y="430" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mg" value="📩 Amazon 注文確認&lt;br&gt;→ 商品情報抽出&lt;br&gt;→ カード利用通知と突合" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=10;" vertex="1" parent="p2">
+          <mxGeometry x="680" y="430" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="dbe" value="日次バッチ完了&lt;br&gt;処理件数・成功・失敗・未分類のサマリ" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFADAD;strokeColor=#C44;fontColor=#000000;fontSize=11;" vertex="1" parent="p2">
+          <mxGeometry x="490" y="600" width="320" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p3" value="🟢 4/30 23:59 — 月末" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="980" width="1300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="特別なジョブなし&lt;br&gt;スナップショットは 5/10 で記録（Step 4 決定）" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontColor=#666;" vertex="1" parent="p3">
+          <mxGeometry x="450" y="40" width="400" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p4" value="🟢 5/1 00:00 — 翌月の月初リセット" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="1120" width="1300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="経費種別の月次累計リセット（5月用）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB84D;strokeColor=#E07B00;fontColor=#000000;fontSize=11;" vertex="1" parent="p4">
+          <mxGeometry x="490" y="40" width="320" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p5" value="🟢 5/3 頃 — 4月分カード明細確定" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="1260" width="1300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="SMBC マイページで 4月分明細&lt;br&gt;閲覧・ダウンロード可能" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5B7B1;strokeColor=#922B21;fontColor=#000000;fontSize=11;" vertex="1" parent="p5">
+          <mxGeometry x="510" y="40" width="280" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p6" value="🟢 5/5 00:00 — CSV取込リマインダー開始" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="1400" width="1300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="CSV 取込リマインダー&lt;br&gt;LINE 共通トークルームに毎日配信&lt;br&gt;CSV 取込完了まで継続" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A8E6CF;strokeColor=#2E8B57;fontColor=#000000;fontSize=11;" vertex="1" parent="p6">
+          <mxGeometry x="490" y="35" width="320" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p7" value="🟢 5/5〜5/10 — ユーザーによる CSV 取込" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="1540" width="1300" height="540" as="geometry" />
+        </mxCell>
+        <mxCell id="e7a" value="夫: カード CSV/PDF アップロード" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5B7B1;strokeColor=#922B21;fontColor=#000000;fontSize=11;" vertex="1" parent="p7">
+          <mxGeometry x="510" y="50" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e7b" value="PDF→CSV 変換&lt;br&gt;Lambda 内 Claude API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFADAD;strokeColor=#C44;fontColor=#000000;fontSize=11;" vertex="1" parent="p7">
+          <mxGeometry x="510" y="130" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e7c" value="フォーマット検証" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFADAD;strokeColor=#C44;fontColor=#000000;fontSize=11;" vertex="1" parent="p7">
+          <mxGeometry x="510" y="210" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e7d" value="重複除外&lt;br&gt;日付・金額・加盟店名 3項一致" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFADAD;strokeColor=#C44;fontColor=#000000;fontSize=11;" vertex="1" parent="p7">
+          <mxGeometry x="510" y="290" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e7e" value="CSV にしか無い取引が新規取込&lt;br&gt;家賃・水道・ガス・通信費 等&lt;br&gt;自動分類（未学習は「未分類」）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB84D;strokeColor=#E07B00;fontColor=#000000;fontSize=11;" vertex="1" parent="p7">
+          <mxGeometry x="490" y="370" width="320" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e7f" value="妻も同様に取込" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5B7B1;strokeColor=#922B21;fontColor=#000000;fontSize=11;" vertex="1" parent="p7">
+          <mxGeometry x="510" y="460" width="280" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p8" value="🟢 5/10 — 両方完了 → レポート生成・配信・月末スナップショット記録" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="2100" width="1300" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="e8a" value="夫婦両方のカード CSV 取込完了" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB84D;strokeColor=#E07B00;fontColor=#000000;fontSize=11;" vertex="1" parent="p8">
+          <mxGeometry x="510" y="40" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e8b" value="月次レポート生成&lt;br&gt;CSV 確定状態" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D7BDE2;strokeColor=#7D3C98;fontColor=#000000;fontSize=11;" vertex="1" parent="p8">
+          <mxGeometry x="510" y="120" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e8c" value="世帯サマリ&lt;br&gt;Flex Message&lt;br&gt;共通トークルーム配信" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A8E6CF;strokeColor=#2E8B57;fontColor=#000000;fontSize=10;" vertex="1" parent="p8">
+          <mxGeometry x="20" y="200" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e8d" value="個人サマリ&lt;br&gt;Flex Message&lt;br&gt;各個人 DM 配信" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A8E6CF;strokeColor=#2E8B57;fontColor=#000000;fontSize=10;" vertex="1" parent="p8">
+          <mxGeometry x="290" y="200" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e8e" value="当月リマインダー&lt;br&gt;送信停止" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A8E6CF;strokeColor=#2E8B57;fontColor=#000000;fontSize=10;" vertex="1" parent="p8">
+          <mxGeometry x="560" y="200" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e8f" value="4月の月末スナップショット記録&lt;br&gt;残高・未払金・NISA累計&lt;br&gt;世帯/個人費用合計" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8C471;strokeColor=#B7950B;fontColor=#000000;fontSize=10;" vertex="1" parent="p8">
+          <mxGeometry x="830" y="200" width="450" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p9" value="🟢 5/11 頃 — カード引落確定通知（整合チェック）" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="2410" width="1300" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="e9a" value="SMBC カード引落確定通知メール受信" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=11;" vertex="1" parent="p9">
+          <mxGeometry x="490" y="40" width="320" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e9b" value="引落確定額と当月の取引合計&lt;br&gt;（メール+CSV）の整合性検証" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFADAD;strokeColor=#C44;fontColor=#000000;fontSize=11;" vertex="1" parent="p9">
+          <mxGeometry x="490" y="120" width="320" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e9c" value="不一致なら整合性アラート&lt;br&gt;（メール or CSV に漏れの可能性）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F9E79F;strokeColor=#D4AC0D;fontColor=#000000;fontSize=11;" vertex="1" parent="p9">
+          <mxGeometry x="490" y="200" width="320" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p10" value="🟢 5/15 頃 — 経費精算入金到着 → 最終確定" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="2720" width="1300" height="450" as="geometry" />
+        </mxCell>
+        <mxCell id="e10a" value="経費精算入金到着&lt;br&gt;25万未満 = 経費精算と判別" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=11;" vertex="1" parent="p10">
+          <mxGeometry x="510" y="40" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e10b" value="当月の確定経費合計と突合" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFADAD;strokeColor=#C44;fontColor=#000000;fontSize=11;" vertex="1" parent="p10">
+          <mxGeometry x="510" y="120" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e10c" value="ケース" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" vertex="1" parent="p10">
+          <mxGeometry x="550" y="200" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="e10d" value="一致&lt;br&gt;全額認定" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB84D;strokeColor=#E07B00;fontColor=#000000;fontSize=11;" vertex="1" parent="p10">
+          <mxGeometry x="60" y="300" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e10e" value="不足（不認定分発生）&lt;br&gt;個人費用として 4月に遡及計上" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F9E79F;strokeColor=#D4AC0D;fontColor=#000000;fontSize=11;" vertex="1" parent="p10">
+          <mxGeometry x="510" y="300" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e10f" value="過剰&lt;br&gt;経費精算とは別の入金として記録" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F9E79F;strokeColor=#D4AC0D;fontColor=#000000;fontSize=11;" vertex="1" parent="p10">
+          <mxGeometry x="960" y="300" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e10g" value="月次レポート最終確定状態に昇格&lt;br&gt;LINE 配信なし、値のみ更新" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D7BDE2;strokeColor=#7D3C98;fontColor=#000000;fontSize=11;" vertex="1" parent="p10">
+          <mxGeometry x="490" y="380" width="320" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p11" value="🟢 5/25 頃 — 給料日（25万以上の入金 = 給与判定）" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="3190" width="1300" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="e11a" value="SMBC 銀行入金通知（25万以上）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=11;" vertex="1" parent="p11">
+          <mxGeometry x="510" y="40" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e11b" value="給与振込判定&lt;br&gt;= 給料日認識" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB84D;strokeColor=#E07B00;fontColor=#000000;fontSize=11;" vertex="1" parent="p11">
+          <mxGeometry x="510" y="120" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e11c" value="経費精算未着なら&lt;br&gt;アプリ内バナー表示" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F9E79F;strokeColor=#D4AC0D;fontColor=#000000;fontSize=11;" vertex="1" parent="p11">
+          <mxGeometry x="510" y="200" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e11d" value="ユーザー選択&lt;br&gt;待つ／全額不認定として個人費用に振替" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5B7B1;strokeColor=#922B21;fontColor=#000000;fontSize=11;" vertex="1" parent="p11">
+          <mxGeometry x="490" y="280" width="320" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p12" value="🟢 5/26 頃 — カード実引き落とし" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="3590" width="1300" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="e12a" value="SMBC 銀行出金通知&lt;br&gt;カード引落として判別" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000000;fontSize=11;" vertex="1" parent="p12">
+          <mxGeometry x="510" y="40" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e12b" value="SMBC 残高減&lt;br&gt;クレカ未払金消込" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB84D;strokeColor=#E07B00;fontColor=#000000;fontSize=11;" vertex="1" parent="p12">
+          <mxGeometry x="510" y="120" width="280" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="end" value="シナリオA&lt;br&gt;終了" style="ellipse;whiteSpace=wrap;html=1;fillColor=#5DADE2;strokeColor=#1B4F72;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="600" y="3830" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend" value="凡例" style="swimlane;fontSize=14;fontStyle=1;fillColor=#F5F5F5;strokeColor=#666;fontColor=#000;startSize=30;" vertex="1" parent="1">
+          <mxGeometry x="50" y="3950" width="1300" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="lg1" value="🟧 ドメインイベント" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB84D;strokeColor=#E07B00;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="40" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg2" value="🟥 自動処理・バッチ" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFADAD;strokeColor=#C44;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+          <mxGeometry x="240" y="40" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg3" value="📩 メール取込" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B3;strokeColor=#FF8C00;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+          <mxGeometry x="460" y="40" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg4" value="📱 通知・LINE 配信" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A8E6CF;strokeColor=#2E8B57;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+          <mxGeometry x="680" y="40" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg5" value="🟫 月次レポート" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D7BDE2;strokeColor=#7D3C98;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+          <mxGeometry x="900" y="40" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg6" value="📊 スナップショット" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8C471;strokeColor=#B7950B;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="100" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg7" value="🟨 アラート・例外" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F9E79F;strokeColor=#D4AC0D;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+          <mxGeometry x="240" y="100" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg8" value="🌸 ユーザー操作" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5B7B1;strokeColor=#922B21;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+          <mxGeometry x="460" y="100" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg9" value="🔵 マイルストーン" style="ellipse;whiteSpace=wrap;html=1;fillColor=#5DADE2;strokeColor=#1B4F72;fontColor=#FFF;fontSize=11;fontStyle=1;" vertex="1" parent="legend">
+          <mxGeometry x="680" y="100" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg10" value="◇ 分岐" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF;strokeColor=#000;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+          <mxGeometry x="900" y="100" width="200" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ed_db1_db2" style="endArrow=classic;html=1;" edge="1" parent="p2" source="db1" target="db2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_db2_db3" style="endArrow=classic;html=1;" edge="1" parent="p2" source="db2" target="db3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_db3_ma" style="endArrow=classic;html=1;" edge="1" parent="p2" source="db3" target="ma"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_db3_mb" style="endArrow=classic;html=1;" edge="1" parent="p2" source="db3" target="mb"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_db3_mc" style="endArrow=classic;html=1;" edge="1" parent="p2" source="db3" target="mc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_db3_md" style="endArrow=classic;html=1;" edge="1" parent="p2" source="db3" target="md"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_db3_me" style="endArrow=classic;html=1;" edge="1" parent="p2" source="db3" target="me"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_db3_mf" style="endArrow=classic;html=1;" edge="1" parent="p2" source="db3" target="mf"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_db3_mg" style="endArrow=classic;html=1;" edge="1" parent="p2" source="db3" target="mg"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_ma_dbe" style="endArrow=classic;html=1;" edge="1" parent="p2" source="ma" target="dbe"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_mb_dbe" style="endArrow=classic;html=1;" edge="1" parent="p2" source="mb" target="dbe"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_mc_dbe" style="endArrow=classic;html=1;" edge="1" parent="p2" source="mc" target="dbe"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_md_dbe" style="endArrow=classic;html=1;" edge="1" parent="p2" source="md" target="dbe"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_me_dbe" style="endArrow=classic;html=1;" edge="1" parent="p2" source="me" target="dbe"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_mf_dbe" style="endArrow=classic;html=1;" edge="1" parent="p2" source="mf" target="dbe"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_mg_dbe" style="endArrow=classic;html=1;" edge="1" parent="p2" source="mg" target="dbe"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="ed_e7a_e7b" style="endArrow=classic;html=1;" edge="1" parent="p7" source="e7a" target="e7b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e7b_e7c" style="endArrow=classic;html=1;" edge="1" parent="p7" source="e7b" target="e7c"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e7c_e7d" style="endArrow=classic;html=1;" edge="1" parent="p7" source="e7c" target="e7d"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e7d_e7e" style="endArrow=classic;html=1;" edge="1" parent="p7" source="e7d" target="e7e"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e7e_e7f" style="endArrow=classic;html=1;" edge="1" parent="p7" source="e7e" target="e7f"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="ed_e8a_e8b" style="endArrow=classic;html=1;" edge="1" parent="p8" source="e8a" target="e8b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e8b_e8c" style="endArrow=classic;html=1;" edge="1" parent="p8" source="e8b" target="e8c"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e8b_e8d" style="endArrow=classic;html=1;" edge="1" parent="p8" source="e8b" target="e8d"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e8b_e8e" style="endArrow=classic;html=1;" edge="1" parent="p8" source="e8b" target="e8e"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e8b_e8f" style="endArrow=classic;html=1;" edge="1" parent="p8" source="e8b" target="e8f"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="ed_e9a_e9b" style="endArrow=classic;html=1;" edge="1" parent="p9" source="e9a" target="e9b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e9b_e9c" style="endArrow=classic;html=1;" edge="1" parent="p9" source="e9b" target="e9c"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="ed_e10a_e10b" style="endArrow=classic;html=1;" edge="1" parent="p10" source="e10a" target="e10b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e10b_e10c" style="endArrow=classic;html=1;" edge="1" parent="p10" source="e10b" target="e10c"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e10c_e10d" style="endArrow=classic;html=1;" edge="1" parent="p10" source="e10c" target="e10d"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e10c_e10e" style="endArrow=classic;html=1;" edge="1" parent="p10" source="e10c" target="e10e"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e10c_e10f" style="endArrow=classic;html=1;" edge="1" parent="p10" source="e10c" target="e10f"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e10d_e10g" style="endArrow=classic;html=1;" edge="1" parent="p10" source="e10d" target="e10g"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e10e_e10g" style="endArrow=classic;html=1;" edge="1" parent="p10" source="e10e" target="e10g"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e10f_e10g" style="endArrow=classic;html=1;" edge="1" parent="p10" source="e10f" target="e10g"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="ed_e11a_e11b" style="endArrow=classic;html=1;" edge="1" parent="p11" source="e11a" target="e11b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e11b_e11c" style="endArrow=classic;html=1;" edge="1" parent="p11" source="e11b" target="e11c"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_e11c_e11d" style="endArrow=classic;html=1;" edge="1" parent="p11" source="e11c" target="e11d"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="ed_e12a_e12b" style="endArrow=classic;html=1;" edge="1" parent="p12" source="e12a" target="e12b"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="ed_start_p1" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="start" target="p1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p1_p2" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p1" target="p2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p2_p3" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p2" target="p3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p3_p4" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p3" target="p4"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p4_p5" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p4" target="p5"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p5_p6" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p5" target="p6"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p6_p7" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p6" target="p7"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p7_p8" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p7" target="p8"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p8_p9" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p8" target="p9"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p9_p10" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p9" target="p10"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p10_p11" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p10" target="p11"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p11_p12" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p11" target="p12"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed_p12_end" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1" source="p12" target="end"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
