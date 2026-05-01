@@ -2,10 +2,13 @@
 
 > 親: [docs/domain/08-ubiquitous-language.md](./08-ubiquitous-language.md)
 > サブドメイン: Supporting（07-bounded-contexts.md §2.2）
+> Phase 3.5 反映: 役割を Honey/Darling 表記に変更、ユーザー集約に nickname 属性を追加（[2026-05-01-phase3.5-ux-ui-design.md §3, §14.1](../superpowers/specs/2026-05-01-phase3.5-ux-ui-design.md)）
 
 ## 責務
 
-LIFF 初期化／LINE Login／LINE userID と許可リスト（夫／妻）の役割判定／Gmail OAuth 連携と再認可／初期残高登録呼出／配偶者完了検知／LINE 友達追加・グループ招待・運用開始発火を一貫した利用者ライフサイクルとして担う。Phase 0 セットアップ（システム管理者視点）はマスタ管理に帰属する一方、Phase 1〜4（ユーザー視点）と運用中の認証維持は本コンテキストの責務（§1.1.5 確定）。
+LIFF 初期化／LINE Login／LINE userID と許可リスト（Honey／Darling）の役割判定／ニックネーム管理／Gmail OAuth 連携と再認可／初期残高登録呼出／配偶者完了検知／LINE 友達追加・グループ招待・運用開始発火を一貫した利用者ライフサイクルとして担う。Phase 0 セットアップ（システム管理者視点）はマスタ管理に帰属する一方、Phase 1〜4（ユーザー視点）と運用中の認証維持は本コンテキストの責務（§1.1.5 確定）。
+
+> **ロール表記について**: Phase 3.5 で役割名を `夫役割 / 妻役割` から `Honey / Darling` に変更した。Honey = 夫役、Darling = 妻役を指す（01-overview の「夫」「妻」と内部的には同義）。01-overview など Phase 1〜2 のドキュメントの「夫」「妻」表記は歴史的経緯で残置するが、本コンテキストおよび UI/UX レイヤでは Honey/Darling を正とする。
 
 ## 1. データ（data）
 
@@ -15,9 +18,9 @@ LIFF 初期化／LINE Login／LINE userID と許可リスト（夫／妻）の�
 
 // クロスコンテキスト参照（ID のみ借用）
 // referenced from: マスタ管理
-data 許可リスト = 夫LINE_userID AND 妻LINE_userID  // Parameter Store の HUSBAND_LINE_USER_ID / WIFE_LINE_USER_ID
-data 夫LINE_userID = LINE_userID
-data 妻LINE_userID = LINE_userID
+data 許可リスト = HoneyLINE_userID AND DarlingLINE_userID  // Parameter Store の HUSBAND_LINE_USER_ID / WIFE_LINE_USER_ID（Phase 3.5 で Honey/Darling 表記に変更、Parameter Store キー名は互換維持）
+data HoneyLINE_userID = LINE_userID
+data DarlingLINE_userID = LINE_userID
 // referenced from: 残高・資産推移管理（初期残高登録の入力先）
 // referenced from: 取引取込（Gmail OAuth トークン参照・運用開始日時の借用先）
 // referenced from: 通知配信（共通トークルームID・LINE userID の借用先）
@@ -29,7 +32,7 @@ data 発生日時 = 日時
 // --- LINE userID と役割 ---
 
 data LINE_userID = 文字列
-data 役割 = 夫役割 OR 妻役割
+data 役割 = Honey OR Darling  // Phase 3.5: 夫役割 → Honey、妻役割 → Darling に表記変更
 
 data 役割判定結果 = 役割確定 OR 役割拒否
 
@@ -46,9 +49,13 @@ data アプリユーザー = Phase1完了ユーザー OR Phase2進行中ユー�
 data アプリユーザー共通属性 = ユーザーID
    AND LINE_userID
    AND 役割
+   AND ニックネーム?
    AND 初回登録日時
 
 data ユーザーID = 文字列  // = LINE_userID（OQ-15 によりエイリアス）
+data ニックネーム = 文字列  // Phase 3.5 追加: 任意・10 文字以内目安・空ならロール名（Honey/Darling）を表示
+// 編集はオンボーディング Phase 1 で初期入力 + 設定画面でいつでも変更可
+// 表示は per-user ではなく世帯共通（妻が変更したら夫の画面でも反映）
 
 data Phase1完了ユーザー = アプリユーザー共通属性
 
@@ -130,7 +137,7 @@ data 未有効化 = なし
 data 配偶者完了検知結果 = 配偶者待ち OR 両者完了済み
 
 data 配偶者待ち = ユーザーID AND 配偶者ユーザーID AND 検知日時
-data 両者完了済み = 夫ユーザーID AND 妻ユーザーID AND 両者完了日時
+data 両者完了済み = HoneyユーザーID AND DarlingユーザーID AND 両者完了日時
 
 // --- セッション・サインイン ---
 data サインインセッション = ユーザーID AND サインイン日時 AND セッション有効期限
@@ -159,15 +166,24 @@ behavior 役割を判定する = LINE_userID AND 許可リスト -> 役割判定
 
 // --- アプリユーザーの登録 ---
 
-behavior アプリユーザーを新規登録する = LINE_userID AND 役割 -> Phase1完了ユーザー AND ユーザー新規登録イベント OR 重複登録エラー
+behavior アプリユーザーを新規登録する = LINE_userID AND 役割 AND ニックネーム? -> Phase1完了ユーザー AND ユーザー新規登録イベント OR 重複登録エラー
 // 事前: 役割判定結果 = 役割確定
 // 事前: 同一 LINE_userID の既存ユーザーが存在しない
 // 事後: ユーザーID = LINE_userID（OQ-15）
+// 事後: ニックネーム未指定なら null（表示時にロール名 Honey/Darling にフォールバック）
 
 data 重複登録エラー = LINE_userID AND 既存ユーザーID
 
 behavior サインインする = LINE_userID -> サインインセッション OR 未登録ユーザーエラー
 data 未登録ユーザーエラー = LINE_userID AND 検知日時
+
+// --- ニックネーム管理（Phase 3.5 追加） ---
+
+behavior ニックネームを変更する = ユーザーID AND 新ニックネーム? -> アプリユーザー AND ニックネーム変更イベント
+// 事前: 操作者 = 本人（自分のニックネームのみ変更可、配偶者のは不可）
+// 事後: 新ニックネーム = null なら表示はロール名（Honey/Darling）にフォールバック
+// 事後: 配偶者のダッシュボード表示にも反映（世帯共通）
+data ニックネーム変更イベント = ユーザーID AND 旧ニックネーム? AND 新ニックネーム? AND 変更日時 AND 発生日時
 
 // --- ACL 翻訳層: Gmail OAuth → 内部表現 ---
 
@@ -224,14 +240,14 @@ behavior 配偶者完了を検知する = ユーザーID AND 画面ロード日�
 
 // --- 運用開始発火（自動・両者完了で） ---
 
-behavior 運用開始を発火する = 両者完了済み -> 運用開始済みユーザー(夫) AND 運用開始済みユーザー(妻) AND 運用開始イベント
+behavior 運用開始を発火する = 両者完了済み -> 運用開始済みユーザー(Honey) AND 運用開始済みユーザー(Darling) AND 運用開始イベント
 // 事前: 両者の Phase2 完了が揃った
 // 事後: 取引取込に日次バッチ稼働対象化を通知（翌日 0:00 から、論点16）
 // 事後: 家計分析に月次レポート画面解放を通知
 // 事後: 通知配信にテスト送信を依頼（Phase 4 を起動）
 
-data 運用開始済みユーザー(夫) = 運用開始済みユーザー
-data 運用開始済みユーザー(妻) = 運用開始済みユーザー
+data 運用開始済みユーザー(Honey) = 運用開始済みユーザー
+data 運用開始済みユーザー(Darling) = 運用開始済みユーザー
 
 // --- LINE 友達追加・共通トークルーム招待（Phase 4） ---
 
@@ -242,7 +258,7 @@ behavior join Webhook を受信する = 共通トークルームID AND Webhook�
 // 事前: LINE 公式アカウントが夫婦共通トークルームに招待された
 // 事後: 共通トークルームID を DB に保存し、通知配信が以後参照する
 
-behavior 通知機能を有効化する = 運用開始済みユーザー(夫) AND 運用開始済みユーザー(妻) AND 共通トークルームID -> 有効化済み AND 通知機能有効化イベント
+behavior 通知機能を有効化する = 運用開始済みユーザー(Honey) AND 運用開始済みユーザー(Darling) AND 共通トークルームID -> 有効化済み AND 通知機能有効化イベント
 // 事前: 両者ともに友達追加済み・共通トークルーム参加済み
 // 事後: 通知配信にテストメッセージ送信を依頼
 
@@ -270,7 +286,7 @@ data SectionF完了イベント = ユーザーID AND 取込ジョブID AND 発�
 data SectionFスキップイベント = ユーザーID AND スキップ日時 AND 発生日時
 data Phase2完了イベント = ユーザーID AND 完了日時 AND 発生日時
 data 配偶者完了検知イベント = ユーザーID AND 配偶者ユーザーID AND 検知結果 AND 発生日時
-data 運用開始イベント = 夫ユーザーID AND 妻ユーザーID AND 運用開始日時 AND 発生日時
+data 運用開始イベント = HoneyユーザーID AND DarlingユーザーID AND 運用開始日時 AND 発生日時
 data friend_added_イベント = ユーザーID AND 受信日時 AND 発生日時
 data join_イベント = 共通トークルームID AND 受信日時 AND 発生日時
 data 通知機能有効化イベント = 共通トークルームID AND 有効化日時 AND 発生日時
