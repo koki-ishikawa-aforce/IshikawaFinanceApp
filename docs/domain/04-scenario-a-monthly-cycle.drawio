@@ -61,7 +61,7 @@
         <mxCell id="p3" value="🟢 4/30 23:59 — 月末" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
           <mxGeometry x="50" y="980" width="1300" height="120" as="geometry" />
         </mxCell>
-        <mxCell id="e3" value="特別なジョブなし&lt;br&gt;スナップショットは 5/10 で記録（Step 4 決定）" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontColor=#666;" vertex="1" parent="p3">
+        <mxCell id="e3" value="特別なジョブなし&lt;br&gt;リアルタイム集計（スナップショット概念は廃止）" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontColor=#666;" vertex="1" parent="p3">
           <mxGeometry x="450" y="40" width="400" height="60" as="geometry" />
         </mxCell>
 
@@ -108,7 +108,7 @@
           <mxGeometry x="510" y="460" width="280" height="60" as="geometry" />
         </mxCell>
 
-        <mxCell id="p8" value="🟢 5/10 — 両方完了 → レポート生成・配信・月末スナップショット記録" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
+        <mxCell id="p8" value="🟢 5/10 — 両方完了 → レポート生成・配信・LINE 配信ログ保存" style="swimlane;fontSize=14;fontStyle=1;fillColor=#E8F0FE;strokeColor=#4285F4;fontColor=#1B4F72;startSize=30;" vertex="1" parent="1">
           <mxGeometry x="50" y="2100" width="1300" height="290" as="geometry" />
         </mxCell>
         <mxCell id="e8a" value="夫婦両方のカード CSV 取込完了" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB84D;strokeColor=#E07B00;fontColor=#000000;fontSize=11;" vertex="1" parent="p8">
@@ -126,7 +126,7 @@
         <mxCell id="e8e" value="当月リマインダー&lt;br&gt;送信停止" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A8E6CF;strokeColor=#2E8B57;fontColor=#000000;fontSize=10;" vertex="1" parent="p8">
           <mxGeometry x="560" y="200" width="240" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="e8f" value="4月の月末スナップショット記録&lt;br&gt;残高・未払金・NISA累計&lt;br&gt;世帯/個人費用合計" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8C471;strokeColor=#B7950B;fontColor=#000000;fontSize=10;" vertex="1" parent="p8">
+        <mxCell id="e8f" value="LINE 配信ログ保存&lt;br&gt;Flex Message payload を json 保持&lt;br&gt;（配信時点の値を凍結する代替手段）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8C471;strokeColor=#B7950B;fontColor=#000000;fontSize=10;" vertex="1" parent="p8">
           <mxGeometry x="830" y="200" width="450" height="70" as="geometry" />
         </mxCell>
 
@@ -216,7 +216,7 @@
         <mxCell id="lg5" value="🟫 月次レポート" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D7BDE2;strokeColor=#7D3C98;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
           <mxGeometry x="900" y="40" width="200" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="lg6" value="📊 スナップショット" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8C471;strokeColor=#B7950B;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
+        <mxCell id="lg6" value="📂 配信ログ保存" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8C471;strokeColor=#B7950B;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
           <mxGeometry x="20" y="100" width="200" height="40" as="geometry" />
         </mxCell>
         <mxCell id="lg7" value="🟨 アラート・例外" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F9E79F;strokeColor=#D4AC0D;fontColor=#000;fontSize=11;" vertex="1" parent="legend">
