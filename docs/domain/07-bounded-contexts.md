@@ -421,7 +421,7 @@
 
 ## 4. コンテキスト間関係
 
-> Phase 3 Step 6 で作成（2026-05-01）。図は [diagrams/07-context-map.drawio](./diagrams/07-context-map.drawio) を参照。
+> Phase 3 Step 6 で作成（2026-05-01）。図は [diagrams/07-context-map.puml](./diagrams/07-context-map.puml) を参照（PlantUML）。
 > 関係種別の定義:
 > - **Customer-Supplier**: 一方（Supplier）が要求されるものを提供し、もう一方（Customer）が利用する。Supplier 側が先に変更を確定させる。
 > - **ACL（Anti-Corruption Layer）**: 外部システムとの接続や、語彙・モデルが大きく異なるコンテキスト間に翻訳層を置く。
@@ -477,14 +477,20 @@
 
 ### 4.3 図の参照
 
-詳細は [diagrams/07-context-map.drawio](./diagrams/07-context-map.drawio) を参照。
+詳細は [diagrams/07-context-map.puml](./diagrams/07-context-map.puml) を参照（PlantUML 形式）。
 
 図中の色分け:
-- **濃い青（#1e4d78）**: Core コンテキスト（自動分類・学習 / 家計分析 / 残高・資産推移管理 / 経費精算）
-- **薄い青（#aed6f1）**: Supporting コンテキスト（取引取込 / オンボーディング・認証 / マスタ管理）
-- **グレー（#bdc3c7）**: Generic コンテキスト（通知配信）
-- **黄色（#f9e79f）**: 外部システム（Gmail / LINE Messaging API / LINE Login / SMBC / Anthropic API / 別銀行貯蓄口座 / SBI 証券 / 楽天証券 / AWS Parameter Store）
+- **濃い青（#1E4D78）**: Core コンテキスト（自動分類・学習 / 家計分析 / 残高・資産推移管理 / 経費精算）
+- **薄い青（#AED6F1）**: Supporting コンテキスト（取引取込 / オンボーディング・認証 / マスタ管理）
+- **グレー（#BDC3C7）**: Generic コンテキスト（通知配信）
+- **黄色（#F9E79F）**: 外部システム（Gmail / LINE Messaging API / LINE Login / SMBC / Anthropic API / 別銀行貯蓄口座 / SBI 証券 / 楽天証券 / AWS Parameter Store）
 
 矢印の種別:
-- **実線矢印**: コンテキスト間の内部関係（Customer-Supplier / Open Host Service）
-- **破線矢印**: 外部システムとの接続（ACL / Conformist）
+- **実線矢印**（`-->`）: コンテキスト間の内部関係（Customer-Supplier / Open Host Service）
+- **破線矢印**（`..>`）: 外部システムとの接続（ACL / Conformist）
+
+ステレオタイプ表記:
+- `<<C/S>>` = Customer-Supplier
+- `<<ACL>>` = Anti-Corruption Layer
+- `<<OHS>>` = Open Host Service
+- `<<Conf.>>` = Conformist
