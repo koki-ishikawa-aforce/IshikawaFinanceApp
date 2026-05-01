@@ -4,3 +4,16 @@ samples/
 
 # Visual Companion（superpowers ブレインストーミングのモック）
 .superpowers/
+
+# Node.js / pnpm
+node_modules/
+dist/
+*.tsbuildinfo
+.pnpm-debug.log*
+
+# Vitest
+coverage/
+
+# Editor
+.vscode/
+.idea/
