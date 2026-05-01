@@ -9,7 +9,7 @@
     "build": "tsc -b",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "lint": "eslint src tests --ext .ts"
+    "lint": "eslint src tests --ext .ts --no-error-on-unmatched-pattern"
   },
   "dependencies": {
     "zod": "^3.23.0"
