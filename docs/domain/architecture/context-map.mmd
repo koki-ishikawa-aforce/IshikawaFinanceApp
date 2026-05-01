@@ -1,0 +1,85 @@
+%%{init: {'theme':'neutral', 'flowchart':{'curve':'basis'}}}%%
+%% ====================================================================
+%% Context Map (Internal + External)
+%% Source: docs/domain/architecture/context-map.cml
+%% ====================================================================
+graph LR
+    %% --- Subgraphs by subdomain type ---
+    subgraph CORE["Core Domain"]
+        AC["自動分類・学習"]
+        HA["家計分析"]
+        BA["残高・資産推移管理"]
+        ES["経費精算"]
+    end
+    subgraph SUP["Supporting"]
+        TI["取引取込"]
+        OA["オンボーディング・認証"]
+        MM["マスタ管理"]
+    end
+    subgraph GEN["Generic"]
+        ND["通知配信"]
+    end
+    subgraph EXT["External Systems"]
+        GMAIL["Gmail"]
+        SMBC["SMBC メール"]
+        ANTH["Anthropic API"]
+        LINE_M["LINE Messaging API"]
+        LIFF["LINE Login (LIFF)"]
+        OBANK["別銀行貯蓄口座"]
+        SBI["SBI 証券"]
+        RAKU["楽天証券"]
+        SSM["AWS Parameter Store"]
+    end
+
+    %% --- Internal: TransactionImport upstream OHS+PL ---
+    TI -->|"OHS+PL"| AC
+    TI -->|"OHS+PL"| BA
+    TI -->|"OHS+PL"| HA
+
+    %% --- Internal: AutoClassification → 2 downstream (C/S) ---
+    AC -->|"C/S"| HA
+    AC -->|"C/S"| ES
+
+    %% --- Internal: BalanceAssetTracking → 2 downstream (C/S) ---
+    BA -->|"C/S"| HA
+    BA -->|"C/S"| ES
+
+    %% --- Internal: ExpenseSettlement → HouseholdAnalysis (C/S) ---
+    ES -->|"C/S"| HA
+
+    %% --- Internal: OnboardingAuthentication → 2 internal (C/S) ---
+    OA -->|"C/S"| TI
+    OA -->|"C/S"| BA
+
+    %% --- Internal: MasterManagement upstream OHS+PL → 4 consumers ---
+    MM -->|"OHS+PL"| AC
+    MM -->|"OHS+PL"| HA
+    MM -->|"OHS+PL"| ES
+    MM -->|"OHS+PL"| OA
+
+    %% --- Internal: NotificationDelivery upstream OHS ← 3 publishers ---
+    ND -->|"OHS"| TI
+    ND -->|"OHS"| HA
+    ND -->|"OHS"| OA
+
+    %% --- External: ACL / CF boundaries ---
+    GMAIL -.->|"OHS+PL → ACL"| TI
+    SMBC -.->|"→ ACL"| TI
+    ANTH -.->|"OHS+PL → ACL"| TI
+    LIFF -.->|"OHS+PL → ACL"| OA
+    LINE_M -.->|"OHS+PL → CF"| ND
+    OBANK -.->|"→ ACL"| BA
+    SBI -.->|"→ ACL"| BA
+    RAKU -.->|"→ ACL"| BA
+    SSM -.->|"OHS → ACL"| MM
+
+    %% --- Styling ---
+    classDef core fill:#1E4D78,color:#FFFFFF,stroke:#0D2E4A,stroke-width:2px,font-weight:bold;
+    classDef supporting fill:#AED6F1,color:#000000,stroke:#1B6CA8;
+    classDef generic fill:#BDC3C7,color:#000000,stroke:#7F8C8D;
+    classDef external fill:#F9E79F,color:#000000,stroke:#B7950B,stroke-dasharray: 5 5;
+
+    class AC,HA,BA,ES core;
+    class TI,OA,MM supporting;
+    class ND generic;
+    class GMAIL,SMBC,ANTH,LINE_M,LIFF,OBANK,SBI,RAKU,SSM external;

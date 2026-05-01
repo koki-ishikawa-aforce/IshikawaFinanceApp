@@ -77,7 +77,7 @@
 | 論点46 | サブドメイン分類（Core/Supporting/Generic） | Core: 自動分類・学習 / 家計分析 / 残高・資産推移管理 / 経費精算。Supporting: 取引取込 / オンボーディング・認証 / マスタ管理。Generic: 通知配信。詳細は [07-bounded-contexts.md §2](./07-bounded-contexts.md) |
 | 論点47 | ユビキタス言語の記述形式 | kawasima ドメイン記述ミニ言語を採用。プロジェクト固有方言は spec §2.3。詳細は [08-ubiquitous-language.md](./08-ubiquitous-language.md) と 08a〜08h |
 | 論点48 | 集約ルート候補 | 各コンテキストにつき 1〜4 個、計 21 個の集約ルートを特定。詳細は [09-aggregates.md](./09-aggregates.md) |
-| 論点49 | コンテキストマップ・関係種別 | 詳細は [diagrams/07-context-map.drawio](./diagrams/07-context-map.drawio) と [07-bounded-contexts.md §4](./07-bounded-contexts.md) |
+| 論点49 | コンテキストマップ・関係種別 | 詳細は [architecture/context-map.cml](./architecture/context-map.cml)（Context Mapper DSL）と [07-bounded-contexts.md §4](./07-bounded-contexts.md) |
 
 ### A.5 Phase 3.5（UX/UI 設計）で解決した論点
 

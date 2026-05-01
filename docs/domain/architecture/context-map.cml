@@ -1,0 +1,321 @@
+/* ====================================================================
+ * Context Map: イシカワ家計アプリ
+ * Generated: 2026-05-01
+ * Source:    docs/domain/07-bounded-contexts.md (§4.1)
+ *            + Phase 3 review (Pattern Selection Guide 適用)
+ *
+ * Bounded Contexts: 8
+ *   - Core (4):       自動分類・学習 / 家計分析 /
+ *                     残高・資産推移管理 / 経費精算
+ *   - Supporting (3): 取引取込 / オンボーディング・認証 / マスタ管理
+ *   - Generic (1):    通知配信
+ *
+ * External Systems: 9
+ *   Gmail, SMBC, Anthropic API, LINE Messaging API, LINE Login (LIFF),
+ *   別銀行貯蓄口座, SBI 証券, 楽天証券, AWS Parameter Store
+ *
+ * Shared Kernel:
+ *   全コンテキストで value-object レベルの共通語彙を共有する。
+ *   (取引ID, ユーザーID, 金額, 費用区分, カテゴリID, 経費種別ID,
+ *    Gmail_message_ID 等。詳細は 08-ubiquitous-language.md §2)
+ *   CML 上は本ファイル末尾の SharedKernel 関係宣言で表現する。
+ *
+ * 2026-05-01 §4.1 からの昇格点:
+ *   ① NotificationDelivery を全 publisher に対し OHS に統一
+ *   ② MasterManagement を OHS+PL に昇格（4 consumers: 自動分類・家計分析・経費精算・オンボーディング）
+ *   ③ TransactionImport を OHS+PL に昇格（3 consumers: 自動分類・残高・家計分析）
+ *   ④ LINE Login (LIFF)         に OHS+PL を明示
+ *   ⑤ LINE Messaging API        に OHS+PL を明示
+ * ==================================================================== */
+
+
+/* ==================== Domain & Subdomain ==================== */
+Domain IshikawaHousehold {
+    domainVisionStatement "夫婦の家計を、プライバシー（世帯/個人/経費）3 段階を保ちつつ可視化し、経費精算ライフサイクルと残高時系列を一元管理する"
+
+    Subdomain ClassificationLearningSubdomain {
+        type = CORE_DOMAIN
+        domainVisionStatement "F-1 個人別学習・T-2 フィールド独立マッピング・X-1 Amazon 商品キー特例の固有ロジック"
+    }
+
+    Subdomain HouseholdAnalysisSubdomain {
+        type = CORE_DOMAIN
+        domainVisionStatement "プライバシー3段階・費用区分4値・月次レポート2状態（CSV確定/最終確定）の集計と表示"
+    }
+
+    Subdomain BalanceTrackingSubdomain {
+        type = CORE_DOMAIN
+        domainVisionStatement "SMBC・カード未払金・別銀行・NISA の 4 軸時系列追跡（経費取引も含む全反映）"
+    }
+
+    Subdomain ExpenseSettlementSubdomain {
+        type = CORE_DOMAIN
+        domainVisionStatement "経費(会社) の暫定→上限按分→突合→不認定分振替→最終確定ライフサイクル"
+    }
+
+    Subdomain TransactionIngestionSubdomain {
+        type = SUPPORTING_DOMAIN
+        domainVisionStatement "メール/CSV/PDF をパース・重複除外して取引候補を下流に供給する"
+    }
+
+    Subdomain OnboardingSubdomain {
+        type = SUPPORTING_DOMAIN
+        domainVisionStatement "LINE Login/Gmail OAuth/初期残高/Phase 進捗を一貫したライフサイクルとして担う"
+    }
+
+    Subdomain MasterDataSubdomain {
+        type = SUPPORTING_DOMAIN
+        domainVisionStatement "カテゴリ・経費種別・月次上限・Phase 0 設定値の管理"
+    }
+
+    Subdomain NotificationSubdomain {
+        type = GENERIC_SUBDOMAIN
+        domainVisionStatement "LINE/フェイルセーフメール配信の汎用ラッパー"
+    }
+}
+
+
+/* ==================== Internal Bounded Contexts ==================== */
+
+BoundedContext TransactionImport implements TransactionIngestionSubdomain {
+    type = APPLICATION
+    domainVisionStatement "Gmail 経由で受信した SMBC/Amazon 通知メール、およびユーザーがアップロードした明細 CSV/PDF をパース・変換・重複除外し、内部表現の取引候補として下流に供給する"
+    responsibilities = "メール取込", "PDF→CSV変換", "重複除外", "取引候補生成"
+}
+
+BoundedContext AutoClassification implements ClassificationLearningSubdomain {
+    type = APPLICATION
+    domainVisionStatement "取引候補に対して加盟店名/Amazon 商品キーから per-user の memorization 学習データを引いてカテゴリ・費用区分・経費種別を当て、ユーザー手動修正を学習データに反映する"
+    responsibilities = "自動分類", "学習データ更新", "Amazon 突合", "未分類遡及"
+}
+
+BoundedContext HouseholdAnalysis implements HouseholdAnalysisSubdomain {
+    type = APPLICATION
+    domainVisionStatement "分類済み取引を費用区分（世帯/個人(夫)/個人(妻)/経費(会社)）とカテゴリで集計し、ダッシュボードのリアルタイム表示と月次レポートの 2 状態を生成する"
+    responsibilities = "ダッシュボード集計", "月次レポート生成", "プライバシールール適用", "未分類サマリ"
+}
+
+BoundedContext BalanceAssetTracking implements BalanceTrackingSubdomain {
+    type = APPLICATION
+    domainVisionStatement "SMBC 銀行残高・三井住友カード未払金・別銀行貯蓄口座残高・NISA 積立累計の 4 軸を、取引・資金移動・手入力を発生主義で反映して時系列に追跡する"
+    responsibilities = "口座残高更新", "クレカ未払金消込", "資金移動用途判別", "シャドウ口座管理"
+}
+
+BoundedContext ExpenseSettlement implements ExpenseSettlementSubdomain {
+    type = APPLICATION
+    domainVisionStatement "経費(会社) フラグ取引の経費種別ごとの月次累計と上限管理を行い、上限超過時の先着順按分と、翌月15日頃の経費精算入金との突合・差額の個人費用振替・最終確定昇格を担う"
+    responsibilities = "月次経費サイクル管理", "上限超過按分", "経費精算入金突合", "最終確定昇格", "不認定分振替"
+}
+
+BoundedContext OnboardingAuthentication implements OnboardingSubdomain {
+    type = APPLICATION
+    domainVisionStatement "LIFF 初期化/LINE Login/許可リスト役割判定/Gmail OAuth 連携と再認可/初期残高登録/配偶者完了検知/LINE 友達追加・グループ招待・運用開始発火を一貫した利用者ライフサイクルとして担う"
+    responsibilities = "LINE Login", "役割判定", "Gmail OAuth", "Phase 進捗管理", "運用開始発火"
+}
+
+BoundedContext NotificationDelivery implements NotificationSubdomain {
+    type = APPLICATION
+    domainVisionStatement "LINE 共通トークルーム/個人 DM への push と、LINE 連続失敗時のフェイルセーフメール送信、配信時点の値の凍結用途の LINE 配信ログ保存を担う"
+    responsibilities = "LINE 配信", "フェイルセーフメール", "配信ログ保存"
+}
+
+BoundedContext MasterManagement implements MasterDataSubdomain {
+    type = APPLICATION
+    domainVisionStatement "カテゴリマスタ・経費種別マスタの seed/CRUD・削除時リマップ要請と、経費種別の月次上限と、デプロイ前提条件（LINE Channel 設定、設定値投入）を担う"
+    responsibilities = "カテゴリマスタ", "経費種別マスタ", "月次上限", "Phase 0 設定値"
+}
+
+
+/* ==================== External Systems ==================== */
+
+BoundedContext Gmail {
+    type = SYSTEM
+    domainVisionStatement "Google Gmail Messages API"
+}
+
+BoundedContext SMBCEmail {
+    type = SYSTEM
+    domainVisionStatement "三井住友銀行 メール通知（カード利用・銀行入出金・引落確定・カード返金の各形式）"
+}
+
+BoundedContext AnthropicAPI {
+    type = SYSTEM
+    domainVisionStatement "Anthropic Claude API（PDF 明細→CSV 変換用）"
+}
+
+BoundedContext LINEMessagingAPI {
+    type = SYSTEM
+    domainVisionStatement "LINE Messaging API（push, Flex Message）"
+}
+
+BoundedContext LINELoginLIFF {
+    type = SYSTEM
+    domainVisionStatement "LINE Login (LIFF) SDK"
+}
+
+BoundedContext OtherBankSavingsAccount {
+    type = SYSTEM
+    domainVisionStatement "別銀行貯蓄口座（API なし、手入力 + 振込通知のみ）"
+}
+
+BoundedContext SBISecurities {
+    type = SYSTEM
+    domainVisionStatement "SBI 証券（API なし、振込通知から NISA 加算のみ）"
+}
+
+BoundedContext RakutenSecurities {
+    type = SYSTEM
+    domainVisionStatement "楽天証券（API なし、振込通知から NISA 加算のみ）"
+}
+
+BoundedContext AWSParameterStore {
+    type = SYSTEM
+    domainVisionStatement "AWS Systems Manager Parameter Store（KMS 暗号化された Channel 設定値・許可リスト）"
+}
+
+
+/* ==================== Context Map ==================== */
+
+ContextMap IshikawaHouseholdMap {
+    type = SYSTEM_LANDSCAPE
+    state = TO_BE
+
+    /* --- Internal contexts --- */
+    contains TransactionImport
+    contains AutoClassification
+    contains HouseholdAnalysis
+    contains BalanceAssetTracking
+    contains ExpenseSettlement
+    contains OnboardingAuthentication
+    contains NotificationDelivery
+    contains MasterManagement
+
+    /* --- External systems --- */
+    contains Gmail
+    contains SMBCEmail
+    contains AnthropicAPI
+    contains LINEMessagingAPI
+    contains LINELoginLIFF
+    contains OtherBankSavingsAccount
+    contains SBISecurities
+    contains RakutenSecurities
+    contains AWSParameterStore
+
+
+    /* ===== Internal Relationships ===== */
+
+    /* TransactionImport は 3 下流に取引候補/明細取込ジョブを供給。
+     * 複数 consumer + 標準フォーマット → OHS+PL（昇格③） */
+    AutoClassification [D,C]<-[U,OHS,PL] TransactionImport {
+        implementationTechnology = "Internal API / Domain Event"
+        downstreamRights = INFLUENCER
+    }
+    BalanceAssetTracking [D,C]<-[U,OHS,PL] TransactionImport {
+        implementationTechnology = "Internal API / Domain Event"
+    }
+    HouseholdAnalysis [D,C]<-[U,OHS,PL] TransactionImport {
+        implementationTechnology = "Internal API / Domain Event (CSV確定昇格トリガ)"
+    }
+
+    /* AutoClassification → 2 下流（分類済み取引と経費種別判定）
+     * ※ Core 同士なので OHS 昇格は見送り、C/S を維持 */
+    HouseholdAnalysis [D,C]<-[U,S] AutoClassification {
+        implementationTechnology = "Internal API"
+    }
+    ExpenseSettlement [D,C]<-[U,S] AutoClassification {
+        implementationTechnology = "Internal API（経費種別判定結果）"
+    }
+
+    /* BalanceAssetTracking → 2 下流（残高推移、経費精算入金イベント） */
+    HouseholdAnalysis [D,C]<-[U,S] BalanceAssetTracking {
+        implementationTechnology = "Internal API（月次レポート残高推移パート）"
+    }
+    ExpenseSettlement [D,C]<-[U,S] BalanceAssetTracking {
+        implementationTechnology = "Domain Event（経費精算入金が SMBC 到着）"
+    }
+
+    /* ExpenseSettlement → HouseholdAnalysis
+     * 月次経費精算最終確定後、不認定分を個人費用に振替え、最終確定昇格を通知 */
+    HouseholdAnalysis [D,C]<-[U,S] ExpenseSettlement {
+        implementationTechnology = "Internal API / Domain Event"
+    }
+
+    /* OnboardingAuthentication（supplier） → 2 内部 */
+    TransactionImport [D,C]<-[U,S] OnboardingAuthentication {
+        implementationTechnology = "Internal API（Gmail OAuth トークン + 運用開始日時）"
+    }
+    BalanceAssetTracking [D,C]<-[U,S] OnboardingAuthentication {
+        implementationTechnology = "Internal API（初期残高入力値）"
+    }
+
+    /* MasterManagement は 4 下流（3 Core + Onboarding）に共通参照データを供給。
+     * 複数 consumer + 標準フォーマット → OHS+PL（昇格②） */
+    AutoClassification [D,C]<-[U,OHS,PL] MasterManagement {
+        implementationTechnology = "Internal API / Master Delete Event（リマップ要請）"
+    }
+    HouseholdAnalysis [D,C]<-[U,OHS,PL] MasterManagement {
+        implementationTechnology = "Internal API / Master Delete Event（取引移動）"
+    }
+    ExpenseSettlement [D,C]<-[U,OHS,PL] MasterManagement {
+        implementationTechnology = "Internal API（経費種別 + 月次上限）"
+    }
+    OnboardingAuthentication [D,C]<-[U,OHS,PL] MasterManagement {
+        implementationTechnology = "Internal API（Phase 2-C/D/E 確認 UI）"
+    }
+
+    /* NotificationDelivery（upstream OHS）← 3 publisher。
+     * 全 publisher に統一（昇格①） */
+    TransactionImport [D,C]<-[U,OHS] NotificationDelivery {
+        implementationTechnology = "Internal API（PDF/CSV 失敗エラー通知）"
+    }
+    HouseholdAnalysis [D,C]<-[U,OHS] NotificationDelivery {
+        implementationTechnology = "Internal API（月次レポートサマリ依頼）"
+    }
+    OnboardingAuthentication [D,C]<-[U,OHS] NotificationDelivery {
+        implementationTechnology = "Internal API（テスト送信 + OAuth 失効通知）"
+    }
+
+
+    /* ===== External System Relationships (ACL boundaries) ===== */
+
+    TransactionImport [D,ACL]<-[U,OHS,PL] Gmail {
+        implementationTechnology = "Gmail Messages REST API + OAuth2"
+    }
+    TransactionImport [D,ACL]<-[U] SMBCEmail {
+        implementationTechnology = "Email body parsing（公式契約なし。SMBC 通知形式に追従）"
+    }
+    TransactionImport [D,ACL]<-[U,OHS,PL] AnthropicAPI {
+        implementationTechnology = "Anthropic SDK / messages API"
+    }
+    NotificationDelivery [D,CF]<-[U,OHS,PL] LINEMessagingAPI {
+        implementationTechnology = "LINE Messaging API (push + Flex Message)"
+    }
+    OnboardingAuthentication [D,ACL]<-[U,OHS,PL] LINELoginLIFF {
+        implementationTechnology = "LIFF SDK"
+    }
+    BalanceAssetTracking [D,ACL]<-[U] OtherBankSavingsAccount {
+        implementationTechnology = "API なし。手入力 + 振込通知イベント由来の自動加算"
+    }
+    BalanceAssetTracking [D,ACL]<-[U] SBISecurities {
+        implementationTechnology = "API なし。SMBC→SBI 振込通知を NISA 加算に翻訳"
+    }
+    BalanceAssetTracking [D,ACL]<-[U] RakutenSecurities {
+        implementationTechnology = "API なし。SMBC→楽天 振込通知を NISA 加算に翻訳"
+    }
+    MasterManagement [D,ACL]<-[U,OHS] AWSParameterStore {
+        implementationTechnology = "AWS SSM Parameter Store + KMS"
+    }
+
+
+    /* ===== Shared Kernel =====
+     * 共通語彙（取引ID, ユーザーID, 金額, 費用区分, カテゴリID,
+     * 経費種別ID, Gmail_message_ID 等）を全 内部コンテキストで共有。
+     * CML では代表的なペアに SK を宣言し、それ以外は同等のものとして扱う。
+     * 詳細は 08-ubiquitous-language.md §2。 */
+    TransactionImport [SK]<->[SK] HouseholdAnalysis
+    AutoClassification [SK]<->[SK] HouseholdAnalysis
+    BalanceAssetTracking [SK]<->[SK] HouseholdAnalysis
+    ExpenseSettlement [SK]<->[SK] HouseholdAnalysis
+    HouseholdAnalysis [SK]<->[SK] MasterManagement
+    HouseholdAnalysis [SK]<->[SK] OnboardingAuthentication
+}

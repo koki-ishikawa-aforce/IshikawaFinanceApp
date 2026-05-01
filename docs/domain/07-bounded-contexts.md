@@ -422,7 +422,7 @@
 
 ## 4. コンテキスト間関係
 
-> Phase 3 Step 6 で作成（2026-05-01）。図は [diagrams/07-context-map.puml](./diagrams/07-context-map.puml) を参照（PlantUML）。
+> Phase 3 Step 6 で作成、2026-05-01 に Context Mapper DSL (CML) 化。図と関係定義は [architecture/context-map.cml](./architecture/context-map.cml)（真実の源） / [architecture/context-map.mmd](./architecture/context-map.mmd)（Mermaid 図） / [architecture/context-map.md](./architecture/context-map.md)（サマリ・根拠） を参照。
 > 関係種別の定義:
 > - **Customer-Supplier**: 一方（Supplier）が要求されるものを提供し、もう一方（Customer）が利用する。Supplier 側が先に変更を確定させる。
 > - **ACL（Anti-Corruption Layer）**: 外部システムとの接続や、語彙・モデルが大きく異なるコンテキスト間に翻訳層を置く。
@@ -478,20 +478,22 @@
 
 ### 4.3 図の参照
 
-詳細は [diagrams/07-context-map.puml](./diagrams/07-context-map.puml) を参照（PlantUML 形式）。
+真実の源は [architecture/context-map.cml](./architecture/context-map.cml)（Context Mapper DSL）。
+Mermaid 図は [architecture/context-map.mmd](./architecture/context-map.mmd)、サマリ・根拠は [architecture/context-map.md](./architecture/context-map.md) を参照。
 
-図中の色分け:
+色分け（Mermaid 図）:
 - **濃い青（#1E4D78）**: Core コンテキスト（自動分類・学習 / 家計分析 / 残高・資産推移管理 / 経費精算）
 - **薄い青（#AED6F1）**: Supporting コンテキスト（取引取込 / オンボーディング・認証 / マスタ管理）
 - **グレー（#BDC3C7）**: Generic コンテキスト（通知配信）
 - **黄色（#F9E79F）**: 外部システム（Gmail / LINE Messaging API / LINE Login / SMBC / Anthropic API / 別銀行貯蓄口座 / SBI 証券 / 楽天証券 / AWS Parameter Store）
 
-矢印の種別:
+矢印の種別（Mermaid 図）:
 - **実線矢印**（`-->`）: コンテキスト間の内部関係（Customer-Supplier / Open Host Service）
-- **破線矢印**（`..>`）: 外部システムとの接続（ACL / Conformist）
+- **破線矢印**（`-.->`）: 外部システムとの接続（ACL / Conformist）
 
-ステレオタイプ表記:
-- `<<C/S>>` = Customer-Supplier
-- `<<ACL>>` = Anti-Corruption Layer
-- `<<OHS>>` = Open Host Service
-- `<<Conf.>>` = Conformist
+CML 関係表記（[context-map.cml](./architecture/context-map.cml) より）:
+- `[U,S] → [D,C]` = Customer-Supplier
+- `[U,OHS] → [D,C]` / `[U,OHS,PL] → [D,C]` = Open Host Service（+ Published Language）
+- `[U,*] → [D,ACL]` = Anti-Corruption Layer（下流側で翻訳）
+- `[U,OHS,PL] → [D,CF]` = Conformist（下流が上流仕様に追従）
+- `[SK] <-> [SK]` = Shared Kernel
