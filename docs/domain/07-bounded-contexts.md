@@ -418,3 +418,73 @@
 > **§3 マッピングのカバレッジ**: 02-event-storming.md §1〜§12 の本文に列挙された **151 件全件**（= §7.2 を 35 件として計算した実カウント）を漏れなく主担当コンテキストに帰属させた。§13 集計表上の「146」基準では 146 件全件カバー（§7.2 を 30 件として参照する場合）。いずれの基準でも漏れはない。
 >
 > **注 2（重複行と論理イベント数）**: §1.2 末尾と §5.2 先頭に同一イベント「Amazon 注文と SMBC カード利用通知が金額・タイミングで突合された」がそれぞれ列挙されている（02-event-storming.md 側の構造を保存して両方残した）。テーブル行数ベースの実カウントは **151 行** だが、論理ドメインイベント数では **150 件**（重複 1 件を 1 イベントとして数える）。Plan Task 12 で 02-event-storming.md §13 を訂正する際は、(a) §13 をテーブル行数ベース 151 に揃える、(b) §1.2 末尾行を §5.2 のみに集約して 150 件に統一、のどちらかを選択する。
+
+## 4. コンテキスト間関係
+
+> Phase 3 Step 6 で作成（2026-05-01）。図は [diagrams/07-context-map.drawio](./diagrams/07-context-map.drawio) を参照。
+> 関係種別の定義:
+> - **Customer-Supplier**: 一方（Supplier）が要求されるものを提供し、もう一方（Customer）が利用する。Supplier 側が先に変更を確定させる。
+> - **ACL（Anti-Corruption Layer）**: 外部システムとの接続や、語彙・モデルが大きく異なるコンテキスト間に翻訳層を置く。
+> - **Conformist**: 下流が上流の言語・モデルにそのまま従う（変換なし）。外部 SaaS の仕様に乗っかる場合に使う。
+> - **Open Host Service**: 多くのコンテキストから利用される公開サービス形式のプロトコル（通知配信等）。
+> - **Shared Kernel**: 複数コンテキストが同一のコードや data 定義を共有する（共通語彙レベルのみ）。
+
+### 4.1 関係マトリクス
+
+| From | To | 関係種別 | 説明 |
+|---|---|---|---|
+| 取引取込 | 自動分類・学習 | Customer-Supplier | 取引取込（Supplier）が取引候補を供給し、自動分類（Customer）が分類を当てて下流へ渡す |
+| 取引取込 | 残高・資産推移管理 | Customer-Supplier | 取引取込（Supplier）がパース済み残高変動根拠データを供給し、残高管理（Customer）が残高を更新する |
+| 取引取込 | 家計分析 | Customer-Supplier | CSV 取込完了時に月次レポートの「CSV確定」状態昇格をトリガーする |
+| 取引取込 | 通知配信 | Customer-Supplier | PDF変換失敗・CSV検証失敗時のエラー通知を依頼する |
+| 自動分類・学習 | 家計分析 | Customer-Supplier | 自動分類（Supplier）が分類済み取引を供給し、家計分析（Customer）が集計・レポートに使う |
+| 自動分類・学習 | 経費精算 | Customer-Supplier | 経費種別判定結果（経費(会社)フラグ + 経費種別）を経費精算コンテキストへ供給する |
+| 残高・資産推移管理 | 家計分析 | Customer-Supplier | 月次レポートの残高推移パートに必要なデータを供給する |
+| 残高・資産推移管理 | 経費精算 | Customer-Supplier | 経費精算入金が SMBC に到着したイベントを供給し、経費精算が突合処理を開始する |
+| 経費精算 | 家計分析 | Customer-Supplier | 月次経費精算最終確定後、不認定分を個人費用に振替え、月次レポートの「最終確定」状態昇格を通知する |
+| 家計分析 | 通知配信 | Open Host Service | CSV確定昇格時に月次レポートサマリを LINE へ配信するよう通知配信（Open Host Service）へ依頼する |
+| オンボーディング・認証 | 取引取込 | Customer-Supplier | Gmail OAuth トークンと運用開始日時（日次バッチ稼働開始トリガー）を供給する |
+| オンボーディング・認証 | 残高・資産推移管理 | Customer-Supplier | 初期残高（SMBC・別銀行貯蓄・NISA）の入力値を供給する |
+| オンボーディング・認証 | 通知配信 | Customer-Supplier | テストメッセージ送信・OAuth失効通知・共通トークルーム ID を供給して配信を依頼する |
+| オンボーディング・認証 | マスタ管理 | Customer-Supplier | Phase 2-C/D/E でマスタ確認 UI を呼び出す（Phase 0 seed 投入はマスタ管理が自律的に実施） |
+| マスタ管理 | 自動分類・学習 | Customer-Supplier | カテゴリ／経費種別の削除時、学習データのリマップを要請する |
+| マスタ管理 | 家計分析 | Customer-Supplier | カテゴリ削除時、配下取引の移動先反映を依頼する |
+| マスタ管理 | 経費精算 | Customer-Supplier | 経費種別マスタ（種別名・月次上限・is_unlimited フラグ）を供給する |
+| 取引取込 | Gmail | ACL | Gmail Messages API との接続。OAuth トークン管理・メッセージ取得・Gmail message ID による重複除外を翻訳層として担う |
+| 取引取込 | SMBC | ACL | SMBC メール通知本文のパースと通知形式の差異吸収を担う（カード利用・銀行入出金・引落確定・返金の各形式） |
+| 取引取込 | Anthropic API | ACL | PDF 明細を CSV 形式に変換する LLM 呼び出し。プロンプト構築・レスポンスパース・失敗ハンドリングを担う |
+| 通知配信 | LINE Messaging API | Conformist | LINE の Flex Message 仕様に完全に従う（変換なし）。Channel Access Token 管理と push API 呼び出しを行う |
+| オンボーディング・認証 | LINE Login (LIFF) | ACL | LIFF SDK 初期化・LINE userID 取得・内部ユーザー ID への変換・許可リスト照合を担う翻訳層 |
+| 残高・資産推移管理 | 別銀行貯蓄口座 | ACL | API なし。手入力による残高補正と振込通知での自動加算のみ。外部モデルの不在を翻訳層で吸収 |
+| 残高・資産推移管理 | SBI 証券 | ACL | API なし。SMBC→SBI 証券の振込通知イベントを NISA 積立累計加算に変換する翻訳層 |
+| 残高・資産推移管理 | 楽天証券 | ACL | API なし。SMBC→楽天証券の振込通知イベントを NISA 積立累計加算に変換する翻訳層 |
+| マスタ管理 | AWS Parameter Store | ACL | LINE Channel 設定値（Channel ID / Secret / Access Token）・HUSBAND/WIFE_LINE_USER_ID の読み込みを担う |
+| 共通語彙（全コンテキスト） | — | Shared Kernel | `取引ID` / `ユーザーID` / `金額` / `費用区分` / `カテゴリID` / `経費種別ID` / `Gmail_message_ID` 等、08-ubiquitous-language.md §2 で定義した共通 data 定義を全コンテキストが共有する |
+
+### 4.2 外部システム接続点（ACL の必要性）
+
+| 外部システム | 接続コンテキスト | ACL の責務 |
+|---|---|---|
+| Gmail | 取引取込 | OAuth トークン管理 + Messages API でのメール取得 + Gmail message ID による重複除外（二重受信防止） |
+| SMBC（メール通知） | 取引取込 | SMBC カード利用・銀行入出金・引落確定・カード返金の各メール形式のパースと差異吸収 |
+| Anthropic API | 取引取込 | PDF 明細 → CSV 変換のプロンプト構築 + レスポンスパース + 失敗時ハンドリング（変換失敗は通知配信へ連携） |
+| LINE Messaging API | 通知配信 | Channel Access Token 管理 + push API 呼び出し + Flex Message ペイロード構築 + 配信ログ記録 + 連続失敗カウンタ |
+| LINE Login (LIFF) | オンボーディング・認証 | LIFF SDK 初期化 + LINE userID 取得 + 内部ユーザーID への変換 + 許可リスト（夫/妻）照合 |
+| 別銀行貯蓄口座 | 残高・資産推移管理 | API なし。手入力による取り崩し・残高補正と、SMBC→別銀行振込通知からの自動加算のみ |
+| SBI 証券 | 残高・資産推移管理 | API なし。SMBC→SBI 証券の振込通知イベントを NISA 積立累計加算として解釈する翻訳のみ |
+| 楽天証券 | 残高・資産推移管理 | API なし。SMBC→楽天証券の振込通知イベントを NISA 積立累計加算として解釈する翻訳のみ |
+| AWS Parameter Store | マスタ管理 | LINE Channel 設定値・LINE userID 許可リスト等のシークレット取得（デプロイ時の前提条件として読み込み） |
+
+### 4.3 図の参照
+
+詳細は [diagrams/07-context-map.drawio](./diagrams/07-context-map.drawio) を参照。
+
+図中の色分け:
+- **濃い青（#1e4d78）**: Core コンテキスト（自動分類・学習 / 家計分析 / 残高・資産推移管理 / 経費精算）
+- **薄い青（#aed6f1）**: Supporting コンテキスト（取引取込 / オンボーディング・認証 / マスタ管理）
+- **グレー（#bdc3c7）**: Generic コンテキスト（通知配信）
+- **黄色（#f9e79f）**: 外部システム（Gmail / LINE Messaging API / LINE Login / SMBC / Anthropic API / 別銀行貯蓄口座 / SBI 証券 / 楽天証券 / AWS Parameter Store）
+
+矢印の種別:
+- **実線矢印**: コンテキスト間の内部関係（Customer-Supplier / Open Host Service）
+- **破線矢印**: 外部システムとの接続（ACL / Conformist）
