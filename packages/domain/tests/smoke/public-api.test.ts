@@ -80,6 +80,16 @@ import {
   OperationStartedSchema,
   NicknameChangedSchema,
   GmailOauthRevocationDetectedSchema,
+  // master-data
+  CategoryMasterSchema,
+  ExpenseTypeMasterSchema,
+  MonthlyLimitSchema,
+  Phase0ConfigSchema,
+  OwnershipScopeSchema,
+  DeletionRequestStateSchema,
+  AllowlistSchema,
+  MonthlyLimitChangedSchema,
+  CategoryDeletionRemapRequestedSchema,
 } from '../../src'
 
 describe('@warimaru/domain 公開 API', () => {
@@ -157,6 +167,16 @@ describe('@warimaru/domain 公開 API', () => {
     expect(OperationStartedSchema).toBeDefined()
     expect(NicknameChangedSchema).toBeDefined()
     expect(GmailOauthRevocationDetectedSchema).toBeDefined()
+    // master-data
+    expect(CategoryMasterSchema).toBeDefined()
+    expect(ExpenseTypeMasterSchema).toBeDefined()
+    expect(MonthlyLimitSchema).toBeDefined()
+    expect(Phase0ConfigSchema).toBeDefined()
+    expect(OwnershipScopeSchema).toBeDefined()
+    expect(DeletionRequestStateSchema).toBeDefined()
+    expect(AllowlistSchema).toBeDefined()
+    expect(MonthlyLimitChangedSchema).toBeDefined()
+    expect(CategoryDeletionRemapRequestedSchema).toBeDefined()
     // class 群
     expect(DomainError).toBeDefined()
     expect(InvariantViolationError).toBeDefined()
