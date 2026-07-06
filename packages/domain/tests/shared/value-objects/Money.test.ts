@@ -1,11 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { MoneySchema, money, addMoney, subtractMoney } from '../../../src/shared/value-objects/Money'
+import {
+  MoneySchema,
+  money,
+  addMoney,
+  subtractMoney,
+} from '../../../src/shared/value-objects/Money'
 
 describe('Money', () => {
   it('整数を受け入れる', () => {
     expect(() => money(1000)).not.toThrow()
     expect(() => money(0)).not.toThrow()
-    expect(() => money(-500)).not.toThrow()  // 返金等で負の値も許容
+    expect(() => money(-500)).not.toThrow() // 返金等で負の値も許容
   })
 
   it('小数を拒否する', () => {

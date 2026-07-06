@@ -76,6 +76,7 @@ pnpm --filter @household/domain lint       # ESLint
 ```
 
 ルートから一括:
+
 ```bash
 pnpm build       # 全 workspace ビルド
 pnpm test        # 全 workspace テスト

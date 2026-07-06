@@ -11,10 +11,7 @@
  *  4. 未分類: 08c F-1 個人別、所有者本人のみリスト可視
  *  5. 削除済み: リストから常に除外
  */
-import type {
-  Transaction,
-  ClassifiedTransaction,
-} from '../aggregates/Transaction'
+import type { Transaction, ClassifiedTransaction } from '../aggregates/Transaction'
 import type { ViewerContext } from './ViewerContext'
 import type { TransactionListItem } from '../queries/views/TransactionListItem'
 

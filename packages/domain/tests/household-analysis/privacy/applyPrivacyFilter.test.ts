@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { toListItems, isVisibleAsDetail, isVisibleAsAggregate } from '../../../src/household-analysis/privacy/applyPrivacyFilter'
+import {
+  toListItems,
+  isVisibleAsDetail,
+  isVisibleAsAggregate,
+} from '../../../src/household-analysis/privacy/applyPrivacyFilter'
 import type { ViewerContext } from '../../../src/household-analysis/privacy/ViewerContext'
-import type { Transaction, ClassifiedTransaction } from '../../../src/household-analysis/aggregates/Transaction'
+import type {
+  Transaction,
+  ClassifiedTransaction,
+} from '../../../src/household-analysis/aggregates/Transaction'
 
 const HONEY_ID = 'user_honey' as never
 const DARLING_ID = 'user_darling' as never
@@ -9,10 +16,14 @@ const DARLING_ID = 'user_darling' as never
 const honeyViewer: ViewerContext = { viewerId: HONEY_ID, role: 'honey' }
 const darlingViewer: ViewerContext = { viewerId: DARLING_ID, role: 'darling' }
 
-function makeClassified(ownerId: string, expenseClass: 'household' | 'personal_honey' | 'personal_darling' | 'business_expense'): ClassifiedTransaction {
-  const expenseTypeRef = expenseClass === 'business_expense'
-    ? { kind: 'business' as const, expenseTypeId: 'exp_001' as never }
-    : { kind: 'non_business' as const }
+function makeClassified(
+  ownerId: string,
+  expenseClass: 'household' | 'personal_honey' | 'personal_darling' | 'business_expense',
+): ClassifiedTransaction {
+  const expenseTypeRef =
+    expenseClass === 'business_expense'
+      ? { kind: 'business' as const, expenseTypeId: 'exp_001' as never }
+      : { kind: 'non_business' as const }
   return {
     kind: 'classified',
     common: {

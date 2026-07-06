@@ -73,7 +73,9 @@ describe('@household/domain 公開 API', () => {
   it('brokerageNameToDisplay が動作する', () => {
     expect(brokerageNameToDisplay({ kind: 'sbi' })).toBe('SBI証券')
     expect(brokerageNameToDisplay({ kind: 'rakuten' })).toBe('楽天証券')
-    expect(brokerageNameToDisplay({ kind: 'other', customName: 'マネックス証券' })).toBe('マネックス証券')
+    expect(brokerageNameToDisplay({ kind: 'other', customName: 'マネックス証券' })).toBe(
+      'マネックス証券',
+    )
   })
 
   it('NotFoundError が正しいメッセージを生成する', () => {
