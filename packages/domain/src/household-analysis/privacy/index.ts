@@ -1,2 +1,4 @@
 export * from './ViewerContext'
-// applyPrivacyFilter は内部実装のため非公開（barrel から export しない）
+// M-B spec §4.1: Query adapter がプライバシー 3 段階を適用するため公開 API へ昇格
+// @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §4.1
+export { isVisibleAsDetail, isVisibleAsAggregate, toListItems } from './applyPrivacyFilter'

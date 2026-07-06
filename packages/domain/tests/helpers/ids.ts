@@ -11,7 +11,9 @@ export function testUlid(prefix: string, suffix: string | number = 1): string {
   const s = String(suffix)
   const padLength = 26 - prefix.length - s.length
   if (padLength < 0) {
-    throw new Error(`testUlid: プレフィックス + サフィックスが 26 文字を超えています: ${prefix}${s}`)
+    throw new Error(
+      `testUlid: プレフィックス + サフィックスが 26 文字を超えています: ${prefix}${s}`,
+    )
   }
   const id = prefix + '0'.repeat(padLength) + s
   if (!ULID_REGEX.test(id)) {
