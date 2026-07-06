@@ -1787,9 +1787,9 @@ module.exports = {
 1. **残り 6 コンテキストの型化**:
    - 取引取込（Supporting）/ 自動分類・学習（Core）/ 経費精算（Core）/ オンボーディング・認証（Supporting）/ 通知配信（Generic）/ マスタ管理（Supporting）
    - Phase 4 と同じパターン（discriminated union + Zod refine + Repository/Query 分離）で展開
-2. **adapter 層の実装**: `packages/adapters-dynamodb/` または `packages/adapters-rds/` のいずれかを Phase 5 で選定
-3. **LIFF アプリ**: `packages/web/` に React + Vite + LIFF SDK で実装、TanStack Query で `@household/domain` の Query I/F を消費
-4. **Lambda handlers**: `packages/api/` に Lambda エントリポイント、Repository / Query の adapter 実装をワイヤリング
+2. **adapter 層の実装**: `packages/adapters-neon/` に Neon (PostgreSQL) 前提で実装（~~DynamoDB vs RDS を Phase 5 で選定~~ → 2026-07-06 OQ-46 で OQ-27 の確定スタックを正とした）
+3. **LIFF アプリ**: `packages/web/` に Next.js (TS) Static Export + LIFF SDK で実装（~~React + Vite~~ → 同上）、TanStack Query で `@warimaru/domain` の Query I/F を消費
+4. **Hono on Lambda**: `packages/api/` に Hono ベースの Lambda エントリポイント、Repository / Query の adapter 実装をワイヤリング
 5. **状態管理 / フォーム**: TanStack Query / React Hook Form + Zod resolvers の導入
 6. **ドメインイベントバス**: Phase 4 で型定義のみだったイベントを実配信する仕組み（in-process pub/sub or SNS/SQS）
 
@@ -1797,7 +1797,7 @@ module.exports = {
 
 Phase 4 の I/F が成立するために Phase 5 で確定が必要なもの:
 
-- 永続化バックエンド（DynamoDB vs RDS）— Repository の実装方法に影響
+- ~~永続化バックエンド（DynamoDB vs RDS）~~ → **確定済み: Neon (PostgreSQL)**（OQ-27 / OQ-46、2026-07-06）。残るは DB スキーマ設計とマイグレーション方式
 - ID 生成方式（ULID 推奨）— `idSchema` の正規表現を強化する余地
 - 鮮度アラート閾値（OQ-7 関連、現状 30 日仮置き）— Query 側で参照
 - イベントの永続化要否 — Phase 4 では型のみで永続化責務は決めていない
@@ -1845,3 +1845,4 @@ Phase 4 の I/F が成立するために Phase 5 で確定が必要なもの:
 | 日付 | 版 | 内容 |
 |---|---|---|
 | 2026-05-01 | 0.1 | 初版作成（superpowers:brainstorming セッションの確定回答を反映） |
+| 2026-07-06 | 0.2 | §13.1〜13.2 を OQ-27 の確定スタック（Next.js Static Export / Hono on Lambda / Neon PostgreSQL）に整合（OQ-46）。パッケージ名を `@warimaru/domain` に更新（OQ-37 アプリ名「わりまる」確定、OQ-45） |

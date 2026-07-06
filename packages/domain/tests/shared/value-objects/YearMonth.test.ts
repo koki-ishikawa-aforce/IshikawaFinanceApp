@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { YearMonthSchema, yearMonth, previousMonth } from '../../../src/shared/value-objects/YearMonth'
+import {
+  YearMonthSchema,
+  yearMonth,
+  previousMonth,
+} from '../../../src/shared/value-objects/YearMonth'
 
 describe('YearMonth', () => {
   it('YYYY-MM 形式を受け入れる', () => {

@@ -11,11 +11,7 @@
  *  - 銀行名・証券会社名は所有者本人のみ変更可（Repository 呼び出し側で検証、Phase 5）
  */
 import { z } from 'zod'
-import {
-  AccountIdSchema,
-  UserIdSchema,
-  MitsuiSumitomoUnpaidIdSchema,
-} from '../../shared/ids'
+import { AccountIdSchema, UserIdSchema, MitsuiSumitomoUnpaidIdSchema } from '../../shared/ids'
 import { MoneySchema } from '../../shared/value-objects/Money'
 import { BankNameSchema } from '../value-objects/BankName'
 import { BrokerageNameSchema } from '../value-objects/BrokerageName'

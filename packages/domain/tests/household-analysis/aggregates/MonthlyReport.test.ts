@@ -76,8 +76,6 @@ describe('MonthlyReport 集約', () => {
       causingTransactionIds: [],
     }) as CsvConfirmedReport
 
-    expect(() =>
-      finalize(csvConfirmed, '' as never, new Date(), [], new Date()),
-    ).toThrow()
+    expect(() => finalize(csvConfirmed, '' as never, new Date(), [], new Date())).toThrow()
   })
 })

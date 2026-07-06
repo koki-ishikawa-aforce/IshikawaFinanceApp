@@ -48,7 +48,11 @@ describe('Transaction 集約', () => {
             categoryId: 'cat_001' as never,
             expenseClass: 'business_expense',
             expenseTypeRef: { kind: 'non_business' },
-            basis: { kind: 'user_manual', modifiedByUserId: 'user_honey' as never, modifiedAt: new Date() },
+            basis: {
+              kind: 'user_manual',
+              modifiedByUserId: 'user_honey' as never,
+              modifiedAt: new Date(),
+            },
           },
         }),
       ).toThrow()
@@ -63,7 +67,11 @@ describe('Transaction 集約', () => {
             categoryId: 'cat_001' as never,
             expenseClass: 'household',
             expenseTypeRef: { kind: 'business', expenseTypeId: 'exp_001' as never },
-            basis: { kind: 'user_manual', modifiedByUserId: 'user_honey' as never, modifiedAt: new Date() },
+            basis: {
+              kind: 'user_manual',
+              modifiedByUserId: 'user_honey' as never,
+              modifiedAt: new Date(),
+            },
           },
         }),
       ).toThrow()
@@ -78,7 +86,11 @@ describe('Transaction 集約', () => {
             categoryId: 'cat_001' as never,
             expenseClass: 'business_expense',
             expenseTypeRef: { kind: 'business', expenseTypeId: 'exp_001' as never },
-            basis: { kind: 'user_manual', modifiedByUserId: 'user_honey' as never, modifiedAt: new Date() },
+            basis: {
+              kind: 'user_manual',
+              modifiedByUserId: 'user_honey' as never,
+              modifiedAt: new Date(),
+            },
           },
         }),
       ).not.toThrow()
@@ -93,7 +105,11 @@ describe('Transaction 集約', () => {
             categoryId: 'cat_001' as never,
             expenseClass: 'household',
             expenseTypeRef: { kind: 'non_business' },
-            basis: { kind: 'merchant_rule', merchantName: 'スーパーA', ruleLastUpdatedAt: new Date() },
+            basis: {
+              kind: 'merchant_rule',
+              merchantName: 'スーパーA',
+              ruleLastUpdatedAt: new Date(),
+            },
           },
         }),
       ).not.toThrow()

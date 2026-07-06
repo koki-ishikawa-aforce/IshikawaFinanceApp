@@ -35,7 +35,7 @@ import {
   NisaContributionAddedSchema,
 } from '../../src'
 
-describe('@household/domain 公開 API', () => {
+describe('@warimaru/domain 公開 API', () => {
   it('全 schema / class が import できる', () => {
     // schema 群
     expect(TransactionIdSchema).toBeDefined()
@@ -73,7 +73,9 @@ describe('@household/domain 公開 API', () => {
   it('brokerageNameToDisplay が動作する', () => {
     expect(brokerageNameToDisplay({ kind: 'sbi' })).toBe('SBI証券')
     expect(brokerageNameToDisplay({ kind: 'rakuten' })).toBe('楽天証券')
-    expect(brokerageNameToDisplay({ kind: 'other', customName: 'マネックス証券' })).toBe('マネックス証券')
+    expect(brokerageNameToDisplay({ kind: 'other', customName: 'マネックス証券' })).toBe(
+      'マネックス証券',
+    )
   })
 
   it('NotFoundError が正しいメッセージを生成する', () => {
