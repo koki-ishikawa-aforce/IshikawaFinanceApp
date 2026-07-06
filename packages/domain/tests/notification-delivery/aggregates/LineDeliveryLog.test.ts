@@ -7,7 +7,6 @@ const base = {
   timingKind: 'reminder',
   target: { kind: 'shared_talk_room', talkRoomId: 'room_001' as never },
   sentPayloadJson: '{"type":"flex"}',
-  sentAt: new Date(),
   idempotencyKey: 'reminder-2026-07-room_001',
 }
 

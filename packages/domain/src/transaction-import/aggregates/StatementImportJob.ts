@@ -11,7 +11,8 @@
  *  - PDF → CSV 変換中は同一ジョブID で二重変換が発生しない（Repository で保証、Phase 5 M-B）
  *  - 状態遷移は単方向（後戻りなし、後戻り遷移関数を提供しない）
  *  - PDF変換中はファイル形式が pdf のジョブに限る（superRefine）
- *  - ルーティング: ファイル形式 pdf → PDF変換中、csv → フォーマット検証中（launchImportJob）
+ *  - ルーティング: ファイル形式 pdf → PDF変換中（startPdfConversion、PDF変換ジョブID 必須）、
+ *    csv → フォーマット検証中（startFormatValidation）
  */
 import { z } from 'zod'
 import {
@@ -106,22 +107,24 @@ export type CompletedJob = Extract<StatementImportJob, { kind: 'completed' }>
 export type FailedJob = Extract<StatementImportJob, { kind: 'failed' }>
 
 /**
- * 状態遷移: アップロード受付済み → PDF変換中（pdf）/ フォーマット検証中（csv）
- * ファイル形式によるルーティングを型遷移で表現する。
+ * 状態遷移: アップロード受付済み（pdf）→ PDF変換中
+ * PDF変換ジョブID を型レベルで必須にする（csv ジョブは superRefine が拒否）。
  */
-export function launchImportJob(
+export function startPdfConversion(
   job: UploadAcceptedJob,
+  pdfConversionJobId: PdfConversionJobId,
   at: Date,
-  pdfConversionJobId?: PdfConversionJobId,
-): PdfConvertingJob | FormatValidatingJob {
-  if (job.common.fileFormat === 'pdf') {
-    return StatementImportJobSchema.parse({
-      kind: 'pdf_converting',
-      common: job.common,
-      pdfConversionJobId,
-      conversionStartedAt: at,
-    }) as PdfConvertingJob
-  }
+): PdfConvertingJob {
+  return StatementImportJobSchema.parse({
+    kind: 'pdf_converting',
+    common: job.common,
+    pdfConversionJobId,
+    conversionStartedAt: at,
+  }) as PdfConvertingJob
+}
+
+/** 状態遷移: アップロード受付済み（csv）→ フォーマット検証中 */
+export function startFormatValidation(job: UploadAcceptedJob, at: Date): FormatValidatingJob {
   return StatementImportJobSchema.parse({
     kind: 'format_validating',
     common: job.common,

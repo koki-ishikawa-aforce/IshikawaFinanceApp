@@ -26,6 +26,19 @@ describe('TransactionCandidate 集約', () => {
     ).not.toThrow()
   })
 
+  it('PDF由来の取引候補は PDF変換ジョブID が必須（欠落で parse 失敗）', () => {
+    const pdfSource = { kind: 'pdf', pdfFileId: 'file_001' as never, pageNumber: 1 }
+    expect(() =>
+      TransactionCandidateSchema.parse({ kind: 'normal', common: common(pdfSource) }),
+    ).toThrow()
+    expect(() =>
+      TransactionCandidateSchema.parse({
+        kind: 'normal',
+        common: common({ ...pdfSource, pdfConversionJobId: 'pdfjob_001' as never }),
+      }),
+    ).not.toThrow()
+  })
+
   it('Amazon突合取引候補は取込ソース amazon_match で parse 成功', () => {
     expect(() =>
       TransactionCandidateSchema.parse({

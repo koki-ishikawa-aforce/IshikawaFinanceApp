@@ -17,7 +17,7 @@ export const DeliveryContentSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('flex_message'),
     flexPayloadJson: z.string().min(1),
-    linkUrl: z.string(),
+    linkUrl: z.string().min(1),
   }),
 ])
 export type DeliveryContent = z.infer<typeof DeliveryContentSchema>

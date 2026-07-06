@@ -11,6 +11,8 @@
  *  - 冪等性キーで同月レポート再送信の重複を防ぐ（同一冪等性キーは 1 件のみ保存、
  *    Repository.findByIdempotencyKey で保証、Phase 5 M-B）
  *  - 送信完了後のログは変更不可（監査記録。遷移関数を一切提供しない）
+ *  - 送信日時は送信結果ステータス内でのみ保持する（success.sentAt / failure.failedAt /
+ *    skipped.skippedAt。skipped は送信が発生しないため、集約直下に送信日時を持たない）
  *
  * スナップショット廃止（OQ-3 撤回）の代替として配信時点の値を凍結する（OQ-34）。
  */
@@ -49,7 +51,6 @@ export const LineDeliveryLogSchema = z.object({
   target: DeliveryTargetSchema,
   sentPayloadJson: z.string().min(1),
   resultStatus: DeliveryResultStatusSchema,
-  sentAt: z.date(),
   idempotencyKey: z.string().min(1),
 })
 export type LineDeliveryLog = z.infer<typeof LineDeliveryLogSchema>

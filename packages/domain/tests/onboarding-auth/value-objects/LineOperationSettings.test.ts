@@ -43,6 +43,16 @@ describe('LineOperationSettings 値オブジェクト', () => {
     ).toThrow()
   })
 
+  it('通知有効化のトークルームIDが参加済みトークルームIDと不一致なら parse 失敗', () => {
+    expect(() =>
+      LineOperationSettingsSchema.parse({
+        friendAdd: { kind: 'added', followWebhookReceivedAt: new Date() },
+        talkRoomJoin: joined,
+        notificationActivation: { ...activated, talkRoomId: 'room_002' as never },
+      }),
+    ).toThrow()
+  })
+
   it('全て未着手の初期状態は parse 成功', () => {
     expect(() =>
       LineOperationSettingsSchema.parse({

@@ -10,7 +10,8 @@
  * （取引取込側は csv_merge を除く 5 種で CandidateImportSource を再構成する）。
  * `csvFileId` / `pdfFileId` / `amazonOrderId` は branded 型へ強化（エクスポート名は不変）。
  * pdf の `pdfConversionJobId` は取引取込での生成時には必須だが、家計分析の既存行では
- * 未設定を許容するため optional。
+ * 未設定を許容するため optional（取引取込側は CandidateImportSourcePdfSchema が
+ * required に強化して不変条件を強制する）。
  */
 import { z } from 'zod'
 import {

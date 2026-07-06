@@ -5,19 +5,21 @@
  *
  * kawasima: data 経費判定結果 = 経費種別判定済み OR 経費種別未判定 OR 経費判定不能
  *
- * 理由 literal は shared の UnclassifiedReason のサブセットと意図的に一致させている。
+ * 理由は shared の UnclassifiedReason のサブセット（`.extract()` で導出し、
+ * shared 側の改名・削除をコンパイルエラーで検知する）。
  */
 import { z } from 'zod'
 import { TransactionIdSchema, ExpenseTypeIdSchema } from '../../shared/ids'
 import { ClassificationBasisSchema } from '../../shared/value-objects/ClassificationBasis'
+import { UnclassifiedReasonSchema } from '../../shared/value-objects/UnclassifiedReason'
 
-export const ExpenseJudgmentPendingReasonSchema = z.enum([
+export const ExpenseJudgmentPendingReasonSchema = UnclassifiedReasonSchema.extract([
   'merchant_rule_unlearned',
   'amazon_product_key_unlearned',
 ])
 export type ExpenseJudgmentPendingReason = z.infer<typeof ExpenseJudgmentPendingReasonSchema>
 
-export const ExpenseJudgmentUndecidableReasonSchema = z.enum([
+export const ExpenseJudgmentUndecidableReasonSchema = UnclassifiedReasonSchema.extract([
   'amazon_product_info_undecidable',
   'amazon_match_timeout',
 ])

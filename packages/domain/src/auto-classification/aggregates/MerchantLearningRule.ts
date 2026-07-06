@@ -46,7 +46,9 @@ export const MerchantLearningRuleSchema = z
     }),
   ])
   .superRefine((rule, ctx) => {
-    if (rule.common.merchantName === 'AMAZON.CO.JP') {
+    // 上流の正規化（NFKC + 空白圧縮、OQ-23）は大文字小文字を畳まないため、
+    // 表記ゆれをすり抜けさせないよう防御的に正規化して比較する
+    if (rule.common.merchantName.normalize('NFKC').trim().toUpperCase() === 'AMAZON.CO.JP') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'AMAZON.CO.JP は加盟店学習の対象外（X-1、Amazon商品キー学習を使用）',

@@ -3,7 +3,9 @@
  * @see docs/domain/08f-ul-オンボーディング認証.md §1
  * @see docs/superpowers/plans/2026-07-06-phase5-m-a-context-typing.md §2.4
  *
- * 不変条件: 通知機能有効化済み ⇒ トークルーム参加済み かつ 友達追加済み
+ * 不変条件:
+ *  - 通知機能有効化済み ⇒ トークルーム参加済み かつ 友達追加済み
+ *  - 通知機能有効化済み ⇒ 有効化されたトークルームID = 参加済みトークルームID
  */
 import { z } from 'zod'
 import { TalkRoomIdSchema } from '../../shared/ids'
@@ -47,6 +49,12 @@ export const LineOperationSettingsSchema = z
           code: z.ZodIssueCode.custom,
           message: '通知機能有効化済みならトークルーム参加済みでなければならない',
           path: ['talkRoomJoin'],
+        })
+      } else if (settings.talkRoomJoin.talkRoomId !== settings.notificationActivation.talkRoomId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '通知機能を有効化したトークルームIDが参加済みトークルームIDと一致しない',
+          path: ['notificationActivation', 'talkRoomId'],
         })
       }
       if (settings.friendAdd.kind !== 'added') {

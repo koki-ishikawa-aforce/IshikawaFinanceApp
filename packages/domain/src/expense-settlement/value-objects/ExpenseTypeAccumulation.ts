@@ -9,6 +9,8 @@
  *  - 論点15: 無制限は上限金額・上限到達状態を構造的に持たない（マジックナンバー不使用、
  *    `.strict()` で余剰キーを拒否）
  *  - 上限あり: 当月累計 ≤ 上限（MonthlyExpenseCycle 側の superRefine で検査）
+ *  - 部分経費充当: 経費充当分 + 個人充当分 = 取引金額（取引の分割、08e §1）、
+ *    経費充当分 ≥ 0、個人充当分 > 0（superRefine で検査）
  */
 import { z } from 'zod'
 import {
@@ -33,12 +35,38 @@ export const ExpenseAllocationSchema = z.discriminatedUnion('kind', [
 export type ExpenseAllocation = z.infer<typeof ExpenseAllocationSchema>
 
 /** 経費取引参照（累計を構成する取引と充当内訳） */
-export const ExpenseTransactionRefSchema = z.object({
-  transactionId: TransactionIdSchema,
-  occurredAt: z.date(),
-  amount: MoneySchema,
-  allocation: ExpenseAllocationSchema,
-})
+export const ExpenseTransactionRefSchema = z
+  .object({
+    transactionId: TransactionIdSchema,
+    occurredAt: z.date(),
+    amount: MoneySchema,
+    allocation: ExpenseAllocationSchema,
+  })
+  .superRefine((ref, ctx) => {
+    if (ref.allocation.kind !== 'partial') return
+    const { expenseAllocatedAmount, personalAllocatedAmount } = ref.allocation
+    if (expenseAllocatedAmount < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `経費充当分（${expenseAllocatedAmount}）が負値`,
+        path: ['allocation', 'expenseAllocatedAmount'],
+      })
+    }
+    if (personalAllocatedAmount <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `個人充当分（${personalAllocatedAmount}）が正値でない（部分経費充当は超過分の個人按分を伴う）`,
+        path: ['allocation', 'personalAllocatedAmount'],
+      })
+    }
+    if (expenseAllocatedAmount + personalAllocatedAmount !== ref.amount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `経費充当分（${expenseAllocatedAmount}）+ 個人充当分（${personalAllocatedAmount}）が取引金額（${ref.amount}）と一致しない`,
+        path: ['allocation'],
+      })
+    }
+  })
 export type ExpenseTransactionRef = z.infer<typeof ExpenseTransactionRefSchema>
 
 /** 上限到達状態 */

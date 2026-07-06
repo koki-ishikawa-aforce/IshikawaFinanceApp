@@ -55,4 +55,56 @@ describe('ConsecutiveFailureCounter 値オブジェクト', () => {
       }),
     ).toThrow()
   })
+
+  it('失敗回数 0 なのにしきい値到達なら parse 失敗（OQ-14 の前提が壊れる）', () => {
+    expect(() =>
+      ConsecutiveFailureCounterSchema.parse({
+        counterRef: { kind: 'user', userId: 'user_honey' as never },
+        consecutiveFailureCount: 0,
+        lastFailedAt: null,
+        thresholdState: {
+          kind: 'reached',
+          reachedAt: new Date(),
+          failsafeState: {
+            kind: 'fired',
+            firedAt: new Date(),
+            failsafeEmailId: 'fse_001' as never,
+          },
+        },
+      }),
+    ).toThrow()
+  })
+
+  it('失敗回数 0 なのに最終失敗日時ありは parse 失敗', () => {
+    expect(() =>
+      ConsecutiveFailureCounterSchema.parse({
+        counterRef: { kind: 'user', userId: 'user_honey' as never },
+        consecutiveFailureCount: 0,
+        lastFailedAt: new Date(),
+        thresholdState: { kind: 'not_reached' },
+      }),
+    ).toThrow()
+  })
+
+  it('失敗回数 > 0 なのに最終失敗日時が null なら parse 失敗', () => {
+    expect(() =>
+      ConsecutiveFailureCounterSchema.parse({
+        counterRef: { kind: 'user', userId: 'user_honey' as never },
+        consecutiveFailureCount: 2,
+        lastFailedAt: null,
+        thresholdState: { kind: 'not_reached' },
+      }),
+    ).toThrow()
+  })
+
+  it('未失敗の初期状態（0 回・日時なし・未到達）は parse 成功', () => {
+    expect(() =>
+      ConsecutiveFailureCounterSchema.parse({
+        counterRef: { kind: 'user', userId: 'user_honey' as never },
+        consecutiveFailureCount: 0,
+        lastFailedAt: null,
+        thresholdState: { kind: 'not_reached' },
+      }),
+    ).not.toThrow()
+  })
 })

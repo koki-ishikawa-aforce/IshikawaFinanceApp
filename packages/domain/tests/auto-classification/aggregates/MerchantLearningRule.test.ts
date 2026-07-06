@@ -50,6 +50,17 @@ describe('MerchantLearningRule 集約', () => {
     ).toThrow()
   })
 
+  it('表記ゆれ（大文字小文字・前後空白）の Amazon も parse 失敗（X-1 防御的正規化）', () => {
+    for (const merchantName of ['Amazon.co.jp', 'AMAZON.CO.JP ', 'amazon.co.jp']) {
+      expect(() =>
+        MerchantLearningRuleSchema.parse({
+          ...activeRule,
+          common: { userId: 'user_honey' as never, merchantName },
+        }),
+      ).toThrow()
+    }
+  })
+
   it('disableMerchantLearning: 有効 → 学習無効化', () => {
     const active = MerchantLearningRuleSchema.parse(activeRule) as ActiveMerchantLearningRule
     const disabled = disableMerchantLearning(active, new Date())

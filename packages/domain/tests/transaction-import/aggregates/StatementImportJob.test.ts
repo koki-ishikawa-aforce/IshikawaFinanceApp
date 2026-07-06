@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   StatementImportJobSchema,
-  launchImportJob,
+  startPdfConversion,
+  startFormatValidation,
   startImporting,
   completeImportJob,
   type UploadAcceptedJob,
@@ -41,22 +42,32 @@ describe('StatementImportJob 集約', () => {
     ).toThrow()
   })
 
-  it('launchImportJob: pdf → PDF変換中 / csv → フォーマット検証中 にルーティング', () => {
+  it('startPdfConversion: pdf → PDF変換中 / startFormatValidation: csv → フォーマット検証中', () => {
     const pdfJob = StatementImportJobSchema.parse({
       kind: 'upload_accepted',
       common: common('pdf'),
       acceptedAt: new Date(),
     }) as UploadAcceptedJob
-    const launched = launchImportJob(pdfJob, new Date(), 'pdfjob_001' as never)
-    expect(launched.kind).toBe('pdf_converting')
+    const converting = startPdfConversion(pdfJob, 'pdfjob_001' as never, new Date())
+    expect(converting.kind).toBe('pdf_converting')
+    expect(converting.pdfConversionJobId).toBe('pdfjob_001')
 
     const csvJob = StatementImportJobSchema.parse({
       kind: 'upload_accepted',
       common: common('csv'),
       acceptedAt: new Date(),
     }) as UploadAcceptedJob
-    const validated = launchImportJob(csvJob, new Date())
+    const validated = startFormatValidation(csvJob, new Date())
     expect(validated.kind).toBe('format_validating')
+  })
+
+  it('startPdfConversion: csv ジョブは parse 失敗（ルーティング不変条件）', () => {
+    const csvJob = StatementImportJobSchema.parse({
+      kind: 'upload_accepted',
+      common: common('csv'),
+      acceptedAt: new Date(),
+    }) as UploadAcceptedJob
+    expect(() => startPdfConversion(csvJob, 'pdfjob_001' as never, new Date())).toThrow()
   })
 
   it('フォーマット検証中 → 取込中 → 完了 の遷移', () => {
