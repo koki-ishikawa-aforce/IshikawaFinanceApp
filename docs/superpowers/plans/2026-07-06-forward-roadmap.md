@@ -13,7 +13,7 @@
 | Phase 3 | 戦略的設計（境界づけられたコンテキスト + コンテキストマップ） | ✅ 完了 |
 | Phase 3.5 | UX/UI 設計（ワイヤーフレーム 12 画面 / デザイントークン） | ✅ 完了 |
 | Phase 4 | 戦術的設計 — Core 2 コンテキストの TS 型 + Zod + Repository/Query I/F | ✅ 完了 |
-| Phase 4.5 | リポジトリ健全化（本計画 §1） | ⬜ 未着手 |
+| Phase 4.5 | リポジトリ健全化（本計画 §1） | ✅ 完了（2026-07-06） |
 | Phase 5 | 残りコンテキストの型化 + adapter 層 + web/api スケルトン | ⬜ 未着手 |
 | Phase 6 | 実装統合・E2E・運用開始準備 | ⬜ 未着手 |
 
@@ -25,15 +25,18 @@
 
 Phase 5 の実装量が増える前に、機械的なチェックを固める。
 
-- [ ] **T-1 フォーマット差分の解消**: `pnpm format` を実行し、`pnpm format:check` を green にする
+- [x] **T-1 フォーマット差分の解消**: `pnpm format` を実行し、`pnpm format:check` を green にする
       （2026-07-06 時点で 9 ファイルが Prettier 未適用: `Account.ts` / `applyPrivacyFilter.ts` / テスト 6 ファイル / `packages/domain/README.md`）
-- [ ] **T-2 CI の導入**: GitHub Actions で PR ごとに `pnpm install --frozen-lockfile` → `build` → `typecheck` → `test` → `lint` → `format:check` を実行
-      （DoD がローカル実行頼みである現状の唯一の構造的リスクを解消する）
-- [ ] **T-3 OQ の棚卸し**: OQ-37〜45 を「Phase 5 前に確定 / Phase 5 中に確定 / 保留」に振り分け、
+- [x] **T-2 CI の導入**: GitHub Actions で PR ごとに `pnpm install --frozen-lockfile` → `build` → `typecheck` → `test` → `lint` → `format:check` を実行
+      （DoD がローカル実行頼みである現状の唯一の構造的リスクを解消する → `.github/workflows/ci.yml`）
+- [x] **T-3 OQ の棚卸し**: OQ-37〜45 を「Phase 5 前に確定 / Phase 5 中に確定 / 保留」に振り分け、
       [03-open-questions.md](../../domain/03-open-questions.md) §B を更新
   - Phase 5 前に確定したいもの: OQ-37（アプリ名 → OQ-45 パッケージ名にも波及）
   - Phase 5 中に確定するもの: OQ-38（SMBC URL 実調査）/ OQ-39（Flex Message サイズ検証）/ OQ-41（ID 生成方式）/ OQ-44（鮮度アラート閾値）
   - 実装を見て判断するもの: OQ-40（テーマ切替）/ OQ-42（イベント永続化）/ OQ-43（トランザクション境界）
+  - 棚卸しで新規発見: **OQ-46** — OQ-27（解決済み: Next.js Static Export / Hono on Lambda / Neon PostgreSQL）と
+    Phase 4 spec §13（React + Vite / DynamoDB vs RDS 選定）の技術スタック記述が食い違っている。
+    Phase 5 spec 作成時にどちらを正とするか確定する（本ロードマップ §2 M-B / M-C の記述は Phase 4 spec 由来のため、OQ-46 の結論に従って読み替えること）
 
 ### DoD（Phase 4.5）
 
