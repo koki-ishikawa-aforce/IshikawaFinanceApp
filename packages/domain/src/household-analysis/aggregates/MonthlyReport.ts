@@ -17,6 +17,10 @@ import {
 } from '../../shared/ids'
 import { MoneySchema } from '../../shared/value-objects/Money'
 import { YearMonthSchema } from '../../shared/value-objects/YearMonth'
+import {
+  UnapprovedExpenseTransferSchema,
+  type UnapprovedExpenseTransfer,
+} from '../../shared/value-objects/UnapprovedExpenseTransfer'
 
 /** 残高推移パート（残高・資産推移管理から借用する Read-only データ） */
 export const BalanceTrendSchema = z.object({
@@ -46,15 +50,6 @@ export const CommonMonthlyReportAttrsSchema = z.object({
   isIncompleteMonth: z.boolean().optional(),
 })
 export type CommonMonthlyReportAttrs = z.infer<typeof CommonMonthlyReportAttrsSchema>
-
-/** 不認定分振替 */
-export const UnapprovedExpenseTransferSchema = z.object({
-  originalBusinessExpenseTransactionId: TransactionIdSchema,
-  transferTarget: z.enum(['personal_honey', 'personal_darling']),
-  transferAmount: MoneySchema,
-  transferredAt: z.date(),
-})
-export type UnapprovedExpenseTransfer = z.infer<typeof UnapprovedExpenseTransferSchema>
 
 /** 月次レポート（discriminated union） */
 export const MonthlyReportSchema = z.discriminatedUnion('kind', [

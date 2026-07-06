@@ -13,3 +13,7 @@ import { z } from 'zod'
 
 export const PersonalExpenseClassSchema = z.enum(['personal_honey', 'personal_darling'])
 export type PersonalExpenseClass = z.infer<typeof PersonalExpenseClassSchema>
+
+/** UL 上の同義語（未分類取引の暫定区分）。値空間は PersonalExpenseClass と同一 */
+export const DefaultExpenseClassSchema = PersonalExpenseClassSchema
+export type DefaultExpenseClass = PersonalExpenseClass
