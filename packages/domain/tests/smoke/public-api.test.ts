@@ -20,6 +20,9 @@ import {
   ClassificationBasisSchema,
   ViewerContextSchema,
   ViewerRoleSchema,
+  isVisibleAsDetail,
+  isVisibleAsAggregate,
+  toListItems,
   // balance-asset-tracking
   AccountSchema,
   MitsuiSumitomoUnpaidSchema,
@@ -120,6 +123,10 @@ describe('@warimaru/domain 公開 API', () => {
     expect(ClassificationBasisSchema).toBeDefined()
     expect(ViewerContextSchema).toBeDefined()
     expect(ViewerRoleSchema).toBeDefined()
+    // M-B spec §4.1: privacy ヘルパ 3 種（Query adapter 用に公開）
+    expect(isVisibleAsDetail).toBeDefined()
+    expect(isVisibleAsAggregate).toBeDefined()
+    expect(toListItems).toBeDefined()
     expect(AccountSchema).toBeDefined()
     expect(MitsuiSumitomoUnpaidSchema).toBeDefined()
     expect(BankNameSchema).toBeDefined()
