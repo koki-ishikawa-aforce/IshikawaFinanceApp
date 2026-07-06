@@ -90,6 +90,16 @@ import {
   AllowlistSchema,
   MonthlyLimitChangedSchema,
   CategoryDeletionRemapRequestedSchema,
+  // notification-delivery
+  DeliveryMessageSchema,
+  LineDeliveryLogSchema,
+  FailsafeEmailSchema,
+  ConsecutiveFailureCounterSchema,
+  DeliveryTargetSchema,
+  DeliveryContentSchema,
+  DeliveryPurposeSchema,
+  ReminderSentSchema,
+  FailureThresholdReachedSchema,
 } from '../../src'
 
 describe('@warimaru/domain 公開 API', () => {
@@ -177,6 +187,16 @@ describe('@warimaru/domain 公開 API', () => {
     expect(AllowlistSchema).toBeDefined()
     expect(MonthlyLimitChangedSchema).toBeDefined()
     expect(CategoryDeletionRemapRequestedSchema).toBeDefined()
+    // notification-delivery
+    expect(DeliveryMessageSchema).toBeDefined()
+    expect(LineDeliveryLogSchema).toBeDefined()
+    expect(FailsafeEmailSchema).toBeDefined()
+    expect(ConsecutiveFailureCounterSchema).toBeDefined()
+    expect(DeliveryTargetSchema).toBeDefined()
+    expect(DeliveryContentSchema).toBeDefined()
+    expect(DeliveryPurposeSchema).toBeDefined()
+    expect(ReminderSentSchema).toBeDefined()
+    expect(FailureThresholdReachedSchema).toBeDefined()
     // class 群
     expect(DomainError).toBeDefined()
     expect(InvariantViolationError).toBeDefined()
