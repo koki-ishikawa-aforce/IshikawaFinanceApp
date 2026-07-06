@@ -69,6 +69,17 @@ import {
   CsvImportCompletionViewSchema,
   CsvImportCompletedSchema,
   DuplicateExcludedSchema,
+  // onboarding-auth
+  AppUserSchema,
+  GmailOAuthTokenSchema,
+  NicknameSchema,
+  Phase2ProgressSchema,
+  LineOperationSettingsSchema,
+  RoleJudgmentSchema,
+  SpouseCompletionResultSchema,
+  OperationStartedSchema,
+  NicknameChangedSchema,
+  GmailOauthRevocationDetectedSchema,
 } from '../../src'
 
 describe('@warimaru/domain 公開 API', () => {
@@ -135,6 +146,17 @@ describe('@warimaru/domain 公開 API', () => {
     expect(CsvImportCompletionViewSchema).toBeDefined()
     expect(CsvImportCompletedSchema).toBeDefined()
     expect(DuplicateExcludedSchema).toBeDefined()
+    // onboarding-auth
+    expect(AppUserSchema).toBeDefined()
+    expect(GmailOAuthTokenSchema).toBeDefined()
+    expect(NicknameSchema).toBeDefined()
+    expect(Phase2ProgressSchema).toBeDefined()
+    expect(LineOperationSettingsSchema).toBeDefined()
+    expect(RoleJudgmentSchema).toBeDefined()
+    expect(SpouseCompletionResultSchema).toBeDefined()
+    expect(OperationStartedSchema).toBeDefined()
+    expect(NicknameChangedSchema).toBeDefined()
+    expect(GmailOauthRevocationDetectedSchema).toBeDefined()
     // class 群
     expect(DomainError).toBeDefined()
     expect(InvariantViolationError).toBeDefined()
