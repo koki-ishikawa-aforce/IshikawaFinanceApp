@@ -17,3 +17,6 @@ coverage/
 # Editor
 .vscode/
 .idea/
+
+# 接続情報（Neon の DATABASE_URL 等はローカルのみ）
+.env
