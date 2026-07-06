@@ -35,7 +35,7 @@ import {
   NisaContributionAddedSchema,
 } from '../../src'
 
-describe('@household/domain 公開 API', () => {
+describe('@warimaru/domain 公開 API', () => {
   it('全 schema / class が import できる', () => {
     // schema 群
     expect(TransactionIdSchema).toBeDefined()

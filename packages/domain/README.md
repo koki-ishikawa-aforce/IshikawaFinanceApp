@@ -1,11 +1,11 @@
-# @household/domain
+# @warimaru/domain
 
 Phase 4 戦術的設計で実装した家計分析・残高資産推移管理 2 コンテキストの TS 型 + Zod スキーマ + リポジトリ I/F + Query I/F。
 
 > **親 spec**: [docs/superpowers/specs/2026-05-01-phase4-tactical-design.md](../../docs/superpowers/specs/2026-05-01-phase4-tactical-design.md)
 > **plan**: [docs/superpowers/plans/2026-05-01-phase4-tactical-implementation.md](../../docs/superpowers/plans/2026-05-01-phase4-tactical-implementation.md)
 
-## 公開 API（barrel: `@household/domain`）
+## 公開 API（barrel: `@warimaru/domain`）
 
 ### shared
 
@@ -41,7 +41,7 @@ import {
   type Transaction,
   type TransactionRepository,
   type DashboardQuery,
-} from '@household/domain'
+} from '@warimaru/domain'
 
 // 集約の生成
 const tx: Transaction = TransactionSchema.parse({
@@ -69,10 +69,10 @@ async function example(repo: TransactionRepository) {
 
 ```bash
 pnpm install              # 依存関係インストール
-pnpm --filter @household/domain build      # TS ビルド
-pnpm --filter @household/domain test       # Vitest 実行
-pnpm --filter @household/domain typecheck  # tsc --noEmit
-pnpm --filter @household/domain lint       # ESLint
+pnpm --filter @warimaru/domain build      # TS ビルド
+pnpm --filter @warimaru/domain test       # Vitest 実行
+pnpm --filter @warimaru/domain typecheck  # tsc --noEmit
+pnpm --filter @warimaru/domain lint       # ESLint
 ```
 
 ルートから一括:

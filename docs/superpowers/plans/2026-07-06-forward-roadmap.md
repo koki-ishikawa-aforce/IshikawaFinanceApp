@@ -1,7 +1,7 @@
 # これからの計画（Phase 4 完了後ロードマップ）
 
 > 作成: 2026-07-06
-> 前提: Phase 4 戦術的設計は完了（DoD 8 項目達成、`@household/domain` 公開 API 確定）
+> 前提: Phase 4 戦術的設計は完了（DoD 8 項目達成、`@warimaru/domain` 公開 API 確定）
 > 親 spec: [Phase 4 戦術的設計](../specs/2026-05-01-phase4-tactical-design.md) §13–§14
 > 現状レビュー: 2026-07-06 実施。build / typecheck / test (50件) / lint すべて green を確認済み
 
@@ -17,7 +17,12 @@
 | Phase 5 | 残りコンテキストの型化 + adapter 層 + web/api スケルトン | ⬜ 未着手 |
 | Phase 6 | 実装統合・E2E・運用開始準備 | ⬜ 未着手 |
 
-コード資産は `packages/domain`（`@household/domain`）のみ。永続化・UI・API は未実装。
+コード資産は `packages/domain`（`@warimaru/domain`）のみ。永続化・UI・API は未実装。
+
+2026-07-06 確定事項:
+
+- **アプリ名 = わりまる**（OQ-37。パッケージスコープも `@warimaru/*` に統一、OQ-45）
+- **技術スタック = OQ-27 を正とする**（OQ-46）: Next.js (TS) Static Export + Hono on Lambda + Neon (PostgreSQL)
 
 ---
 
@@ -31,12 +36,13 @@ Phase 5 の実装量が増える前に、機械的なチェックを固める。
       （DoD がローカル実行頼みである現状の唯一の構造的リスクを解消する → `.github/workflows/ci.yml`）
 - [x] **T-3 OQ の棚卸し**: OQ-37〜45 を「Phase 5 前に確定 / Phase 5 中に確定 / 保留」に振り分け、
       [03-open-questions.md](../../domain/03-open-questions.md) §B を更新
-  - Phase 5 前に確定したいもの: OQ-37（アプリ名 → OQ-45 パッケージ名にも波及）
+  - ~~Phase 5 前に確定したいもの: OQ-37（アプリ名）~~ → **2026-07-06 確定: アプリ名 = わりまる**。
+    OQ-45 も同時解決（パッケージ名を `@warimaru/domain` にリネーム済み）
   - Phase 5 中に確定するもの: OQ-38（SMBC URL 実調査）/ OQ-39（Flex Message サイズ検証）/ OQ-41（ID 生成方式）/ OQ-44（鮮度アラート閾値）
   - 実装を見て判断するもの: OQ-40（テーマ切替）/ OQ-42（イベント永続化）/ OQ-43（トランザクション境界）
-  - 棚卸しで新規発見: **OQ-46** — OQ-27（解決済み: Next.js Static Export / Hono on Lambda / Neon PostgreSQL）と
-    Phase 4 spec §13（React + Vite / DynamoDB vs RDS 選定）の技術スタック記述が食い違っている。
-    Phase 5 spec 作成時にどちらを正とするか確定する（本ロードマップ §2 M-B / M-C の記述は Phase 4 spec 由来のため、OQ-46 の結論に従って読み替えること）
+  - 棚卸しで新規発見した **OQ-46**（OQ-27 と Phase 4 spec §13 の技術スタック記述の食い違い）→
+    **2026-07-06 確定: OQ-27 を正とする**。スタック = Next.js (TS) Static Export + Hono on Lambda + Neon (PostgreSQL)。
+    Phase 4 spec §13 の該当記述は修正済み。本ロードマップ §2 M-B / M-C も確定スタックで記述
 
 ### DoD（Phase 4.5）
 
@@ -66,21 +72,26 @@ discriminated union 集約 + Zod superRefine 不変条件 + branded ID + Reposit
 
 ### M-B: adapter 層の実装
 
-- [ ] 永続化バックエンドの選定 spec を作成（DynamoDB vs RDS、§13.2 の決定事項）
-- [ ] `packages/adapters-*/` に Repository / Query の実装（まず家計分析 + 残高資産推移の 4 Repository / 5 Query）
+永続化バックエンドは **Neon (PostgreSQL)** で確定済み（OQ-27 / OQ-46）。
+
+- [ ] Neon 前提の DB スキーマ設計 spec を作成（テーブル設計、マイグレーション方式の選定）
+- [ ] `packages/adapters-neon/` に Repository / Query の実装（まず家計分析 + 残高資産推移の 4 Repository / 5 Query）
 - [ ] ID 生成方式の確定（OQ-41: ULID 推奨）と `idSchema` の正規表現強化
 - [ ] ドメインイベントバス（家計内ツール規模なので in-process pub/sub から開始、OQ-42 はここで判断)
 
 ### M-C: アプリスケルトン
 
-- [ ] `packages/web/`: React + Vite + LIFF SDK、TanStack Query で Query I/F を消費、React Hook Form + Zod resolvers
-- [ ] `packages/api/`: Lambda handlers、Repository/Query adapter のワイヤリング
+技術スタックは OQ-27 で確定済み: フロント = Next.js (TS) Static Export、バックエンド = Hono on Lambda、
+配信 = S3 + CloudFront、シークレット = Parameter Store。
+
+- [ ] `packages/web/`: Next.js (TS) Static Export + LIFF SDK、TanStack Query で Query I/F を消費、React Hook Form + Zod resolvers
+- [ ] `packages/api/`: Hono on Lambda、Repository/Query adapter のワイヤリング
 - [ ] ダッシュボード 1 画面（KPI 4 枚 + ドーナツチャート）を縦串で貫通させ、アーキテクチャを実証する
 
 ### DoD（Phase 5）
 
-- 全 8 コンテキストが `@household/domain` から export され、不変条件テストが green
-- 選定した永続化バックエンドで Repository/Query の統合テストが green
+- 全 8 コンテキストが `@warimaru/domain` から export され、不変条件テストが green
+- Neon (PostgreSQL) で Repository/Query の統合テストが green
 - ダッシュボード画面が実データ（またはシード）で表示できる（縦串の貫通確認）
 - OQ-38 / 39 / 41 / 44 がクローズされている
 
