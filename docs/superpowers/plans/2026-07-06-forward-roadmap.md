@@ -14,7 +14,7 @@
 | Phase 3.5 | UX/UI 設計（ワイヤーフレーム 12 画面 / デザイントークン） | ✅ 完了 |
 | Phase 4 | 戦術的設計 — Core 2 コンテキストの TS 型 + Zod + Repository/Query I/F | ✅ 完了 |
 | Phase 4.5 | リポジトリ健全化（本計画 §1） | ✅ 完了（2026-07-06） |
-| Phase 5 | 残りコンテキストの型化 + adapter 層 + web/api スケルトン | ⬜ 未着手 |
+| Phase 5 | 残りコンテキストの型化 + adapter 層 + web/api スケルトン | 🚧 M-A 完了（2026-07-06）、M-B / M-C 未着手 |
 | Phase 6 | 実装統合・E2E・運用開始準備 | ⬜ 未着手 |
 
 コード資産は `packages/domain`（`@warimaru/domain`）のみ。永続化・UI・API は未実装。
@@ -56,16 +56,18 @@ Phase 5 の実装量が増える前に、機械的なチェックを固める。
 
 親 spec §13.1 の引き継ぎ事項を 3 マイルストーンに分割する。**M-A → M-B → M-C の順に依存**する（M-B の Repository 実装は M-A の型を、M-C の画面は M-B の Query 実装を消費する）。
 
-### M-A: 残り 6 コンテキストの型化（Phase 4 と同パターン）
+### M-A: 残り 6 コンテキストの型化（Phase 4 と同パターン）✅ 完了（2026-07-06）
+
+> 実装 plan: [2026-07-06-phase5-m-a-context-typing.md](./2026-07-06-phase5-m-a-context-typing.md)
 
 優先順は Core → Supporting → Generic:
 
-- [ ] 自動分類・学習（Core, 08b）
-- [ ] 経費精算（Core, 08e）
-- [ ] 取引取込（Supporting, 08a）
-- [ ] オンボーディング・認証（Supporting, 08f）— `nickname?` / 役割 `Honey | Darling` を反映
-- [ ] マスタ管理（Supporting, 08h）
-- [ ] 通知配信（Generic, 08g）
+- [x] 自動分類・学習（Core, 08b）
+- [x] 経費精算（Core, 08e）
+- [x] 取引取込（Supporting, 08a）
+- [x] オンボーディング・認証（Supporting, 08f）— `nickname?` / 役割 `Honey | Darling` を反映
+- [x] マスタ管理（Supporting, 08h）
+- [x] 通知配信（Generic, 08g）
 
 各コンテキストとも Phase 4 の確立パターンを踏襲する:
 discriminated union 集約 + Zod superRefine 不変条件 + branded ID + Repository/Query I/F 分離 + View 型 + ドメインイベント型 + 不変条件テスト + 冒頭に DDD docs へのリンク。
