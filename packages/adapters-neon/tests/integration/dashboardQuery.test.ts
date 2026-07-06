@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { NeonDashboardQuery } from '../../src/household-analysis/NeonDashboardQuery'
 import { NeonTransactionRepository } from '../../src/household-analysis/NeonTransactionRepository'
 import { NeonAccountRepository } from '../../src/balance-asset-tracking/NeonAccountRepository'
 import { NeonMitsuiSumitomoUnpaidRepository } from '../../src/balance-asset-tracking/NeonMitsuiSumitomoUnpaidRepository'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import {
   HONEY_USER_ID,
   DARLING_USER_ID,
@@ -18,7 +18,6 @@ import {
 } from '../helpers/fixtures'
 import { stubResolveCategoryNames, stubResolveViewerRole } from '../helpers/stubs'
 
-const { db, close } = createTestDb()
 const txRepo = new NeonTransactionRepository(db)
 const accountRepo = new NeonAccountRepository(db)
 const unpaidRepo = new NeonMitsuiSumitomoUnpaidRepository(db)
@@ -33,9 +32,6 @@ const query = new NeonDashboardQuery(db, {
   }),
   resolveViewerRole: stubResolveViewerRole,
 })
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 const JUL = ym('2026-07')
 
@@ -156,22 +152,60 @@ describe('NeonDashboardQuery.fetchCategoryBreakdown', () => {
     await seedTransactions()
     const view = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'household')
     expect(view.totalAmount).toBe(4700)
-    expect(view.items).toEqual([
-      {
-        categoryId: CATEGORY_DAILY,
-        categoryName: '日用品',
-        total: 3000,
-        count: 1,
-        percentage: (3000 / 4700) * 100,
-      },
-      {
-        categoryId: CATEGORY_FOOD,
-        categoryName: '食費',
-        total: 1700,
-        count: 2,
-        percentage: (1700 / 4700) * 100,
-      },
+    // percentage は浮動小数点のため近似比較（実装の計算式変更に耐える）
+    expect(view.items.map(({ percentage: _p, ...rest }) => rest)).toEqual([
+      { categoryId: CATEGORY_DAILY, categoryName: '日用品', total: 3000, count: 1 },
+      { categoryId: CATEGORY_FOOD, categoryName: '食費', total: 1700, count: 2 },
     ])
+    expect(view.items[0]?.percentage).toBeCloseTo(63.83, 2)
+    expect(view.items[1]?.percentage).toBeCloseTo(36.17, 2)
+  })
+
+  it('負値カテゴリ（返金超過）は percentage が 0–100 にクランプされる', async () => {
+    // 食費 +2000、日用品 −500 → 合計 1500。素の割合は 133.3% / −33.3% になる
+    await txRepo.save(
+      classifiedTransaction({
+        amount: 2000,
+        categoryId: CATEGORY_FOOD,
+        occurredAt: new Date('2026-07-10T03:00:00.000Z'),
+      }),
+    )
+    await txRepo.save(
+      classifiedTransaction({
+        amount: -500,
+        categoryId: CATEGORY_DAILY,
+        occurredAt: new Date('2026-07-11T03:00:00.000Z'),
+      }),
+    )
+    const view = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'household')
+    expect(view.totalAmount).toBe(1500)
+    expect(view.items.map(i => ({ categoryId: i.categoryId, percentage: i.percentage }))).toEqual([
+      { categoryId: CATEGORY_FOOD, percentage: 100 },
+      { categoryId: CATEGORY_DAILY, percentage: 0 },
+    ])
+  })
+
+  it('合計 0 円のときは全カテゴリの percentage が 0（ゼロ除算しない）', async () => {
+    await txRepo.save(
+      classifiedTransaction({
+        amount: 1000,
+        categoryId: CATEGORY_FOOD,
+        occurredAt: new Date('2026-07-10T03:00:00.000Z'),
+      }),
+    )
+    await txRepo.save(
+      classifiedTransaction({
+        amount: -1000,
+        categoryId: CATEGORY_DAILY,
+        occurredAt: new Date('2026-07-11T03:00:00.000Z'),
+      }),
+    )
+    const view = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'household')
+    expect(view.totalAmount).toBe(0)
+    expect(view.items).toHaveLength(2)
+    for (const item of view.items) {
+      expect(item.percentage).toBe(0)
+    }
   })
 
   it('未解決カテゴリ ID は raw ID を表示名にフォールバックする', async () => {
