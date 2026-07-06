@@ -23,7 +23,7 @@ OQ-43（トランザクション境界）に回答する。
 **In scope:**
 
 - 集約 → テーブルのマッピング方式（全集約共通のパターン確定）
-- 全 21 集約（テーブル 19 本）のマッピングカタログ（テーブル名 / PK / 昇格カラム / 一意制約）
+- 全 21 集約 + 補助 2 テーブル（計 23 本）のマッピングカタログ（テーブル名 / PK / 昇格カラム / 一意制約）
 - 第 1 波（家計分析 + 残高資産推移管理 = 4 Repository / 5 Query）の詳細 DDL
 - マイグレーション方式の選定
 - ID 生成方式の確定（OQ-41）
@@ -107,12 +107,12 @@ find→save 間の TOCTOU（check-then-act 競合）があるため、
 DB カラム型は `text`（PK）。UUID v7 は PostgreSQL ネイティブ型の利点があるが、
 branded ID が `z.string()` ベースであること・時系列ソートの可読性から ULID とする。
 
-ただし `shared/ids.ts` の 32 種の branded ID は**内部発番と外部由来に二分**され、
+ただし `shared/ids.ts` の 30 種の branded ID は**内部発番と外部由来に二分**され、
 正規表現強化は内部発番のみに適用する:
 
 | 分類 | 対象 ID | idSchema |
 |---|---|---|
-| 内部発番（ULID） | TransactionId, AccountId, MonthlyReportId, MitsuiSumitomoUnpaidId, UnpaidEntryId, ExpenseReimbursementId, TransactionCandidateId, ImportBatchId, ImportJobId, UploadFileId, PdfConversionJobId, BulkClassificationSessionId, MonthlyExpenseCycleId, ChildTransactionId, ExpenseTypeAccumulationId, MonthlyLimitId, CategoryDeletionRequestId, ExpenseTypeDeletionRequestId, Phase0ConfigId, DeliveryMessageId, DeliveryLogId, FailsafeEmailId, CategoryId, ExpenseTypeId | `z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/)` |
+| 内部発番（ULID） | TransactionId, AccountId, MonthlyReportId, MitsuiSumitomoUnpaidId, UnpaidEntryId, ExpenseReimbursementId, TransactionCandidateId, ImportBatchId, ImportJobId, UploadFileId, PdfConversionJobId, BulkClassificationSessionId, MonthlyExpenseCycleId, ChildTransactionId, ExpenseTypeAccumulationId, MonthlyLimitId, CategoryDeletionRequestId, ExpenseTypeDeletionRequestId, Phase0ConfigId, DeliveryMessageId, DeliveryLogId, FailsafeEmailId, CategoryId, ExpenseTypeId | `z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/)`（先頭桁 0–7 制限で 128bit 範囲外の文字列を排除） |
 | 外部由来（形式は発行元依存） | UserId（= LINE userID、OQ-15）, TalkRoomId, LineMessageId, GmailMessageId, AmazonOrderId, SettlementNoticeId | `z.string().min(1)` を維持 |
 
 外部由来 ID に発行元形式の regex（例: LINE userID = `^U[0-9a-f]{32}$`）を張るかは
@@ -153,7 +153,7 @@ adapters 実装と同一 PR ではなく**独立コミットで先行**させる
 
 ### §2.6 イベント永続化: 行わない（OQ-42 確定）
 
-**決定**: ドメインイベント（M-A で型定義した 82 種）は **in-process pub/sub のみ**で流し、
+**決定**: ドメインイベント（M-A で型定義した 89 種）は **in-process pub/sub のみ**で流し、
 DB へは永続化しない。
 
 - 根拠: 家計内 2 ユーザー規模でリプレイ要件・外部購読者が存在しない。
@@ -182,6 +182,15 @@ DB へは永続化しない。
 命名: テーブル = snake_case 複数形、カラム = snake_case。
 ドメインのフィールド名と機械的に対応させる（`ownerUserId` → `owner_user_id`）。
 
+**月境界の規約**: `YearMonth` による月絞り込み（`findByMonth` /
+`TransactionListQuery.fetch` の month 等）は **JST の暦月**を意味する。
+`occurred_at` 等の timestamptz カラムを月でバケットする際、adapter は `YearMonth` を
+JST オフセットを織り込んだ UTC の半開区間へ変換して WHERE 句を組む
+（例: `'2026-07'` → `[2026-06-30T15:00:00Z, 2026-07-31T15:00:00Z)`）。
+素の UTC 月範囲（`>= '2026-07-01T00:00Z'`）で絞ると JST の毎月 1 日 00:00–08:59 の
+取引が前月に混入するため**禁止**。「JST 変換は表示層」の原則は表示フォーマットの話であり、
+月バケットの境界計算はこの規約に従う。
+
 ---
 
 ## §4. 第 1 波 詳細 DDL — 家計分析 + 残高資産推移管理
@@ -206,7 +215,8 @@ CREATE TABLE transactions (
   payload         jsonb NOT NULL,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
-  CHECK ((kind = 'classified') = (category_id IS NOT NULL AND expense_class IS NOT NULL))
+  CHECK (num_nonnulls(category_id, expense_class) IN (0, 2)),
+  CHECK ((kind = 'classified') = (num_nonnulls(category_id, expense_class) = 2))
 );
 
 -- findByMonth(ownerId, month) / TransactionListQuery.fetch(month 絞り込み)
@@ -216,11 +226,19 @@ CREATE INDEX idx_transactions_unclassified ON transactions (owner_user_id, occur
   WHERE kind = 'unclassified';
 ```
 
+- 昇格カラムの片方だけが残る中途半端な状態（例: deleted 行に `expense_class` だけ残存）は
+  2 本目の CHECK を単純比較で書くと素通りするため、`num_nonnulls` で「両方 or どちらも NULL」を
+  先に強制している（§2.2「DB 制約を真の保証とする」の方針どおり）
+- `findByMonth` / month 絞り込みの WHERE 句は §3 の**月境界の規約**に従い、
+  JST 暦月を UTC 半開区間に変換して組む
 - Dashboard の KPI・カテゴリ内訳は昇格カラム（`expense_class` / `category_id` / `amount`）の
   GROUP BY だけで完結し、payload を読まない
 - プライバシー 3 段階は SQL では表現しない。Query adapter は行を取得後、
-  `household-analysis/privacy/applyPrivacyFilter`（ドメインの唯一のプライバシー判定ポイント）
-  へ通してから View を組み立てる
+  `household-analysis/privacy/applyPrivacyFilter` モジュールのヘルパ
+  （`isVisibleAsDetail` / `isVisibleAsAggregate` / `toListItems` — ドメインの唯一の
+  プライバシー判定ポイント）へ通してから View を組み立てる。
+  同モジュールは現在 barrel 非公開（内部実装扱い）のため、M-B で `@warimaru/domain` の
+  公開 API へ昇格する（§2.3 の regex 強化と同様、adapters 実装に先行する独立コミット）
 
 ### §4.2 monthly_reports（集約 #8 月次レポート）
 
@@ -287,7 +305,7 @@ CREATE TABLE mitsui_sumitomo_unpaids (
 
 | テーブル | 集約 (#) | PK | 主な昇格カラム | unique / 特記 |
 |---|---|---|---|---|
-| transaction_candidates | 取引候補 (#1) | transaction_candidate_id | user_id, kind, merchant_name, amount, occurred_on, gmail_message_id | partial unique `(gmail_message_id) WHERE gmail_message_id IS NOT NULL`（メール重複除外）; index `(user_id, occurred_on, amount, merchant_name)`（三項一致 findByTripleMatch、OQ-23） |
+| transaction_candidates | 取引候補 (#1) | transaction_candidate_id | user_id, kind, merchant_name, amount, occurred_on, gmail_message_id | partial unique `(gmail_message_id) WHERE gmail_message_id IS NOT NULL`（メール重複除外）; index `(user_id, occurred_on, amount, merchant_name)`（三項一致 findByTripleMatch、OQ-7 / OQ-23） |
 | daily_mail_import_batches | 日次メール取込バッチ (#2) | import_batch_id | user_id, kind | partial unique `(user_id) WHERE kind = 'in_progress'`（二重起動防止） |
 | statement_import_jobs | 明細取込ジョブ (#3) | import_job_id | uploader_user_id, target_month, kind | index `(uploader_user_id, target_month)` |
 | merchant_learning_rules | 加盟店学習ルール (#4) | **(user_id, merchant_name)** 自然キー | kind | F-1: 全検索が user_id 起点（配偶者データ遮断は WHERE 句で構造化） |
@@ -301,17 +319,19 @@ CREATE TABLE mitsui_sumitomo_unpaids (
 | prorated_child_transactions | 按分子取引 (#12) | child_transaction_id | parent_transaction_id, user_id | index `(parent_transaction_id)` |
 | expense_reimbursement_deposits | 経費精算入金 (#13) | expense_reimbursement_id | user_id, kind | partial index `(user_id) WHERE kind = 'awaiting'`（findAwaitingByUser） |
 | app_users | アプリユーザー (#14) | user_id（= LINE userID、外部由来） | role, kind | unique `(role)`（honey/darling 各 1 名、findByRole が単一を返す前提を保証） |
-| gmail_oauth_tokens | Gmail OAuth トークン (#15 相当) | user_id | kind | 実トークンは Parameter Store（集約はパスのみ保持、OQ-27） |
+| gmail_oauth_tokens | Gmail OAuth トークン (#14 から M-A で集約として分離) | user_id | kind | 実トークンは Parameter Store（集約はパスのみ保持、OQ-27） |
 | delivery_messages | 配信メッセージ (#15) | delivery_message_id | kind, purpose | — |
 | line_delivery_logs | LINE配信ログ (#16) | delivery_log_id | idempotency_key, timing_kind | unique `(idempotency_key)`; **append-only**（adapter は INSERT のみ実装）。保持期間は OQ-34（実装フェーズ） |
 | failsafe_emails | フェイルセーフメール (#17) | failsafe_email_id | kind | — |
-| consecutive_failure_counters | 連続失敗カウンタ | **(ref_kind, ref_id)** 複合 PK | — | FailureCounterRef（user / talk_room）を 2 カラムに展開 |
+| consecutive_failure_counters | 連続失敗カウンタ (#17 の補助 VO、M-A で独立 Repository 化) | **(ref_kind, ref_id)** 複合 PK | — | FailureCounterRef（user / talk_room）を 2 カラムに展開 |
 | category_masters | カテゴリマスタ (#18) | category_id | kind, name, owner_user_id (nullable) | unique `(name, owner_user_id) NULLS NOT DISTINCT`（スコープ内名前一意、規定=世帯共有は owner NULL） |
 | expense_type_masters | 経費種別マスタ (#19) | expense_type_id | kind, name, owner_user_id (nullable) | 同上 |
 | monthly_limits | 月次上限 (#20) | monthly_limit_id | user_id, expense_type_id, kind, cap_amount (nullable) | unique `(user_id, expense_type_id)`; `CHECK ((kind = 'unlimited') = (cap_amount IS NULL))` — **論点15: マジックナンバー不使用を DB でも構造表現** |
 | phase0_configs | Phase0設定値 (#21) | phase0_config_id | — | シングルトン: `singleton boolean NOT NULL DEFAULT true UNIQUE CHECK (singleton)` |
 
-（削除リクエスト 2 種は M-A どおり VO でありテーブルを持たない。計 19 テーブル）
+（削除リクエスト 2 種は M-A どおり VO でありテーブルを持たない。
+09-aggregates.md の 21 集約に対応する 21 本 + M-A で独立させた
+gmail_oauth_tokens / consecutive_failure_counters の 2 本で、**計 23 テーブル**）
 
 ---
 
@@ -326,8 +346,8 @@ packages/adapters-neon/
 │   ├── schema/               # Drizzle テーブル定義（§4–§5 の DDL に対応）
 │   ├── client.ts             # @neondatabase/serverless の HTTP / Pool 接続ファクトリ
 │   ├── serialize.ts          # 集約 ⇔ payload jsonb の変換（Date revive を含む、§3）
-│   ├── household-analysis/   # TransactionRepository 実装 + 3 Query 実装
-│   └── balance-asset-tracking/
+│   ├── household-analysis/   # 2 Repository（Transaction / MonthlyReport）+ 3 Query 実装
+│   └── balance-asset-tracking/  # 2 Repository（Account / MitsuiSumitomoUnpaid）+ 2 Query 実装
 └── tests/                    # 統合テスト（実 PostgreSQL に接続）
 ```
 
@@ -378,4 +398,5 @@ OQ-38（SMBC URL）/ OQ-39（Flex Message サイズ）/ OQ-44（鮮度閾値 30 
 
 | 日付 | 版 | 内容 |
 |---|---|---|
-| 2026-07-06 | v0.1 | 初版（M-B 着手時の設計確定: マッピング方式 / 19 テーブルカタログ / 第 1 波 DDL / Drizzle 採用 / OQ-41・42・43 確定） |
+| 2026-07-06 | v0.1 | 初版（M-B 着手時の設計確定: マッピング方式 / テーブルカタログ / 第 1 波 DDL / Drizzle 採用 / OQ-41・42・43 確定） |
+| 2026-07-06 | v0.2 | レビュー反映: 月境界の JST 規約を §3 に明文化 / privacy ヘルパの公開 API 昇格を §4.1 に明記 / transactions CHECK を num_nonnulls で強化 / テーブル数を 23 に訂正 / §5 の集約番号整理（gmail_oauth_tokens = #14 分離、連続失敗カウンタ = #17 補助） / branded ID 30 種・イベント 89 種に訂正 / ULID regex 先頭桁 0–7 制限 / 三項一致の出典に OQ-7 追記 / §6.1 の Repository 配置注記 |
