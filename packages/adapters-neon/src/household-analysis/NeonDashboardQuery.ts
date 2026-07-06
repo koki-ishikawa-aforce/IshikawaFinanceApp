@@ -120,8 +120,8 @@ export class NeonDashboardQuery implements DashboardQuery {
       .groupBy(transactions.categoryId)
 
     const categoryIds = rows
-      .map(r => r.categoryId)
-      .filter((id): id is string => id !== null) as CategoryId[]
+      .map(r => r.categoryId as CategoryId | null)
+      .filter((id): id is CategoryId => id !== null)
     const names = await this.deps.resolveCategoryNames(categoryIds)
 
     const totalAmount = rows.reduce((acc, r) => acc + r.total, 0)

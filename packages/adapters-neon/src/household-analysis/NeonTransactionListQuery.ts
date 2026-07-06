@@ -10,7 +10,7 @@
  * defaultExpenseClass を expenseClass として持つため、SQL で絞ると
  * 未分類行が不当に落ちる（データ量は世帯 2 名 × 1 ヶ月分で問題なし）。
  */
-import { and, desc, eq, gte, lt, ne } from 'drizzle-orm'
+import { and, count, desc, eq, gte, lt, ne } from 'drizzle-orm'
 import type {
   Transaction,
   TransactionId,
@@ -76,24 +76,23 @@ export class NeonTransactionListQuery implements TransactionListQuery {
   async fetchUnclassifiedSummary(viewerId: UserId, month: YearMonth): Promise<UnclassifiedSummary> {
     const { fromUtc, toUtc } = yearMonthToUtcRange(month)
     // 未分類は所有者本人のみ可視（プライバシールール 4）— partial index が効く形
-    const rows = await this.db
+    const where = and(
+      eq(transactions.ownerUserId, viewerId),
+      eq(transactions.kind, 'unclassified'),
+      gte(transactions.occurredAt, fromUtc),
+      lt(transactions.occurredAt, toUtc),
+    )
+    const countRows = await this.db.select({ count: count() }).from(transactions).where(where)
+    const recentRows = await this.db
       .select({ transactionId: transactions.transactionId })
       .from(transactions)
-      .where(
-        and(
-          eq(transactions.ownerUserId, viewerId),
-          eq(transactions.kind, 'unclassified'),
-          gte(transactions.occurredAt, fromUtc),
-          lt(transactions.occurredAt, toUtc),
-        ),
-      )
+      .where(where)
       .orderBy(desc(transactions.occurredAt), desc(transactions.transactionId))
+      .limit(UNCLASSIFIED_RECENT_IDS_LIMIT)
 
     return {
-      count: rows.length,
-      recentIds: rows
-        .slice(0, UNCLASSIFIED_RECENT_IDS_LIMIT)
-        .map(row => row.transactionId) as TransactionId[],
+      count: countRows[0]?.count ?? 0,
+      recentIds: recentRows.map(row => row.transactionId) as TransactionId[],
     }
   }
 }
