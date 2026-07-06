@@ -7,13 +7,17 @@ import {
 } from '../../../src/auto-classification/aggregates/BulkClassificationSession'
 
 const common = {
-  bulkClassificationSessionId: 'bcs_001' as never,
+  bulkClassificationSessionId: '01BCS000000000000000000001' as never,
   userId: 'user_honey' as never,
-  trigger: { kind: 'csv_import', importJobId: 'job_001' as never, startedAt: new Date() },
+  trigger: {
+    kind: 'csv_import',
+    importJobId: '01JB0000000000000000000001' as never,
+    startedAt: new Date(),
+  },
   targets: [
     {
       kind: 'unclassified',
-      transactionId: 'tx_001' as never,
+      transactionId: '01TX0000000000000000000001' as never,
       merchantName: 'スターバックス',
       reason: 'merchant_rule_unlearned',
       defaultExpenseClass: 'personal_honey',
@@ -41,7 +45,7 @@ describe('BulkClassificationSession 集約', () => {
           ...common,
           trigger: {
             kind: 'single_correction',
-            transactionId: 'tx_001' as never,
+            transactionId: '01TX0000000000000000000001' as never,
             startedAt: new Date(),
           },
         },

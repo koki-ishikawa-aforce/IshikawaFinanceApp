@@ -9,9 +9,18 @@ import type {
   Transaction,
   ClassifiedTransaction,
 } from '../../../src/household-analysis/aggregates/Transaction'
+import { testUlid } from '../../helpers/ids'
 
 const HONEY_ID = 'user_honey' as never
 const DARLING_ID = 'user_darling' as never
+
+/** (owner, expenseClass) ごとに一意な ULID サフィックスを割り当てる */
+const EXPENSE_CLASS_CODE = {
+  household: '1',
+  personal_honey: '2',
+  personal_darling: '3',
+  business_expense: '4',
+} as const
 
 const honeyViewer: ViewerContext = { viewerId: HONEY_ID, role: 'honey' }
 const darlingViewer: ViewerContext = { viewerId: DARLING_ID, role: 'darling' }
@@ -22,12 +31,15 @@ function makeClassified(
 ): ClassifiedTransaction {
   const expenseTypeRef =
     expenseClass === 'business_expense'
-      ? { kind: 'business' as const, expenseTypeId: 'exp_001' as never }
+      ? { kind: 'business' as const, expenseTypeId: '01EXP000000000000000000001' as never }
       : { kind: 'non_business' as const }
   return {
     kind: 'classified',
     common: {
-      transactionId: `tx_${ownerId}_${expenseClass}` as never,
+      transactionId: testUlid(
+        '01TX',
+        `${ownerId === 'user_honey' ? 'H' : 'D'}${EXPENSE_CLASS_CODE[expenseClass]}`,
+      ) as never,
       ownerUserId: ownerId as never,
       merchantName: 'スーパーA',
       amount: 1000 as never,
@@ -35,7 +47,7 @@ function makeClassified(
       importSource: { kind: 'manual', enteredAt: new Date(), enteredByUserId: ownerId as never },
     },
     details: {
-      categoryId: 'cat_001' as never,
+      categoryId: '01CAT000000000000000000001' as never,
       expenseClass,
       expenseTypeRef,
       basis: { kind: 'user_manual', modifiedByUserId: ownerId as never, modifiedAt: new Date() },
@@ -85,7 +97,7 @@ describe('applyPrivacyFilter', () => {
   })
 
   describe('toListItems', () => {
-    const categoryNames = new Map<string, string>([['cat_001', '食費']])
+    const categoryNames = new Map<string, string>([['01CAT000000000000000000001', '食費']])
 
     it('経費(会社) で他人の取引はリストから除外', () => {
       const txs: Transaction[] = [makeClassified(HONEY_ID, 'business_expense')]
@@ -122,7 +134,7 @@ describe('applyPrivacyFilter', () => {
         {
           kind: 'unclassified',
           common: {
-            transactionId: 'tx_unclass' as never,
+            transactionId: '01TX0000000000000000000901' as never,
             ownerUserId: HONEY_ID,
             merchantName: '不明加盟店',
             amount: 500 as never,
@@ -142,7 +154,7 @@ describe('applyPrivacyFilter', () => {
         {
           kind: 'deleted',
           common: {
-            transactionId: 'tx_del' as never,
+            transactionId: '01TX0000000000000000000902' as never,
             ownerUserId: HONEY_ID,
             merchantName: '削除済み',
             amount: 100 as never,

@@ -7,9 +7,9 @@ describe('AmazonProductKeyLearningRule 集約', () => {
       AmazonProductKeyLearningRuleSchema.parse({
         userId: 'user_honey' as never,
         amazonProductKey: '本' as never,
-        categoryRef: { kind: 'learned', categoryId: 'cat_001' as never },
+        categoryRef: { kind: 'learned', categoryId: '01CAT000000000000000000001' as never },
         expenseClassRef: { kind: 'unlearned' },
-        expenseTypeRef: { kind: 'learned', expenseTypeId: 'exp_001' as never },
+        expenseTypeRef: { kind: 'learned', expenseTypeId: '01EXP000000000000000000001' as never },
         lastUpdatedAt: new Date(),
       }),
     ).not.toThrow()

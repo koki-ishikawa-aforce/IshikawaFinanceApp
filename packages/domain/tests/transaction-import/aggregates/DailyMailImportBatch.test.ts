@@ -8,7 +8,7 @@ import {
 } from '../../../src/transaction-import/aggregates/DailyMailImportBatch'
 
 const common = {
-  importBatchId: 'batch_001' as never,
+  importBatchId: '01BAT000000000000000000001' as never,
   userId: 'user_honey' as never,
   launchedAt: new Date('2026-07-06T06:00:00Z'),
   targetPeriod: {

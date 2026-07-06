@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { LineDeliveryLogSchema } from '../../../src/notification-delivery/aggregates/LineDeliveryLog'
 
 const base = {
-  deliveryLogId: 'log_001' as never,
-  deliveryMessageId: 'msg_001' as never,
+  deliveryLogId: '01DG0000000000000000000001' as never,
+  deliveryMessageId: '01MSG000000000000000000001' as never,
   timingKind: 'reminder',
   target: { kind: 'shared_talk_room', talkRoomId: 'room_001' as never },
   sentPayloadJson: '{"type":"flex"}',

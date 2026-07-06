@@ -76,9 +76,9 @@ discriminated union 集約 + Zod superRefine 不変条件 + branded ID + Reposit
 
 永続化バックエンドは **Neon (PostgreSQL)** で確定済み（OQ-27 / OQ-46）。
 
-- [ ] Neon 前提の DB スキーマ設計 spec を作成（テーブル設計、マイグレーション方式の選定）
+- [x] Neon 前提の DB スキーマ設計 spec を作成（テーブル設計、マイグレーション方式の選定）→ [2026-07-06-phase5-m-b-db-schema-design.md](../specs/2026-07-06-phase5-m-b-db-schema-design.md)
 - [ ] `packages/adapters-neon/` に Repository / Query の実装（まず家計分析 + 残高資産推移の 4 Repository / 5 Query）
-- [ ] ID 生成方式の確定（OQ-41: ULID 推奨）と `idSchema` の正規表現強化
+- [x] ID 生成方式の確定（OQ-41: ULID 採用）と `idSchema` の正規表現強化（内部発番 24 種 = ULID regex、外部由来 6 種 = `min(1)` 維持）
 - [ ] ドメインイベントバス（家計内ツール規模なので in-process pub/sub から開始、OQ-42 はここで判断)
 
 ### M-C: アプリスケルトン

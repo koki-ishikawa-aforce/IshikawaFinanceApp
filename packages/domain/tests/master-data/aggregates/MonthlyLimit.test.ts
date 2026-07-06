@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { MonthlyLimitSchema } from '../../../src/master-data/aggregates/MonthlyLimit'
 
 const base = {
-  monthlyLimitId: 'lim_001' as never,
+  monthlyLimitId: '01MT0000000000000000000001' as never,
   userId: 'user_honey' as never,
-  expenseTypeId: 'exp_gym' as never,
+  expenseTypeId: '01EXP000000000000000000GYM' as never,
   effectiveFrom: new Date(),
 }
 

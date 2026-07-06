@@ -6,7 +6,7 @@ import {
 } from '../../../src/household-analysis/aggregates/MonthlyReport'
 
 const baseCommon = {
-  monthlyReportId: 'rep_001' as never,
+  monthlyReportId: '01REP000000000000000000001' as never,
   targetYearMonth: '2026-04' as never,
   householdCategoryTotals: [],
   personalTotalHoney: 0 as never,
@@ -41,7 +41,7 @@ describe('MonthlyReport 集約', () => {
         common: baseCommon,
         csvConfirmedAt: new Date(),
         finalizedAt: new Date(),
-        expenseReimbursementId: 'reimb_001' as never,
+        expenseReimbursementId: '01RMB000000000000000000001' as never,
         expenseReimbursementMatchedAt: new Date(),
         unapprovedTransfers: [],
       }),
@@ -58,7 +58,7 @@ describe('MonthlyReport 集約', () => {
 
     const finalized = finalize(
       csvConfirmed,
-      'reimb_001' as never,
+      '01RMB000000000000000000001' as never,
       new Date('2026-05-15'),
       [],
       new Date('2026-05-16'),

@@ -5,7 +5,7 @@ import {
 } from '../../../src/household-analysis/aggregates/Transaction'
 
 const validCommon: CommonTransactionAttrs = {
-  transactionId: 'tx_001' as never,
+  transactionId: '01TX0000000000000000000001' as never,
   ownerUserId: 'user_honey' as never,
   merchantName: 'スーパーA',
   amount: 1500 as never,
@@ -45,7 +45,7 @@ describe('Transaction 集約', () => {
           kind: 'classified',
           common: validCommon,
           details: {
-            categoryId: 'cat_001' as never,
+            categoryId: '01CAT000000000000000000001' as never,
             expenseClass: 'business_expense',
             expenseTypeRef: { kind: 'non_business' },
             basis: {
@@ -64,9 +64,12 @@ describe('Transaction 集約', () => {
           kind: 'classified',
           common: validCommon,
           details: {
-            categoryId: 'cat_001' as never,
+            categoryId: '01CAT000000000000000000001' as never,
             expenseClass: 'household',
-            expenseTypeRef: { kind: 'business', expenseTypeId: 'exp_001' as never },
+            expenseTypeRef: {
+              kind: 'business',
+              expenseTypeId: '01EXP000000000000000000001' as never,
+            },
             basis: {
               kind: 'user_manual',
               modifiedByUserId: 'user_honey' as never,
@@ -83,9 +86,12 @@ describe('Transaction 集約', () => {
           kind: 'classified',
           common: validCommon,
           details: {
-            categoryId: 'cat_001' as never,
+            categoryId: '01CAT000000000000000000001' as never,
             expenseClass: 'business_expense',
-            expenseTypeRef: { kind: 'business', expenseTypeId: 'exp_001' as never },
+            expenseTypeRef: {
+              kind: 'business',
+              expenseTypeId: '01EXP000000000000000000001' as never,
+            },
             basis: {
               kind: 'user_manual',
               modifiedByUserId: 'user_honey' as never,
@@ -102,7 +108,7 @@ describe('Transaction 集約', () => {
           kind: 'classified',
           common: validCommon,
           details: {
-            categoryId: 'cat_001' as never,
+            categoryId: '01CAT000000000000000000001' as never,
             expenseClass: 'household',
             expenseTypeRef: { kind: 'non_business' },
             basis: {

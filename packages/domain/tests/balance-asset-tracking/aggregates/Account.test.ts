@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { AccountSchema } from '../../../src/balance-asset-tracking/aggregates/Account'
 
 const baseCommon = {
-  accountId: 'acc_001' as never,
+  accountId: '01ACC000000000000000000001' as never,
   ownerUserId: 'user_honey' as never,
   registeredAt: new Date(),
   activeness: { kind: 'active' as const },
@@ -29,7 +29,7 @@ describe('Account 集約', () => {
       AccountSchema.parse({
         kind: 'mitsui_sumitomo_card',
         common: baseCommon,
-        unpaidAggregateRef: 'unp_001' as never,
+        unpaidAggregateRef: '01NP0000000000000000000001' as never,
       }),
     ).not.toThrow()
   })
