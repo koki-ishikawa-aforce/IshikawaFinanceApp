@@ -50,6 +50,15 @@ import {
   RetroactiveCandidateViewSchema,
   TransactionAutoClassifiedSchema,
   BulkClassificationCompletedSchema,
+  // expense-settlement
+  MonthlyExpenseCycleSchema,
+  ProratedChildTransactionSchema,
+  ExpenseReimbursementDepositSchema,
+  ExpenseTypeAccumulationSchema,
+  SettlementMatchDifferenceSchema,
+  ExpenseSettlementManagementViewSchema,
+  MonthlyExpenseCycleFinalizedSchema,
+  ExpenseDepositMatchedSchema,
 } from '../../src'
 
 describe('@warimaru/domain 公開 API', () => {
@@ -97,6 +106,15 @@ describe('@warimaru/domain 公開 API', () => {
     expect(RetroactiveCandidateViewSchema).toBeDefined()
     expect(TransactionAutoClassifiedSchema).toBeDefined()
     expect(BulkClassificationCompletedSchema).toBeDefined()
+    // expense-settlement
+    expect(MonthlyExpenseCycleSchema).toBeDefined()
+    expect(ProratedChildTransactionSchema).toBeDefined()
+    expect(ExpenseReimbursementDepositSchema).toBeDefined()
+    expect(ExpenseTypeAccumulationSchema).toBeDefined()
+    expect(SettlementMatchDifferenceSchema).toBeDefined()
+    expect(ExpenseSettlementManagementViewSchema).toBeDefined()
+    expect(MonthlyExpenseCycleFinalizedSchema).toBeDefined()
+    expect(ExpenseDepositMatchedSchema).toBeDefined()
     // class 群
     expect(DomainError).toBeDefined()
     expect(InvariantViolationError).toBeDefined()
