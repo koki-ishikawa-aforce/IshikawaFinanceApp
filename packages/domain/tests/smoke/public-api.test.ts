@@ -59,6 +59,16 @@ import {
   ExpenseSettlementManagementViewSchema,
   MonthlyExpenseCycleFinalizedSchema,
   ExpenseDepositMatchedSchema,
+  // transaction-import
+  TransactionCandidateSchema,
+  DailyMailImportBatchSchema,
+  StatementImportJobSchema,
+  CandidateImportSourceSchema,
+  SmbcMailParseResultSchema,
+  DuplicationJudgmentSchema,
+  CsvImportCompletionViewSchema,
+  CsvImportCompletedSchema,
+  DuplicateExcludedSchema,
 } from '../../src'
 
 describe('@warimaru/domain 公開 API', () => {
@@ -115,6 +125,16 @@ describe('@warimaru/domain 公開 API', () => {
     expect(ExpenseSettlementManagementViewSchema).toBeDefined()
     expect(MonthlyExpenseCycleFinalizedSchema).toBeDefined()
     expect(ExpenseDepositMatchedSchema).toBeDefined()
+    // transaction-import
+    expect(TransactionCandidateSchema).toBeDefined()
+    expect(DailyMailImportBatchSchema).toBeDefined()
+    expect(StatementImportJobSchema).toBeDefined()
+    expect(CandidateImportSourceSchema).toBeDefined()
+    expect(SmbcMailParseResultSchema).toBeDefined()
+    expect(DuplicationJudgmentSchema).toBeDefined()
+    expect(CsvImportCompletionViewSchema).toBeDefined()
+    expect(CsvImportCompletedSchema).toBeDefined()
+    expect(DuplicateExcludedSchema).toBeDefined()
     // class 群
     expect(DomainError).toBeDefined()
     expect(InvariantViolationError).toBeDefined()
