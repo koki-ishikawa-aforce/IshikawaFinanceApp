@@ -213,8 +213,8 @@ describe('@warimaru/domain 公開 API', () => {
   })
 
   it('NotFoundError が正しいメッセージを生成する', () => {
-    const err = new NotFoundError('Transaction', 'tx_001')
-    expect(err.message).toBe('Transaction not found: tx_001')
+    const err = new NotFoundError('Transaction', '01TX0000000000000000000001')
+    expect(err.message).toBe('Transaction not found: 01TX0000000000000000000001')
     expect(err.name).toBe('NotFoundError')
   })
 })

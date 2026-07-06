@@ -4,11 +4,11 @@ import { ExpenseTypeMasterSchema } from '../../../src/master-data/aggregates/Exp
 describe('ExpenseTypeMaster 集約', () => {
   it('規定経費種別 5 種（世帯共有）は parse 成功', () => {
     const kinds = ['gym', 'books_newspaper', 'ai_usage', 'transportation', 'other_expense']
-    for (const defaultKind of kinds) {
+    for (const [i, defaultKind] of kinds.entries()) {
       expect(() =>
         ExpenseTypeMasterSchema.parse({
           kind: 'default',
-          expenseTypeId: `exp_${defaultKind}` as never,
+          expenseTypeId: `01EXP00000000000000000000${i}` as never,
           name: defaultKind,
           scope: { kind: 'household_shared' },
           defaultKind,
@@ -21,7 +21,7 @@ describe('ExpenseTypeMaster 集約', () => {
     expect(() =>
       ExpenseTypeMasterSchema.parse({
         kind: 'default',
-        expenseTypeId: 'exp_gym' as never,
+        expenseTypeId: '01EXP000000000000000000GYM' as never,
         name: 'ジム',
         scope: { kind: 'personal', userId: 'user_honey' as never },
         defaultKind: 'gym',
@@ -32,7 +32,7 @@ describe('ExpenseTypeMaster 集約', () => {
   it('追加経費種別（個人別）は parse 成功、世帯共有なら parse 失敗', () => {
     const custom = {
       kind: 'custom',
-      expenseTypeId: 'exp_custom' as never,
+      expenseTypeId: '01EXP00000000000000000CSTM' as never,
       name: 'セミナー費',
       scope: { kind: 'personal', userId: 'user_honey' as never },
       createdAt: new Date(),

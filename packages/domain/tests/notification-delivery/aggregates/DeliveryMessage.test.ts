@@ -16,7 +16,7 @@ function reserved(purpose: string, target: unknown) {
   return {
     kind: 'reserved',
     common: {
-      deliveryMessageId: 'msg_001' as never,
+      deliveryMessageId: '01MSG000000000000000000001' as never,
       target,
       content,
       purpose,

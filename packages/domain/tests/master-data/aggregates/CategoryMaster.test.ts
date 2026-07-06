@@ -7,7 +7,7 @@ import {
 
 const defaultCategory = {
   kind: 'default',
-  categoryId: 'cat_food' as never,
+  categoryId: '01CAT00000000000000000F00D' as never,
   name: '食費',
   scope: { kind: 'household_shared' },
   defaultKind: 'food',
@@ -15,7 +15,7 @@ const defaultCategory = {
 
 const customCategory = {
   kind: 'custom',
-  categoryId: 'cat_custom' as never,
+  categoryId: '01CAT00000000000000000CSTM' as never,
   name: 'ペット',
   scope: { kind: 'personal', userId: 'user_honey' as never },
   createdAt: new Date(),

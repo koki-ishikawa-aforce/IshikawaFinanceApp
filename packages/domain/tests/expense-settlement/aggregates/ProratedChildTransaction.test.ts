@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { ProratedChildTransactionSchema } from '../../../src/expense-settlement/aggregates/ProratedChildTransaction'
 
 const base = {
-  childTransactionId: 'child_001' as never,
-  parentTransactionId: 'tx_001' as never,
+  childTransactionId: '01CHD000000000000000000001' as never,
+  parentTransactionId: '01TX0000000000000000000001' as never,
   userId: 'user_honey' as never,
   personalExpenseClass: 'personal_honey',
   derivedAt: new Date(),
   prorationBasis: {
     kind: 'cap_excess_fifo',
-    monthlyExpenseCycleId: 'cyc_001' as never,
+    monthlyExpenseCycleId: '01CYC000000000000000000001' as never,
     proratedAt: new Date(),
     capRemainderAtExcess: 2000 as never,
   },
@@ -43,8 +43,8 @@ describe('ProratedChildTransaction 集約', () => {
           personalAmount: 1000 as never,
           prorationBasis: {
             kind,
-            monthlyExpenseCycleId: 'cyc_001' as never,
-            causingTransactionId: 'tx_002' as never,
+            monthlyExpenseCycleId: '01CYC000000000000000000001' as never,
+            causingTransactionId: '01TX0000000000000000000002' as never,
             recalculatedAt: new Date(),
           },
         }),

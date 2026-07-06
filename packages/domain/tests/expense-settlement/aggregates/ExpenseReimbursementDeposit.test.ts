@@ -7,7 +7,7 @@ import {
 } from '../../../src/expense-settlement/aggregates/ExpenseReimbursementDeposit'
 
 const common = {
-  expenseReimbursementId: 'reimb_001' as never,
+  expenseReimbursementId: '01RMB000000000000000000001' as never,
   userId: 'user_honey' as never,
   depositAmount: 25000 as never,
   depositedAt: new Date(),
@@ -40,9 +40,9 @@ describe('ExpenseReimbursementDeposit 集約', () => {
       common,
       receivedAt: new Date(),
     }) as AwaitingMatchDeposit
-    const matched = matchDeposit(awaiting, 'cyc_001' as never, new Date())
+    const matched = matchDeposit(awaiting, '01CYC000000000000000000001' as never, new Date())
     expect(matched.kind).toBe('matched')
-    expect(matched.matchedCycleId).toBe('cyc_001')
+    expect(matched.matchedCycleId).toBe('01CYC000000000000000000001')
     const confirmed = confirmUnrecognizedDeposit(matched, 3000 as never, new Date())
     expect(confirmed.kind).toBe('unrecognized_confirmed')
     expect(confirmed.unapprovedTotal).toBe(3000)

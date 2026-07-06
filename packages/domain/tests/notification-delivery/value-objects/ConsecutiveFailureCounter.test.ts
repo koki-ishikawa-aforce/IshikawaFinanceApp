@@ -25,7 +25,7 @@ describe('ConsecutiveFailureCounter 値オブジェクト', () => {
           failsafeState: {
             kind: 'fired',
             firedAt: new Date(),
-            failsafeEmailId: 'fse_001' as never,
+            failsafeEmailId: '01FSE000000000000000000001' as never,
           },
         },
       }),
@@ -68,7 +68,7 @@ describe('ConsecutiveFailureCounter 値オブジェクト', () => {
           failsafeState: {
             kind: 'fired',
             firedAt: new Date(),
-            failsafeEmailId: 'fse_001' as never,
+            failsafeEmailId: '01FSE000000000000000000001' as never,
           },
         },
       }),

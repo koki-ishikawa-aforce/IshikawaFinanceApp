@@ -11,12 +11,12 @@ import {
 
 function common(fileFormat: 'csv' | 'pdf') {
   return {
-    importJobId: 'job_001' as never,
+    importJobId: '01JB0000000000000000000001' as never,
     uploaderUserId: 'user_honey' as never,
     targetMonth: '2026-06' as never,
     fileKind: 'card_statement',
     fileFormat,
-    fileRef: 'file_001' as never,
+    fileRef: '01F10000000000000000000001' as never,
   }
 }
 
@@ -36,7 +36,7 @@ describe('StatementImportJob 集約', () => {
       StatementImportJobSchema.parse({
         kind: 'pdf_converting',
         common: common('csv'),
-        pdfConversionJobId: 'pdfjob_001' as never,
+        pdfConversionJobId: '01PDF000000000000000000001' as never,
         conversionStartedAt: new Date(),
       }),
     ).toThrow()
@@ -48,9 +48,9 @@ describe('StatementImportJob 集約', () => {
       common: common('pdf'),
       acceptedAt: new Date(),
     }) as UploadAcceptedJob
-    const converting = startPdfConversion(pdfJob, 'pdfjob_001' as never, new Date())
+    const converting = startPdfConversion(pdfJob, '01PDF000000000000000000001' as never, new Date())
     expect(converting.kind).toBe('pdf_converting')
-    expect(converting.pdfConversionJobId).toBe('pdfjob_001')
+    expect(converting.pdfConversionJobId).toBe('01PDF000000000000000000001')
 
     const csvJob = StatementImportJobSchema.parse({
       kind: 'upload_accepted',
@@ -67,7 +67,9 @@ describe('StatementImportJob 集約', () => {
       common: common('csv'),
       acceptedAt: new Date(),
     }) as UploadAcceptedJob
-    expect(() => startPdfConversion(csvJob, 'pdfjob_001' as never, new Date())).toThrow()
+    expect(() =>
+      startPdfConversion(csvJob, '01PDF000000000000000000001' as never, new Date()),
+    ).toThrow()
   })
 
   it('フォーマット検証中 → 取込中 → 完了 の遷移', () => {

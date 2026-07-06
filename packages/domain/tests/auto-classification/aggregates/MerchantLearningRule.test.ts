@@ -10,7 +10,7 @@ import {
 const activeRule = {
   kind: 'active',
   common: { userId: 'user_honey' as never, merchantName: 'スターバックス' },
-  categoryRef: { kind: 'learned', categoryId: 'cat_001' as never },
+  categoryRef: { kind: 'learned', categoryId: '01CAT000000000000000000001' as never },
   expenseClassRef: { kind: 'learned', expenseClass: 'household' },
   expenseTypeRef: { kind: 'unlearned' },
   lastUpdatedAt: new Date(),

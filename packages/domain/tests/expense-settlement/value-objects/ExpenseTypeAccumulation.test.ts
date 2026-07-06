@@ -3,8 +3,8 @@ import { ExpenseTypeAccumulationSchema } from '../../../src/expense-settlement/v
 
 const unlimitedBase = {
   kind: 'unlimited',
-  accumulationId: 'acc_001' as never,
-  expenseTypeId: 'exp_001' as never,
+  accumulationId: '01ACC000000000000000000001' as never,
+  expenseTypeId: '01EXP000000000000000000001' as never,
   userId: 'user_honey' as never,
   currentTotal: 5000 as never,
   transactionRefs: [],
@@ -12,14 +12,14 @@ const unlimitedBase = {
 
 function partialRef(amount: number, expense: number, personal: number) {
   return {
-    transactionId: 'tx_001' as never,
+    transactionId: '01TX0000000000000000000001' as never,
     occurredAt: new Date(),
     amount: amount as never,
     allocation: {
       kind: 'partial',
       expenseAllocatedAmount: expense as never,
       personalAllocatedAmount: personal as never,
-      childTransactionId: 'child_001' as never,
+      childTransactionId: '01CHD000000000000000000001' as never,
     },
   }
 }
@@ -48,8 +48,8 @@ describe('ExpenseTypeAccumulation 値オブジェクト', () => {
     expect(() =>
       ExpenseTypeAccumulationSchema.parse({
         kind: 'capped',
-        accumulationId: 'acc_001' as never,
-        expenseTypeId: 'exp_001' as never,
+        accumulationId: '01ACC000000000000000000001' as never,
+        expenseTypeId: '01EXP000000000000000000001' as never,
         userId: 'user_honey' as never,
         currentTotal: 5000 as never,
         capReached: { kind: 'not_reached' },

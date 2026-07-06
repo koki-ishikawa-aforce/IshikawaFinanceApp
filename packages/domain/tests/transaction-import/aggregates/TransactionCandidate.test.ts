@@ -10,7 +10,7 @@ const amazonSource = {
 
 function common(importSource: unknown) {
   return {
-    transactionCandidateId: 'cand_001' as never,
+    transactionCandidateId: '01CND000000000000000000001' as never,
     userId: 'user_honey' as never,
     importSource,
     merchantName: 'AMAZON.CO.JP',
@@ -27,14 +27,18 @@ describe('TransactionCandidate 集約', () => {
   })
 
   it('PDF由来の取引候補は PDF変換ジョブID が必須（欠落で parse 失敗）', () => {
-    const pdfSource = { kind: 'pdf', pdfFileId: 'file_001' as never, pageNumber: 1 }
+    const pdfSource = {
+      kind: 'pdf',
+      pdfFileId: '01F10000000000000000000001' as never,
+      pageNumber: 1,
+    }
     expect(() =>
       TransactionCandidateSchema.parse({ kind: 'normal', common: common(pdfSource) }),
     ).toThrow()
     expect(() =>
       TransactionCandidateSchema.parse({
         kind: 'normal',
-        common: common({ ...pdfSource, pdfConversionJobId: 'pdfjob_001' as never }),
+        common: common({ ...pdfSource, pdfConversionJobId: '01PDF000000000000000000001' as never }),
       }),
     ).not.toThrow()
   })

@@ -23,7 +23,7 @@ describe('Phase0Config 集約', () => {
   it('3 要素（Channel / Webhook / 許可リスト）が揃えば parse 成功', () => {
     expect(() =>
       Phase0ConfigSchema.parse({
-        phase0ConfigId: 'p0_001' as never,
+        phase0ConfigId: '01P00000000000000000000001' as never,
         lineChannel,
         lineWebhook,
         allowlist,
@@ -34,7 +34,7 @@ describe('Phase0Config 集約', () => {
   it('許可リスト設定が欠けると parse 失敗（三要素の整合性）', () => {
     expect(() =>
       Phase0ConfigSchema.parse({
-        phase0ConfigId: 'p0_001' as never,
+        phase0ConfigId: '01P00000000000000000000001' as never,
         lineChannel,
         lineWebhook,
       }),

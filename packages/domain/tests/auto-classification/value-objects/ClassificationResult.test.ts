@@ -3,9 +3,9 @@ import { ClassificationResultSchema } from '../../../src/auto-classification/val
 
 const classifiedBase = {
   kind: 'auto_classified',
-  transactionId: 'tx_001' as never,
+  transactionId: '01TX0000000000000000000001' as never,
   merchantName: 'スターバックス',
-  categoryId: 'cat_001' as never,
+  categoryId: '01CAT000000000000000000001' as never,
   basis: {
     kind: 'merchant_rule',
     merchantName: 'スターバックス',
@@ -28,7 +28,7 @@ describe('ClassificationResult 値オブジェクト', () => {
       ClassificationResultSchema.parse({
         ...classifiedBase,
         expenseClass: 'business_expense',
-        appliedExpenseTypeId: 'exp_001' as never,
+        appliedExpenseTypeId: '01EXP000000000000000000001' as never,
       }),
     ).not.toThrow()
   })
@@ -38,7 +38,7 @@ describe('ClassificationResult 値オブジェクト', () => {
       ClassificationResultSchema.parse({
         ...classifiedBase,
         expenseClass: 'household',
-        appliedExpenseTypeId: 'exp_001' as never,
+        appliedExpenseTypeId: '01EXP000000000000000000001' as never,
       }),
     ).toThrow()
   })
@@ -47,7 +47,7 @@ describe('ClassificationResult 値オブジェクト', () => {
     expect(() =>
       ClassificationResultSchema.parse({
         kind: 'unclassified',
-        transactionId: 'tx_001' as never,
+        transactionId: '01TX0000000000000000000001' as never,
         merchantName: 'スターバックス',
         reason: 'learning_disabled',
         defaultExpenseClass: 'personal_darling',

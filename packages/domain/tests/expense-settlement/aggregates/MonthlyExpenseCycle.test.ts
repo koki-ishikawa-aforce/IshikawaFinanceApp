@@ -9,14 +9,14 @@ import {
 function cappedAccumulation(currentTotal: number, monthlyCap: number, refAmounts: number[]) {
   return {
     kind: 'capped',
-    accumulationId: 'acc_001' as never,
-    expenseTypeId: 'exp_001' as never,
+    accumulationId: '01ACC000000000000000000001' as never,
+    expenseTypeId: '01EXP000000000000000000001' as never,
     userId: 'user_honey' as never,
     monthlyCap: monthlyCap as never,
     currentTotal: currentTotal as never,
     capReached: { kind: 'not_reached' },
     transactionRefs: refAmounts.map((amount, i) => ({
-      transactionId: `tx_00${i}` as never,
+      transactionId: `01TX000000000000000000000${i}` as never,
       occurredAt: new Date(),
       amount: amount as never,
       allocation: { kind: 'full' },
@@ -26,7 +26,7 @@ function cappedAccumulation(currentTotal: number, monthlyCap: number, refAmounts
 
 function commonWith(accumulations: unknown[]) {
   return {
-    monthlyExpenseCycleId: 'cyc_001' as never,
+    monthlyExpenseCycleId: '01CYC000000000000000000001' as never,
     userId: 'user_honey' as never,
     targetYearMonth: '2026-07' as never,
     cycleStartedAt: new Date(),
@@ -66,32 +66,32 @@ describe('MonthlyExpenseCycle 集約', () => {
   it('部分経費充当は expenseAllocatedAmount のみ累計に含める', () => {
     const acc = {
       kind: 'capped',
-      accumulationId: 'acc_001' as never,
-      expenseTypeId: 'exp_001' as never,
+      accumulationId: '01ACC000000000000000000001' as never,
+      expenseTypeId: '01EXP000000000000000000001' as never,
       userId: 'user_honey' as never,
       monthlyCap: 10000 as never,
       currentTotal: 10000 as never,
       capReached: {
         kind: 'reached',
         reachedAt: new Date(),
-        reachingTransactionId: 'tx_002' as never,
+        reachingTransactionId: '01TX0000000000000000000002' as never,
       },
       transactionRefs: [
         {
-          transactionId: 'tx_001' as never,
+          transactionId: '01TX0000000000000000000001' as never,
           occurredAt: new Date(),
           amount: 7000 as never,
           allocation: { kind: 'full' },
         },
         {
-          transactionId: 'tx_002' as never,
+          transactionId: '01TX0000000000000000000002' as never,
           occurredAt: new Date(),
           amount: 5000 as never,
           allocation: {
             kind: 'partial',
             expenseAllocatedAmount: 3000 as never,
             personalAllocatedAmount: 2000 as never,
-            childTransactionId: 'child_001' as never,
+            childTransactionId: '01CHD000000000000000000001' as never,
           },
         },
       ],
@@ -120,8 +120,13 @@ describe('MonthlyExpenseCycle 集約', () => {
     }) as AccumulatingCycle
     const confirmed = confirmCycleCsv(accumulating, new Date())
     expect(confirmed.kind).toBe('csv_confirmed')
-    const finalized = finalizeCycle(confirmed, 'reimb_001' as never, [], new Date())
+    const finalized = finalizeCycle(
+      confirmed,
+      '01RMB000000000000000000001' as never,
+      [],
+      new Date(),
+    )
     expect(finalized.kind).toBe('finalized')
-    expect(finalized.expenseReimbursementId).toBe('reimb_001')
+    expect(finalized.expenseReimbursementId).toBe('01RMB000000000000000000001')
   })
 })

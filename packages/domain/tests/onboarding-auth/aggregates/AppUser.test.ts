@@ -33,9 +33,9 @@ const sectionACompleted = {
 const sectionBCompleted = {
   kind: 'completed',
   initialBalanceRef: {
-    smbcAccountId: 'acc_smbc' as never,
-    otherSavingsAccountId: 'acc_other' as never,
-    nisaAccountId: 'acc_nisa' as never,
+    smbcAccountId: '01ACC00000000000000000SMBC' as never,
+    otherSavingsAccountId: '01ACC0000000000000000BANK2' as never,
+    nisaAccountId: '01ACC00000000000000000N1SA' as never,
   },
   completedAt: new Date(),
 }
@@ -126,7 +126,7 @@ describe('AppUser 集約', () => {
     const completed = completePhase2(inProgress, new Date())
     expect(completed.kind).toBe('phase2_completed')
     expect(completed.gmailTokenRef.tokenStoreRef).toBe('/warimaru/gmail/honey/token')
-    expect(completed.initialBalanceRef.nisaAccountId).toBe('acc_nisa')
+    expect(completed.initialBalanceRef.nisaAccountId).toBe('01ACC00000000000000000N1SA')
 
     const operating = startOperation(
       completed,

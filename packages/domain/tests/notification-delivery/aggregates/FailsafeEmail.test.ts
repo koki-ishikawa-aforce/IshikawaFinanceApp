@@ -8,7 +8,7 @@ import {
 } from '../../../src/notification-delivery/aggregates/FailsafeEmail'
 
 const common = {
-  failsafeEmailId: 'fse_001' as never,
+  failsafeEmailId: '01FSE000000000000000000001' as never,
   toEmailAddress: 'honey@example.com',
   subject: 'LINE 通知の連続失敗を検知しました',
   body: '通知配信が連続で失敗しています。設定をご確認ください。',
