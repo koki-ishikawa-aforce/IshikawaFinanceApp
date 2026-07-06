@@ -386,10 +386,10 @@ OQ-38（SMBC URL）/ OQ-39（Flex Message サイズ）/ OQ-44（鮮度閾値 30 
 
 以下すべてが green であること:
 
-- [ ] D-1: 本 spec がレビュー確定し、03-open-questions.md §B の OQ-41/42/43 が解決済みに更新されている
+- [x] D-1: 本 spec がレビュー確定し、03-open-questions.md §B の OQ-41/42/43 が解決済みに更新されている
 - [ ] D-2: `packages/adapters-neon/` が §6.1 の構成で作成され、drizzle マイグレーションで §4 の 4 テーブルが生成できる
 - [ ] D-3: 第 1 波 4 Repository / 5 Query の実装が完了し、§6.2 の統合テストが CI で green
-- [ ] D-4: `shared/ids.ts` の内部発番 ID が ULID regex に強化され、domain のテストが green
+- [x] D-4: `shared/ids.ts` の内部発番 ID が ULID regex に強化され、domain のテストが green
 - [ ] D-5: ルートの `pnpm build / typecheck / test / lint / format:check` が adapters-neon を含めて green
 
 ---
