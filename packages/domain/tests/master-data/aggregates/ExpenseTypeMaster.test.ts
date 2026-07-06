@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ExpenseTypeMasterSchema } from '../../../src/master-data/aggregates/ExpenseTypeMaster'
+import { testUlid } from '../../helpers/ids'
 
 describe('ExpenseTypeMaster 集約', () => {
   it('規定経費種別 5 種（世帯共有）は parse 成功', () => {
@@ -8,7 +9,7 @@ describe('ExpenseTypeMaster 集約', () => {
       expect(() =>
         ExpenseTypeMasterSchema.parse({
           kind: 'default',
-          expenseTypeId: `01EXP00000000000000000000${i}` as never,
+          expenseTypeId: testUlid('01EXP', i) as never,
           name: defaultKind,
           scope: { kind: 'household_shared' },
           defaultKind,

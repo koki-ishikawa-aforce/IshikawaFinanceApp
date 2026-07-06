@@ -5,6 +5,7 @@ import {
   finalizeCycle,
   type AccumulatingCycle,
 } from '../../../src/expense-settlement/aggregates/MonthlyExpenseCycle'
+import { testUlid } from '../../helpers/ids'
 
 function cappedAccumulation(currentTotal: number, monthlyCap: number, refAmounts: number[]) {
   return {
@@ -16,7 +17,7 @@ function cappedAccumulation(currentTotal: number, monthlyCap: number, refAmounts
     currentTotal: currentTotal as never,
     capReached: { kind: 'not_reached' },
     transactionRefs: refAmounts.map((amount, i) => ({
-      transactionId: `01TX000000000000000000000${i}` as never,
+      transactionId: testUlid('01TX', i) as never,
       occurredAt: new Date(),
       amount: amount as never,
       allocation: { kind: 'full' },

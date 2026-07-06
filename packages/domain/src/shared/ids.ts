@@ -10,8 +10,15 @@
  */
 import { z } from 'zod'
 
-/** ULID 形式。先頭桁 0–7 制限で 128bit 範囲外の文字列を排除する */
-const ULID_REGEX = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/
+/**
+ * ULID 形式。先頭桁 0–7 制限で 128bit 範囲外の文字列を排除する。
+ *
+ * zod 組み込みの z.string().ulid() は大文字小文字を区別せず先頭 8–Z も許容するため、
+ * 意図的に使用しない（canonical な大文字表現のみ受理する方針。小文字化された ULID が
+ * 入り得る境界では adapter 層で toUpperCase() 正規化してからドメインに渡すこと）。
+ * adapter 層（DB CHECK 制約・ULID 生成の検証）でも同一ポリシーを参照するため export する。
+ */
+export const ULID_REGEX = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/
 
 /** 内部発番 ID 用（ULID） */
 const ulidSchema = z.string().regex(ULID_REGEX)

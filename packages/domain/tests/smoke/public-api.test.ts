@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   // shared
+  ULID_REGEX,
   TransactionIdSchema,
   UserIdSchema,
   AccountIdSchema,
@@ -105,6 +106,7 @@ import {
 describe('@warimaru/domain 公開 API', () => {
   it('全 schema / class が import できる', () => {
     // schema 群
+    expect(ULID_REGEX).toBeDefined()
     expect(TransactionIdSchema).toBeDefined()
     expect(UserIdSchema).toBeDefined()
     expect(AccountIdSchema).toBeDefined()
