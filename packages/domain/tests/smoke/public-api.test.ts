@@ -33,6 +33,23 @@ import {
   UnpaidBookkeptSchema,
   UnpaidSettledSchema,
   NisaContributionAddedSchema,
+  // shared (Phase 5 M-A)
+  ParameterStorePathSchema,
+  AmazonProductKeySchema,
+  UserRoleSchema,
+  PersonalExpenseClassSchema,
+  DefaultExpenseClassSchema,
+  UnclassifiedReasonSchema,
+  UnapprovedExpenseTransferSchema,
+  // auto-classification
+  MerchantLearningRuleSchema,
+  AmazonProductKeyLearningRuleSchema,
+  BulkClassificationSessionSchema,
+  ClassificationResultSchema,
+  AmazonMatchStateSchema,
+  RetroactiveCandidateViewSchema,
+  TransactionAutoClassifiedSchema,
+  BulkClassificationCompletedSchema,
 } from '../../src'
 
 describe('@warimaru/domain 公開 API', () => {
@@ -63,6 +80,23 @@ describe('@warimaru/domain 公開 API', () => {
     expect(UnpaidBookkeptSchema).toBeDefined()
     expect(UnpaidSettledSchema).toBeDefined()
     expect(NisaContributionAddedSchema).toBeDefined()
+    // shared (Phase 5 M-A)
+    expect(ParameterStorePathSchema).toBeDefined()
+    expect(AmazonProductKeySchema).toBeDefined()
+    expect(UserRoleSchema).toBeDefined()
+    expect(PersonalExpenseClassSchema).toBeDefined()
+    expect(DefaultExpenseClassSchema).toBeDefined()
+    expect(UnclassifiedReasonSchema).toBeDefined()
+    expect(UnapprovedExpenseTransferSchema).toBeDefined()
+    // auto-classification
+    expect(MerchantLearningRuleSchema).toBeDefined()
+    expect(AmazonProductKeyLearningRuleSchema).toBeDefined()
+    expect(BulkClassificationSessionSchema).toBeDefined()
+    expect(ClassificationResultSchema).toBeDefined()
+    expect(AmazonMatchStateSchema).toBeDefined()
+    expect(RetroactiveCandidateViewSchema).toBeDefined()
+    expect(TransactionAutoClassifiedSchema).toBeDefined()
+    expect(BulkClassificationCompletedSchema).toBeDefined()
     // class 群
     expect(DomainError).toBeDefined()
     expect(InvariantViolationError).toBeDefined()
