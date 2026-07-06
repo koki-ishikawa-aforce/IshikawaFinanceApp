@@ -1,23 +1,26 @@
 # @warimaru/domain
 
-Phase 4 戦術的設計で実装した家計分析・残高資産推移管理 2 コンテキストの TS 型 + Zod スキーマ + リポジトリ I/F + Query I/F。
+全 8 境界づけられたコンテキストの TS 型 + Zod スキーマ + リポジトリ I/F + Query I/F。
+Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキストを型化した。
 
 > **親 spec**: [docs/superpowers/specs/2026-05-01-phase4-tactical-design.md](../../docs/superpowers/specs/2026-05-01-phase4-tactical-design.md)
-> **plan**: [docs/superpowers/plans/2026-05-01-phase4-tactical-implementation.md](../../docs/superpowers/plans/2026-05-01-phase4-tactical-implementation.md)
+> **plan**: [docs/superpowers/plans/2026-05-01-phase4-tactical-implementation.md](../../docs/superpowers/plans/2026-05-01-phase4-tactical-implementation.md)（Phase 4）
+> / [docs/superpowers/plans/2026-07-06-phase5-m-a-context-typing.md](../../docs/superpowers/plans/2026-07-06-phase5-m-a-context-typing.md)（Phase 5 M-A）
 
 ## 公開 API（barrel: `@warimaru/domain`）
 
 ### shared
 
-- ID 型: `TransactionId`, `UserId`, `CategoryId`, `ExpenseTypeId`, `AccountId`, `MitsuiSumitomoUnpaidId`, `UnpaidEntryId`, `MonthlyReportId`, `ExpenseReimbursementId`, `SettlementNoticeId`, `GmailMessageId`（および各 Schema）
-- 値オブジェクト: `Money`, `YearMonth`, `ExpenseClass`（および helper: `money`, `yearMonth`, `previousMonth`, `addMoney`, `subtractMoney`）
+- ID 型: `TransactionId`, `UserId`, `CategoryId`, `ExpenseTypeId`, `AccountId`, `MitsuiSumitomoUnpaidId`, `UnpaidEntryId`, `MonthlyReportId`, `ExpenseReimbursementId`, `SettlementNoticeId`, `GmailMessageId`,
+  `TransactionCandidateId`, `ImportBatchId`, `ImportJobId`, `UploadFileId`, `PdfConversionJobId`, `AmazonOrderId`, `BulkClassificationSessionId`, `MonthlyExpenseCycleId`, `ChildTransactionId`, `ExpenseTypeAccumulationId`, `TalkRoomId`, `MonthlyLimitId`, `CategoryDeletionRequestId`, `ExpenseTypeDeletionRequestId`, `Phase0ConfigId`, `DeliveryMessageId`, `DeliveryLogId`, `FailsafeEmailId`, `LineMessageId`（および各 Schema）
+- 値オブジェクト: `Money`, `YearMonth`, `ExpenseClass`, `ParameterStorePath`, `AmazonProductKey`, `UserRole`, `PersonalExpenseClass`（別名 `DefaultExpenseClass`）
+- 共有カーネル語彙（Phase 5 M-A で household-analysis から移設）: `UnclassifiedReason`, `ClassificationBasis`, `ImportSource`（メンバー schema 個別 export あり）, `UnapprovedExpenseTransfer`
 - イベント基底: `DomainEventBase`
 - エラー: `DomainError`, `InvariantViolationError`, `NotFoundError`, `PermissionDeniedError`
 
 ### household-analysis（家計分析）
 
-- 集約: `Transaction`（discriminated union: `unclassified` / `classified` / `deleted`）, `MonthlyReport`（`csv_confirmed` / `finalized`）
-- 値オブジェクト: `ImportSource`, `ClassificationBasis`
+- 集約: `Transaction`（`unclassified` / `classified` / `deleted`）, `MonthlyReport`（`csv_confirmed` / `finalized`）
 - Repository I/F: `TransactionRepository`, `MonthlyReportRepository`
 - Query I/F: `DashboardQuery`, `MonthlyReportQuery`, `TransactionListQuery`
 - View 型: `DashboardKpisView`, `CategoryBreakdownView`, `MonthlyReportView`, `TransactionListItem`
@@ -32,6 +35,54 @@ Phase 4 戦術的設計で実装した家計分析・残高資産推移管理 2 
 - Query I/F: `AccountBalanceQuery`, `BalanceTimeSeriesQuery`
 - View 型: `AccountBalanceListView`, `BalanceTimeSeriesView`, `AssetTotalView`
 - ドメインイベント: `AccountBalanceUpdated`, `UnpaidBookkept`, `UnpaidSettled`, `NisaContributionAdded`
+
+### auto-classification（自動分類・学習、08b）
+
+- 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否）, `AmazonProductKeyLearningRule`, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`）
+- 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `RetroactiveClassificationProposal`
+- Repository I/F: `MerchantLearningRuleRepository`, `AmazonProductKeyLearningRuleRepository`, `BulkClassificationSessionRepository`
+- Query I/F: `RetroactiveCandidateQuery`（J-3）+ `RetroactiveCandidateView`
+- ドメインイベント: `TransactionAutoClassified` ほか 9 種
+
+### expense-settlement（経費精算、08e）
+
+- 集約: `MonthlyExpenseCycle`（`accumulating` / `csv_confirmed` / `finalized`）, `ProratedChildTransaction`, `ExpenseReimbursementDeposit`（`awaiting_match` / `matched` / `unrecognized_confirmed`）
+- 値オブジェクト: `ExpenseTypeAccumulation`（`capped` / `unlimited`、論点15 構造分離）, `ExpenseJudgment`, `SettlementMatchDifference`
+- Repository I/F: `MonthlyExpenseCycleRepository`, `ProratedChildTransactionRepository`, `ExpenseReimbursementDepositRepository`
+- Query I/F: `ExpenseSettlementManagementQuery`（本人のみ可視・論点11）+ `ExpenseSettlementManagementView`
+- ドメインイベント: `MonthlyExpenseCycleStarted` ほか 11 種
+
+### transaction-import（取引取込、08a）
+
+- 集約: `TransactionCandidate`（`normal` / `amazon_matched` / `match_timeout`）, `DailyMailImportBatch`, `StatementImportJob`（PDF/CSV ルーティング `launchImportJob`）
+- 値オブジェクト: `CandidateImportSource`, `AmazonOrderInfo`, `SmbcMailParseResult`, `DuplicationJudgment`, `ImportResultSummary`, `ImportJobFailureReason`, `PdfConversionResult`
+- Repository I/F: `TransactionCandidateRepository`（GmailID / 三項一致検索）, `DailyMailImportBatchRepository`, `StatementImportJobRepository`
+- Query I/F: `CsvImportStatusQuery` + `CsvImportCompletionView`
+- ドメインイベント: `MailImportBatchLaunched` ほか 14 種
+
+### onboarding-auth（オンボーディング・認証、08f）
+
+- 集約: `AppUser`（`phase1_completed` → `phase2_in_progress` → `phase2_completed` → `operation_started`、論点8 順序強制）, `GmailOAuthToken`（`valid` / `revocation_detected`）
+- 値オブジェクト: `Nickname`（≤10 文字・省略可、Phase 3.5）, `Phase2Progress`, `LineOperationSettings`, `RoleJudgment`, `SpouseCompletionResult`, `GmailOAuthTokenRef`, `InitialBalanceRegistrationRef`
+- Repository I/F: `AppUserRepository`, `GmailOAuthTokenRepository`
+- Query I/F: `SpouseCompletionQuery`（論点19: 画面ロード時のみ）
+- ドメインイベント: `RoleJudged`, `GmailOauthRevocationDetected`（OAuth 所有者として一元宣言）ほか 20 種
+
+### master-data（マスタ管理、08h）
+
+- 集約: `CategoryMaster` / `ExpenseTypeMaster`（`default` / `custom`、規定は改名・削除関数なし）, `MonthlyLimit`（`capped` / `unlimited`、論点15）, `Phase0Config`（3 要素必須）
+- 値オブジェクト: `OwnershipScope`, `RenameRecord`, `SeedLimit`, `DeletionRequestState`, `CategoryDeletionRequest`, `ExpenseTypeDeletionRequest`, `Allowlist`
+- Repository I/F: `CategoryMasterRepository`, `ExpenseTypeMasterRepository`, `MonthlyLimitRepository`, `Phase0ConfigRepository`
+- Query I/F: `AllowlistQuery`, `LineChannelConfigQuery`
+- ドメインイベント: `CategorySeedInserted` ほか 17 種
+
+### notification-delivery（通知配信、08g）
+
+- 集約: `DeliveryMessage`（配信用途 × 配信先マトリクスを superRefine で強制）, `LineDeliveryLog`（不変監査レコード + 冪等性キー、OQ-34）, `FailsafeEmail`
+- 値オブジェクト: `DeliveryTarget`, `DeliveryContent`（OQ-39 サイズ検証は adapter 層）, `DeliveryPurpose`, `ConsecutiveFailureCounter`, `ReminderStopReason`
+- Repository I/F: `DeliveryMessageRepository`, `LineDeliveryLogRepository`（append-only）, `FailsafeEmailRepository`, `ConsecutiveFailureCounterRepository`
+- Query I/F: なし（CSV 取込完了状態の読取りは transaction-import 側の `CsvImportStatusQuery`）
+- ドメインイベント: `DeliveryLogSaved` ほか 11 種
 
 ## 利用例
 
@@ -58,7 +109,7 @@ const tx: Transaction = TransactionSchema.parse({
   defaultExpenseClass: 'personal_honey',
 })
 
-// Repository 利用（実装は Phase 5 の adapter 層）
+// Repository 利用（実装は Phase 5 M-B の adapter 層）
 async function example(repo: TransactionRepository) {
   await repo.save(tx)
   const found = await repo.findById(tx.common.transactionId)
@@ -84,10 +135,10 @@ pnpm typecheck   # 全 workspace 型チェック
 pnpm lint        # 全 workspace lint
 ```
 
-## Phase 5 への引き継ぎ
+## Phase 5 M-B 以降への引き継ぎ
 
-- 残り 6 コンテキスト（取引取込 / 自動分類・学習 / 経費精算 / オンボーディング・認証 / 通知配信 / マスタ管理）の型化
-- adapter 層の実装（`packages/adapters-*`）
-- LIFF アプリ（`packages/web`）と Lambda handlers（`packages/api`）の追加
-- ドメインイベントバスの実装（Phase 4 では型定義のみ）
-- 詳細: [Phase 4 spec §13](../../docs/superpowers/specs/2026-05-01-phase4-tactical-design.md)
+- adapter 層の実装（`packages/adapters-neon/`、Neon PostgreSQL。OQ-41: ID 生成方式の確定と `idSchema` 強化を含む）
+- LIFF アプリ（`packages/web`）と Hono on Lambda（`packages/api`）の追加
+- ドメインイベントバスの実装（M-A まで型定義のみ。OQ-42）
+- OQ-38（SMBC URL 実調査）/ OQ-39（Flex Message サイズ検証）のクローズ
+- 詳細: [Phase 4 spec §13](../../docs/superpowers/specs/2026-05-01-phase4-tactical-design.md) / [ロードマップ §2](../../docs/superpowers/plans/2026-07-06-forward-roadmap.md)

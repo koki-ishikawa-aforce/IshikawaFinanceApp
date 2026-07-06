@@ -19,8 +19,10 @@ import {
 } from '../../shared/ids'
 import { MoneySchema } from '../../shared/value-objects/Money'
 import { ExpenseClassSchema } from '../../shared/value-objects/ExpenseClass'
-import { ImportSourceSchema } from '../value-objects/ImportSource'
-import { ClassificationBasisSchema } from '../value-objects/ClassificationBasis'
+import { ImportSourceSchema } from '../../shared/value-objects/ImportSource'
+import { ClassificationBasisSchema } from '../../shared/value-objects/ClassificationBasis'
+import { UnclassifiedReasonSchema } from '../../shared/value-objects/UnclassifiedReason'
+import { DefaultExpenseClassSchema } from '../../shared/value-objects/PersonalExpenseClass'
 
 /** 共通取引属性 */
 export const CommonTransactionAttrsSchema = z.object({
@@ -32,20 +34,6 @@ export const CommonTransactionAttrsSchema = z.object({
   importSource: ImportSourceSchema,
 })
 export type CommonTransactionAttrs = z.infer<typeof CommonTransactionAttrsSchema>
-
-/** 未分類理由 */
-export const UnclassifiedReasonSchema = z.enum([
-  'merchant_rule_unlearned',
-  'amazon_product_key_unlearned',
-  'amazon_product_info_undecidable',
-  'amazon_match_timeout',
-  'learning_disabled',
-])
-export type UnclassifiedReason = z.infer<typeof UnclassifiedReasonSchema>
-
-/** デフォルト費用区分（未分類取引の暫定区分） */
-export const DefaultExpenseClassSchema = z.enum(['personal_honey', 'personal_darling'])
-export type DefaultExpenseClass = z.infer<typeof DefaultExpenseClassSchema>
 
 /** 経費種別参照: 経費(会社)取引なら経費種別ID 必須 */
 export const ExpenseTypeRefSchema = z.discriminatedUnion('kind', [

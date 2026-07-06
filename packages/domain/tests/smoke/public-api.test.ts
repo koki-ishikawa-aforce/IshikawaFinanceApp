@@ -33,6 +33,73 @@ import {
   UnpaidBookkeptSchema,
   UnpaidSettledSchema,
   NisaContributionAddedSchema,
+  // shared (Phase 5 M-A)
+  ParameterStorePathSchema,
+  AmazonProductKeySchema,
+  UserRoleSchema,
+  PersonalExpenseClassSchema,
+  DefaultExpenseClassSchema,
+  UnclassifiedReasonSchema,
+  UnapprovedExpenseTransferSchema,
+  // auto-classification
+  MerchantLearningRuleSchema,
+  AmazonProductKeyLearningRuleSchema,
+  BulkClassificationSessionSchema,
+  ClassificationResultSchema,
+  AmazonMatchStateSchema,
+  RetroactiveCandidateViewSchema,
+  TransactionAutoClassifiedSchema,
+  BulkClassificationCompletedSchema,
+  // expense-settlement
+  MonthlyExpenseCycleSchema,
+  ProratedChildTransactionSchema,
+  ExpenseReimbursementDepositSchema,
+  ExpenseTypeAccumulationSchema,
+  SettlementMatchDifferenceSchema,
+  ExpenseSettlementManagementViewSchema,
+  MonthlyExpenseCycleFinalizedSchema,
+  ExpenseDepositMatchedSchema,
+  // transaction-import
+  TransactionCandidateSchema,
+  DailyMailImportBatchSchema,
+  StatementImportJobSchema,
+  CandidateImportSourceSchema,
+  SmbcMailParseResultSchema,
+  DuplicationJudgmentSchema,
+  CsvImportCompletionViewSchema,
+  CsvImportCompletedSchema,
+  DuplicateExcludedSchema,
+  // onboarding-auth
+  AppUserSchema,
+  GmailOAuthTokenSchema,
+  NicknameSchema,
+  Phase2ProgressSchema,
+  LineOperationSettingsSchema,
+  RoleJudgmentSchema,
+  SpouseCompletionResultSchema,
+  OperationStartedSchema,
+  NicknameChangedSchema,
+  GmailOauthRevocationDetectedSchema,
+  // master-data
+  CategoryMasterSchema,
+  ExpenseTypeMasterSchema,
+  MonthlyLimitSchema,
+  Phase0ConfigSchema,
+  OwnershipScopeSchema,
+  DeletionRequestStateSchema,
+  AllowlistSchema,
+  MonthlyLimitChangedSchema,
+  CategoryDeletionRemapRequestedSchema,
+  // notification-delivery
+  DeliveryMessageSchema,
+  LineDeliveryLogSchema,
+  FailsafeEmailSchema,
+  ConsecutiveFailureCounterSchema,
+  DeliveryTargetSchema,
+  DeliveryContentSchema,
+  DeliveryPurposeSchema,
+  ReminderSentSchema,
+  FailureThresholdReachedSchema,
 } from '../../src'
 
 describe('@warimaru/domain 公開 API', () => {
@@ -63,6 +130,73 @@ describe('@warimaru/domain 公開 API', () => {
     expect(UnpaidBookkeptSchema).toBeDefined()
     expect(UnpaidSettledSchema).toBeDefined()
     expect(NisaContributionAddedSchema).toBeDefined()
+    // shared (Phase 5 M-A)
+    expect(ParameterStorePathSchema).toBeDefined()
+    expect(AmazonProductKeySchema).toBeDefined()
+    expect(UserRoleSchema).toBeDefined()
+    expect(PersonalExpenseClassSchema).toBeDefined()
+    expect(DefaultExpenseClassSchema).toBeDefined()
+    expect(UnclassifiedReasonSchema).toBeDefined()
+    expect(UnapprovedExpenseTransferSchema).toBeDefined()
+    // auto-classification
+    expect(MerchantLearningRuleSchema).toBeDefined()
+    expect(AmazonProductKeyLearningRuleSchema).toBeDefined()
+    expect(BulkClassificationSessionSchema).toBeDefined()
+    expect(ClassificationResultSchema).toBeDefined()
+    expect(AmazonMatchStateSchema).toBeDefined()
+    expect(RetroactiveCandidateViewSchema).toBeDefined()
+    expect(TransactionAutoClassifiedSchema).toBeDefined()
+    expect(BulkClassificationCompletedSchema).toBeDefined()
+    // expense-settlement
+    expect(MonthlyExpenseCycleSchema).toBeDefined()
+    expect(ProratedChildTransactionSchema).toBeDefined()
+    expect(ExpenseReimbursementDepositSchema).toBeDefined()
+    expect(ExpenseTypeAccumulationSchema).toBeDefined()
+    expect(SettlementMatchDifferenceSchema).toBeDefined()
+    expect(ExpenseSettlementManagementViewSchema).toBeDefined()
+    expect(MonthlyExpenseCycleFinalizedSchema).toBeDefined()
+    expect(ExpenseDepositMatchedSchema).toBeDefined()
+    // transaction-import
+    expect(TransactionCandidateSchema).toBeDefined()
+    expect(DailyMailImportBatchSchema).toBeDefined()
+    expect(StatementImportJobSchema).toBeDefined()
+    expect(CandidateImportSourceSchema).toBeDefined()
+    expect(SmbcMailParseResultSchema).toBeDefined()
+    expect(DuplicationJudgmentSchema).toBeDefined()
+    expect(CsvImportCompletionViewSchema).toBeDefined()
+    expect(CsvImportCompletedSchema).toBeDefined()
+    expect(DuplicateExcludedSchema).toBeDefined()
+    // onboarding-auth
+    expect(AppUserSchema).toBeDefined()
+    expect(GmailOAuthTokenSchema).toBeDefined()
+    expect(NicknameSchema).toBeDefined()
+    expect(Phase2ProgressSchema).toBeDefined()
+    expect(LineOperationSettingsSchema).toBeDefined()
+    expect(RoleJudgmentSchema).toBeDefined()
+    expect(SpouseCompletionResultSchema).toBeDefined()
+    expect(OperationStartedSchema).toBeDefined()
+    expect(NicknameChangedSchema).toBeDefined()
+    expect(GmailOauthRevocationDetectedSchema).toBeDefined()
+    // master-data
+    expect(CategoryMasterSchema).toBeDefined()
+    expect(ExpenseTypeMasterSchema).toBeDefined()
+    expect(MonthlyLimitSchema).toBeDefined()
+    expect(Phase0ConfigSchema).toBeDefined()
+    expect(OwnershipScopeSchema).toBeDefined()
+    expect(DeletionRequestStateSchema).toBeDefined()
+    expect(AllowlistSchema).toBeDefined()
+    expect(MonthlyLimitChangedSchema).toBeDefined()
+    expect(CategoryDeletionRemapRequestedSchema).toBeDefined()
+    // notification-delivery
+    expect(DeliveryMessageSchema).toBeDefined()
+    expect(LineDeliveryLogSchema).toBeDefined()
+    expect(FailsafeEmailSchema).toBeDefined()
+    expect(ConsecutiveFailureCounterSchema).toBeDefined()
+    expect(DeliveryTargetSchema).toBeDefined()
+    expect(DeliveryContentSchema).toBeDefined()
+    expect(DeliveryPurposeSchema).toBeDefined()
+    expect(ReminderSentSchema).toBeDefined()
+    expect(FailureThresholdReachedSchema).toBeDefined()
     // class 群
     expect(DomainError).toBeDefined()
     expect(InvariantViolationError).toBeDefined()

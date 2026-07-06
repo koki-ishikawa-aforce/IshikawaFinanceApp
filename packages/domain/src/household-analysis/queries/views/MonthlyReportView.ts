@@ -1,8 +1,6 @@
 import { z } from 'zod'
-import {
-  CommonMonthlyReportAttrsSchema,
-  UnapprovedExpenseTransferSchema,
-} from '../../aggregates/MonthlyReport'
+import { CommonMonthlyReportAttrsSchema } from '../../aggregates/MonthlyReport'
+import { UnapprovedExpenseTransferSchema } from '../../../shared/value-objects/UnapprovedExpenseTransfer'
 
 export const MonthlyReportViewSchema = z.object({
   status: z.enum(['csv_confirmed', 'finalized']),
