@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { InvariantViolationError } from '@warimaru/domain'
 import { NeonAccountRepository } from '../../src/balance-asset-tracking/NeonAccountRepository'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import {
   HONEY_USER_ID,
   DARLING_USER_ID,
@@ -11,11 +11,7 @@ import {
   smbcAccount,
 } from '../helpers/fixtures'
 
-const { db, close } = createTestDb()
 const repo = new NeonAccountRepository(db)
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 describe('NeonAccountRepository', () => {
   it('save → findById の往復で 4 kind（inactive 含む）が同一に復元される', async () => {

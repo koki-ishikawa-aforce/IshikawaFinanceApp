@@ -2,15 +2,10 @@
  * DDL 忠実性テスト: spec §4 の CHECK / UNIQUE / FK / partial index が
  * 実際に DB レベルで効いていることを raw SQL で検証する
  */
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { sql } from 'drizzle-orm'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import { newUlid } from '../../src/newId'
-
-const { db, close } = createTestDb()
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 async function pgErrorCode(promise: Promise<unknown>): Promise<string | undefined> {
   try {

@@ -1,18 +1,14 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { ZodError } from 'zod'
 import { InvariantViolationError } from '@warimaru/domain'
 import { NeonAccountRepository } from '../../src/balance-asset-tracking/NeonAccountRepository'
 import { NeonMitsuiSumitomoUnpaidRepository } from '../../src/balance-asset-tracking/NeonMitsuiSumitomoUnpaidRepository'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import { DARLING_USER_ID, cardAccount, unpaidAggregate } from '../helpers/fixtures'
 
-const { db, close } = createTestDb()
 const accountRepo = new NeonAccountRepository(db)
 const repo = new NeonMitsuiSumitomoUnpaidRepository(db)
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 describe('NeonMitsuiSumitomoUnpaidRepository', () => {
   it('save → findById / findByCardAccountId の往復で同一に復元される（settled エントリ含む）', async () => {

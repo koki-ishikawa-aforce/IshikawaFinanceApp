@@ -1,15 +1,11 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { NeonBalanceTimeSeriesQuery } from '../../src/balance-asset-tracking/NeonBalanceTimeSeriesQuery'
 import { NeonMonthlyReportRepository } from '../../src/household-analysis/NeonMonthlyReportRepository'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import { csvConfirmedReport, ym } from '../helpers/fixtures'
 
-const { db, close } = createTestDb()
 const repo = new NeonMonthlyReportRepository(db)
 const query = new NeonBalanceTimeSeriesQuery(db)
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 describe('NeonBalanceTimeSeriesQuery', () => {
   it('月範囲の monthly_reports payload から 4 軸を date 昇順で合成する（欠損月は点なし）', async () => {

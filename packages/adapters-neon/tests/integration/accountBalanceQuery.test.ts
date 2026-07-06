@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { NeonAccountBalanceQuery } from '../../src/balance-asset-tracking/NeonAccountBalanceQuery'
 import { NeonAccountRepository } from '../../src/balance-asset-tracking/NeonAccountRepository'
 import { NeonMitsuiSumitomoUnpaidRepository } from '../../src/balance-asset-tracking/NeonMitsuiSumitomoUnpaidRepository'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import {
   HONEY_USER_ID,
   DARLING_USER_ID,
@@ -13,15 +13,11 @@ import {
   unpaidAggregate,
 } from '../helpers/fixtures'
 
-const { db, close } = createTestDb()
 const accountRepo = new NeonAccountRepository(db)
 const unpaidRepo = new NeonMitsuiSumitomoUnpaidRepository(db)
 
 const FIXED_NOW = new Date('2026-07-06T00:00:00.000Z')
 const query = new NeonAccountBalanceQuery(db, { now: () => FIXED_NOW })
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 describe('NeonAccountBalanceQuery.fetchBalanceList', () => {
   it('世帯共有: 両者の active 口座を kind 固定順で返す（inactive 除外）', async () => {

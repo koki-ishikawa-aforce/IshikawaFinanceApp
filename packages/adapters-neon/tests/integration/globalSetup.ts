@@ -1,6 +1,9 @@
 /**
  * 統合テストの globalSetup: マイグレーションを 1 回適用する
+ *
+ * dotenv はテストワーカーと別プロセスで動くためここでも読む（setup.ts と対）。
  */
+import 'dotenv/config'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'

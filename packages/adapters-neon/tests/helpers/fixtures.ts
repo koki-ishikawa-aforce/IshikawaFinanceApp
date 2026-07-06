@@ -255,7 +255,7 @@ export function unpaidAggregate(input: {
     kind: 'booked' as const,
     entryId: newUlid(),
     transactionId: newUlid(),
-    bookedAt: new Date(`2026-07-0${i + 1}T00:00:00.000Z`),
+    bookedAt: new Date(`2026-07-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`),
     amount,
   }))
   const settled =

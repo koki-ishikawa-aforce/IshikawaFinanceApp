@@ -1,15 +1,11 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { NeonMonthlyReportQuery } from '../../src/household-analysis/NeonMonthlyReportQuery'
 import { NeonMonthlyReportRepository } from '../../src/household-analysis/NeonMonthlyReportRepository'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import { HONEY_USER_ID, csvConfirmedReport, finalizedReport, ym } from '../helpers/fixtures'
 
-const { db, close } = createTestDb()
 const repo = new NeonMonthlyReportRepository(db)
 const query = new NeonMonthlyReportQuery(db)
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 describe('NeonMonthlyReportQuery', () => {
   it('csv_confirmed は finalizedAt / unapprovedTransfers が null の View になる', async () => {

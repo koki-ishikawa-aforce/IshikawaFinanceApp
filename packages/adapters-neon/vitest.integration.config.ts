@@ -10,6 +10,8 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/integration/**/*.test.ts'],
     globalSetup: ['tests/integration/globalSetup.ts'],
+    // 接続生成 + beforeEach リセット + afterAll クローズの一元化
+    setupFiles: ['tests/integration/setup.ts'],
     // 共有 DB のため直列実行（TRUNCATE ベースのリセットと競合しないように）
     fileParallelism: false,
   },

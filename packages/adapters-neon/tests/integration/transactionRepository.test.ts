@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { ZodError } from 'zod'
 import { NeonTransactionRepository } from '../../src/household-analysis/NeonTransactionRepository'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import {
   HONEY_USER_ID,
   DARLING_USER_ID,
@@ -12,11 +12,7 @@ import {
   ym,
 } from '../helpers/fixtures'
 
-const { db, close } = createTestDb()
 const repo = new NeonTransactionRepository(db)
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 describe('NeonTransactionRepository', () => {
   it('save → findById の往復で全 kind が同一に復元される（Date 実体含む）', async () => {

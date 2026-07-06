@@ -1,14 +1,10 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { InvariantViolationError } from '@warimaru/domain'
 import { NeonMonthlyReportRepository } from '../../src/household-analysis/NeonMonthlyReportRepository'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import { csvConfirmedReport, finalizedReport, ym } from '../helpers/fixtures'
 
-const { db, close } = createTestDb()
 const repo = new NeonMonthlyReportRepository(db)
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 describe('NeonMonthlyReportRepository', () => {
   it('save → findById の往復で csv_confirmed / finalized が同一に復元される', async () => {

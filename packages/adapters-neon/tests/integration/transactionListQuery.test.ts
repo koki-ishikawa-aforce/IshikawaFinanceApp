@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import type { ExpenseClass } from '@warimaru/domain'
 import { NeonTransactionListQuery } from '../../src/household-analysis/NeonTransactionListQuery'
 import { NeonTransactionRepository } from '../../src/household-analysis/NeonTransactionRepository'
-import { createTestDb, resetDb } from '../helpers/db'
+import { db } from './setup'
 import {
   HONEY_USER_ID,
   DARLING_USER_ID,
@@ -14,7 +14,6 @@ import {
 } from '../helpers/fixtures'
 import { stubResolveCategoryNames, stubResolveViewerRole } from '../helpers/stubs'
 
-const { db, close } = createTestDb()
 const repo = new NeonTransactionRepository(db)
 
 const CATEGORY_FOOD = newCategoryId()
@@ -23,9 +22,6 @@ const query = new NeonTransactionListQuery(db, {
   resolveCategoryNames: stubResolveCategoryNames({ [CATEGORY_FOOD]: '食費' }),
   resolveViewerRole: stubResolveViewerRole,
 })
-
-beforeEach(() => resetDb(db))
-afterAll(() => close())
 
 const JUL = ym('2026-07')
 

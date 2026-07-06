@@ -3,6 +3,10 @@
 #   docker compose up -d db
 #   DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
 #     pnpm --filter @warimaru/adapters-neon test:integration
+#
+# データは永続化しない（エフェメラル）: テスト専用 DB のため、
+# マイグレーション再生成時にローカルの journal 残留と CI（毎回フレッシュ）で
+# 挙動が割れるのを防ぐ。リセットは `docker compose down && docker compose up -d db`。
 services:
   db:
     image: postgres:16
@@ -11,9 +15,5 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: warimaru_test
     ports:
-      - '5432:5432'
-    volumes:
-      - db-data:/var/lib/postgresql/data
-
-volumes:
-  db-data:
+      # dev 専用 DB のため loopback のみにバインド
+      - '127.0.0.1:5432:5432'
