@@ -36,6 +36,13 @@
       "when": 1783388588231,
       "tag": "0004_typical_solo",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783388904385,
+      "tag": "0005_sudden_bug",
+      "breakpoints": true
     }
   ]
 }
