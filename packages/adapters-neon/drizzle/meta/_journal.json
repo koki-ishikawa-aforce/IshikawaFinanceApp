@@ -29,6 +29,13 @@
       "when": 1783388273642,
       "tag": "0003_curly_prism",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783388588231,
+      "tag": "0004_typical_solo",
+      "breakpoints": true
     }
   ]
 }
