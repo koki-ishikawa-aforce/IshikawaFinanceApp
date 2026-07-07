@@ -14,7 +14,7 @@
 | Phase 3.5 | UX/UI 設計（ワイヤーフレーム 12 画面 / デザイントークン） | ✅ 完了 |
 | Phase 4 | 戦術的設計 — Core 2 コンテキストの TS 型 + Zod + Repository/Query I/F | ✅ 完了 |
 | Phase 4.5 | リポジトリ健全化（本計画 §1） | ✅ 完了（2026-07-06） |
-| Phase 5 | 残りコンテキストの型化 + adapter 層 + web/api スケルトン | 🚧 M-A 完了（2026-07-06）、M-B / M-C 未着手 |
+| Phase 5 | 残りコンテキストの型化 + adapter 層 + web/api スケルトン | 🚧 M-A 完了（2026-07-06）、M-B adapter 完了（2026-07-07、イベントバスのみ残）、M-C 未着手 |
 | Phase 6 | 実装統合・E2E・運用開始準備 | ⬜ 未着手 |
 
 コード資産は `packages/domain`（`@warimaru/domain`）のみ。永続化・UI・API は未実装。
@@ -77,9 +77,13 @@ discriminated union 集約 + Zod superRefine 不変条件 + branded ID + Reposit
 永続化バックエンドは **Neon (PostgreSQL)** で確定済み（OQ-27 / OQ-46）。
 
 - [x] Neon 前提の DB スキーマ設計 spec を作成（テーブル設計、マイグレーション方式の選定）→ [2026-07-06-phase5-m-b-db-schema-design.md](../specs/2026-07-06-phase5-m-b-db-schema-design.md)
-- [ ] `packages/adapters-neon/` に Repository / Query の実装（まず家計分析 + 残高資産推移の 4 Repository / 5 Query）
+- [x] `packages/adapters-neon/` に Repository / Query の実装
+  - 第 1 波（2026-07-06）: 家計分析 + 残高資産推移の 4 Repository / 5 Query
+  - 第 2 波（2026-07-07）: 残り 6 コンテキストの 19 Repository / 6 Query + 19 テーブル
+    （migration 0001〜0006、**全 8 コンテキスト = 23/23 Repository・11/11 Query 完了**）
 - [x] ID 生成方式の確定（OQ-41: ULID 採用）と `idSchema` の正規表現強化（内部発番 24 種 = ULID regex、外部由来 6 種 = `min(1)` 維持）
-- [ ] ドメインイベントバス（家計内ツール規模なので in-process pub/sub から開始、OQ-42 はここで判断)
+- [ ] ドメインイベントバス（家計内ツール規模なので in-process pub/sub から開始、OQ-42 で「永続化しない」と確定済み。
+      application 層の同期 pub/sub として実装する — **M-B で唯一の残タスク**）
 
 ### M-C: アプリスケルトン
 
