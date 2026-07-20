@@ -191,6 +191,12 @@ JST オフセットを織り込んだ UTC の半開区間へ変換して WHERE �
 取引が前月に混入するため**禁止**。「JST 変換は表示層」の原則は表示フォーマットの話であり、
 月バケットの境界計算はこの規約に従う。
 
+**暦日の規約（月境界規約の暦日版）**: `Date` から「日付」を導出する昇格カラム
+（`transaction_candidates.occurred_on` — 三項一致 findByTripleMatch の発生日）は
+**JST の暦日**を意味する。adapter は save 時の導出と検索時のパラメータ変換に
+同じ JST 暦日変換（`dateToJstCalendarDate`）を適用する。UTC の暦日をそのまま使うと
+JST 00:00–08:59 の取引が前日に化けるため禁止。
+
 ---
 
 ## §4. 第 1 波 詳細 DDL — 家計分析 + 残高資産推移管理
@@ -305,11 +311,11 @@ CREATE TABLE mitsui_sumitomo_unpaids (
 
 | テーブル | 集約 (#) | PK | 主な昇格カラム | unique / 特記 |
 |---|---|---|---|---|
-| transaction_candidates | 取引候補 (#1) | transaction_candidate_id | user_id, kind, merchant_name, amount, occurred_on, gmail_message_id | partial unique `(gmail_message_id) WHERE gmail_message_id IS NOT NULL`（メール重複除外）; index `(user_id, occurred_on, amount, merchant_name)`（三項一致 findByTripleMatch、OQ-7 / OQ-23） |
-| daily_mail_import_batches | 日次メール取込バッチ (#2) | import_batch_id | user_id, kind | partial unique `(user_id) WHERE kind = 'in_progress'`（二重起動防止） |
+| transaction_candidates | 取引候補 (#1) | transaction_candidate_id | user_id, kind, merchant_name, amount, occurred_on（JST 暦日、§3）, gmail_message_id（email の gmailMessageId / amazon_match の smbcGmailMessageId 両方から昇格） | partial unique `(gmail_message_id) WHERE gmail_message_id IS NOT NULL`（メール重複除外）; index `(user_id, occurred_on, amount, merchant_name)`（三項一致 findByTripleMatch、OQ-7 / OQ-23） |
+| daily_mail_import_batches | 日次メール取込バッチ (#2) | import_batch_id | user_id, kind | partial unique `(user_id) WHERE kind IN ('started', 'importing')`（二重起動防止。「進行中」の実 kind は started / importing の 2 値 — v0.3 訂正） |
 | statement_import_jobs | 明細取込ジョブ (#3) | import_job_id | uploader_user_id, target_month, kind | index `(uploader_user_id, target_month)` |
 | merchant_learning_rules | 加盟店学習ルール (#4) | **(user_id, merchant_name)** 自然キー | kind | F-1: 全検索が user_id 起点（配偶者データ遮断は WHERE 句で構造化） |
-| amazon_product_key_learning_rules | Amazon商品キー学習ルール (#5) | **(user_id, amazon_product_key)** 自然キー | kind | 同上 |
+| amazon_product_key_learning_rules | Amazon商品キー学習ルール (#5) | **(user_id, amazon_product_key)** 自然キー | —（本集約は discriminated union でないため kind を持たない — v0.3 訂正） | 同上 |
 | bulk_classification_sessions | 一括分類セッション (#6) | bulk_classification_session_id | user_id, kind | partial unique `(user_id) WHERE kind = 'in_progress'` |
 | transactions | 取引 (#7) | transaction_id | §4.1 | §4.1 |
 | monthly_reports | 月次レポート (#8) | monthly_report_id | §4.2 | §4.2 |
@@ -317,7 +323,7 @@ CREATE TABLE mitsui_sumitomo_unpaids (
 | mitsui_sumitomo_unpaids | 未払金 (#10) | unpaid_aggregate_id | §4.4 | §4.4 |
 | monthly_expense_cycles | 月次経費サイクル (#11) | monthly_expense_cycle_id | user_id, target_year_month, kind | unique `(user_id, target_year_month)` |
 | prorated_child_transactions | 按分子取引 (#12) | child_transaction_id | parent_transaction_id, user_id | index `(parent_transaction_id)` |
-| expense_reimbursement_deposits | 経費精算入金 (#13) | expense_reimbursement_id | user_id, kind | partial index `(user_id) WHERE kind = 'awaiting'`（findAwaitingByUser） |
+| expense_reimbursement_deposits | 経費精算入金 (#13) | expense_reimbursement_id | user_id, kind | partial index `(user_id) WHERE kind = 'awaiting_match'`（findAwaitingByUser。実 kind は awaiting_match — v0.3 訂正） |
 | app_users | アプリユーザー (#14) | user_id（= LINE userID、外部由来） | role, kind | unique `(role)`（honey/darling 各 1 名、findByRole が単一を返す前提を保証） |
 | gmail_oauth_tokens | Gmail OAuth トークン (#14 から M-A で集約として分離) | user_id | kind | 実トークンは Parameter Store（集約はパスのみ保持、OQ-27） |
 | delivery_messages | 配信メッセージ (#15) | delivery_message_id | kind, purpose | — |
@@ -387,10 +393,10 @@ OQ-38（SMBC URL）/ OQ-39（Flex Message サイズ）/ OQ-44（鮮度閾値 30 
 以下すべてが green であること:
 
 - [x] D-1: 本 spec がレビュー確定し、03-open-questions.md §B の OQ-41/42/43 が解決済みに更新されている
-- [ ] D-2: `packages/adapters-neon/` が §6.1 の構成で作成され、drizzle マイグレーションで §4 の 4 テーブルが生成できる
-- [ ] D-3: 第 1 波 4 Repository / 5 Query の実装が完了し、§6.2 の統合テストが CI で green
+- [x] D-2: `packages/adapters-neon/` が §6.1 の構成で作成され、drizzle マイグレーションで §4 の 4 テーブルが生成できる（2026-07-06 第 1 波で達成。第 2 波で全 23 テーブル = migration 0000〜0006 に拡大）
+- [x] D-3: 第 1 波 4 Repository / 5 Query の実装が完了し、§6.2 の統合テストが CI で green（2026-07-06。第 2 波で残り 19 Repository / 6 Query も実装済み = 全 23 Repository / 11 Query）
 - [x] D-4: `shared/ids.ts` の内部発番 ID が ULID regex に強化され、domain のテストが green
-- [ ] D-5: ルートの `pnpm build / typecheck / test / lint / format:check` が adapters-neon を含めて green
+- [x] D-5: ルートの `pnpm build / typecheck / test / lint / format:check` が adapters-neon を含めて green（2026-07-07 第 2 波完了時に再確認）
 
 ---
 
@@ -400,3 +406,4 @@ OQ-38（SMBC URL）/ OQ-39（Flex Message サイズ）/ OQ-44（鮮度閾値 30 
 |---|---|---|
 | 2026-07-06 | v0.1 | 初版（M-B 着手時の設計確定: マッピング方式 / テーブルカタログ / 第 1 波 DDL / Drizzle 採用 / OQ-41・42・43 確定） |
 | 2026-07-06 | v0.2 | レビュー反映: 月境界の JST 規約を §3 に明文化 / privacy ヘルパの公開 API 昇格を §4.1 に明記 / transactions CHECK を num_nonnulls で強化 / テーブル数を 23 に訂正 / §5 の集約番号整理（gmail_oauth_tokens = #14 分離、連続失敗カウンタ = #17 補助） / branded ID 30 種・イベント 89 種に訂正 / ULID regex 先頭桁 0–7 制限 / 三項一致の出典に OQ-7 追記 / §6.1 の Repository 配置注記 |
+| 2026-07-07 | v0.3 | 第 2 波実装完了に伴う訂正: §5 カタログの kind 実値を domain 型に合わせて修正（expense_reimbursement_deposits = `awaiting_match`、daily_mail_import_batches の「進行中」= `started`/`importing`、amazon_product_key_learning_rules は kind を持たない） / §3 に暦日の規約（`occurred_on` = JST 暦日）を追記 / transaction_candidates の gmail_message_id 昇格元 2 箇所を明記 / §8 の D-2/D-3/D-5 をクローズ |
