@@ -1,4 +1,6 @@
 export * from './ids'
 export * from './value-objects'
 export * from './events/DomainEvent'
+export * from './events/EventBus'
+export * from './events/InMemoryEventBus'
 export * from './errors'
