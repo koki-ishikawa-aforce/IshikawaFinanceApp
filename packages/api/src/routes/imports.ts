@@ -1,21 +1,287 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { YearMonthSchema } from '@warimaru/domain'
-import type { CsvImportStatusQuery } from '@warimaru/domain'
+import {
+  DailyMailImportBatchSchema,
+  ImportBatchIdSchema,
+  ImportJobIdSchema,
+  InvariantViolationError,
+  NotFoundError,
+  PermissionDeniedError,
+  StatementFileKindSchema,
+  StatementImportJobSchema,
+  TransactionCandidateIdSchema,
+  TransactionCandidateSchema,
+  TransactionIdSchema,
+  UploadFileIdSchema,
+  YearMonthSchema,
+  completeImportJob,
+  confirmCandidate,
+  createTransaction,
+  failImportJob,
+  money,
+  startFormatValidation,
+  startImporting,
+} from '@warimaru/domain'
+import type {
+  CsvImportStatusQuery,
+  DailyMailImportBatchRepository,
+  StatementImportJob,
+  StatementImportJobRepository,
+  TransactionCandidateRepository,
+  TransactionRepository,
+  UploadAcceptedJob,
+  UserId,
+  UserRole,
+} from '@warimaru/domain'
+import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { parseStatementCsv } from '../parse-statement-csv.js'
+import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const StatusParamsSchema = z.object({
   month: YearMonthSchema,
 })
 
-export function importsRoutes(csvImportStatusQuery: CsvImportStatusQuery): Hono<AppEnv> {
+const CsvUploadFieldsSchema = z.object({
+  targetMonth: YearMonthSchema,
+  fileKind: StatementFileKindSchema.default('card_statement'),
+})
+
+/** アップロード上限（メモリ上で全文パースするため保護的に制限する） */
+const MAX_CSV_FILE_SIZE = 1_000_000
+
+const CsvFileSchema = z
+  .instanceof(File, { message: 'file フィールドに CSV ファイルが必要' })
+  .refine(file => file.size <= MAX_CSV_FILE_SIZE, 'CSV ファイルは 1MB 以下でなければならない')
+
+const ConfirmBodySchema = z.object({
+  transactionCandidateIds: z.array(TransactionCandidateIdSchema).min(1).optional(),
+})
+
+const MailBatchBodySchema = z
+  .object({
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+  })
+  .refine(body => body.from === undefined || body.to === undefined || body.from <= body.to, {
+    message: 'from は to 以前でなければならない',
+    path: ['from'],
+  })
+
+export interface ImportsRoutesDeps {
+  csvImportStatusQuery: CsvImportStatusQuery
+  statementImportJobRepository: StatementImportJobRepository
+  transactionCandidateRepository: TransactionCandidateRepository
+  dailyMailImportBatchRepository: DailyMailImportBatchRepository
+  transactionRepository: TransactionRepository
+  resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
+}
+
+function assertJobOwnedByViewer(job: StatementImportJob, viewerId: UserId): void {
+  if (job.common.uploaderUserId !== viewerId) {
+    throw new PermissionDeniedError('他ユーザーの取込バッチは参照できない')
+  }
+}
+
+export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
 
   app.get('/status', async c => {
     const params = StatusParamsSchema.parse({ month: c.req.query('month') })
     const viewerId = c.get('viewerId')
-    const completion = await csvImportStatusQuery.fetchCompletion(viewerId, params.month)
+    const completion = await deps.csvImportStatusQuery.fetchCompletion(viewerId, params.month)
     return c.json({ completion })
+  })
+
+  /** CSV アップロード・取込開始（multipart/form-data: file, targetMonth, fileKind） */
+  app.post('/csv', async c => {
+    const formData = await c.req.parseBody()
+    const fields = CsvUploadFieldsSchema.parse({
+      targetMonth: formData['targetMonth'],
+      fileKind: formData['fileKind'] === undefined ? undefined : formData['fileKind'],
+    })
+    const file = CsvFileSchema.parse(formData['file'])
+    const viewerId = c.get('viewerId')
+    const now = new Date()
+    const fileRef = UploadFileIdSchema.parse(newUlid())
+
+    const accepted = StatementImportJobSchema.parse({
+      kind: 'upload_accepted',
+      common: {
+        importJobId: ImportJobIdSchema.parse(newUlid()),
+        uploaderUserId: viewerId,
+        targetMonth: fields.targetMonth,
+        fileKind: fields.fileKind,
+        fileFormat: 'csv',
+        fileRef,
+      },
+      acceptedAt: now,
+    }) as UploadAcceptedJob
+
+    const validating = startFormatValidation(accepted, new Date())
+    const parsed = parseStatementCsv(await file.text())
+    if (!parsed.ok) {
+      const failed = failImportJob(
+        validating,
+        { kind: 'format_validation_failed', failureDetail: parsed.error, detectedAt: new Date() },
+        new Date(),
+      )
+      await deps.statementImportJobRepository.save(failed)
+      return c.json({ job: failed }, 422)
+    }
+
+    // 候補生成の途中失敗でもジョブ記録が残るよう、importing 状態を先に永続化する
+    const importing = startImporting(validating, new Date())
+    await deps.statementImportJobRepository.save(importing)
+
+    let importedCount = 0
+    let duplicateExcludedCount = 0
+    try {
+      for (const row of parsed.rows) {
+        const duplicate = await deps.transactionCandidateRepository.findByTripleMatch(
+          viewerId,
+          row.occurredAt,
+          money(row.amount),
+          row.merchantName,
+        )
+        if (duplicate !== null) {
+          duplicateExcludedCount++
+          continue
+        }
+        const candidate = TransactionCandidateSchema.parse({
+          kind: 'normal',
+          common: {
+            transactionCandidateId: TransactionCandidateIdSchema.parse(newUlid()),
+            userId: viewerId,
+            importSource: { kind: 'csv', csvFileId: fileRef, rowNumber: row.rowNumber },
+            merchantName: row.merchantName,
+            amount: row.amount,
+            occurredAt: row.occurredAt,
+          },
+        })
+        await deps.transactionCandidateRepository.save(candidate)
+        importedCount++
+      }
+    } catch (e) {
+      const failed = failImportJob(
+        importing,
+        {
+          kind: 'import_error',
+          failureDetail: e instanceof Error ? e.message : String(e),
+          detectedAt: new Date(),
+        },
+        new Date(),
+      )
+      await deps.statementImportJobRepository.save(failed)
+      throw e
+    }
+
+    const completed = completeImportJob(
+      importing,
+      {
+        newCount: importedCount,
+        autoClassifiedEstimateCount: 0,
+        unclassifiedEstimateCount: importedCount,
+        duplicateExcludedCount,
+      },
+      new Date(),
+    )
+    await deps.statementImportJobRepository.save(completed)
+    return c.json({ job: completed }, 201)
+  })
+
+  /** 取込候補の一覧取得 */
+  app.get('/:batchId/candidates', async c => {
+    const importJobId = ImportJobIdSchema.parse(c.req.param('batchId'))
+    const viewerId = c.get('viewerId')
+    const job = await deps.statementImportJobRepository.findById(importJobId)
+    if (job === null) throw new NotFoundError('StatementImportJob', importJobId)
+    assertJobOwnedByViewer(job, viewerId)
+    const candidates = await deps.transactionCandidateRepository.findByCsvFileId(job.common.fileRef)
+    return c.json({ importJobId, jobKind: job.kind, candidates })
+  })
+
+  /** 取込候補の確定（候補から未分類取引を生成） */
+  app.put('/:batchId/confirm', async c => {
+    const importJobId = ImportJobIdSchema.parse(c.req.param('batchId'))
+    const rawBody = await c.req.text()
+    const body = ConfirmBodySchema.parse(rawBody.length > 0 ? JSON.parse(rawBody) : {})
+    const viewerId = c.get('viewerId')
+    const job = await deps.statementImportJobRepository.findById(importJobId)
+    if (job === null) throw new NotFoundError('StatementImportJob', importJobId)
+    assertJobOwnedByViewer(job, viewerId)
+    if (job.kind !== 'completed') {
+      throw new InvariantViolationError(
+        `取込が完了していないバッチは確定できない（現状態: ${job.kind}）`,
+      )
+    }
+
+    const all = await deps.transactionCandidateRepository.findByCsvFileId(job.common.fileRef)
+    const targetIds = body.transactionCandidateIds
+    const targets =
+      targetIds === undefined
+        ? all
+        : all.filter(candidate => targetIds.includes(candidate.common.transactionCandidateId))
+
+    // 冪等性: 確定済み候補はスキップし、取引 ID は候補 ULID を決定的に再利用する。
+    // 「取引 upsert → 候補 confirmed 保存」の間でクラッシュしても、再実行は
+    // 同一 PK への upsert となり取引が重複しない。
+    const confirmable = targets.filter(candidate => candidate.kind !== 'confirmed')
+    const alreadyConfirmedCount = targets.length - confirmable.length
+
+    const defaultExpenseClass = roleToPersonalExpenseClass(await deps.resolveViewerRole(viewerId))
+    const now = new Date()
+    let confirmedCount = 0
+    for (const candidate of confirmable) {
+      const transactionId = TransactionIdSchema.parse(candidate.common.transactionCandidateId)
+      const transaction = createTransaction({
+        kind: 'unclassified',
+        common: {
+          transactionId,
+          ownerUserId: viewerId,
+          merchantName: candidate.common.merchantName,
+          amount: candidate.common.amount,
+          occurredAt: candidate.common.occurredAt,
+          importSource: candidate.common.importSource,
+        },
+        reason: 'merchant_rule_unlearned',
+        defaultExpenseClass,
+      })
+      await deps.transactionRepository.save(transaction)
+      await deps.transactionCandidateRepository.save(
+        confirmCandidate(candidate, transactionId, now),
+      )
+      confirmedCount++
+    }
+    return c.json({ importJobId, confirmedCount, alreadyConfirmedCount, confirmedAt: now })
+  })
+
+  /** メール取込バッチの手動トリガー（EventBridge 連携前の手動実行用） */
+  app.post('/mail-batch', async c => {
+    const rawBody = await c.req.text()
+    const body = MailBatchBodySchema.parse(rawBody.length > 0 ? JSON.parse(rawBody) : {})
+    const viewerId = c.get('viewerId')
+    const inProgress = await deps.dailyMailImportBatchRepository.findInProgressByUser(viewerId)
+    if (inProgress !== null) {
+      throw new InvariantViolationError(
+        `進行中のメール取込バッチが既に存在する: ${inProgress.common.importBatchId}`,
+      )
+    }
+    const now = new Date()
+    const to = body.to ?? now
+    const from = body.from ?? new Date(to.getTime() - 24 * 60 * 60 * 1000)
+    const batch = DailyMailImportBatchSchema.parse({
+      kind: 'started',
+      common: {
+        importBatchId: ImportBatchIdSchema.parse(newUlid()),
+        userId: viewerId,
+        launchedAt: now,
+        targetPeriod: { from, to },
+      },
+    })
+    await deps.dailyMailImportBatchRepository.save(batch)
+    // 実際のメール取得・候補生成はバッチワーカー側の責務（本 API は起動記録のみ）
+    return c.json({ batch }, 202)
   })
 
   return app

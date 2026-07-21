@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import type { GmailMessageId, Money, TransactionCandidateId } from '@warimaru/domain'
-import { InvariantViolationError, MoneySchema } from '@warimaru/domain'
+import {
+  InvariantViolationError,
+  MoneySchema,
+  TransactionIdSchema,
+  confirmCandidate,
+} from '@warimaru/domain'
 import { db } from './setup'
 import { NeonTransactionCandidateRepository } from '../../src/transaction-import/NeonTransactionCandidateRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
@@ -81,5 +86,17 @@ describe('NeonTransactionCandidateRepository', () => {
     expect(
       await repo.findByTripleMatch(DARLING_USER_ID, sameJstDay, money(1200), 'スーパーA'),
     ).toBeNull()
+  })
+
+  it('confirmed 候補を save → findById で往復できる（kind CHECK 拡張の確認）', async () => {
+    const candidate = csvCandidate()
+    if (candidate.kind !== 'normal') throw new Error('fixture が normal でない')
+    const confirmed = confirmCandidate(
+      candidate,
+      TransactionIdSchema.parse(candidate.common.transactionCandidateId),
+      new Date('2026-07-07T00:00:00.000Z'),
+    )
+    await repo.save(confirmed)
+    expect(await repo.findById(candidate.common.transactionCandidateId)).toEqual(confirmed)
   })
 })

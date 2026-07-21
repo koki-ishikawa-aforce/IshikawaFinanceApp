@@ -11,9 +11,11 @@
  *  - Gmail_message_ID 重複時は新規取引候補を生成しない（重複除外の閉包、
  *    Repository.findByGmailMessageId で保証、Phase 5 M-B）
  *  - Amazon突合取引候補の取込ソースは amazon_match でなければならない
+ *  - 確定済み候補は再確定できない（confirmed からの遷移関数を提供しない）
  */
 import { z } from 'zod'
-import { TransactionCandidateIdSchema, UserIdSchema } from '../../shared/ids'
+import { TransactionCandidateIdSchema, TransactionIdSchema, UserIdSchema } from '../../shared/ids'
+import type { TransactionId } from '../../shared/ids'
 import { MoneySchema } from '../../shared/value-objects/Money'
 import { CandidateImportSourceSchema } from '../value-objects/CandidateImportSource'
 import { AmazonProductInfoSchema } from '../value-objects/AmazonOrderInfo'
@@ -54,6 +56,12 @@ export const TransactionCandidateSchema = z
       timedOutAt: z.date(),
       timeoutDirection: TimeoutDirectionSchema,
     }),
+    z.object({
+      kind: z.literal('confirmed'),
+      common: CommonTransactionCandidateAttrsSchema,
+      confirmedAt: z.date(),
+      createdTransactionId: TransactionIdSchema,
+    }),
   ])
   .superRefine((candidate, ctx) => {
     if (
@@ -78,3 +86,21 @@ export type MatchTimeoutTransactionCandidate = Extract<
   TransactionCandidate,
   { kind: 'match_timeout' }
 >
+export type ConfirmedTransactionCandidate = Extract<TransactionCandidate, { kind: 'confirmed' }>
+
+/** 状態遷移: 未確定候補 → 確定済み（取引生成済み・消費済み） */
+export function confirmCandidate(
+  candidate:
+    | NormalTransactionCandidate
+    | AmazonMatchedTransactionCandidate
+    | MatchTimeoutTransactionCandidate,
+  createdTransactionId: TransactionId,
+  at: Date,
+): ConfirmedTransactionCandidate {
+  return TransactionCandidateSchema.parse({
+    kind: 'confirmed',
+    common: candidate.common,
+    confirmedAt: at,
+    createdTransactionId,
+  }) as ConfirmedTransactionCandidate
+}

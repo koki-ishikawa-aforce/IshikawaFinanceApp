@@ -11,5 +11,7 @@ export interface AmazonProductKeyLearningRuleRepository {
     userId: UserId,
     amazonProductKey: AmazonProductKey,
   ): Promise<AmazonProductKeyLearningRule | null>
+  /** 本人の全 Amazon 商品キー学習ルールを返す（F-1: 配偶者の学習データに触れない） */
+  findAllByUser(userId: UserId): Promise<AmazonProductKeyLearningRule[]>
   save(rule: AmazonProductKeyLearningRule): Promise<void>
 }

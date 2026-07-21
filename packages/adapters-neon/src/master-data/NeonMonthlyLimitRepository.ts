@@ -75,4 +75,8 @@ export class NeonMonthlyLimitRepository implements MonthlyLimitRepository {
       throw e
     }
   }
+
+  async deleteByExpenseType(expenseTypeId: ExpenseTypeId): Promise<void> {
+    await this.db.delete(monthlyLimits).where(eq(monthlyLimits.expenseTypeId, expenseTypeId))
+  }
 }

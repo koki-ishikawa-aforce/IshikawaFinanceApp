@@ -9,10 +9,7 @@ export function useDashboardKpis(month: YearMonth, mode: DashboardMode) {
   return useQuery<DashboardKpisView>({
     queryKey: ['dashboard', 'kpis', month, mode],
     queryFn: () =>
-      apiFetch(
-        `/api/dashboard/kpis?month=${month}&mode=${mode}`,
-        DashboardKpisViewSchema,
-      ),
+      apiFetch(`/api/dashboard/kpis?month=${month}&mode=${mode}`, DashboardKpisViewSchema),
     staleTime: 30_000,
   })
 }

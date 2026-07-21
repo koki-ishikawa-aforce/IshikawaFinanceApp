@@ -38,6 +38,7 @@ export interface TransactionFixtureInput {
   occurredAt?: Date
   categoryId?: string
   expenseClass?: 'household' | 'personal_honey' | 'personal_darling' | 'business_expense'
+  expenseTypeId?: string
 }
 
 export function classifiedTransaction(input: TransactionFixtureInput = {}): Transaction {
@@ -61,7 +62,7 @@ export function classifiedTransaction(input: TransactionFixtureInput = {}): Tran
       expenseClass,
       expenseTypeRef:
         expenseClass === 'business_expense'
-          ? { kind: 'business', expenseTypeId: newUlid() }
+          ? { kind: 'business', expenseTypeId: input.expenseTypeId ?? newUlid() }
           : { kind: 'non_business' },
       basis: {
         kind: 'user_manual',

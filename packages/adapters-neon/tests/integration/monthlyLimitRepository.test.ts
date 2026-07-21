@@ -52,4 +52,20 @@ describe('NeonMonthlyLimitRepository', () => {
     await repo.save(unlimited)
     expect(await repo.findById(capped.monthlyLimitId)).toEqual(unlimited)
   })
+
+  it('deleteByExpenseType は対象経費種別の全ユーザー分のみ削除する', async () => {
+    const targetTypeId = newUlid()
+    const honeyLimit = cappedLimit({ userId: HONEY_USER_ID, expenseTypeId: targetTypeId })
+    const darlingLimit = unlimitedLimit({ userId: DARLING_USER_ID, expenseTypeId: targetTypeId })
+    const otherTypeLimit = cappedLimit({ userId: HONEY_USER_ID })
+    await repo.save(honeyLimit)
+    await repo.save(darlingLimit)
+    await repo.save(otherTypeLimit)
+
+    await repo.deleteByExpenseType(targetTypeId as ExpenseTypeId)
+
+    expect(await repo.findById(honeyLimit.monthlyLimitId)).toBeNull()
+    expect(await repo.findById(darlingLimit.monthlyLimitId)).toBeNull()
+    expect(await repo.findById(otherTypeLimit.monthlyLimitId)).toEqual(otherTypeLimit)
+  })
 })

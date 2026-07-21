@@ -14,4 +14,6 @@ export interface MonthlyLimitRepository {
     expenseTypeId: ExpenseTypeId,
   ): Promise<MonthlyLimit | null>
   save(limit: MonthlyLimit): Promise<void>
+  /** 経費種別削除リマップ時の物理削除（全ユーザー分、削除可否は呼び出し側で検査する） */
+  deleteByExpenseType(expenseTypeId: ExpenseTypeId): Promise<void>
 }

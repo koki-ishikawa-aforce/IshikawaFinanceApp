@@ -10,4 +10,6 @@ export interface ExpenseTypeMasterRepository {
   /** 世帯共有 + 本人の個人別経費種別を返す */
   findAllVisibleToUser(userId: UserId): Promise<ExpenseTypeMaster[]>
   save(expenseType: ExpenseTypeMaster): Promise<void>
+  /** 追加経費種別の物理削除（規定経費種別の削除可否は呼び出し側で検査する） */
+  deleteById(id: ExpenseTypeId): Promise<void>
 }

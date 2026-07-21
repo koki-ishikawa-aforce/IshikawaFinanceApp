@@ -12,4 +12,6 @@ export interface CategoryMasterRepository {
   /** 世帯共有 + 本人の個人別カテゴリを返す */
   findAllVisibleToUser(userId: UserId): Promise<CategoryMaster[]>
   save(category: CategoryMaster): Promise<void>
+  /** 追加カテゴリの物理削除（規定カテゴリの削除可否は呼び出し側で検査する） */
+  deleteById(id: CategoryId): Promise<void>
 }

@@ -2,14 +2,19 @@
  * マスタ管理コンテキストのテストフィクスチャ（Schema.parse を通した正規の集約）
  */
 import type {
+  CategoryDeletionRequest,
   CategoryMaster,
+  DeletionRequestState,
+  ExpenseTypeDeletionRequest,
   ExpenseTypeMaster,
   MonthlyLimit,
   Phase0Config,
   UserId,
 } from '@warimaru/domain'
 import {
+  CategoryDeletionRequestSchema,
   CategoryMasterSchema,
+  ExpenseTypeDeletionRequestSchema,
   ExpenseTypeMasterSchema,
   MonthlyLimitSchema,
   Phase0ConfigSchema,
@@ -88,6 +93,43 @@ export function unlimitedLimit(
     userId: input.userId ?? HONEY_USER_ID,
     expenseTypeId: input.expenseTypeId ?? newUlid(),
     effectiveFrom: new Date('2026-07-01T00:00:00.000Z'),
+  })
+}
+
+export function categoryDeletionRequest(
+  input: {
+    userId?: UserId
+    targetCategoryId?: string
+    destinationCategoryId?: string
+    state?: DeletionRequestState
+  } = {},
+): CategoryDeletionRequest {
+  return CategoryDeletionRequestSchema.parse({
+    categoryDeletionRequestId: newUlid(),
+    targetCategoryId: input.targetCategoryId ?? newUlid(),
+    requestedByUserId: input.userId ?? HONEY_USER_ID,
+    destinationCategoryId: input.destinationCategoryId ?? newUlid(),
+    destinationExpenseClass: 'household',
+    requestedAt: new Date('2026-07-01T00:00:00.000Z'),
+    state: input.state ?? { kind: 'pending_remap' },
+  })
+}
+
+export function expenseTypeDeletionRequest(
+  input: {
+    userId?: UserId
+    targetExpenseTypeId?: string
+    destinationExpenseTypeId?: string
+    state?: DeletionRequestState
+  } = {},
+): ExpenseTypeDeletionRequest {
+  return ExpenseTypeDeletionRequestSchema.parse({
+    expenseTypeDeletionRequestId: newUlid(),
+    targetExpenseTypeId: input.targetExpenseTypeId ?? newUlid(),
+    requestedByUserId: input.userId ?? HONEY_USER_ID,
+    destinationExpenseTypeId: input.destinationExpenseTypeId ?? newUlid(),
+    requestedAt: new Date('2026-07-01T00:00:00.000Z'),
+    state: input.state ?? { kind: 'pending_remap' },
   })
 }
 

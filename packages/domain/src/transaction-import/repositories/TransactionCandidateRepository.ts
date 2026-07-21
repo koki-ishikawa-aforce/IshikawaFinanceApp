@@ -6,7 +6,7 @@
  * findByTripleMatch（発生日 + 金額 + 加盟店名〔NFKC 正規化済み〕、OQ-23 / OQ-7）で
  * 生成前チェックを行う（Phase 5 M-B）。
  */
-import type { TransactionCandidateId, UserId, GmailMessageId } from '../../shared/ids'
+import type { TransactionCandidateId, UserId, GmailMessageId, UploadFileId } from '../../shared/ids'
 import type { Money } from '../../shared/value-objects/Money'
 import type { TransactionCandidate } from '../aggregates/TransactionCandidate'
 
@@ -19,5 +19,7 @@ export interface TransactionCandidateRepository {
     amount: Money,
     merchantName: string,
   ): Promise<TransactionCandidate | null>
+  /** CSV 取込ファイル由来の候補一覧（importSource.kind = 'csv' の csvFileId 一致） */
+  findByCsvFileId(csvFileId: UploadFileId): Promise<TransactionCandidate[]>
   save(candidate: TransactionCandidate): Promise<void>
 }

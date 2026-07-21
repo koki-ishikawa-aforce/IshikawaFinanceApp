@@ -1,5 +1,5 @@
 import type { Context } from 'hono'
-import { NotFoundError, PermissionDeniedError } from '@warimaru/domain'
+import { InvariantViolationError, NotFoundError, PermissionDeniedError } from '@warimaru/domain'
 import { ZodError } from 'zod'
 
 export function errorHandler(err: Error, c: Context): Response {
@@ -11,6 +11,9 @@ export function errorHandler(err: Error, c: Context): Response {
   }
   if (err instanceof PermissionDeniedError) {
     return c.json({ error: err.message }, 403)
+  }
+  if (err instanceof InvariantViolationError) {
+    return c.json({ error: err.message }, 409)
   }
   console.error('Unhandled error:', err)
   return c.json({ error: 'Internal server error' }, 500)

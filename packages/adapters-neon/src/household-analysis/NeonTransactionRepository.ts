@@ -2,8 +2,11 @@
  * TransactionRepository の Neon 実装
  * @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §4.1
  */
-import { and, asc, eq, gte, lt } from 'drizzle-orm'
+import { and, asc, eq, gte, lt, sql } from 'drizzle-orm'
 import type {
+  CategoryId,
+  ClassifiedTransaction,
+  ExpenseTypeId,
   Transaction,
   TransactionId,
   TransactionRepository,
@@ -45,6 +48,33 @@ export class NeonTransactionRepository implements TransactionRepository {
       .orderBy(asc(transactions.occurredAt))
     // I/F 仕様どおり全 kind を返す（deleted 含む、プライバシー適用は Read 側の責務）
     return rows.map(row => parsePayload(TransactionSchema, row.payload))
+  }
+
+  async findClassifiedByCategory(categoryId: CategoryId): Promise<ClassifiedTransaction[]> {
+    // category_id は分類済み取引のみ昇格される（save 参照）ため kind 条件と等価だが明示する
+    const rows = await this.db
+      .select({ payload: transactions.payload })
+      .from(transactions)
+      .where(and(eq(transactions.kind, 'classified'), eq(transactions.categoryId, categoryId)))
+      .orderBy(asc(transactions.transactionId))
+    return rows.map(row => parsePayload(TransactionSchema, row.payload) as ClassifiedTransaction)
+  }
+
+  async findClassifiedByExpenseType(
+    expenseTypeId: ExpenseTypeId,
+  ): Promise<ClassifiedTransaction[]> {
+    // expense_type は昇格列を持たないため payload（details.expenseTypeRef union）を直接参照する
+    const rows = await this.db
+      .select({ payload: transactions.payload })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.kind, 'classified'),
+          sql`${transactions.payload}->'details'->'expenseTypeRef'->>'expenseTypeId' = ${expenseTypeId}`,
+        ),
+      )
+      .orderBy(asc(transactions.transactionId))
+    return rows.map(row => parsePayload(TransactionSchema, row.payload) as ClassifiedTransaction)
   }
 
   async save(transaction: Transaction): Promise<void> {

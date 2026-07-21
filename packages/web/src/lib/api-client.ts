@@ -13,7 +13,10 @@ function buildHeaders(): HeadersInit {
   return { 'X-User-Id': DEV_USER_ID }
 }
 
-export async function apiFetch<T>(path: string, schema: { parse: (input: unknown) => T }): Promise<T> {
+export async function apiFetch<T>(
+  path: string,
+  schema: { parse: (input: unknown) => T },
+): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: buildHeaders(),
   })
