@@ -2,7 +2,8 @@
  * カテゴリマスタ Repository I/F
  * @see docs/superpowers/plans/2026-07-06-phase5-m-a-context-typing.md §2.5
  *
- * 名前一意性（同一スコープ内）は save 前の findAllVisibleToUser で保証する（Phase 5 M-B）。
+ * 名前一意性（同一スコープ内）は save 前に findAllVisibleToUser の結果へ
+ * assertCategoryNameAvailable を適用して保証する（Phase 5 M-B）。
  */
 import type { CategoryId, UserId } from '../../shared/ids'
 import type { CategoryMaster } from '../aggregates/CategoryMaster'

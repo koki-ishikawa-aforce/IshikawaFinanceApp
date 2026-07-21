@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   CategoryMasterSchema,
+  assertCategoryNameAvailable,
   renameCustomCategory,
   type CustomCategory,
 } from '../../../src/master-data/aggregates/CategoryMaster'
+import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 
 const defaultCategory = {
   kind: 'default',
@@ -53,5 +55,32 @@ describe('CategoryMaster 集約', () => {
     expect(renamed.name).toBe('ペット費')
     expect(renamed.renameHistory).toHaveLength(1)
     expect(renamed.renameHistory[0]?.oldName).toBe('ペット')
+  })
+})
+
+describe('assertCategoryNameAvailable（同一スコープ内で名前一意、09-aggregates #18）', () => {
+  const visible = [
+    CategoryMasterSchema.parse(defaultCategory),
+    CategoryMasterSchema.parse(customCategory),
+  ]
+
+  it('可視マスタと重複しない名前は通る', () => {
+    expect(() => assertCategoryNameAvailable(visible, '推し活')).not.toThrow()
+  })
+
+  it('世帯共有（規定）と同名は InvariantViolationError', () => {
+    expect(() => assertCategoryNameAvailable(visible, '食費')).toThrow(InvariantViolationError)
+  })
+
+  it('本人の個人別（追加）と同名は InvariantViolationError', () => {
+    expect(() => assertCategoryNameAvailable(visible, 'ペット')).toThrow(InvariantViolationError)
+  })
+
+  it('改名時は自身を除外して検査する（現在名のままの改名は通る）', () => {
+    const custom = CategoryMasterSchema.parse(customCategory) as CustomCategory
+    expect(() => assertCategoryNameAvailable(visible, 'ペット', custom.categoryId)).not.toThrow()
+    expect(() => assertCategoryNameAvailable(visible, '食費', custom.categoryId)).toThrow(
+      InvariantViolationError,
+    )
   })
 })
