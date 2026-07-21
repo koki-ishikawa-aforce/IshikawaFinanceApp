@@ -191,7 +191,7 @@ data PDF変換結果 = 変換成功 OR 変換失敗
 data 変換成功 = PDF変換ジョブID AND 生成CSV参照 AND 変換完了日時
 data 生成CSV参照 = アップロードファイルID
 data 変換失敗 = PDF変換ジョブID AND 変換失敗理由 AND 検知日時
-data 変換失敗理由 = API呼出失敗 OR レスポンス構造不正 OR 行数不一致 OR タイムアウト
+data 変換失敗理由 = API呼出失敗 OR レスポンス構造不正 OR 行数不一致 OR 合計金額不一致 OR タイムアウト
 ```
 
 ## 2. 振る舞い（behavior）

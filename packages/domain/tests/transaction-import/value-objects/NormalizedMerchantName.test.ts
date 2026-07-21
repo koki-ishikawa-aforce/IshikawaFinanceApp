@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeMerchantName } from '../../src/pdf-conversion/normalize-merchant-name.js'
+import { normalizeMerchantName } from '../../../src/transaction-import/value-objects/NormalizedMerchantName'
 
 describe('normalizeMerchantName（OQ-23: NFKC + 空白圧縮 + 長音統一）', () => {
   it('全角英数・半角カナを NFKC で正規化する', () => {

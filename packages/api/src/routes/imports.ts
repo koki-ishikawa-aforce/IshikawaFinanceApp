@@ -45,7 +45,8 @@ const StatusParamsSchema = z.object({
   month: YearMonthSchema,
 })
 
-const CsvUploadFieldsSchema = z.object({
+/** CSV / PDF アップロード共通のフォームフィールド */
+const UploadFieldsSchema = z.object({
   targetMonth: YearMonthSchema,
   fileKind: StatementFileKindSchema.default('card_statement'),
 })
@@ -117,7 +118,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
   /** CSV アップロード・取込開始（multipart/form-data: file, targetMonth, fileKind） */
   app.post('/csv', async c => {
     const formData = await c.req.parseBody()
-    const fields = CsvUploadFieldsSchema.parse({
+    const fields = UploadFieldsSchema.parse({
       targetMonth: formData['targetMonth'],
       fileKind: formData['fileKind'] === undefined ? undefined : formData['fileKind'],
     })
@@ -214,7 +215,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
   /** PDF アップロード・変換・取込開始（multipart/form-data: file, targetMonth, fileKind） */
   app.post('/pdf', async c => {
     const formData = await c.req.parseBody()
-    const fields = CsvUploadFieldsSchema.parse({
+    const fields = UploadFieldsSchema.parse({
       targetMonth: formData['targetMonth'],
       fileKind: formData['fileKind'] === undefined ? undefined : formData['fileKind'],
     })

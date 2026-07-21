@@ -9,20 +9,19 @@
  *  - timeout: API 呼び出しのタイムアウト
  *  - api_call_failed: 上記以外の API エラー（認証・接続・refusal 含む）
  *  - invalid_response_structure: 構造化出力の欠落・スキーマ不一致・日付等の値不正・max_tokens 途中終了
- *  - row_count_mismatch: OQ-23 構造一致検証（行数不一致・利用金額合計不一致）
+ *  - row_count_mismatch / total_amount_mismatch: OQ-23 構造一致検証（行数一致・利用金額合計一致）
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 // SDK の zodOutputFormat は zod v4 スキーマを要求する（zod 3.25+ が同梱する v4 API を使用。
 // このファイル内に閉じた利用で、ドメイン層の zod v3 スキーマとは独立）
 import { z } from 'zod/v4'
-import type { PdfConversionFailureReason } from '@warimaru/domain'
+import { normalizeMerchantName, type PdfConversionFailureReason } from '@warimaru/domain'
 import type {
   ConvertedStatementRow,
   PdfToCsvConversion,
   PdfToCsvConverter,
 } from './PdfToCsvConverter.js'
-import { normalizeMerchantName } from './normalize-merchant-name.js'
 
 /** 構造化出力スキーマ（数値制約・日付形式の検証は API 側で未サポートのためローカルで行う） */
 const ConversionOutputSchema = z.object({
@@ -166,7 +165,7 @@ export class AnthropicPdfToCsvConverter implements PdfToCsvConverter {
     const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0)
     if (totalAmount !== statedTotalAmount) {
       return failure(
-        'row_count_mismatch',
+        'total_amount_mismatch',
         `利用金額合計が一致しない（抽出合計 ${totalAmount} 円 / 記載 ${statedTotalAmount} 円）`,
       )
     }

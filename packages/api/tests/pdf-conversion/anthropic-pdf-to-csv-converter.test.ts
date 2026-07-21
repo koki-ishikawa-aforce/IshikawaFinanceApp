@@ -67,13 +67,13 @@ describe('AnthropicPdfToCsvConverter', () => {
     expect(result.failureDetail).toContain('明細行数')
   })
 
-  it('利用金額合計の不一致は row_count_mismatch（OQ-23 構造一致検証）', async () => {
+  it('利用金額合計の不一致は total_amount_mismatch（OQ-23 構造一致検証）', async () => {
     const converter = new AnthropicPdfToCsvConverter({
       client: clientReturning({ ...VALID_OUTPUT, statedTotalAmount: 1000 }),
     })
     const result = await converter.convert(PDF_BYTES)
     if (result.ok) throw new Error('失敗を期待した')
-    expect(result.reason).toBe('row_count_mismatch')
+    expect(result.reason).toBe('total_amount_mismatch')
     expect(result.failureDetail).toContain('利用金額合計')
   })
 
