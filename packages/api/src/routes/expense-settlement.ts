@@ -118,7 +118,13 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
     return c.json(confirmed)
   })
 
-  /** サイクルの最終確定（精算入金との突合を含む） */
+  /**
+   * サイクルの最終確定（精算入金との突合を含む）。
+   *
+   * サイクル保存と入金保存はトランザクションで括れない（Neon HTTP ドライバ方針）ため、
+   * 「サイクル確定 → 入金突合」の順で保存し、間で失敗しても同一リクエストの再実行で
+   * 突合だけを完了できる冪等・復旧可能なフローとする。
+   */
   app.put('/cycles/:id/finalize', async c => {
     const id = MonthlyExpenseCycleIdSchema.parse(c.req.param('id'))
     const body = FinalizeBodySchema.parse(await c.req.json())
@@ -127,11 +133,6 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
     const cycle = await deps.monthlyExpenseCycleRepository.findById(id)
     if (cycle === null) throw new NotFoundError('MonthlyExpenseCycle', id)
     assertCycleOwnedByViewer(cycle, viewerId)
-    if (cycle.kind !== 'csv_confirmed') {
-      throw new InvariantViolationError(
-        `CSV 確定済みでないサイクルは最終確定できない（現状態: ${cycle.kind}）`,
-      )
-    }
 
     const deposit = await deps.expenseReimbursementDepositRepository.findById(
       body.expenseReimbursementId,
@@ -141,6 +142,36 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
     }
     if (deposit.common.userId !== viewerId) {
       throw new PermissionDeniedError('他ユーザーの精算入金は突合できない')
+    }
+
+    if (cycle.kind === 'finalized') {
+      if (cycle.expenseReimbursementId !== body.expenseReimbursementId) {
+        throw new InvariantViolationError(
+          `サイクルは別の精算入金で確定済み: ${cycle.expenseReimbursementId}`,
+        )
+      }
+      if (
+        deposit.kind !== 'awaiting_match' &&
+        deposit.matchedCycleId === cycle.common.monthlyExpenseCycleId
+      ) {
+        // 完全冪等リプレイ: 双方確定済みなら現状を返す
+        return c.json({ cycle, deposit })
+      }
+      if (deposit.kind === 'awaiting_match') {
+        // 復旧パス: サイクル保存後・入金保存前に失敗したケース。突合のみ完了させる
+        // （unapprovedTransfers は確定済みサイクルの値が正のため body の値は使わない）
+        const matched = matchDeposit(deposit, cycle.common.monthlyExpenseCycleId, new Date())
+        await deps.expenseReimbursementDepositRepository.save(matched)
+        return c.json({ cycle, deposit: matched })
+      }
+      throw new InvariantViolationError(
+        `入金は別サイクルと突合済みのため確定を完了できない（現状態: ${deposit.kind}）`,
+      )
+    }
+    if (cycle.kind !== 'csv_confirmed') {
+      throw new InvariantViolationError(
+        `CSV 確定済みでないサイクルは最終確定できない（現状態: ${cycle.kind}）`,
+      )
     }
     if (deposit.kind !== 'awaiting_match') {
       throw new InvariantViolationError(

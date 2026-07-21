@@ -59,8 +59,28 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       resolveViewerRole: deps.resolveViewerRole,
     }),
   )
-  app.route('/api/categories', categoriesRoutes(deps.categoryMasterRepository))
-  app.route('/api/expense-types', expenseTypesRoutes(deps.expenseTypeMasterRepository))
+  app.route(
+    '/api/categories',
+    categoriesRoutes({
+      categoryMasterRepository: deps.categoryMasterRepository,
+      expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
+      categoryDeletionRequestRepository: deps.categoryDeletionRequestRepository,
+      transactionRepository: deps.transactionRepository,
+      merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
+      amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
+    }),
+  )
+  app.route(
+    '/api/expense-types',
+    expenseTypesRoutes({
+      expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
+      expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
+      transactionRepository: deps.transactionRepository,
+      merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
+      amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
+      monthlyLimitRepository: deps.monthlyLimitRepository,
+    }),
+  )
   app.route(
     '/api/monthly-limits',
     monthlyLimitsRoutes(deps.monthlyLimitRepository, deps.expenseTypeMasterRepository),

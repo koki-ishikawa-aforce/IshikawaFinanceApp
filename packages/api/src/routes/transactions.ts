@@ -55,9 +55,15 @@ const ClassificationInputSchema = z
   })
 type ClassificationInput = z.infer<typeof ClassificationInputSchema>
 
+/** CSV パーサと同基準（金額 0 は不正） */
+const AmountSchema = z
+  .number()
+  .int()
+  .refine(value => value !== 0, { message: '金額 0 は許容しない' })
+
 const CreateBodySchema = z.object({
   merchantName: z.string().min(1),
-  amount: z.number().int(),
+  amount: AmountSchema,
   occurredAt: z.coerce.date(),
   classification: ClassificationInputSchema.optional(),
 })
@@ -65,7 +71,7 @@ const CreateBodySchema = z.object({
 const UpdateBodySchema = z
   .object({
     merchantName: z.string().min(1).optional(),
-    amount: z.number().int().optional(),
+    amount: AmountSchema.optional(),
     occurredAt: z.coerce.date().optional(),
   })
   .refine(

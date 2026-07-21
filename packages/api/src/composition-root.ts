@@ -3,12 +3,14 @@ import type {
   AmazonProductKeyLearningRuleRepository,
   BalanceTimeSeriesQuery,
   BulkClassificationSessionRepository,
+  CategoryDeletionRequestRepository,
   CategoryMasterRepository,
   CsvImportStatusQuery,
   DailyMailImportBatchRepository,
   DashboardQuery,
   ExpenseReimbursementDepositRepository,
   ExpenseSettlementManagementQuery,
+  ExpenseTypeDeletionRequestRepository,
   ExpenseTypeMasterRepository,
   MerchantLearningRuleRepository,
   MonthlyExpenseCycleRepository,
@@ -27,10 +29,12 @@ import {
   createNeonHttpDb,
   NeonAmazonProductKeyLearningRuleRepository,
   NeonBulkClassificationSessionRepository,
+  NeonCategoryDeletionRequestRepository,
   NeonCategoryMasterRepository,
   NeonDashboardQuery,
   NeonDailyMailImportBatchRepository,
   NeonExpenseReimbursementDepositRepository,
+  NeonExpenseTypeDeletionRequestRepository,
   NeonExpenseTypeMasterRepository,
   NeonMerchantLearningRuleRepository,
   NeonMonthlyExpenseCycleRepository,
@@ -61,9 +65,11 @@ import {
 import {
   createMockAmazonProductKeyLearningRuleRepository,
   createMockBulkClassificationSessionRepository,
+  createMockCategoryDeletionRequestRepository,
   createMockCategoryMasterRepository,
   createMockDailyMailImportBatchRepository,
   createMockExpenseReimbursementDepositRepository,
+  createMockExpenseTypeDeletionRequestRepository,
   createMockExpenseTypeMasterRepository,
   createMockMerchantLearningRuleRepository,
   createMockMonthlyExpenseCycleRepository,
@@ -88,6 +94,8 @@ export interface AppDeps {
   categoryMasterRepository: CategoryMasterRepository
   expenseTypeMasterRepository: ExpenseTypeMasterRepository
   monthlyLimitRepository: MonthlyLimitRepository
+  categoryDeletionRequestRepository: CategoryDeletionRequestRepository
+  expenseTypeDeletionRequestRepository: ExpenseTypeDeletionRequestRepository
   // 取引コマンド (#22)
   transactionRepository: TransactionRepository
   // 取引取込 (#23)
@@ -120,6 +128,8 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
       categoryMasterRepository: createMockCategoryMasterRepository(),
       expenseTypeMasterRepository: createMockExpenseTypeMasterRepository(),
       monthlyLimitRepository: createMockMonthlyLimitRepository(),
+      categoryDeletionRequestRepository: createMockCategoryDeletionRequestRepository(),
+      expenseTypeDeletionRequestRepository: createMockExpenseTypeDeletionRequestRepository(),
       transactionRepository: createMockTransactionRepository(),
       statementImportJobRepository: createMockStatementImportJobRepository(),
       transactionCandidateRepository: createMockTransactionCandidateRepository(),
@@ -154,6 +164,8 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
     categoryMasterRepository: new NeonCategoryMasterRepository(db),
     expenseTypeMasterRepository: new NeonExpenseTypeMasterRepository(db),
     monthlyLimitRepository: new NeonMonthlyLimitRepository(db),
+    categoryDeletionRequestRepository: new NeonCategoryDeletionRequestRepository(db),
+    expenseTypeDeletionRequestRepository: new NeonExpenseTypeDeletionRequestRepository(db),
     transactionRepository: new NeonTransactionRepository(db),
     statementImportJobRepository: new NeonStatementImportJobRepository(db),
     transactionCandidateRepository: new NeonTransactionCandidateRepository(db),

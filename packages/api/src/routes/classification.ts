@@ -45,10 +45,6 @@ const BulkSessionCreateBodySchema = z.object({
   transactionIds: z.array(TransactionIdSchema).min(1),
 })
 
-const CompleteBodySchema = z.object({
-  processedCount: z.number().int().nonnegative(),
-})
-
 export interface ClassificationRoutesDeps {
   retroactiveCandidateQuery: RetroactiveCandidateQuery
   merchantLearningRuleRepository: MerchantLearningRuleRepository
@@ -227,16 +223,20 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
     return c.json(session)
   })
 
-  /** 一括分類セッションの完了 */
+  /** 一括分類セッションの完了（processedCount は対象取引の実状態から算出する） */
   app.post('/bulk-sessions/:id/complete', async c => {
     const id = BulkClassificationSessionIdSchema.parse(c.req.param('id'))
-    const body = CompleteBodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
     const session = await deps.bulkClassificationSessionRepository.findById(id)
     if (session === null) throw new NotFoundError('BulkClassificationSession', id)
     assertSessionOwnedByViewer(session, viewerId)
     assertInProgress(session)
-    const completed = completeBulkClassificationSession(session, body.processedCount, new Date())
+    let processedCount = 0
+    for (const target of session.common.targets) {
+      const transaction = await deps.transactionRepository.findById(target.transactionId)
+      if (transaction !== null && transaction.kind !== 'unclassified') processedCount++
+    }
+    const completed = completeBulkClassificationSession(session, processedCount, new Date())
     await deps.bulkClassificationSessionRepository.save(completed)
     return c.json(completed)
   })

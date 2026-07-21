@@ -5,6 +5,7 @@ import {
   MonthlyLimitIdSchema,
   MonthlyLimitSchema,
   NotFoundError,
+  PermissionDeniedError,
   YearMonthSchema,
 } from '@warimaru/domain'
 import type {
@@ -33,6 +34,28 @@ function endOfMonth(month: YearMonth): Date {
   return new Date(Date.UTC(year ?? 0, mo ?? 1, 1) - 1)
 }
 
+/**
+ * 対象月の時点で適用されていた上限を changeHistory から復元する。
+ * 月末より後の変更を最古のものまで巻き戻し、その oldCapAmount が当時の上限。
+ * capped ↔ unlimited の切替は仕様上 unlimited が履歴を持たないため復元不可
+ * （現在の値をそのまま返す）。適用開始前（effectiveFrom > 月末）は null。
+ */
+function reconstructForMonth(limit: MonthlyLimit, endOfTargetMonth: Date): MonthlyLimit | null {
+  if (limit.effectiveFrom > endOfTargetMonth) return null
+  if (limit.kind === 'unlimited') return limit
+  const futureChanges = limit.changeHistory
+    .filter(change => change.changedAt > endOfTargetMonth)
+    .sort((a, b) => a.changedAt.getTime() - b.changedAt.getTime())
+  const oldest = futureChanges[0]
+  if (oldest === undefined) return limit
+  return MonthlyLimitSchema.parse({
+    ...limit,
+    capAmount: oldest.oldCapAmount,
+    // 当時見えていた履歴のみ残す
+    changeHistory: limit.changeHistory.filter(change => change.changedAt <= endOfTargetMonth),
+  })
+}
+
 export function monthlyLimitsRoutes(
   monthlyLimitRepository: MonthlyLimitRepository,
   expenseTypeMasterRepository: ExpenseTypeMasterRepository,
@@ -50,10 +73,13 @@ export function monthlyLimitsRoutes(
         ),
       )
     ).filter((limit): limit is MonthlyLimit => limit !== null)
+    const month = params.month
     const items =
-      params.month === undefined
+      month === undefined
         ? limits
-        : limits.filter(limit => limit.effectiveFrom <= endOfMonth(params.month as YearMonth))
+        : limits
+            .map(limit => reconstructForMonth(limit, endOfMonth(month)))
+            .filter((limit): limit is MonthlyLimit => limit !== null)
     return c.json({ items })
   })
 
@@ -64,6 +90,9 @@ export function monthlyLimitsRoutes(
 
     const expenseType = await expenseTypeMasterRepository.findById(body.expenseTypeId)
     if (expenseType === null) throw new NotFoundError('ExpenseTypeMaster', body.expenseTypeId)
+    if (expenseType.scope.kind === 'personal' && expenseType.scope.userId !== viewerId) {
+      throw new PermissionDeniedError('他ユーザーの個人別経費種別には上限を設定できない')
+    }
 
     const existing = await monthlyLimitRepository.findByUserAndExpenseType(
       viewerId,

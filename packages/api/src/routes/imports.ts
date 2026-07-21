@@ -15,6 +15,7 @@ import {
   UploadFileIdSchema,
   YearMonthSchema,
   completeImportJob,
+  confirmCandidate,
   createTransaction,
   failImportJob,
   money,
@@ -46,14 +47,26 @@ const CsvUploadFieldsSchema = z.object({
   fileKind: StatementFileKindSchema.default('card_statement'),
 })
 
+/** アップロード上限（メモリ上で全文パースするため保護的に制限する） */
+const MAX_CSV_FILE_SIZE = 1_000_000
+
+const CsvFileSchema = z
+  .instanceof(File, { message: 'file フィールドに CSV ファイルが必要' })
+  .refine(file => file.size <= MAX_CSV_FILE_SIZE, 'CSV ファイルは 1MB 以下でなければならない')
+
 const ConfirmBodySchema = z.object({
   transactionCandidateIds: z.array(TransactionCandidateIdSchema).min(1).optional(),
 })
 
-const MailBatchBodySchema = z.object({
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
-})
+const MailBatchBodySchema = z
+  .object({
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+  })
+  .refine(body => body.from === undefined || body.to === undefined || body.from <= body.to, {
+    message: 'from は to 以前でなければならない',
+    path: ['from'],
+  })
 
 export interface ImportsRoutesDeps {
   csvImportStatusQuery: CsvImportStatusQuery
@@ -87,10 +100,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
       targetMonth: formData['targetMonth'],
       fileKind: formData['fileKind'] === undefined ? undefined : formData['fileKind'],
     })
-    const file = formData['file']
-    if (!(file instanceof File)) {
-      throw new InvariantViolationError('file フィールドに CSV ファイルが必要')
-    }
+    const file = CsvFileSchema.parse(formData['file'])
     const viewerId = c.get('viewerId')
     const now = new Date()
     const fileRef = UploadFileIdSchema.parse(newUlid())
@@ -120,33 +130,50 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
       return c.json({ job: failed }, 422)
     }
 
+    // 候補生成の途中失敗でもジョブ記録が残るよう、importing 状態を先に永続化する
     const importing = startImporting(validating, new Date())
+    await deps.statementImportJobRepository.save(importing)
+
     let importedCount = 0
     let duplicateExcludedCount = 0
-    for (const row of parsed.rows) {
-      const duplicate = await deps.transactionCandidateRepository.findByTripleMatch(
-        viewerId,
-        row.occurredAt,
-        money(row.amount),
-        row.merchantName,
-      )
-      if (duplicate !== null) {
-        duplicateExcludedCount++
-        continue
+    try {
+      for (const row of parsed.rows) {
+        const duplicate = await deps.transactionCandidateRepository.findByTripleMatch(
+          viewerId,
+          row.occurredAt,
+          money(row.amount),
+          row.merchantName,
+        )
+        if (duplicate !== null) {
+          duplicateExcludedCount++
+          continue
+        }
+        const candidate = TransactionCandidateSchema.parse({
+          kind: 'normal',
+          common: {
+            transactionCandidateId: TransactionCandidateIdSchema.parse(newUlid()),
+            userId: viewerId,
+            importSource: { kind: 'csv', csvFileId: fileRef, rowNumber: row.rowNumber },
+            merchantName: row.merchantName,
+            amount: row.amount,
+            occurredAt: row.occurredAt,
+          },
+        })
+        await deps.transactionCandidateRepository.save(candidate)
+        importedCount++
       }
-      const candidate = TransactionCandidateSchema.parse({
-        kind: 'normal',
-        common: {
-          transactionCandidateId: TransactionCandidateIdSchema.parse(newUlid()),
-          userId: viewerId,
-          importSource: { kind: 'csv', csvFileId: fileRef, rowNumber: row.rowNumber },
-          merchantName: row.merchantName,
-          amount: row.amount,
-          occurredAt: row.occurredAt,
+    } catch (e) {
+      const failed = failImportJob(
+        importing,
+        {
+          kind: 'import_error',
+          failureDetail: e instanceof Error ? e.message : String(e),
+          detectedAt: new Date(),
         },
-      })
-      await deps.transactionCandidateRepository.save(candidate)
-      importedCount++
+        new Date(),
+      )
+      await deps.statementImportJobRepository.save(failed)
+      throw e
     }
 
     const completed = completeImportJob(
@@ -196,14 +223,21 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
         ? all
         : all.filter(candidate => targetIds.includes(candidate.common.transactionCandidateId))
 
+    // 冪等性: 確定済み候補はスキップし、取引 ID は候補 ULID を決定的に再利用する。
+    // 「取引 upsert → 候補 confirmed 保存」の間でクラッシュしても、再実行は
+    // 同一 PK への upsert となり取引が重複しない。
+    const confirmable = targets.filter(candidate => candidate.kind !== 'confirmed')
+    const alreadyConfirmedCount = targets.length - confirmable.length
+
     const defaultExpenseClass = roleToPersonalExpenseClass(await deps.resolveViewerRole(viewerId))
     const now = new Date()
     let confirmedCount = 0
-    for (const candidate of targets) {
+    for (const candidate of confirmable) {
+      const transactionId = TransactionIdSchema.parse(candidate.common.transactionCandidateId)
       const transaction = createTransaction({
         kind: 'unclassified',
         common: {
-          transactionId: TransactionIdSchema.parse(newUlid()),
+          transactionId,
           ownerUserId: viewerId,
           merchantName: candidate.common.merchantName,
           amount: candidate.common.amount,
@@ -214,9 +248,12 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
         defaultExpenseClass,
       })
       await deps.transactionRepository.save(transaction)
+      await deps.transactionCandidateRepository.save(
+        confirmCandidate(candidate, transactionId, now),
+      )
       confirmedCount++
     }
-    return c.json({ importJobId, confirmedCount, confirmedAt: now })
+    return c.json({ importJobId, confirmedCount, alreadyConfirmedCount, confirmedAt: now })
   })
 
   /** メール取込バッチの手動トリガー（EventBridge 連携前の手動実行用） */
