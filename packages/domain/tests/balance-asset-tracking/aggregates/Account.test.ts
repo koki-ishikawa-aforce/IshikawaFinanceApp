@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { AccountSchema } from '../../../src/balance-asset-tracking/aggregates/Account'
+import {
+  AccountSchema,
+  applySmbcBalanceChange,
+  type SmbcBankAccount,
+} from '../../../src/balance-asset-tracking/aggregates/Account'
 
 const baseCommon = {
   accountId: '01ACC000000000000000000001' as never,
@@ -103,5 +107,39 @@ describe('Account 集約', () => {
         },
       }),
     ).not.toThrow()
+  })
+})
+
+// --- #65: SMBC 口座残高更新 ---
+
+describe('applySmbcBalanceChange()', () => {
+  const smbcAccount = () =>
+    AccountSchema.parse({
+      kind: 'smbc_bank',
+      common: baseCommon,
+      balance: {
+        currentBalance: 100000 as never,
+        initialBalance: 100000 as never,
+        initialBalanceBaselineAt: new Date('2026-04-01'),
+        lastUpdatedAt: new Date('2026-04-01'),
+      },
+    }) as SmbcBankAccount
+
+  it('正の delta（入金）で残高を加算し、最終更新日時を進める', () => {
+    const at = new Date('2026-04-25')
+    const updated = applySmbcBalanceChange(smbcAccount(), 30000 as never, at)
+    expect(updated.balance.currentBalance).toBe(130000)
+    expect(updated.balance.lastUpdatedAt).toEqual(at)
+  })
+
+  it('負の delta（出金・引落消込変動）で残高を減算する', () => {
+    const updated = applySmbcBalanceChange(smbcAccount(), -8000 as never, new Date('2026-05-26'))
+    expect(updated.balance.currentBalance).toBe(92000)
+  })
+
+  it('初期残高・基準時刻は変更されない', () => {
+    const updated = applySmbcBalanceChange(smbcAccount(), -8000 as never, new Date('2026-05-26'))
+    expect(updated.balance.initialBalance).toBe(100000)
+    expect(updated.balance.initialBalanceBaselineAt).toEqual(new Date('2026-04-01'))
   })
 })

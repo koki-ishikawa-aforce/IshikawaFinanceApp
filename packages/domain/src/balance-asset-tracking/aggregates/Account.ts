@@ -12,7 +12,7 @@
  */
 import { z } from 'zod'
 import { AccountIdSchema, UserIdSchema, MitsuiSumitomoUnpaidIdSchema } from '../../shared/ids'
-import { MoneySchema } from '../../shared/value-objects/Money'
+import { MoneySchema, money, type Money } from '../../shared/value-objects/Money'
 import { BankNameSchema } from '../value-objects/BankName'
 import { BrokerageNameSchema } from '../value-objects/BrokerageName'
 
@@ -94,3 +94,23 @@ export type SmbcBankAccount = Extract<Account, { kind: 'smbc_bank' }>
 export type MitsuiSumitomoCardAccount = Extract<Account, { kind: 'mitsui_sumitomo_card' }>
 export type OtherSavingsAccount = Extract<Account, { kind: 'other_savings' }>
 export type NisaAccount = Extract<Account, { kind: 'nisa' }>
+
+/**
+ * behavior 取引で口座残高を更新する（08d §2）
+ * 事後: 経費(会社) 取引も含む全取引を反映する（家計分析と扱いが異なる）。
+ * 入金は正の delta、出金・引落消込変動は負の delta として適用し、最終更新日時を進める。
+ */
+export function applySmbcBalanceChange(
+  account: SmbcBankAccount,
+  delta: Money,
+  at: Date,
+): SmbcBankAccount {
+  return AccountSchema.parse({
+    ...account,
+    balance: {
+      ...account.balance,
+      currentBalance: money(account.balance.currentBalance + delta),
+      lastUpdatedAt: at,
+    },
+  }) as SmbcBankAccount
+}

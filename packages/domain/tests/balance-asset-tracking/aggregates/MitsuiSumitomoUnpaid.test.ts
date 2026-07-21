@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { MitsuiSumitomoUnpaidSchema } from '../../../src/balance-asset-tracking/aggregates/MitsuiSumitomoUnpaid'
+import {
+  MitsuiSumitomoUnpaidSchema,
+  bookUnpaid,
+  settleUnpaid,
+} from '../../../src/balance-asset-tracking/aggregates/MitsuiSumitomoUnpaid'
+import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 
 describe('MitsuiSumitomoUnpaid 集約', () => {
   it('当月未払金合計 = Σ 計上中エントリ金額が一致すれば parse 成功', () => {
@@ -88,5 +93,123 @@ describe('MitsuiSumitomoUnpaid 集約', () => {
         lastSettledAt: null,
       }),
     ).not.toThrow()
+  })
+})
+
+// --- #65: 未払金の計上・消込 ---
+
+const emptyUnpaid = () =>
+  MitsuiSumitomoUnpaidSchema.parse({
+    unpaidAggregateId: '01NP0000000000000000000001' as never,
+    accountId: '01ACC000000000000000000001' as never,
+    currentMonthUnpaidTotal: 0 as never,
+    entries: [],
+    lastSettledAt: null,
+  })
+
+describe('bookUnpaid()', () => {
+  it('計上中エントリを追加し、当月未払金合計に加算する', () => {
+    const booked = bookUnpaid(emptyUnpaid(), {
+      entryId: '01ENT000000000000000000001' as never,
+      transactionId: '01TX0000000000000000000001' as never,
+      amount: 3000 as never,
+      bookedAt: new Date('2026-04-10'),
+    })
+    const again = bookUnpaid(booked, {
+      entryId: '01ENT000000000000000000002' as never,
+      transactionId: '01TX0000000000000000000002' as never,
+      amount: 5000 as never,
+      bookedAt: new Date('2026-04-12'),
+    })
+
+    expect(again.currentMonthUnpaidTotal).toBe(8000)
+    expect(again.entries).toHaveLength(2)
+    expect(again.entries.every(e => e.kind === 'booked')).toBe(true)
+  })
+
+  it('同一取引IDの二重計上は InvariantViolationError', () => {
+    const booked = bookUnpaid(emptyUnpaid(), {
+      entryId: '01ENT000000000000000000001' as never,
+      transactionId: '01TX0000000000000000000001' as never,
+      amount: 3000 as never,
+      bookedAt: new Date('2026-04-10'),
+    })
+    expect(() =>
+      bookUnpaid(booked, {
+        entryId: '01ENT000000000000000000002' as never,
+        transactionId: '01TX0000000000000000000001' as never,
+        amount: 3000 as never,
+        bookedAt: new Date('2026-04-11'),
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('settleUnpaid()', () => {
+  const bookedTwo = () =>
+    bookUnpaid(
+      bookUnpaid(emptyUnpaid(), {
+        entryId: '01ENT000000000000000000001' as never,
+        transactionId: '01TX0000000000000000000001' as never,
+        amount: 3000 as never,
+        bookedAt: new Date('2026-04-10'),
+      }),
+      {
+        entryId: '01ENT000000000000000000002' as never,
+        transactionId: '01TX0000000000000000000002' as never,
+        amount: 5000 as never,
+        bookedAt: new Date('2026-04-12'),
+      },
+    )
+
+  it('全計上中エントリを引落消込済みに遷移し、当月未払金合計は 0 になる', () => {
+    const settledAt = new Date('2026-05-26')
+    const { unpaid, settledEntries, settledTotal } = settleUnpaid(
+      bookedTwo(),
+      'notice_202605' as never,
+      settledAt,
+    )
+
+    expect(unpaid.currentMonthUnpaidTotal).toBe(0)
+    expect(unpaid.entries).toHaveLength(2)
+    expect(unpaid.entries.every(e => e.kind === 'settled')).toBe(true)
+    expect(unpaid.lastSettledAt).toEqual(settledAt)
+    expect(settledEntries).toHaveLength(2)
+    expect(settledEntries.every(e => e.settlementNoticeId === 'notice_202605')).toBe(true)
+    expect(settledTotal).toBe(8000)
+  })
+
+  it('消込後にさらに計上→消込すると、過去の消込済みエントリは保持される', () => {
+    const first = settleUnpaid(bookedTwo(), 'notice_202605' as never, new Date('2026-05-26'))
+    const rebooked = bookUnpaid(first.unpaid, {
+      entryId: '01ENT000000000000000000003' as never,
+      transactionId: '01TX0000000000000000000003' as never,
+      amount: 2000 as never,
+      bookedAt: new Date('2026-06-01'),
+    })
+    const second = settleUnpaid(rebooked, 'notice_202606' as never, new Date('2026-06-26'))
+
+    expect(second.unpaid.entries).toHaveLength(3)
+    expect(second.settledTotal).toBe(2000)
+    expect(second.unpaid.currentMonthUnpaidTotal).toBe(0)
+  })
+
+  it('同一 settlementNoticeId の重複適用は InvariantViolationError（冪等性）', () => {
+    const first = settleUnpaid(bookedTwo(), 'notice_202605' as never, new Date('2026-05-26'))
+    const rebooked = bookUnpaid(first.unpaid, {
+      entryId: '01ENT000000000000000000003' as never,
+      transactionId: '01TX0000000000000000000003' as never,
+      amount: 2000 as never,
+      bookedAt: new Date('2026-06-01'),
+    })
+    expect(() => settleUnpaid(rebooked, 'notice_202605' as never, new Date('2026-06-26'))).toThrow(
+      InvariantViolationError,
+    )
+  })
+
+  it('計上中エントリが 0 件なら InvariantViolationError', () => {
+    expect(() => settleUnpaid(emptyUnpaid(), 'notice_202605' as never, new Date())).toThrow(
+      InvariantViolationError,
+    )
   })
 })

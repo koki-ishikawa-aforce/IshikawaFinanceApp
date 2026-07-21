@@ -14,13 +14,17 @@ import {
   ExpenseReimbursementIdSchema,
   CategoryIdSchema,
   type ExpenseReimbursementId,
+  type TransactionId,
+  type UserId,
 } from '../../shared/ids'
 import { MoneySchema } from '../../shared/value-objects/Money'
 import { YearMonthSchema } from '../../shared/value-objects/YearMonth'
+import { type UserRole } from '../../shared/value-objects/UserRole'
 import {
   UnapprovedExpenseTransferSchema,
   type UnapprovedExpenseTransfer,
 } from '../../shared/value-objects/UnapprovedExpenseTransfer'
+import { type Transaction } from './Transaction'
 
 /** 残高推移パート（残高・資産推移管理から借用する Read-only データ） */
 export const BalanceTrendSchema = z.object({
@@ -73,6 +77,100 @@ export type MonthlyReport = z.infer<typeof MonthlyReportSchema>
 
 export type CsvConfirmedReport = Extract<MonthlyReport, { kind: 'csv_confirmed' }>
 export type FinalizedReport = Extract<MonthlyReport, { kind: 'finalized' }>
+
+/** 月次レポート集計値（共通属性のうち、確定済み取引から算出する費用区分別合計） */
+export const MonthlyReportTotalsSchema = CommonMonthlyReportAttrsSchema.pick({
+  householdCategoryTotals: true,
+  personalTotalHoney: true,
+  personalTotalDarling: true,
+  businessExpenseTotalHoney: true,
+  businessExpenseTotalDarling: true,
+})
+export type MonthlyReportTotals = z.infer<typeof MonthlyReportTotalsSchema>
+
+/**
+ * 分類済み取引から月次レポート集計値を算出する。
+ * - 未分類・削除済み取引は集計対象外
+ * - 経費(会社) は世帯・個人の集計から除外し、所有者役割別の経費合計にのみ計上する（非対称ルール）
+ */
+export function aggregateMonthlyReportTotals(
+  transactions: readonly Transaction[],
+  roleOfOwner: (userId: UserId) => UserRole,
+): MonthlyReportTotals {
+  const householdByCategory = new Map<string, number>()
+  let personalTotalHoney = 0
+  let personalTotalDarling = 0
+  let businessExpenseTotalHoney = 0
+  let businessExpenseTotalDarling = 0
+
+  for (const tx of transactions) {
+    if (tx.kind !== 'classified') continue
+    const amount = tx.common.amount
+    switch (tx.details.expenseClass) {
+      case 'household': {
+        const categoryId = tx.details.categoryId
+        householdByCategory.set(categoryId, (householdByCategory.get(categoryId) ?? 0) + amount)
+        break
+      }
+      case 'personal_honey':
+        personalTotalHoney += amount
+        break
+      case 'personal_darling':
+        personalTotalDarling += amount
+        break
+      case 'business_expense':
+        if (roleOfOwner(tx.common.ownerUserId) === 'honey') {
+          businessExpenseTotalHoney += amount
+        } else {
+          businessExpenseTotalDarling += amount
+        }
+        break
+    }
+  }
+
+  return MonthlyReportTotalsSchema.parse({
+    householdCategoryTotals: [...householdByCategory].map(([categoryId, total]) => ({
+      categoryId,
+      total,
+    })),
+    personalTotalHoney,
+    personalTotalDarling,
+    businessExpenseTotalHoney,
+    businessExpenseTotalDarling,
+  })
+}
+
+/** behavior 月次レポートをCSV確定状態に昇格する（08c §2） */
+export function confirmCsv(
+  common: CommonMonthlyReportAttrs,
+  causingTransactionIds: TransactionId[],
+  csvConfirmedAt: Date,
+): CsvConfirmedReport {
+  return MonthlyReportSchema.parse({
+    kind: 'csv_confirmed',
+    common,
+    csvConfirmedAt,
+    causingTransactionIds,
+  }) as CsvConfirmedReport
+}
+
+/**
+ * CSV確定済みレポートの再集計。レポートID・対象年月は変更不可（元レポートから引き継ぐ）。
+ * finalized レポートは型として受け付けない（CSV確定 → 最終確定 の単方向遷移を維持）。
+ */
+export function refreshCsvConfirmed(
+  report: CsvConfirmedReport,
+  totals: MonthlyReportTotals,
+  causingTransactionIds: TransactionId[],
+  csvConfirmedAt: Date,
+): CsvConfirmedReport {
+  return MonthlyReportSchema.parse({
+    kind: 'csv_confirmed',
+    common: { ...report.common, ...totals },
+    csvConfirmedAt,
+    causingTransactionIds,
+  }) as CsvConfirmedReport
+}
 
 /** 状態遷移: CSV確定 → 最終確定（単方向） */
 export function finalize(

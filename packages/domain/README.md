@@ -20,7 +20,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### household-analysis（家計分析）
 
-- 集約: `Transaction`（`unclassified` / `classified` / `deleted`）, `MonthlyReport`（`csv_confirmed` / `finalized`）
+- 集約: `Transaction`（`unclassified` / `classified` / `deleted`）, `MonthlyReport`（`csv_confirmed` / `finalized`。CSV確定昇格 `confirmCsv` / 再集計 `refreshCsvConfirmed` / 取引集計 `aggregateMonthlyReportTotals`（`MonthlyReportTotals`）を含む）
 - Repository I/F: `TransactionRepository`, `MonthlyReportRepository`
 - Query I/F: `DashboardQuery`, `MonthlyReportQuery`, `TransactionListQuery`
 - View 型: `DashboardKpisView`, `CategoryBreakdownView`, `MonthlyReportView`, `TransactionListItem`
@@ -29,7 +29,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### balance-asset-tracking（残高・資産推移管理）
 
-- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`）, `MitsuiSumitomoUnpaid`
+- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`。SMBC 残高更新 `applySmbcBalanceChange` を含む）, `MitsuiSumitomoUnpaid`（未払金計上 `bookUnpaid` / 消込 `settleUnpaid` を含む）
 - 値オブジェクト: `BankName`, `BrokerageName`（および `brokerageNameToDisplay`）
 - Repository I/F: `AccountRepository`, `MitsuiSumitomoUnpaidRepository`
 - Query I/F: `AccountBalanceQuery`, `BalanceTimeSeriesQuery`
