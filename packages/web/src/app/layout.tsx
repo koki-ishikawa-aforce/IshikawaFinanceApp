@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Zen_Maru_Gothic } from 'next/font/google'
 import { Providers } from './providers'
+import { AppNav } from '@/components/ui/AppNav'
 import './globals.css'
 
 const zenMaruGothic = Zen_Maru_Gothic({
@@ -24,7 +25,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={zenMaruGothic.variable}
     >
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <AppNav />
+        </Providers>
       </body>
     </html>
   )

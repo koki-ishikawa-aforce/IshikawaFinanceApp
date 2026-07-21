@@ -1,0 +1,118 @@
+.main {
+  max-width: 300px;
+  margin: 0 auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100dvh;
+}
+
+.note {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.statusDone {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.failedBadge {
+  display: inline-block;
+  border-radius: 8px;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  background: #c04050;
+  color: #ffffff;
+}
+
+.summaryList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.candidateList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.candidateRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  padding-bottom: 6px;
+}
+
+.candidateRow:last-child {
+  border-bottom: none;
+}
+
+.candidateLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.candidateBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.candidateDate {
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.candidateMerchant {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.candidateAmount {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.smallGhost {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-family);
+  cursor: pointer;
+}

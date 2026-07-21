@@ -1,0 +1,180 @@
+.card {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 14px;
+  padding: 11px 12px;
+  box-shadow: 0 2px 8px var(--shadow-color);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.pageTitle {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-primary);
+  text-align: center;
+  padding-top: 4px;
+}
+
+.button {
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-family);
+  padding: 8px 12px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px var(--shadow-color);
+  transition: opacity 0.15s;
+}
+
+.button:hover {
+  opacity: 0.85;
+}
+
+.button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.buttonGhost {
+  border: 1.5px solid var(--accent);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-family);
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.buttonGhost:hover {
+  opacity: 0.7;
+}
+
+.buttonGhost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.buttonDanger {
+  border: none;
+  border-radius: 10px;
+  background: #c04050;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-family);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.buttonDanger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.input {
+  width: 100%;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-family);
+  color: var(--text-primary);
+}
+
+.input:focus {
+  outline: 2px solid var(--accent);
+  border-color: transparent;
+}
+
+.select {
+  width: 100%;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-family);
+  color: var(--text-primary);
+}
+
+.fieldLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.loading {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 20px 0;
+}
+
+.error {
+  text-align: center;
+  font-size: 12px;
+  color: #a02828;
+  padding: 12px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 16px 0;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 8px;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary);
+}
+
+.badgeAccent {
+  display: inline-block;
+  border-radius: 8px;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rowBetween {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}

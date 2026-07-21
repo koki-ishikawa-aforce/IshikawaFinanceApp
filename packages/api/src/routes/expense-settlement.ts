@@ -73,6 +73,17 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
     return c.json(result)
   })
 
+  /** 対象月のサイクル取得（Web の確定操作 UI がサイクル ID と状態を得るために使う） */
+  app.get('/cycles', async c => {
+    const params = z.object({ month: YearMonthSchema }).parse({ month: c.req.query('month') })
+    const viewerId = c.get('viewerId')
+    const cycle = await deps.monthlyExpenseCycleRepository.findByUserAndMonth(
+      viewerId,
+      params.month,
+    )
+    return c.json({ cycle })
+  })
+
   /** 月次経費精算サイクルの開始 */
   app.post('/cycles', async c => {
     const body = CycleCreateBodySchema.parse(await c.req.json())

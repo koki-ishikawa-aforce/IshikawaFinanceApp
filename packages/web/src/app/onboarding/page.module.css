@@ -1,0 +1,121 @@
+.main {
+  max-width: 300px;
+  margin: 0 auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100dvh;
+}
+
+.stepper {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+.stepDot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.45;
+}
+
+.stepActive {
+  opacity: 1;
+}
+
+.stepDone {
+  opacity: 0.8;
+}
+
+.stepIndex {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stepActive .stepIndex {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.stepDone .stepIndex {
+  background: var(--accent);
+  color: #ffffff;
+  opacity: 0.7;
+}
+
+.stepLabel {
+  font-size: 7px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.stepAvatar {
+  font-size: 32px;
+  text-align: center;
+  padding: 4px 0;
+}
+
+.note {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.backLink {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-family);
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: center;
+}
+
+.sectionRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding-top: 8px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sectionBadge {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sectionName {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+}

@@ -1,0 +1,137 @@
+.main {
+  max-width: 300px;
+  margin: 0 auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100dvh;
+}
+
+.note {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.cycleActions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cycleMeta {
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.smallButton {
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-family);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.accumulationList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.accumulation {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  padding-bottom: 8px;
+}
+
+.accumulation:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.accumulationName {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.accumulationTotal {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.accumulationCap {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.accumulationMeta {
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.capTag {
+  border-radius: 8px;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  background: #ffb84d;
+  color: #6a4000;
+}
+
+.progressTrack {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+}
+
+.progressBar {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.progressFull {
+  background: #e08030;
+}
+
+.childList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.childLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.childDate {
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.childTarget {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.childAmount {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
