@@ -129,10 +129,12 @@ export function aggregateMonthlyReportTotals(
   }
 
   return MonthlyReportTotalsSchema.parse({
-    householdCategoryTotals: [...householdByCategory].map(([categoryId, total]) => ({
-      categoryId,
-      total,
-    })),
+    householdCategoryTotals: [...householdByCategory]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([categoryId, total]) => ({
+        categoryId,
+        total,
+      })),
     personalTotalHoney,
     personalTotalDarling,
     businessExpenseTotalHoney,
@@ -155,19 +157,19 @@ export function confirmCsv(
 }
 
 /**
- * CSV確定済みレポートの再集計。レポートID・対象年月は変更不可（元レポートから引き継ぐ）。
+ * CSV確定済みレポートの再集計。レポートID・対象年月・CSV確定日時は変更不可（元レポートから
+ * 引き継ぐ。再集計は新たな CSV 確定ではないため、08c §1 の CSV確定日時は動かさない）。
  * finalized レポートは型として受け付けない（CSV確定 → 最終確定 の単方向遷移を維持）。
  */
 export function refreshCsvConfirmed(
   report: CsvConfirmedReport,
   totals: MonthlyReportTotals,
   causingTransactionIds: TransactionId[],
-  csvConfirmedAt: Date,
 ): CsvConfirmedReport {
   return MonthlyReportSchema.parse({
     kind: 'csv_confirmed',
     common: { ...report.common, ...totals },
-    csvConfirmedAt,
+    csvConfirmedAt: report.csvConfirmedAt,
     causingTransactionIds,
   }) as CsvConfirmedReport
 }

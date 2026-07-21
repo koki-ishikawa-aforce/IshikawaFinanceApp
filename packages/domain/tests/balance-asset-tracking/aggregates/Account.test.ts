@@ -4,6 +4,7 @@ import {
   applySmbcBalanceChange,
   type SmbcBankAccount,
 } from '../../../src/balance-asset-tracking/aggregates/Account'
+import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 
 const baseCommon = {
   accountId: '01ACC000000000000000000001' as never,
@@ -141,5 +142,29 @@ describe('applySmbcBalanceChange()', () => {
     const updated = applySmbcBalanceChange(smbcAccount(), -8000 as never, new Date('2026-05-26'))
     expect(updated.balance.initialBalance).toBe(100000)
     expect(updated.balance.initialBalanceBaselineAt).toEqual(new Date('2026-04-01'))
+  })
+
+  it('非アクティブ口座への残高変動は InvariantViolationError（09-aggregates #9）', () => {
+    const inactive = AccountSchema.parse({
+      kind: 'smbc_bank',
+      common: {
+        ...baseCommon,
+        activeness: {
+          kind: 'inactive',
+          inactivatedAt: new Date('2026-05-01'),
+          reason: '解約済み',
+        },
+      },
+      balance: {
+        currentBalance: 100000 as never,
+        initialBalance: 100000 as never,
+        initialBalanceBaselineAt: new Date('2026-04-01'),
+        lastUpdatedAt: new Date('2026-04-01'),
+      },
+    }) as SmbcBankAccount
+
+    expect(() => applySmbcBalanceChange(inactive, 1000 as never, new Date('2026-05-26'))).toThrow(
+      InvariantViolationError,
+    )
   })
 })

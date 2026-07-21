@@ -6,7 +6,7 @@
  *
  * 不変条件:
  *  - 当月未払金合計 = Σ 計上中エントリ金額（集約内整合）
- *  - 引落消込変動は冪等（同一 settlementNoticeId で重複適用しない、Phase 5 の application service で保証）
+ *  - 引落消込変動は冪等（同一 settlementNoticeId で重複適用しない。settleUnpaid が集約内で保証）
  */
 import { z } from 'zod'
 import {
@@ -19,7 +19,7 @@ import {
   type UnpaidEntryId,
   type SettlementNoticeId,
 } from '../../shared/ids'
-import { MoneySchema, money, type Money } from '../../shared/value-objects/Money'
+import { MoneySchema, money, addMoney, type Money } from '../../shared/value-objects/Money'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
 
 export const UnpaidEntrySchema = z.discriminatedUnion('kind', [
@@ -85,7 +85,7 @@ export function bookUnpaid(
   return MitsuiSumitomoUnpaidSchema.parse({
     unpaidAggregateId: unpaid.unpaidAggregateId,
     accountId: unpaid.accountId,
-    currentMonthUnpaidTotal: unpaid.currentMonthUnpaidTotal + entry.amount,
+    currentMonthUnpaidTotal: addMoney(unpaid.currentMonthUnpaidTotal, entry.amount),
     entries: [...unpaid.entries, { kind: 'booked', ...entry }],
     lastSettledAt: unpaid.lastSettledAt,
   })
@@ -95,7 +95,9 @@ export function bookUnpaid(
  * behavior 引落確定通知で未払金を消込する（08d §2）
  * 事後: 全計上中エントリが引落消込済みに遷移し、当月未払金合計は 0 になる。
  *       戻り値の settledTotal が SMBC 残高から減算すべき引落消込変動。
- * 同一 settlementNoticeId の重複適用は InvariantViolationError で拒否する（冪等性）。
+ * 同一 settlementNoticeId の重複適用は InvariantViolationError で拒否する。
+ * 契約: 同一通知の再受信（リトライ）時、呼び出し側はこのエラーを「適用済みのため
+ * スキップ」として扱ってよい（残高減算などの後続処理も再実行しないこと）。
  */
 export function settleUnpaid(
   unpaid: MitsuiSumitomoUnpaid,
@@ -124,7 +126,7 @@ export function settleUnpaid(
       settlementNoticeId,
     }),
   )
-  const settledTotal = money(booked.reduce((acc, e) => acc + e.amount, 0))
+  const settledTotal = booked.reduce((acc, e) => addMoney(acc, e.amount), money(0))
   const next = MitsuiSumitomoUnpaidSchema.parse({
     unpaidAggregateId: unpaid.unpaidAggregateId,
     accountId: unpaid.accountId,

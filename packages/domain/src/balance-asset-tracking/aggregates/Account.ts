@@ -12,7 +12,8 @@
  */
 import { z } from 'zod'
 import { AccountIdSchema, UserIdSchema, MitsuiSumitomoUnpaidIdSchema } from '../../shared/ids'
-import { MoneySchema, money, type Money } from '../../shared/value-objects/Money'
+import { MoneySchema, addMoney, type Money } from '../../shared/value-objects/Money'
+import { InvariantViolationError } from '../../shared/errors/DomainError'
 import { BankNameSchema } from '../value-objects/BankName'
 import { BrokerageNameSchema } from '../value-objects/BrokerageName'
 
@@ -99,17 +100,26 @@ export type NisaAccount = Extract<Account, { kind: 'nisa' }>
  * behavior 取引で口座残高を更新する（08d §2）
  * 事後: 経費(会社) 取引も含む全取引を反映する（家計分析と扱いが異なる）。
  * 入金は正の delta、出金・引落消込変動は負の delta として適用し、最終更新日時を進める。
+ *
+ * 不変条件: 非アクティブ口座への残高変動は適用しない（09-aggregates #9）。
+ * 事前: 呼び出し側は変動の発生順に適用する（lastUpdatedAt は家計分析の残高鮮度評価に
+ * 借用されるため、順不同適用は鮮度評価を狂わせる）。
  */
 export function applySmbcBalanceChange(
   account: SmbcBankAccount,
   delta: Money,
   at: Date,
 ): SmbcBankAccount {
+  if (account.common.activeness.kind === 'inactive') {
+    throw new InvariantViolationError(
+      `非アクティブ口座（${account.common.accountId}）へ残高変動は適用できない`,
+    )
+  }
   return AccountSchema.parse({
     ...account,
     balance: {
       ...account.balance,
-      currentBalance: money(account.balance.currentBalance + delta),
+      currentBalance: addMoney(account.balance.currentBalance, delta),
       lastUpdatedAt: at,
     },
   }) as SmbcBankAccount

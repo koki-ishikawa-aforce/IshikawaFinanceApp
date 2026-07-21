@@ -234,7 +234,7 @@ describe('confirmCsv() / refreshCsvConfirmed()', () => {
     ).toThrow()
   })
 
-  it('refreshCsvConfirmed() は集計値と起因取引IDを更新し、レポートID・対象年月は引き継ぐ', () => {
+  it('refreshCsvConfirmed() は集計値と起因取引IDを更新し、レポートID・対象年月・CSV確定日時は引き継ぐ', () => {
     const report = confirmCsv(
       baseCommon as never,
       ['01TX0000000000000000000001' as never],
@@ -252,7 +252,6 @@ describe('confirmCsv() / refreshCsvConfirmed()', () => {
         businessExpenseTotalDarling: 0 as never,
       },
       ['01TX0000000000000000000001' as never, '01TX0000000000000000000002' as never],
-      new Date('2026-05-02'),
     )
 
     expect(refreshed.kind).toBe('csv_confirmed')
@@ -260,6 +259,6 @@ describe('confirmCsv() / refreshCsvConfirmed()', () => {
     expect(refreshed.common.targetYearMonth).toBe(baseCommon.targetYearMonth)
     expect(refreshed.common.personalTotalHoney).toBe(1200)
     expect(refreshed.causingTransactionIds).toHaveLength(2)
-    expect(refreshed.csvConfirmedAt).toEqual(new Date('2026-05-02'))
+    expect(refreshed.csvConfirmedAt).toEqual(new Date('2026-05-01'))
   })
 })
