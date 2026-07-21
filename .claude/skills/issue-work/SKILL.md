@@ -1,11 +1,25 @@
 ---
 name: issue-work
-description: GitHub Issue を起点に実装から PR 作成まで行う。Issue 番号を指定して実装を依頼されたときに使用する。
+description: GitHub Issue を起点に実装から PR 作成まで行う。Issue 番号を指定した実装依頼、または「次のタスクをやって」のように番号なしで実装を依頼されたときに使用する。
 ---
 
 # Issue 実装ワークフロー
 
 GitHub Issue を起点に、実装 → 検証ループ → DDD レビュー → PR → CI green までを一貫して行う。
+
+## 0. Issue の選定(番号が指定されなかった場合のみ)
+
+番号なしで起動されたら、着手すべき Issue を自動選定する:
+
+1. `gh issue list --state open --json number,title,labels,assignees,createdAt` で open な Issue を取得する
+2. 以下の優先順で候補を1つ選ぶ:
+   - `priority:high` などの優先度ラベルが付いているもの
+   - 本文中で他の open Issue に依存していない(ブロックされていない)もの
+   - 同条件なら作成が古いもの
+3. 他の人が assign 済みのもの、進行中の PR にリンク済みのものは除外する
+4. **選んだ Issue の番号・タイトル・選定理由を提示し、ユーザーの了承を得てから**手順1に進む(別候補があればそれも1行で添える)
+
+open な Issue が1件もなければ、その旨を報告して `/issue-create` を提案する。
 
 ## 1. Issue の理解
 
