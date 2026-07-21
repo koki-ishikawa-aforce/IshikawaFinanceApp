@@ -18,3 +18,30 @@ export const FALLBACK_CATEGORY_COLORS = [
 ]
 
 export type Theme = 'darling' | 'honey'
+
+const CATEGORY_COLORS: Record<Theme, Record<string, string>> = {
+  darling: CATEGORY_COLORS_DARLING,
+  honey: CATEGORY_COLORS_HONEY,
+}
+
+export function getCategoryColors(theme: Theme): Record<string, string> {
+  return CATEGORY_COLORS[theme]
+}
+
+const DECORATIVE_EMOJI: Record<Theme, readonly string[]> = {
+  darling: ['✨', '💖', '🌸'],
+  honey: ['⭐', '⭐', '⭐'],
+}
+
+export function getDecorativeEmoji(theme: Theme): readonly string[] {
+  return DECORATIVE_EMOJI[theme]
+}
+
+const HERO_DECORATION_EMOJI: Record<Theme, string> = {
+  darling: '✨',
+  honey: '⭐',
+}
+
+export function getHeroDecorationEmoji(theme: Theme): string {
+  return HERO_DECORATION_EMOJI[theme]
+}
