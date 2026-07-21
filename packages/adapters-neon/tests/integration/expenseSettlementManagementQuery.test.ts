@@ -72,6 +72,31 @@ describe('NeonExpenseSettlementManagementQuery', () => {
     expect(view.latestFinalizedCycle?.unapprovedTotal).toBe(200)
   })
 
+  it('targetMonth 指定で過去月のサイクルの累計・按分子取引を返す', async () => {
+    const childId = newUlid()
+    const child = proratedChild({ userId: HONEY_USER_ID, childTransactionId: childId })
+    await childRepo.save(child)
+    const past = finalizedCycle({
+      userId: HONEY_USER_ID,
+      targetYearMonth: ym('2026-05'),
+      transferAmounts: [300],
+      accumulations: [
+        capReachedAccumulation({ userId: HONEY_USER_ID, childTransactionId: childId }),
+      ],
+      childTransactionIds: [childId],
+    })
+    await cycleRepo.save(past)
+    await cycleRepo.save(
+      accumulatingCycle({ userId: HONEY_USER_ID, targetYearMonth: ym('2026-07') }),
+    )
+
+    const view = await query.fetch(HONEY_USER_ID, ym('2026-05'))
+    expect(view.currentAccumulations).toEqual(past.common.accumulations)
+    expect(view.currentChildTransactions).toEqual([child])
+    // latestFinalizedCycle は targetMonth に依らず直近の最終確定
+    expect(view.latestFinalizedCycle?.targetYearMonth).toBe(ym('2026-05'))
+  })
+
   it('論点11: 配偶者のデータは混入しない（配偶者のサイクルしかない月は空 view）', async () => {
     await cycleRepo.save(
       accumulatingCycle({ userId: DARLING_USER_ID, targetYearMonth: ym('2026-07') }),
