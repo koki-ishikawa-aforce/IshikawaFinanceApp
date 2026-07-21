@@ -56,6 +56,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       transactionCandidateRepository: deps.transactionCandidateRepository,
       dailyMailImportBatchRepository: deps.dailyMailImportBatchRepository,
       transactionRepository: deps.transactionRepository,
+      pdfToCsvConverter: deps.pdfToCsvConverter,
       resolveViewerRole: deps.resolveViewerRole,
     }),
   )

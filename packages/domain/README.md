@@ -55,8 +55,9 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 ### transaction-import（取引取込、08a）
 
 - 集約: `TransactionCandidate`（`normal` / `amazon_matched` / `match_timeout`）, `DailyMailImportBatch`, `StatementImportJob`（PDF/CSV ルーティング `launchImportJob`）
-- 値オブジェクト: `CandidateImportSource`, `AmazonOrderInfo`, `SmbcMailParseResult`, `DuplicationJudgment`, `ImportResultSummary`, `ImportJobFailureReason`, `PdfConversionResult`
+- 値オブジェクト: `CandidateImportSource`, `AmazonOrderInfo`, `SmbcMailParseResult`, `DuplicationJudgment`, `ImportResultSummary`, `ImportJobFailureReason`, `PdfConversionResult`（および `normalizeMerchantName` — OQ-23 加盟店名正規化）
 - Repository I/F: `TransactionCandidateRepository`（GmailID / 三項一致検索）, `DailyMailImportBatchRepository`, `StatementImportJobRepository`
+- Service I/F（ACL 翻訳層の driven port、実装は adapter 層）: `PdfToCsvConverter`（OQ-23、`ConvertedStatementRow` / `PdfToCsvConversion` を含む）
 - Query I/F: `CsvImportStatusQuery` + `CsvImportCompletionView`
 - ドメインイベント: `MailImportBatchLaunched` ほか 14 種
 

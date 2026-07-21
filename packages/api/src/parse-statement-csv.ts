@@ -3,10 +3,13 @@
  *
  * 期待フォーマット: 1 行 = `日付,店名,金額`（ヘッダー行は任意、UTF-8）。
  *  - 日付: YYYY/MM/DD または YYYY-MM-DD（JST 暦日として UTC 深夜 0 時の Date に変換）
+ *  - 店名: 正規化（NFKC + 空白圧縮 + 長音統一、OQ-23）を適用。三項一致の重複除外は
+ *    取込経路（CSV / PDF / メール）で同一の正規化済み加盟店名を前提とする
  *  - 金額: 整数（桁区切りカンマ・引用符は許容、0 は不正）
  * フォーマット不備は行番号（物理行、1 始まり）付きのエラーとして返し、
  * ジョブを format_validation_failed へ遷移させる。
  */
+import { normalizeMerchantName } from '@warimaru/domain'
 
 export interface StatementCsvRow {
   /** 元 CSV の物理行番号（1 始まり、ヘッダー行を含む通し番号） */
@@ -118,7 +121,7 @@ export function parseStatementCsv(content: string): StatementCsvParseResult {
     if (occurredAt === null) {
       return { ok: false, error: `${lineNumber} 行目: 日付が不正である: ${fields[0] ?? ''}` }
     }
-    const merchantName = (fields[1] ?? '').normalize('NFKC').trim()
+    const merchantName = normalizeMerchantName(fields[1] ?? '')
     if (merchantName.length === 0) {
       return { ok: false, error: `${lineNumber} 行目: 店名が空である` }
     }

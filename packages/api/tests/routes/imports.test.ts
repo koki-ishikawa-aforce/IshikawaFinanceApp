@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { YearMonthSchema } from '@warimaru/domain'
+import { YearMonthSchema, type PdfToCsvConversion } from '@warimaru/domain'
 import { createApp } from '../../src/app.js'
 import { createDeps } from '../../src/composition-root.js'
 import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
@@ -90,6 +90,149 @@ function createTestAppDepsWithFailingCandidateSave(
   }
   return { app: createApp(deps), deps }
 }
+
+function pdfFormData(
+  bytes: Uint8Array<ArrayBuffer> = new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+): FormData {
+  const form = new FormData()
+  form.append('file', new File([bytes], 'statement.pdf', { type: 'application/pdf' }))
+  form.append('targetMonth', '2026-06')
+  return form
+}
+
+/** PDF→CSV 変換を固定結果のスタブに差し替えたテストアプリ */
+function createPdfTestApp(conversion: PdfToCsvConversion): ReturnType<typeof createTestApp> {
+  const deps = createDeps({})
+  deps.pdfToCsvConverter = { convert: async () => conversion }
+  return { app: createApp(deps), deps }
+}
+
+const PDF_ROWS: PdfToCsvConversion = {
+  ok: true,
+  rows: [
+    {
+      occurredAt: new Date(Date.UTC(2026, 5, 5)),
+      merchantName: 'スーパーA',
+      amount: 1200,
+      pageNumber: 1,
+    },
+    {
+      occurredAt: new Date(Date.UTC(2026, 5, 7)),
+      merchantName: 'コーヒーショップ',
+      amount: 300,
+      pageNumber: 2,
+    },
+  ],
+}
+
+describe('POST /api/imports/pdf', () => {
+  it('変換成功で候補が生成され、pdf 由来の importSource を持つ', async () => {
+    const { app } = createPdfTestApp(PDF_ROWS)
+    const res = await request(app, 'POST', '/api/imports/pdf', { formData: pdfFormData() })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      job: { kind: string; common: { importJobId: string; fileFormat?: string } }
+      pdfConversionJobId: string
+    }
+    expect(body.job.kind).toBe('completed')
+    expect(body.pdfConversionJobId).toBeTruthy()
+
+    const candidatesRes = await request(
+      app,
+      'GET',
+      `/api/imports/${body.job.common.importJobId}/candidates`,
+    )
+    expect(candidatesRes.status).toBe(200)
+    const candidatesBody = (await candidatesRes.json()) as {
+      candidates: { common: { importSource: { kind: string; pdfConversionJobId?: string } } }[]
+    }
+    expect(candidatesBody.candidates).toHaveLength(2)
+    for (const candidate of candidatesBody.candidates) {
+      expect(candidate.common.importSource.kind).toBe('pdf')
+      expect(candidate.common.importSource.pdfConversionJobId).toBe(body.pdfConversionJobId)
+    }
+  })
+
+  it('確定で pdf 由来の候補から未分類取引が生成される', async () => {
+    const { app, deps } = createPdfTestApp(PDF_ROWS)
+    const res = await request(app, 'POST', '/api/imports/pdf', { formData: pdfFormData() })
+    const body = (await res.json()) as { job: { common: { importJobId: string } } }
+    const confirm = await request(app, 'PUT', `/api/imports/${body.job.common.importJobId}/confirm`)
+    expect(confirm.status).toBe(200)
+    const confirmBody = (await confirm.json()) as { confirmedCount: number }
+    expect(confirmBody.confirmedCount).toBe(2)
+    const transactions = await deps.transactionRepository.findByMonth(
+      VIEWER_ID,
+      YearMonthSchema.parse('2026-06'),
+    )
+    expect(transactions).toHaveLength(2)
+  })
+
+  it('再アップロードは三項一致で重複除外される', async () => {
+    const { app } = createPdfTestApp(PDF_ROWS)
+    await request(app, 'POST', '/api/imports/pdf', { formData: pdfFormData() })
+    const second = await request(app, 'POST', '/api/imports/pdf', { formData: pdfFormData() })
+    expect(second.status).toBe(201)
+    const body = (await second.json()) as {
+      job: { kind: string; summary: { newCount: number; duplicateExcludedCount: number } }
+    }
+    expect(body.job.summary.newCount).toBe(0)
+    expect(body.job.summary.duplicateExcludedCount).toBe(2)
+  })
+
+  it('変換失敗は 422 でジョブが pdf_conversion_failed になる', async () => {
+    const { app, deps } = createPdfTestApp({
+      ok: false,
+      reason: 'row_count_mismatch',
+      failureDetail: '明細行数が一致しない（抽出 1 行 / 記載 2 行）',
+    })
+    const res = await request(app, 'POST', '/api/imports/pdf', { formData: pdfFormData() })
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as {
+      job: { kind: string; failureReason?: { kind: string; failureDetail: string } }
+      conversionFailureReason: string
+    }
+    expect(body.job.kind).toBe('failed')
+    expect(body.conversionFailureReason).toBe('row_count_mismatch')
+    expect(body.job.failureReason?.kind).toBe('pdf_conversion_failed')
+
+    const jobs = await deps.statementImportJobRepository.findByUserAndMonth(
+      VIEWER_ID,
+      YearMonthSchema.parse('2026-06'),
+    )
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]?.kind).toBe('failed')
+  })
+
+  it('file フィールドなしは 400', async () => {
+    const { app } = createPdfTestApp(PDF_ROWS)
+    const form = new FormData()
+    form.append('targetMonth', '2026-06')
+    const res = await request(app, 'POST', '/api/imports/pdf', { formData: form })
+    expect(res.status).toBe(400)
+  })
+
+  it('%PDF シグネチャがないファイルは 400（ジョブは生成されない）', async () => {
+    const { app, deps } = createPdfTestApp(PDF_ROWS)
+    const res = await request(app, 'POST', '/api/imports/pdf', {
+      formData: pdfFormData(new Uint8Array([0x00, 0x01, 0x02, 0x03])),
+    })
+    expect(res.status).toBe(400)
+    const jobs = await deps.statementImportJobRepository.findByUserAndMonth(
+      VIEWER_ID,
+      YearMonthSchema.parse('2026-06'),
+    )
+    expect(jobs).toHaveLength(0)
+  })
+
+  it('10MB 超のファイルは 400', async () => {
+    const { app } = createPdfTestApp(PDF_ROWS)
+    const res = await request(app, 'POST', '/api/imports/pdf', {
+      formData: pdfFormData(new Uint8Array(10_000_001)),
+    })
+    expect(res.status).toBe(400)
+  })
+})
 
 describe('PUT /api/imports/:batchId/confirm', () => {
   it('確定で未分類取引が生成され、再確定しても重複しない（冪等）', async () => {

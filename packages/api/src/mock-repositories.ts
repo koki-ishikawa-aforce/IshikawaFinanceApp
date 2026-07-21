@@ -40,6 +40,7 @@ import type {
   MonthlyLimit,
   MonthlyLimitId,
   MonthlyLimitRepository,
+  PdfToCsvConverter,
   ProratedChildTransaction,
   ProratedChildTransactionRepository,
   RetroactiveCandidateQuery,
@@ -232,8 +233,44 @@ export function createMockTransactionCandidateRepository(): TransactionCandidate
         c => c.common.importSource.kind === 'csv' && c.common.importSource.csvFileId === csvFileId,
       )
     },
+    async findByPdfFileId(pdfFileId: UploadFileId) {
+      return [...store.values()].filter(
+        c => c.common.importSource.kind === 'pdf' && c.common.importSource.pdfFileId === pdfFileId,
+      )
+    },
     async save(candidate: TransactionCandidate) {
       store.set(candidate.common.transactionCandidateId, candidate)
+    },
+  }
+}
+
+/**
+ * 開発プレビュー用のスタブ変換（Anthropic API を呼ばず固定明細を返す）。
+ * 実変換の検証は DATABASE_URL + ANTHROPIC_API_KEY を設定した実 DB 構成で行う。
+ */
+export function createMockPdfToCsvConverter(): PdfToCsvConverter {
+  return {
+    async convert() {
+      const now = new Date()
+      const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+      const day = 24 * 60 * 60 * 1000
+      return {
+        ok: true,
+        rows: [
+          {
+            occurredAt: new Date(monthStart + 4 * day),
+            merchantName: 'モックスーパー',
+            amount: 1200,
+            pageNumber: 1,
+          },
+          {
+            occurredAt: new Date(monthStart + 6 * day),
+            merchantName: 'モックカフェ',
+            amount: 800,
+            pageNumber: 1,
+          },
+        ],
+      }
     },
   }
 }
