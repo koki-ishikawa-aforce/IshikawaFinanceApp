@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { TransactionCandidateSchema } from '../../../src/transaction-import/aggregates/TransactionCandidate'
+import {
+  TransactionCandidateSchema,
+  confirmCandidate,
+} from '../../../src/transaction-import/aggregates/TransactionCandidate'
+import type {
+  AmazonMatchedTransactionCandidate,
+  MatchTimeoutTransactionCandidate,
+  NormalTransactionCandidate,
+} from '../../../src/transaction-import/aggregates/TransactionCandidate'
+import { testUlid } from '../../helpers/ids'
 
 const emailSource = { kind: 'email', gmailMessageId: 'gm_001' as never }
 const amazonSource = {
@@ -100,5 +109,69 @@ describe('TransactionCandidate 集約', () => {
         }),
       ).not.toThrow()
     }
+  })
+
+  it('確定済み候補は parse 成功（confirmedAt + createdTransactionId 必須）', () => {
+    expect(() =>
+      TransactionCandidateSchema.parse({
+        kind: 'confirmed',
+        common: common(emailSource),
+        confirmedAt: new Date(),
+        createdTransactionId: testUlid('01TX'),
+      }),
+    ).not.toThrow()
+    expect(() =>
+      TransactionCandidateSchema.parse({
+        kind: 'confirmed',
+        common: common(emailSource),
+        confirmedAt: new Date(),
+      }),
+    ).toThrow()
+  })
+})
+
+describe('confirmCandidate 状態遷移', () => {
+  const createdTransactionId = testUlid('01TX') as never
+  const at = new Date('2026-07-01T00:00:00Z')
+
+  it('normal → confirmed', () => {
+    const candidate = TransactionCandidateSchema.parse({
+      kind: 'normal',
+      common: common(emailSource),
+    }) as NormalTransactionCandidate
+    const confirmed = confirmCandidate(candidate, createdTransactionId, at)
+    expect(confirmed.kind).toBe('confirmed')
+    expect(confirmed.common).toEqual(candidate.common)
+    expect(confirmed.confirmedAt).toEqual(at)
+    expect(confirmed.createdTransactionId).toBe(createdTransactionId)
+  })
+
+  it('amazon_matched → confirmed（variant 固有データは消費済みとして持ち越さない）', () => {
+    const candidate = TransactionCandidateSchema.parse({
+      kind: 'amazon_matched',
+      common: common(amazonSource),
+      products: [
+        {
+          productName: 'ドメイン駆動設計',
+          amazonProductKey: '本' as never,
+          productAmount: 2500 as never,
+        },
+      ],
+      matchedAt: new Date(),
+    }) as AmazonMatchedTransactionCandidate
+    const confirmed = confirmCandidate(candidate, createdTransactionId, at)
+    expect(confirmed.kind).toBe('confirmed')
+    expect('products' in confirmed).toBe(false)
+  })
+
+  it('match_timeout → confirmed', () => {
+    const candidate = TransactionCandidateSchema.parse({
+      kind: 'match_timeout',
+      common: common(emailSource),
+      timedOutAt: new Date(),
+      timeoutDirection: 'smbc_first_awaiting_amazon',
+    }) as MatchTimeoutTransactionCandidate
+    const confirmed = confirmCandidate(candidate, createdTransactionId, at)
+    expect(confirmed.kind).toBe('confirmed')
   })
 })
