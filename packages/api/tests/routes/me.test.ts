@@ -10,13 +10,13 @@ describe('GET /api/me', () => {
     const t = createTestApp()
     const res = await request(t.app, 'GET', '/api/me')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ viewerId: VIEWER_ID, role: 'darling' })
+    expect(await res.json()).toEqual({ viewerId: VIEWER_ID, role: 'honey' })
   })
 
-  it('X-User-Id ヘッダーのユーザーが viewer になる', async () => {
+  it('X-User-Id ヘッダーのユーザーが viewer になり、ロールも本人のものが返る', async () => {
     const t = createTestApp()
     const res = await request(t.app, 'GET', '/api/me', { viewerId: SPOUSE_ID })
-    expect(((await res.json()) as { viewerId: string }).viewerId).toBe(SPOUSE_ID)
+    expect(await res.json()).toEqual({ viewerId: SPOUSE_ID, role: 'darling' })
   })
 
   it('X-User-Id なし（DEFAULT_USER_ID フォールバックもなし）は 401', async () => {

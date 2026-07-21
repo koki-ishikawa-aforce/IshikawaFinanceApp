@@ -124,7 +124,11 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
       balanceTimeSeriesQuery: createMockBalanceTimeSeriesQuery(),
       expenseSettlementManagementQuery: createMockExpenseSettlementManagementQuery(),
       csvImportStatusQuery: createMockCsvImportStatusQuery(),
-      resolveViewerRole: () => Promise.resolve('darling' as const),
+      // 開発モードの簡易ロール判定（seed の U_HONEY_DEV やテストの user-honey-test を honey に解決する）
+      resolveViewerRole: (viewerId: UserId) =>
+        Promise.resolve(
+          viewerId.toLowerCase().includes('honey') ? ('honey' as const) : ('darling' as const),
+        ),
       categoryMasterRepository: createMockCategoryMasterRepository(),
       expenseTypeMasterRepository: createMockExpenseTypeMasterRepository(),
       monthlyLimitRepository: createMockMonthlyLimitRepository(),

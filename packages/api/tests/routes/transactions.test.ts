@@ -84,8 +84,8 @@ describe('POST /api/transactions', () => {
       common: { transactionId: string; merchantName: string; ownerUserId: string }
     }
     expect(body.kind).toBe('unclassified')
-    // resolveViewerRole のモックは darling を返す
-    expect(body.defaultExpenseClass).toBe('personal_darling')
+    // VIEWER_ID (user-honey-test) は honey に解決され、既定区分は personal_honey になる
+    expect(body.defaultExpenseClass).toBe('personal_honey')
     // NFKC 正規化: 半角カナ・全角英数が正規化される
     expect(body.common.merchantName).toBe('スーパーA')
     expect(body.common.ownerUserId).toBe(VIEWER_ID)
