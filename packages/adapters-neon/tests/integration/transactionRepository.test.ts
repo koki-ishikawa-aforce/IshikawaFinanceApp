@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { ZodError } from 'zod'
 import { NeonTransactionRepository } from '../../src/household-analysis/NeonTransactionRepository'
+import { newUlid } from '../../src/newId'
 import { db } from './setup'
 import {
   HONEY_USER_ID,
@@ -88,5 +89,35 @@ describe('NeonTransactionRepository', () => {
           WHERE transaction_id = ${tx.common.transactionId}`,
     )
     await expect(repo.findById(tx.common.transactionId)).rejects.toThrow(ZodError)
+  })
+
+  it('findClassifiedByCategory は対象カテゴリの分類済み取引のみ返す', async () => {
+    const categoryId = newUlid()
+    const target1 = classifiedTransaction({ categoryId })
+    const target2 = classifiedTransaction({ categoryId, ownerUserId: DARLING_USER_ID })
+    const otherCategory = classifiedTransaction()
+    const unclassified = unclassifiedTransaction()
+    await repo.save(target1)
+    await repo.save(target2)
+    await repo.save(otherCategory)
+    await repo.save(unclassified)
+
+    const found = await repo.findClassifiedByCategory(categoryId as never)
+    const ids = found.map(tx => tx.common.transactionId).sort()
+    expect(ids).toEqual([target1.common.transactionId, target2.common.transactionId].sort())
+    expect(found.every(tx => tx.kind === 'classified')).toBe(true)
+  })
+
+  it('findClassifiedByExpenseType は対象経費種別の分類済み取引のみ返す（payload 参照）', async () => {
+    const expenseTypeId = newUlid()
+    const target = classifiedTransaction({ expenseClass: 'business_expense', expenseTypeId })
+    const otherType = classifiedTransaction({ expenseClass: 'business_expense' })
+    const nonBusiness = classifiedTransaction({ expenseClass: 'household' })
+    await repo.save(target)
+    await repo.save(otherType)
+    await repo.save(nonBusiness)
+
+    const found = await repo.findClassifiedByExpenseType(expenseTypeId as never)
+    expect(found.map(tx => tx.common.transactionId)).toEqual([target.common.transactionId])
   })
 })

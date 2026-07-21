@@ -40,7 +40,7 @@ export const transactionCandidates = pgTable(
   t => [
     check(
       'transaction_candidates_kind_check',
-      sql`${t.kind} IN ('normal', 'amazon_matched', 'match_timeout')`,
+      sql`${t.kind} IN ('normal', 'amazon_matched', 'match_timeout', 'confirmed')`,
     ),
     // メール重複除外（Gmail message ID 完全一致）
     uniqueIndex('idx_transaction_candidates_gmail_unique')

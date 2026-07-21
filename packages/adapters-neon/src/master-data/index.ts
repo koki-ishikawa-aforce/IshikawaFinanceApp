@@ -1,4 +1,6 @@
+export * from './NeonCategoryDeletionRequestRepository'
 export * from './NeonCategoryMasterRepository'
+export * from './NeonExpenseTypeDeletionRequestRepository'
 export * from './NeonExpenseTypeMasterRepository'
 export * from './NeonMonthlyLimitRepository'
 export * from './NeonPhase0ConfigRepository'
