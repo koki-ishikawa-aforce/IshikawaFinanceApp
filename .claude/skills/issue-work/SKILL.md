@@ -16,7 +16,7 @@ GitHub Issue を起点に、実装 → 検証ループ → DDD レビュー → 
    - `priority:high` などの優先度ラベルが付いているもの
    - 本文中で他の open Issue に依存していない(ブロックされていない)もの
    - 同条件なら作成が古いもの
-3. 他の人が assign 済みのもの、進行中の PR にリンク済みのものは除外する
+3. 他の人が assign 済みのもの、進行中の PR にリンク済みのもの、`status:in-progress` ラベルが付いているものは除外する
 4. **選んだ Issue の番号・タイトル・選定理由を提示し、ユーザーの了承を得てから**手順1に進む(別候補があればそれも1行で添える)
 
 open な Issue が1件もなければ、その旨を報告して `/issue-create` を提案する。
@@ -27,12 +27,19 @@ open な Issue が1件もなければ、その旨を報告して `/issue-create`
 - 対象の境界づけられたコンテキストを特定し、`docs/domain/09-aggregates.md` と該当するユビキタス言語資料(`docs/domain/08a`〜`08h`)を読む
 - 受け入れ条件が曖昧、または設計判断が分かれる場合は、**実装前に**ユーザーへ確認する
 
-## 2. ブランチ作成
+## 2. ブランチ作成と着手宣言
 
 main を最新化してから作成する:
 
 ```bash
 git fetch origin main && git switch -c feat/issue-<番号>-<slug> origin/main
+```
+
+Issue に `status:in-progress` ラベルを付与して着手中であることを示す(ラベルが未作成でも失敗しないよう冪等に作成する):
+
+```bash
+gh label create "status:in-progress" --color FBCA04 --description "着手中" 2>/dev/null || true
+gh issue edit <番号> --add-label "status:in-progress"
 ```
 
 ## 3. 計画と実装
@@ -59,3 +66,5 @@ git fetch origin main && git switch -c feat/issue-<番号>-<slug> origin/main
 5. CI が失敗したら `gh run view <run-id> --log-failed` で原因を取得し、修正 → `/verify` → push を CI が green になるまで繰り返す
 
 PR が green になったら、PR の URL と受け入れ条件の充足状況をユーザーに報告して完了。
+
+補足: PR マージで Issue は自動クローズされる(`Closes #<番号>`)。マージまで見届ける場合は `gh issue edit <番号> --remove-label "status:in-progress"` でラベルを外す。クローズ済み Issue にラベルが残っていても実害はない。
