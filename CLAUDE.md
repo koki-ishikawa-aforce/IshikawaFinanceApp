@@ -49,6 +49,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 4. DDD 観点レビュー: `/ddd-review`(PR 前に実施)
 
 ブランチ名は `feat/issue-<番号>-<slug>`、PR 本文に `Closes #<番号>` を含める。
+着手中の Issue には `status:in-progress` ラベルを付与する(`/issue-work` が自動で行う)。
 
 ## してはいけないこと
 
