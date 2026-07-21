@@ -8,6 +8,7 @@
  * アクセスに PermissionDeniedError を throw しなければならない（Phase 5 M-B）。
  */
 import type { UserId } from '../../shared/ids'
+import type { YearMonth } from '../../shared/value-objects/YearMonth'
 import type { ExpenseSettlementManagementView } from './views/ExpenseSettlementManagementView'
 
 /**
@@ -23,5 +24,9 @@ export function canViewExpenseSettlement(
 }
 
 export interface ExpenseSettlementManagementQuery {
-  fetch(viewerId: UserId): Promise<ExpenseSettlementManagementView>
+  /**
+   * @param targetMonth 対象月。省略時は当月（JST 暦月）。過去月を指定すると
+   *   その月のサイクルの累計・按分子取引を返す（過去月の精算履歴閲覧用）。
+   */
+  fetch(viewerId: UserId, targetMonth?: YearMonth): Promise<ExpenseSettlementManagementView>
 }

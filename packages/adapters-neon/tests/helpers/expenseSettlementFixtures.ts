@@ -108,7 +108,13 @@ export function accumulatingCycle(
 }
 
 export function finalizedCycle(
-  input: { userId?: UserId; targetYearMonth?: YearMonth; transferAmounts?: number[] } = {},
+  input: {
+    userId?: UserId
+    targetYearMonth?: YearMonth
+    transferAmounts?: number[]
+    accumulations?: ExpenseTypeAccumulation[]
+    childTransactionIds?: string[]
+  } = {},
 ): MonthlyExpenseCycle {
   const base = accumulatingCycle(input)
   return MonthlyExpenseCycleSchema.parse({

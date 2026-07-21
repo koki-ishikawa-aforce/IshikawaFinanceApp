@@ -2,7 +2,7 @@
  * ExpenseSettlementManagementQuery の Neon 実装
  * @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §5
  *
- * 「当月」は I/F が月を引数に取らないため、注入された now() から JST 暦月で導出する（§3）。
+ * 対象月は targetMonth 引数で指定でき、省略時は注入された now() から JST 暦月で導出する（§3）。
  * プライバシー（論点11: 本人のみ可視）はドメインの唯一の判定ポイント
  * canViewExpenseSettlement を返却前に必ず通す — 取得系が viewerId 起点のため
  * 構造上 true になるが、防御としてのガードを外さない
@@ -14,6 +14,7 @@ import type {
   ExpenseSettlementManagementView,
   MonthlyExpenseCycle,
   UserId,
+  YearMonth,
 } from '@warimaru/domain'
 import {
   canViewExpenseSettlement,
@@ -38,10 +39,13 @@ export class NeonExpenseSettlementManagementQuery implements ExpenseSettlementMa
     private readonly deps: NeonExpenseSettlementManagementQueryDeps,
   ) {}
 
-  async fetch(viewerId: UserId): Promise<ExpenseSettlementManagementView> {
-    const currentMonth = currentJstYearMonth(this.deps.now())
+  async fetch(
+    viewerId: UserId,
+    targetMonth?: YearMonth,
+  ): Promise<ExpenseSettlementManagementView> {
+    const month = targetMonth ?? currentJstYearMonth(this.deps.now())
     const [currentCycle, latestFinalized] = await Promise.all([
-      this.findCycleByMonth(viewerId, currentMonth),
+      this.findCycleByMonth(viewerId, month),
       this.findLatestFinalized(viewerId),
     ])
     const currentChildTransactions = await this.fetchChildTransactions(currentCycle)

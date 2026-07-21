@@ -40,7 +40,7 @@ describe('InMemoryEventBus', () => {
     bus.publish(event)
 
     expect(received).toHaveLength(1)
-    expect(received[0]!.value).toBe(42)
+    expect(received[0]?.value).toBe(42)
   })
 
   it('同一イベント型に複数ハンドラを登録できる', () => {
