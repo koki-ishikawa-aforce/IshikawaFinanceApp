@@ -1,0 +1,55 @@
+.main {
+  max-width: 300px;
+  margin: 0 auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100dvh;
+  position: relative;
+  overflow: hidden;
+}
+
+.decorativeEmoji {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.emoji1,
+.emoji2,
+.emoji3 {
+  position: absolute;
+  opacity: 0.4;
+  font-size: 24px;
+}
+
+.emoji1 {
+  top: 60px;
+  right: 10px;
+}
+
+.emoji2 {
+  top: 200px;
+  left: 5px;
+}
+
+.emoji3 {
+  bottom: 100px;
+  right: 20px;
+}
+
+.loading {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 20px 0;
+}
+
+.error {
+  text-align: center;
+  font-size: 12px;
+  color: #a02828;
+  padding: 20px 0;
+}

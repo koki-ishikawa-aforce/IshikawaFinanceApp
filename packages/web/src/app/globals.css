@@ -1,0 +1,53 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --font-family: 'Hiragino Maru Gothic ProN', 'Yu Gothic', system-ui, -apple-system, sans-serif;
+
+  /* Darling theme (default) */
+  --bg-gradient: linear-gradient(180deg, #ffc8d8 0%, #ffd8e0 30%, #ffe0e8 60%, #fff0f5 100%);
+  --kpi-1: linear-gradient(135deg, #ff8aa8, #ffb0c5);
+  --kpi-hero: linear-gradient(135deg, #ee5d8a, #ff80a8);
+  --accent: #ff7095;
+  --text-primary: #5a2840;
+  --text-secondary: #a04068;
+  --text-on-kpi: #ffffff;
+  --shadow-color: #ff709520;
+  --shadow-strong: #ff709550;
+
+  --cat-housing: #d8407a;
+  --cat-food: #ff6f90;
+  --cat-entertainment: #ff9888;
+  --cat-other: #c870b0;
+}
+
+[data-theme='honey'] {
+  --bg-gradient: linear-gradient(180deg, #98c0e0 0%, #b8d0e8 30%, #d0e0f0 60%, #e8f0f8 100%);
+  --kpi-1: linear-gradient(135deg, #5888c0, #80a8d0);
+  --kpi-hero: linear-gradient(135deg, #2a5098, #4878b8);
+  --accent: #5090d8;
+  --text-primary: #1a3868;
+  --text-secondary: #2a5098;
+  --text-on-kpi: #ffffff;
+  --shadow-color: #5090d820;
+  --shadow-strong: #5090d850;
+
+  --cat-housing: #1a4080;
+  --cat-food: #3878c8;
+  --cat-entertainment: #48a8c0;
+  --cat-other: #7080c0;
+}
+
+html,
+body {
+  font-family: var(--font-family);
+  color: var(--text-primary);
+  background: var(--bg-gradient);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
