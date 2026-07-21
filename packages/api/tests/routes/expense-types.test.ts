@@ -59,6 +59,29 @@ describe('POST /api/expense-types', () => {
     const res = await request(t.app, 'POST', '/api/expense-types', { body: { name: '' } })
     expect(res.status).toBe(400)
   })
+
+  it('世帯共有（規定）・本人の個人別と同名の作成は 409（名前重複エラー）', async () => {
+    const t = createTestApp()
+    await seedDefaultExpenseType(t)
+    await createExpenseType(t, 'セミナー')
+    const dupShared = await request(t.app, 'POST', '/api/expense-types', {
+      body: { name: 'ジム' },
+    })
+    expect(dupShared.status).toBe(409)
+    const dupOwn = await request(t.app, 'POST', '/api/expense-types', {
+      body: { name: 'セミナー' },
+    })
+    expect(dupOwn.status).toBe(409)
+  })
+
+  it('他ユーザーの個人別と同名は作成できる（可視範囲外のため重複にならない）', async () => {
+    const t = createTestApp()
+    await createExpenseType(t, 'ゴルフ用品', SPOUSE_ID)
+    const res = await request(t.app, 'POST', '/api/expense-types', {
+      body: { name: 'ゴルフ用品' },
+    })
+    expect(res.status).toBe(201)
+  })
 })
 
 describe('PUT /api/expense-types/:id', () => {
@@ -90,6 +113,16 @@ describe('PUT /api/expense-types/:id', () => {
       body: { name: 'テニス用品' },
     })
     expect(res.status).toBe(403)
+  })
+
+  it('既存の可視経費種別と同名への改名は 409（名前重複エラー）', async () => {
+    const t = createTestApp()
+    await seedDefaultExpenseType(t)
+    const id = await createExpenseType(t, 'セミナー')
+    const res = await request(t.app, 'PUT', `/api/expense-types/${id}`, {
+      body: { name: 'ジム' },
+    })
+    expect(res.status).toBe(409)
   })
 
   it('存在しない経費種別は 404', async () => {

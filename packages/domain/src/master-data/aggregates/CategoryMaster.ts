@@ -7,13 +7,15 @@
  * kawasima: data カテゴリマスタ = 規定カテゴリ OR 追加カテゴリ
  *
  * 不変条件:
- *  - 同一スコープ内でカテゴリ名は一意（Repository で保証、Phase 5 M-B）
+ *  - 同一スコープ内でカテゴリ名は一意（save 前に findAllVisibleToUser の結果へ
+ *    assertCategoryNameAvailable を適用して保証する、Phase 5 M-B）
  *  - 規定カテゴリは削除・改名不可（改名/削除の遷移関数を提供しないことで構造表現）
  *  - 規定カテゴリは世帯共有スコープ、追加カテゴリは個人別スコープ（superRefine）
  *  - 削除時は移動先カテゴリID が必ず設定される（CategoryDeletionRequest 側で構造表現）
  */
 import { z } from 'zod'
-import { CategoryIdSchema } from '../../shared/ids'
+import { InvariantViolationError } from '../../shared/errors/DomainError'
+import { CategoryIdSchema, type CategoryId } from '../../shared/ids'
 import { OwnershipScopeSchema } from '../value-objects/OwnershipScope'
 import { RenameRecordSchema } from '../value-objects/RenameRecord'
 import { UserIdSchema } from '../../shared/ids'
@@ -66,6 +68,21 @@ export type CategoryMaster = z.infer<typeof CategoryMasterSchema>
 
 export type DefaultCategory = Extract<CategoryMaster, { kind: 'default' }>
 export type CustomCategory = Extract<CategoryMaster, { kind: 'custom' }>
+
+/**
+ * 名前一意性の検査（08h「名前重複エラー」）。新設・改名の save 前に、
+ * findAllVisibleToUser の結果（世帯共有 + 本人の個人別）を渡して呼び出す。
+ * 改名時は excludeCategoryId に自身の ID を渡す。
+ */
+export function assertCategoryNameAvailable(
+  visibleCategories: CategoryMaster[],
+  name: string,
+  excludeCategoryId?: CategoryId,
+): void {
+  if (visibleCategories.some(c => c.categoryId !== excludeCategoryId && c.name === name)) {
+    throw new InvariantViolationError(`カテゴリ名「${name}」は既に使用されている`)
+  }
+}
 
 /** 追加カテゴリの改名（規定カテゴリの改名関数は提供しない = 改名不可の構造表現） */
 export function renameCustomCategory(

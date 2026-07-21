@@ -59,6 +59,27 @@ describe('POST /api/categories', () => {
     const res = await request(t.app, 'POST', '/api/categories', { body: { name: '' } })
     expect(res.status).toBe(400)
   })
+
+  it('世帯共有（規定）と同名の作成は 409（名前重複エラー）', async () => {
+    const t = createTestApp()
+    await seedDefaultCategory(t)
+    const res = await request(t.app, 'POST', '/api/categories', { body: { name: '食費' } })
+    expect(res.status).toBe(409)
+  })
+
+  it('本人の個人別と同名の作成は 409', async () => {
+    const t = createTestApp()
+    await createCategory(t, '推し活')
+    const res = await request(t.app, 'POST', '/api/categories', { body: { name: '推し活' } })
+    expect(res.status).toBe(409)
+  })
+
+  it('他ユーザーの個人別と同名は作成できる（可視範囲外のため重複にならない）', async () => {
+    const t = createTestApp()
+    await createCategory(t, 'ゴルフ', SPOUSE_ID)
+    const res = await request(t.app, 'POST', '/api/categories', { body: { name: 'ゴルフ' } })
+    expect(res.status).toBe(201)
+  })
 })
 
 describe('PUT /api/categories/:id', () => {
@@ -90,6 +111,25 @@ describe('PUT /api/categories/:id', () => {
       body: { name: 'テニス' },
     })
     expect(res.status).toBe(403)
+  })
+
+  it('既存の可視カテゴリと同名への改名は 409（名前重複エラー）', async () => {
+    const t = createTestApp()
+    await seedDefaultCategory(t)
+    const id = await createCategory(t, '推し活')
+    const res = await request(t.app, 'PUT', `/api/categories/${id}`, {
+      body: { name: '食費' },
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('現在名のままの改名は重複扱いにならない（自身は検査から除外）', async () => {
+    const t = createTestApp()
+    const id = await createCategory(t, '推し活')
+    const res = await request(t.app, 'PUT', `/api/categories/${id}`, {
+      body: { name: '推し活' },
+    })
+    expect(res.status).toBe(200)
   })
 
   it('存在しないカテゴリは 404', async () => {

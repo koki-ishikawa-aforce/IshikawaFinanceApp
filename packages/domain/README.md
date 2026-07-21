@@ -70,7 +70,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### master-data（マスタ管理、08h）
 
-- 集約: `CategoryMaster` / `ExpenseTypeMaster`（`default` / `custom`、規定は改名・削除関数なし）, `MonthlyLimit`（`capped` / `unlimited`、論点15）, `Phase0Config`（3 要素必須）
+- 集約: `CategoryMaster` / `ExpenseTypeMaster`（`default` / `custom`、規定は改名・削除関数なし。名前一意性は save 前に `assertCategoryNameAvailable` / `assertExpenseTypeNameAvailable` で検査）, `MonthlyLimit`（`capped` / `unlimited`、論点15）, `Phase0Config`（3 要素必須）
 - 値オブジェクト: `OwnershipScope`, `RenameRecord`, `SeedLimit`, `DeletionRequestState`, `CategoryDeletionRequest`, `ExpenseTypeDeletionRequest`, `Allowlist`
 - Repository I/F: `CategoryMasterRepository`, `ExpenseTypeMasterRepository`, `MonthlyLimitRepository`, `Phase0ConfigRepository`
 - Query I/F: `AllowlistQuery`, `LineChannelConfigQuery`

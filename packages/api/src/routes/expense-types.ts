@@ -12,6 +12,7 @@ import {
   NotFoundError,
   PermissionDeniedError,
   TransactionSchema,
+  assertExpenseTypeNameAvailable,
   completeExpenseTypeRemap,
   failExpenseTypeRemap,
   renameCustomExpenseType,
@@ -72,6 +73,10 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
   app.post('/', async c => {
     const body = BodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
+    assertExpenseTypeNameAvailable(
+      await deps.expenseTypeMasterRepository.findAllVisibleToUser(viewerId),
+      body.name,
+    )
     const expenseType = ExpenseTypeMasterSchema.parse({
       kind: 'custom',
       expenseTypeId: ExpenseTypeIdSchema.parse(newUlid()),
@@ -92,6 +97,11 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
     const expenseType = await deps.expenseTypeMasterRepository.findById(id)
     if (expenseType === null) throw new NotFoundError('ExpenseTypeMaster', id)
     assertEditableCustomExpenseType(expenseType, viewerId)
+    assertExpenseTypeNameAvailable(
+      await deps.expenseTypeMasterRepository.findAllVisibleToUser(viewerId),
+      body.name,
+      expenseType.expenseTypeId,
+    )
     const renamed = renameCustomExpenseType(expenseType, body.name, viewerId, new Date())
     await deps.expenseTypeMasterRepository.save(renamed)
     return c.json(renamed)

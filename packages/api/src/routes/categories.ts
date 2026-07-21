@@ -14,6 +14,7 @@ import {
   NotFoundError,
   PermissionDeniedError,
   TransactionSchema,
+  assertCategoryNameAvailable,
   completeCategoryRemap,
   failCategoryRemap,
   renameCustomCategory,
@@ -111,6 +112,10 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
   app.post('/', async c => {
     const body = BodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
+    assertCategoryNameAvailable(
+      await deps.categoryMasterRepository.findAllVisibleToUser(viewerId),
+      body.name,
+    )
     const category = CategoryMasterSchema.parse({
       kind: 'custom',
       categoryId: CategoryIdSchema.parse(newUlid()),
@@ -131,6 +136,11 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
     const category = await deps.categoryMasterRepository.findById(id)
     if (category === null) throw new NotFoundError('CategoryMaster', id)
     assertEditableCustomCategory(category, viewerId)
+    assertCategoryNameAvailable(
+      await deps.categoryMasterRepository.findAllVisibleToUser(viewerId),
+      body.name,
+      category.categoryId,
+    )
     const renamed = renameCustomCategory(category, body.name, viewerId, new Date())
     await deps.categoryMasterRepository.save(renamed)
     return c.json(renamed)
