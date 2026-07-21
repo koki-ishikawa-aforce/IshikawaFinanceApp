@@ -8,6 +8,7 @@ import {
   PermissionDeniedError,
   ClassifiedDetailsSchema,
   TransactionIdSchema,
+  TransactionManuallyClassifiedSchema,
   TransactionSchema,
   YearMonthSchema,
   ExpenseClassSchema,
@@ -17,7 +18,9 @@ import {
 } from '@warimaru/domain'
 import type {
   ClassifiedDetails,
+  EventBus,
   Transaction,
+  TransactionId,
   TransactionListQuery,
   TransactionListFilter,
   TransactionRepository,
@@ -26,6 +29,7 @@ import type {
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { domainEventBase } from '../event-handlers/index.js'
 import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const ListParamsSchema = z.object({
@@ -106,8 +110,33 @@ export function transactionsRoutes(
   transactionListQuery: TransactionListQuery,
   transactionRepository: TransactionRepository,
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>,
+  eventBus: EventBus,
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
+
+  /** 手動分類の確定をイベントとして発行する（学習ルールへの反映は購読側 #34） */
+  async function publishManuallyClassified(
+    transactionId: TransactionId,
+    viewerId: UserId,
+    merchantName: string,
+    input: ClassificationInput,
+    at: Date,
+  ): Promise<void> {
+    await eventBus.publish(
+      TransactionManuallyClassifiedSchema.parse({
+        ...domainEventBase(at),
+        type: 'TransactionManuallyClassified',
+        transactionId,
+        userId: viewerId,
+        merchantName,
+        confirmedClassification: {
+          categoryId: input.categoryId,
+          expenseClass: input.expenseClass,
+          ...(input.expenseTypeId !== undefined ? { expenseTypeId: input.expenseTypeId } : {}),
+        },
+      }),
+    )
+  }
 
   app.get('/', async c => {
     const params = ListParamsSchema.parse({
@@ -160,6 +189,15 @@ export function transactionsRoutes(
             defaultExpenseClass: roleToPersonalExpenseClass(await resolveViewerRole(viewerId)),
           })
     await transactionRepository.save(transaction)
+    if (body.classification !== undefined) {
+      await publishManuallyClassified(
+        common.transactionId,
+        viewerId,
+        common.merchantName,
+        body.classification,
+        now,
+      )
+    }
     return c.json(transaction, 201)
   })
 
@@ -220,6 +258,7 @@ export function transactionsRoutes(
         ? classify(transaction, details)
         : createTransaction({ kind: 'classified', common: transaction.common, details })
     await transactionRepository.save(classified)
+    await publishManuallyClassified(id, viewerId, transaction.common.merchantName, input, now)
     return c.json(classified)
   })
 

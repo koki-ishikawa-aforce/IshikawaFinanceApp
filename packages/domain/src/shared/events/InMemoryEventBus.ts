@@ -3,11 +3,11 @@ import type { DomainEvent, EventBus, EventHandler } from './EventBus'
 export class InMemoryEventBus implements EventBus {
   private readonly handlers = new Map<string, EventHandler[]>()
 
-  publish(event: DomainEvent): void {
+  async publish(event: DomainEvent): Promise<void> {
     const handlers = this.handlers.get(event.type)
     if (!handlers) return
     for (const handler of handlers) {
-      handler(event)
+      await handler(event)
     }
   }
 

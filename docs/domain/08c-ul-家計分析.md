@@ -263,7 +263,8 @@ data 取引が未分類で取り込まれたイベント = 取引ID AND ユー�
 data 取引が自動分類で取り込まれたイベント = 取引ID AND ユーザーID AND 分類根拠 AND 発生日時
 data カテゴリ手動修正イベント = 取引ID AND 旧カテゴリID AND 新カテゴリID AND 修正者ユーザーID AND 発生日時
 data 費用区分手動修正イベント = 取引ID AND 旧費用区分 AND 新費用区分 AND 修正者ユーザーID AND 発生日時
-data 取引が手動分類確定したイベント = 取引ID AND ユーザーID AND 確定分類 AND 発生日時
+data 取引が手動分類確定したイベント = 取引ID AND ユーザーID AND 加盟店名 AND 確定分類 AND 発生日時
+// 加盟店名は下流（自動分類・学習）が加盟店学習ルールを引くために保持する（#34）
 data 取引削除イベント = 取引ID AND 削除者ユーザーID AND 削除理由 AND 発生日時
 data 取引マージイベント = マージ取引ID AND List<元取引ID> AND マージ確定者ユーザーID AND 発生日時
 data 返金取込イベント = 取引ID AND 元取引参照? AND 発生日時

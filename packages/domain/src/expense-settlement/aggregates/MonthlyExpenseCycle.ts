@@ -31,6 +31,11 @@ import {
   ExpenseTypeAccumulationSchema,
   type ExpenseTypeAccumulation,
 } from '../value-objects/ExpenseTypeAccumulation'
+import { money, type Money } from '../../shared/value-objects/Money'
+import {
+  SettlementMatchDifferenceSchema,
+  type SettlementMatchDifference,
+} from '../value-objects/SettlementMatchDifference'
 
 /** 按分子取引参照 */
 export const ProratedChildRefSchema = z.object({
@@ -102,6 +107,37 @@ export type MonthlyExpenseCycle = z.infer<typeof MonthlyExpenseCycleSchema>
 export type AccumulatingCycle = Extract<MonthlyExpenseCycle, { kind: 'accumulating' }>
 export type CsvConfirmedCycle = Extract<MonthlyExpenseCycle, { kind: 'csv_confirmed' }>
 export type FinalizedCycle = Extract<MonthlyExpenseCycle, { kind: 'finalized' }>
+
+/** 当月経費合計（暫定経費合計 = Σ 経費種別累計の当月累計金額、08e §2） */
+export function cycleExpenseTotal(cycle: MonthlyExpenseCycle): Money {
+  return money(cycle.common.accumulations.reduce((total, acc) => total + acc.currentTotal, 0))
+}
+
+/**
+ * 経費精算入金との突合差額を算出する（08e §2「経費精算入金と当月経費を突合する」）
+ * - 入金額 < 当月経費合計 → 不認定分（unapproved_shortfall）
+ * - 入金額 > 当月経費合計 → 認定済み超過（approved_excess、稀ケース）
+ * - 一致 → 完全一致（exact_match）
+ */
+export function calculateSettlementMatchDifference(
+  cycle: MonthlyExpenseCycle,
+  depositAmount: Money,
+): SettlementMatchDifference {
+  const expenseTotal = cycleExpenseTotal(cycle)
+  if (depositAmount < expenseTotal) {
+    return SettlementMatchDifferenceSchema.parse({
+      kind: 'unapproved_shortfall',
+      difference: expenseTotal - depositAmount,
+    })
+  }
+  if (depositAmount > expenseTotal) {
+    return SettlementMatchDifferenceSchema.parse({
+      kind: 'approved_excess',
+      difference: depositAmount - expenseTotal,
+    })
+  }
+  return SettlementMatchDifferenceSchema.parse({ kind: 'exact_match' })
+}
 
 /** 状態遷移: 集積中 → CSV確定 */
 export function confirmCycleCsv(cycle: AccumulatingCycle, at: Date): CsvConfirmedCycle {

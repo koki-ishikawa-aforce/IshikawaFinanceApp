@@ -16,10 +16,14 @@ import { classificationRoutes } from './routes/classification.js'
 import { lineAuthMiddleware } from './middleware/line-auth.js'
 import { devViewerIdMiddleware } from './middleware/viewer-id.js'
 import { errorHandler } from './middleware/error-handler.js'
+import { registerEventHandlers } from './event-handlers/index.js'
 
 const isDev = process.env['NODE_ENV'] !== 'production'
 
 export function createApp(deps: AppDeps): Hono<AppEnv> {
+  // イベントハンドラーは最終的な deps（テストの override 込み）で登録する
+  registerEventHandlers(deps)
+
   const app = new Hono<AppEnv>()
 
   app.use('*', cors({ origin: ['http://localhost:3000'] }))
@@ -34,6 +38,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       deps.transactionListQuery,
       deps.transactionRepository,
       deps.resolveViewerRole,
+      deps.eventBus,
     ),
   )
   app.route('/api/monthly-reports', monthlyReportsRoutes(deps.monthlyReportQuery))
@@ -46,6 +51,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       proratedChildTransactionRepository: deps.proratedChildTransactionRepository,
       expenseReimbursementDepositRepository: deps.expenseReimbursementDepositRepository,
       resolveViewerRole: deps.resolveViewerRole,
+      eventBus: deps.eventBus,
     }),
   )
   app.route(
