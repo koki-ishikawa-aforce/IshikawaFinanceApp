@@ -1,0 +1,26 @@
+.container {
+  display: flex;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.segment {
+  flex: 1;
+  padding: 6px 0;
+  border: none;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.segment.active {
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: 0 2px 6px var(--shadow-color);
+}

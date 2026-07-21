@@ -11,6 +11,10 @@ dist/
 *.tsbuildinfo
 .pnpm-debug.log*
 
+# Next.js
+.next/
+out/
+
 # Vitest
 coverage/
 

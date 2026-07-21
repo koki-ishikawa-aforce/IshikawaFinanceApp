@@ -1,0 +1,30 @@
+{
+  "name": "@warimaru/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "hono": "^4.4.0",
+    "@hono/node-server": "^1.11.0",
+    "@warimaru/domain": "workspace:*",
+    "@warimaru/adapters-neon": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.11.0",
+    "dotenv": "^16.4.0",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
