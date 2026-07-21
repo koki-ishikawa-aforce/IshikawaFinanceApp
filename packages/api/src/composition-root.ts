@@ -66,6 +66,7 @@ import {
 } from './mock-queries.js'
 import {
   createMockAmazonProductKeyLearningRuleRepository,
+  createMockPdfToCsvConverter,
   createMockBulkClassificationSessionRepository,
   createMockCategoryDeletionRequestRepository,
   createMockCategoryMasterRepository,
@@ -138,7 +139,7 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
       statementImportJobRepository: createMockStatementImportJobRepository(),
       transactionCandidateRepository: createMockTransactionCandidateRepository(),
       dailyMailImportBatchRepository: createMockDailyMailImportBatchRepository(),
-      pdfToCsvConverter: new AnthropicPdfToCsvConverter(),
+      pdfToCsvConverter: createMockPdfToCsvConverter(),
       retroactiveCandidateQuery: createMockRetroactiveCandidateQuery(),
       merchantLearningRuleRepository: createMockMerchantLearningRuleRepository(),
       amazonProductKeyLearningRuleRepository: createMockAmazonProductKeyLearningRuleRepository(),

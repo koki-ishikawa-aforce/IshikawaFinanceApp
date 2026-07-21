@@ -212,6 +212,19 @@ describe('POST /api/imports/pdf', () => {
     expect(res.status).toBe(400)
   })
 
+  it('%PDF シグネチャがないファイルは 400（ジョブは生成されない）', async () => {
+    const { app, deps } = createPdfTestApp(PDF_ROWS)
+    const res = await request(app, 'POST', '/api/imports/pdf', {
+      formData: pdfFormData(new Uint8Array([0x00, 0x01, 0x02, 0x03])),
+    })
+    expect(res.status).toBe(400)
+    const jobs = await deps.statementImportJobRepository.findByUserAndMonth(
+      VIEWER_ID,
+      YearMonthSchema.parse('2026-06'),
+    )
+    expect(jobs).toHaveLength(0)
+  })
+
   it('10MB 超のファイルは 400', async () => {
     const { app } = createPdfTestApp(PDF_ROWS)
     const res = await request(app, 'POST', '/api/imports/pdf', {

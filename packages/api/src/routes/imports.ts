@@ -221,8 +221,16 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
     })
     const file = PdfFileSchema.parse(formData['file'])
     const viewerId = c.get('viewerId')
-    const fileRef = UploadFileIdSchema.parse(newUlid())
 
+    // %PDF シグネチャ検証（不正バイナリを Anthropic API へ送る前に弾く。ジョブ生成前なので 400）
+    const pdfBytes = new Uint8Array(await file.arrayBuffer())
+    const isPdf =
+      pdfBytes[0] === 0x25 && pdfBytes[1] === 0x50 && pdfBytes[2] === 0x44 && pdfBytes[3] === 0x46
+    if (!isPdf) {
+      return c.json({ error: 'file が PDF ではない（%PDF シグネチャ不一致）' }, 400)
+    }
+
+    const fileRef = UploadFileIdSchema.parse(newUlid())
     const accepted = StatementImportJobSchema.parse({
       kind: 'upload_accepted',
       common: {
@@ -241,9 +249,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
     const converting = startPdfConversion(accepted, pdfConversionJobId, new Date())
     await deps.statementImportJobRepository.save(converting)
 
-    const conversion = await deps.pdfToCsvConverter.convert(
-      new Uint8Array(await file.arrayBuffer()),
-    )
+    const conversion = await deps.pdfToCsvConverter.convert(pdfBytes)
     if (!conversion.ok) {
       const failed = failImportJob(
         converting,

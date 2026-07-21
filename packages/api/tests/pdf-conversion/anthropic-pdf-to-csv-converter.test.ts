@@ -128,6 +128,16 @@ describe('AnthropicPdfToCsvConverter', () => {
     expect(result.failureDetail).toContain('接続失敗')
   })
 
+  it('pause_turn は api_call_failed に翻訳される（サーバーサイドツール未使用のため通常発生しない）', async () => {
+    const converter = new AnthropicPdfToCsvConverter({
+      client: clientReturning(VALID_OUTPUT, 'pause_turn'),
+    })
+    const result = await converter.convert(PDF_BYTES)
+    if (result.ok) throw new Error('失敗を期待した')
+    expect(result.reason).toBe('api_call_failed')
+    expect(result.failureDetail).toContain('pause_turn')
+  })
+
   it('refusal は api_call_failed に翻訳される', async () => {
     const converter = new AnthropicPdfToCsvConverter({
       client: clientReturning(VALID_OUTPUT, 'refusal'),

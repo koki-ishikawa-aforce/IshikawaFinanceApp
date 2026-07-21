@@ -143,6 +143,10 @@ export class AnthropicPdfToCsvConverter implements PdfToCsvConverter {
     if (response.stop_reason === 'refusal') {
       return failure('api_call_failed', 'API が応答を拒否した（stop_reason: refusal）')
     }
+    if (response.stop_reason === 'pause_turn') {
+      // サーバーサイドツール未使用のため通常発生しない。発生時は再アップロードで再試行してもらう
+      return failure('api_call_failed', 'API 応答が一時停止した（stop_reason: pause_turn）')
+    }
     if (response.stop_reason === 'max_tokens') {
       return failure('invalid_response_structure', '出力が max_tokens で途中終了した')
     }
