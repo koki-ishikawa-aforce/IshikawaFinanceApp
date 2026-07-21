@@ -53,7 +53,7 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
       balanceTimeSeriesQuery: createMockBalanceTimeSeriesQuery(),
       expenseSettlementManagementQuery: createMockExpenseSettlementManagementQuery(),
       csvImportStatusQuery: createMockCsvImportStatusQuery(),
-      resolveViewerRole: async () => 'darling' as const,
+      resolveViewerRole: () => Promise.resolve('darling' as const),
     }
   }
 
