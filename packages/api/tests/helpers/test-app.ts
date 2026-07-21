@@ -18,8 +18,8 @@ export interface TestApp {
   deps: AppDeps
 }
 
-export function createTestApp(): TestApp {
-  const deps = createDeps({})
+export function createTestApp(overrides: Partial<AppDeps> = {}): TestApp {
+  const deps = { ...createDeps({}), ...overrides }
   const app = createApp(deps)
   return { app, deps }
 }
