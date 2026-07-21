@@ -3,10 +3,12 @@
  * @see docs/domain/08a-ul-取引取込.md §2「PDFをCSVに変換する」
  *
  * behavior PDFをCSVに変換する = 明細PDF -> 変換成功 OR 変換失敗
- * 変換の検証（行数一致 + 合計金額一致）は実装側の責務。
- * 失敗理由はドメインの `PdfConversionFailureReason` に翻訳して返す。
+ *
+ * Repository / Query と同じく domain が宣言する driven port。実装（Anthropic API 呼び出し）は
+ * adapter 層の関心で、変換の検証（行数一致 + 合計金額一致）と失敗理由の
+ * `PdfConversionFailureReason` への翻訳は実装側の責務とする。
  */
-import type { PdfConversionFailureReason } from '@warimaru/domain'
+import type { PdfConversionFailureReason } from '../value-objects/PdfConversionResult'
 
 /** 変換で抽出された明細 1 行（取引候補の生成材料） */
 export interface ConvertedStatementRow {

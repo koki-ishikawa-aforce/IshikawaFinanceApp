@@ -26,7 +26,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 
 ## アーキテクチャ原則(要点)
 
-- 集約は `aggregates/` `value-objects/` `repositories/` `queries/` `events/` のディレクトリ構成。各ディレクトリに barrel `index.ts`
+- 集約は `aggregates/` `value-objects/` `repositories/` `queries/` `services/`（外部システムへの driven port、必要な BC のみ） `events/` のディレクトリ構成。各ディレクトリに barrel `index.ts`
 - ドメイン不変条件は Zod スキーマ(`superRefine` 等)とドメイン関数に置く。adapters / api 層で再実装しない
 - プライバシー3段階ルール(世帯フルオープン/個人は相手に合計のみ/経費は本人のみ): Query 実装は必ず ViewerContext を通す
 - ドメインイベント名は過去形(例: `MonthlyExpenseCycleStarted`)

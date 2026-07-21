@@ -16,6 +16,7 @@ import type {
   MonthlyExpenseCycleRepository,
   MonthlyLimitRepository,
   MonthlyReportQuery,
+  PdfToCsvConverter,
   ProratedChildTransactionRepository,
   RetroactiveCandidateQuery,
   StatementImportJobRepository,
@@ -54,7 +55,6 @@ import {
   createDbResolveViewerRole,
 } from '@warimaru/adapters-neon'
 import { AnthropicPdfToCsvConverter } from './pdf-conversion/AnthropicPdfToCsvConverter.js'
-import type { PdfToCsvConverter } from './pdf-conversion/PdfToCsvConverter.js'
 import { createMockDashboardQuery } from './mock-dashboard-query.js'
 import {
   createMockTransactionListQuery,

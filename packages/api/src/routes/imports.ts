@@ -27,6 +27,7 @@ import {
 import type {
   CsvImportStatusQuery,
   DailyMailImportBatchRepository,
+  PdfToCsvConverter,
   StatementImportJob,
   StatementImportJobRepository,
   TransactionCandidateRepository,
@@ -38,7 +39,6 @@ import type {
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { parseStatementCsv } from '../parse-statement-csv.js'
-import type { PdfToCsvConverter } from '../pdf-conversion/PdfToCsvConverter.js'
 import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const StatusParamsSchema = z.object({

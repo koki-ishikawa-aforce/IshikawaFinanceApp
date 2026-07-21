@@ -16,12 +16,13 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 // SDK の zodOutputFormat は zod v4 スキーマを要求する（zod 3.25+ が同梱する v4 API を使用。
 // このファイル内に閉じた利用で、ドメイン層の zod v3 スキーマとは独立）
 import { z } from 'zod/v4'
-import { normalizeMerchantName, type PdfConversionFailureReason } from '@warimaru/domain'
-import type {
-  ConvertedStatementRow,
-  PdfToCsvConversion,
-  PdfToCsvConverter,
-} from './PdfToCsvConverter.js'
+import {
+  normalizeMerchantName,
+  type ConvertedStatementRow,
+  type PdfConversionFailureReason,
+  type PdfToCsvConversion,
+  type PdfToCsvConverter,
+} from '@warimaru/domain'
 
 /** 構造化出力スキーマ（数値制約・日付形式の検証は API 側で未サポートのためローカルで行う） */
 const ConversionOutputSchema = z.object({
