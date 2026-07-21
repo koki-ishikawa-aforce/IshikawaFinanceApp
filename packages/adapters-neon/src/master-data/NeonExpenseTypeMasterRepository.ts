@@ -67,4 +67,8 @@ export class NeonExpenseTypeMasterRepository implements ExpenseTypeMasterReposit
       throw e
     }
   }
+
+  async deleteById(id: ExpenseTypeId): Promise<void> {
+    await this.db.delete(expenseTypeMasters).where(eq(expenseTypeMasters.expenseTypeId, id))
+  }
 }

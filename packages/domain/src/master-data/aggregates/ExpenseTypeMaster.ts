@@ -62,3 +62,20 @@ export type ExpenseTypeMaster = z.infer<typeof ExpenseTypeMasterSchema>
 
 export type DefaultExpenseType = Extract<ExpenseTypeMaster, { kind: 'default' }>
 export type CustomExpenseType = Extract<ExpenseTypeMaster, { kind: 'custom' }>
+
+/** 追加経費種別の改名（規定経費種別の改名関数は提供しない = 改名不可の構造表現） */
+export function renameCustomExpenseType(
+  expenseType: CustomExpenseType,
+  newName: string,
+  renamedByUserId: CustomExpenseType['createdByUserId'],
+  at: Date,
+): CustomExpenseType {
+  return ExpenseTypeMasterSchema.parse({
+    ...expenseType,
+    name: newName,
+    renameHistory: [
+      ...expenseType.renameHistory,
+      { oldName: expenseType.name, newName, renamedAt: at, renamedByUserId },
+    ],
+  }) as CustomExpenseType
+}

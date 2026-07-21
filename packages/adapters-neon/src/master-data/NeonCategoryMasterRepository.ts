@@ -64,4 +64,8 @@ export class NeonCategoryMasterRepository implements CategoryMasterRepository {
       throw e
     }
   }
+
+  async deleteById(id: CategoryId): Promise<void> {
+    await this.db.delete(categoryMasters).where(eq(categoryMasters.categoryId, id))
+  }
 }

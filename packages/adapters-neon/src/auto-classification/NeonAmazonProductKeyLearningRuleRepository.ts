@@ -5,7 +5,7 @@
  * PK = 複合自然キー (user_id, amazon_product_key)。
  * F-1: 検索は user_id 起点で配偶者の学習データに触れない。
  */
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import type {
   AmazonProductKey,
   AmazonProductKeyLearningRule,
@@ -37,6 +37,15 @@ export class NeonAmazonProductKeyLearningRuleRepository implements AmazonProduct
     const row = rows[0]
     if (row === undefined) return null
     return parsePayload(AmazonProductKeyLearningRuleSchema, row.payload)
+  }
+
+  async findAllByUser(userId: UserId): Promise<AmazonProductKeyLearningRule[]> {
+    const rows = await this.db
+      .select({ payload: amazonProductKeyLearningRules.payload })
+      .from(amazonProductKeyLearningRules)
+      .where(eq(amazonProductKeyLearningRules.userId, userId))
+      .orderBy(asc(amazonProductKeyLearningRules.amazonProductKey))
+    return rows.map(row => parsePayload(AmazonProductKeyLearningRuleSchema, row.payload))
   }
 
   async save(rule: AmazonProductKeyLearningRule): Promise<void> {

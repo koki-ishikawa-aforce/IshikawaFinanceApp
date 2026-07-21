@@ -7,13 +7,14 @@
  *   save 時の occurred_on 導出と検索時のパラメータ変換に同じ関数を使う
  * - メール重複除外は partial unique が最終保証（violation は InvariantViolationError へ翻訳）
  */
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type {
   GmailMessageId,
   Money,
   TransactionCandidate,
   TransactionCandidateId,
   TransactionCandidateRepository,
+  UploadFileId,
   UserId,
 } from '@warimaru/domain'
 import { InvariantViolationError, TransactionCandidateSchema } from '@warimaru/domain'
@@ -77,6 +78,18 @@ export class NeonTransactionCandidateRepository implements TransactionCandidateR
     const row = rows[0]
     if (row === undefined) return null
     return parsePayload(TransactionCandidateSchema, row.payload)
+  }
+
+  async findByCsvFileId(csvFileId: UploadFileId): Promise<TransactionCandidate[]> {
+    // csv_file_id は昇格列を持たないため payload（importSource union の kind='csv'）を直接参照する
+    const rows = await this.db
+      .select({ payload: transactionCandidates.payload })
+      .from(transactionCandidates)
+      .where(
+        sql`${transactionCandidates.payload}->'common'->'importSource'->>'csvFileId' = ${csvFileId}`,
+      )
+      .orderBy(asc(transactionCandidates.transactionCandidateId))
+    return rows.map(row => parsePayload(TransactionCandidateSchema, row.payload))
   }
 
   async save(candidate: TransactionCandidate): Promise<void> {

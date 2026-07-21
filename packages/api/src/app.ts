@@ -9,6 +9,10 @@ import { monthlyReportsRoutes } from './routes/monthly-reports.js'
 import { balancesRoutes } from './routes/balances.js'
 import { expenseSettlementRoutes } from './routes/expense-settlement.js'
 import { importsRoutes } from './routes/imports.js'
+import { categoriesRoutes } from './routes/categories.js'
+import { expenseTypesRoutes } from './routes/expense-types.js'
+import { monthlyLimitsRoutes } from './routes/monthly-limits.js'
+import { classificationRoutes } from './routes/classification.js'
 import { lineAuthMiddleware } from './middleware/line-auth.js'
 import { devViewerIdMiddleware } from './middleware/viewer-id.js'
 import { errorHandler } from './middleware/error-handler.js'
@@ -24,11 +28,53 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
   app.route('/api/me', meRoutes(deps.resolveViewerRole))
   app.route('/api/dashboard', dashboardRoutes(deps.dashboardQuery))
-  app.route('/api/transactions', transactionsRoutes(deps.transactionListQuery))
+  app.route(
+    '/api/transactions',
+    transactionsRoutes(
+      deps.transactionListQuery,
+      deps.transactionRepository,
+      deps.resolveViewerRole,
+    ),
+  )
   app.route('/api/monthly-reports', monthlyReportsRoutes(deps.monthlyReportQuery))
   app.route('/api/balances', balancesRoutes(deps.accountBalanceQuery, deps.balanceTimeSeriesQuery))
-  app.route('/api/expense-settlement', expenseSettlementRoutes(deps.expenseSettlementManagementQuery))
-  app.route('/api/imports', importsRoutes(deps.csvImportStatusQuery))
+  app.route(
+    '/api/expense-settlement',
+    expenseSettlementRoutes({
+      expenseSettlementManagementQuery: deps.expenseSettlementManagementQuery,
+      monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
+      proratedChildTransactionRepository: deps.proratedChildTransactionRepository,
+      expenseReimbursementDepositRepository: deps.expenseReimbursementDepositRepository,
+      resolveViewerRole: deps.resolveViewerRole,
+    }),
+  )
+  app.route(
+    '/api/imports',
+    importsRoutes({
+      csvImportStatusQuery: deps.csvImportStatusQuery,
+      statementImportJobRepository: deps.statementImportJobRepository,
+      transactionCandidateRepository: deps.transactionCandidateRepository,
+      dailyMailImportBatchRepository: deps.dailyMailImportBatchRepository,
+      transactionRepository: deps.transactionRepository,
+      resolveViewerRole: deps.resolveViewerRole,
+    }),
+  )
+  app.route('/api/categories', categoriesRoutes(deps.categoryMasterRepository))
+  app.route('/api/expense-types', expenseTypesRoutes(deps.expenseTypeMasterRepository))
+  app.route(
+    '/api/monthly-limits',
+    monthlyLimitsRoutes(deps.monthlyLimitRepository, deps.expenseTypeMasterRepository),
+  )
+  app.route(
+    '/api/classification',
+    classificationRoutes({
+      retroactiveCandidateQuery: deps.retroactiveCandidateQuery,
+      merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
+      amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
+      bulkClassificationSessionRepository: deps.bulkClassificationSessionRepository,
+      transactionRepository: deps.transactionRepository,
+    }),
+  )
 
   app.get('/health', c => c.json({ ok: true }))
 
