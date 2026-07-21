@@ -17,7 +17,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ja" data-theme="darling" suppressHydrationWarning className={zenMaruGothic.variable}>
+    <html
+      lang="ja"
+      data-theme="darling"
+      suppressHydrationWarning
+      className={zenMaruGothic.variable}
+    >
       <body>
         <Providers>{children}</Providers>
       </body>

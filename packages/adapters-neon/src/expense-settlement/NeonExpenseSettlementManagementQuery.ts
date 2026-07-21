@@ -39,10 +39,7 @@ export class NeonExpenseSettlementManagementQuery implements ExpenseSettlementMa
     private readonly deps: NeonExpenseSettlementManagementQueryDeps,
   ) {}
 
-  async fetch(
-    viewerId: UserId,
-    targetMonth?: YearMonth,
-  ): Promise<ExpenseSettlementManagementView> {
+  async fetch(viewerId: UserId, targetMonth?: YearMonth): Promise<ExpenseSettlementManagementView> {
     const month = targetMonth ?? currentJstYearMonth(this.deps.now())
     const [currentCycle, latestFinalized] = await Promise.all([
       this.findCycleByMonth(viewerId, month),

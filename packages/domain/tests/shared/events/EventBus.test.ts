@@ -12,7 +12,9 @@ type TestEventB = DomainEvent & {
   readonly message: string
 }
 
-function makeEvent<E extends DomainEvent>(overrides: Omit<E, 'eventId' | 'occurredAt'> & Partial<Pick<E, 'eventId' | 'occurredAt'>>): E {
+function makeEvent<E extends DomainEvent>(
+  overrides: Omit<E, 'eventId' | 'occurredAt'> & Partial<Pick<E, 'eventId' | 'occurredAt'>>,
+): E {
   return {
     eventId: 'evt-1',
     occurredAt: new Date('2026-01-01T00:00:00Z'),
@@ -34,7 +36,7 @@ describe('InMemoryEventBus', () => {
 
   it('登録したハンドラにイベントが配信される', () => {
     const received: TestEventA[] = []
-    bus.subscribe<TestEventA>('TestEventA', (e) => received.push(e))
+    bus.subscribe<TestEventA>('TestEventA', e => received.push(e))
 
     const event = makeEvent<TestEventA>({ type: 'TestEventA', value: 42 })
     bus.publish(event)
@@ -46,8 +48,8 @@ describe('InMemoryEventBus', () => {
   it('同一イベント型に複数ハンドラを登録できる', () => {
     const log1: number[] = []
     const log2: number[] = []
-    bus.subscribe<TestEventA>('TestEventA', (e) => log1.push(e.value))
-    bus.subscribe<TestEventA>('TestEventA', (e) => log2.push(e.value))
+    bus.subscribe<TestEventA>('TestEventA', e => log1.push(e.value))
+    bus.subscribe<TestEventA>('TestEventA', e => log2.push(e.value))
 
     bus.publish(makeEvent<TestEventA>({ type: 'TestEventA', value: 7 }))
 
@@ -58,8 +60,8 @@ describe('InMemoryEventBus', () => {
   it('異なるイベント型のハンドラは呼ばれない', () => {
     const receivedA: TestEventA[] = []
     const receivedB: TestEventB[] = []
-    bus.subscribe<TestEventA>('TestEventA', (e) => receivedA.push(e))
-    bus.subscribe<TestEventB>('TestEventB', (e) => receivedB.push(e))
+    bus.subscribe<TestEventA>('TestEventA', e => receivedA.push(e))
+    bus.subscribe<TestEventB>('TestEventB', e => receivedB.push(e))
 
     bus.publish(makeEvent<TestEventA>({ type: 'TestEventA', value: 1 }))
 
@@ -79,7 +81,7 @@ describe('InMemoryEventBus', () => {
 
   it('clear() で全ハンドラが解除される', () => {
     const received: TestEventA[] = []
-    bus.subscribe<TestEventA>('TestEventA', (e) => received.push(e))
+    bus.subscribe<TestEventA>('TestEventA', e => received.push(e))
 
     bus.clear()
     bus.publish(makeEvent<TestEventA>({ type: 'TestEventA', value: 99 }))
@@ -89,10 +91,10 @@ describe('InMemoryEventBus', () => {
 
   it('clear() 後に再登録できる', () => {
     const received: number[] = []
-    bus.subscribe<TestEventA>('TestEventA', (e) => received.push(e.value))
+    bus.subscribe<TestEventA>('TestEventA', e => received.push(e.value))
     bus.clear()
 
-    bus.subscribe<TestEventA>('TestEventA', (e) => received.push(e.value * 10))
+    bus.subscribe<TestEventA>('TestEventA', e => received.push(e.value * 10))
     bus.publish(makeEvent<TestEventA>({ type: 'TestEventA', value: 3 }))
 
     expect(received).toEqual([30])
@@ -100,7 +102,7 @@ describe('InMemoryEventBus', () => {
 
   it('ハンドラはべき等に動作可能（同一イベントの再配信）', () => {
     const seen = new Set<string>()
-    const handler: EventHandler<TestEventA> = (e) => {
+    const handler: EventHandler<TestEventA> = e => {
       seen.add(e.eventId)
     }
     bus.subscribe<TestEventA>('TestEventA', handler)

@@ -43,12 +43,7 @@ export function DonutChart({ segments, totalAmount }: DonutChartProps) {
 
   return (
     <div className={styles.container}>
-      <svg
-        viewBox={`0 0 ${SIZE} ${SIZE}`}
-        width={SIZE}
-        height={SIZE}
-        className={styles.svg}
-      >
+      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width={SIZE} height={SIZE} className={styles.svg}>
         {arcs.map((arc, i) => (
           <circle
             key={i}

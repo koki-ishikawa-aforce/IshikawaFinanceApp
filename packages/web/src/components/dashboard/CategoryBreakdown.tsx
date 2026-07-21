@@ -12,7 +12,9 @@ interface CategoryBreakdownProps {
 }
 
 function getColor(name: string, index: number, colors: Record<string, string>): string {
-  return colors[name] ?? FALLBACK_CATEGORY_COLORS[index % FALLBACK_CATEGORY_COLORS.length] ?? '#cccccc'
+  return (
+    colors[name] ?? FALLBACK_CATEGORY_COLORS[index % FALLBACK_CATEGORY_COLORS.length] ?? '#cccccc'
+  )
 }
 
 export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownProps) {

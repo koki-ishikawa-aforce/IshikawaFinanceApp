@@ -60,7 +60,11 @@ function makeAppUserPayload(userId: string, role: 'honey' | 'darling') {
     lineOperationSettings: {
       friendAdd: { kind: 'added', followWebhookReceivedAt: REGISTERED },
       talkRoomJoin: { kind: 'joined', talkRoomId: TALK_ROOM_ID, joinWebhookReceivedAt: REGISTERED },
-      notificationActivation: { kind: 'activated', talkRoomId: TALK_ROOM_ID, activatedAt: REGISTERED },
+      notificationActivation: {
+        kind: 'activated',
+        talkRoomId: TALK_ROOM_ID,
+        activatedAt: REGISTERED,
+      },
     },
   })
 }
@@ -115,11 +119,7 @@ function makeNisaPayload(accountId: string, userId: string, accumulated: number)
   })
 }
 
-function makeCategoryPayload(
-  categoryId: string,
-  name: string,
-  defaultKind: string,
-) {
+function makeCategoryPayload(categoryId: string, name: string, defaultKind: string) {
   return serializeForPayload({
     kind: 'default',
     categoryId,
@@ -169,46 +169,280 @@ function makeTransactionPayload(tx: TxSeed) {
 
 // 2026年7月 (JST) = UTC 2026-06-30T15:00:00 ~ 2026-07-31T14:59:59.999
 function jstDate(day: number, hour: number): Date {
-  return new Date(`2026-07-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00+09:00`)
+  return new Date(
+    `2026-07-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00+09:00`,
+  )
 }
 
 const txSeeds: TxSeed[] = [
   // 住居光熱通信 (household)
-  { transactionId: '01JDD0000000000000000TX001', ownerUserId: HONEY_ID, merchantName: '家賃振込', amount: 65000, occurredAt: jstDate(1, 10), categoryId: CAT_HOUSING, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX002', ownerUserId: HONEY_ID, merchantName: '東京電力', amount: 8500, occurredAt: jstDate(5, 14), categoryId: CAT_HOUSING, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX003', ownerUserId: HONEY_ID, merchantName: '東京ガス', amount: 4200, occurredAt: jstDate(5, 15), categoryId: CAT_HOUSING, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX004', ownerUserId: DARLING_ID, merchantName: 'NTTドコモ', amount: 4800, occurredAt: jstDate(3, 11), categoryId: CAT_HOUSING, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX005', ownerUserId: DARLING_ID, merchantName: 'BIGLOBE光', amount: 2500, occurredAt: jstDate(3, 12), categoryId: CAT_HOUSING, expenseClass: 'household' },
+  {
+    transactionId: '01JDD0000000000000000TX001',
+    ownerUserId: HONEY_ID,
+    merchantName: '家賃振込',
+    amount: 65000,
+    occurredAt: jstDate(1, 10),
+    categoryId: CAT_HOUSING,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX002',
+    ownerUserId: HONEY_ID,
+    merchantName: '東京電力',
+    amount: 8500,
+    occurredAt: jstDate(5, 14),
+    categoryId: CAT_HOUSING,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX003',
+    ownerUserId: HONEY_ID,
+    merchantName: '東京ガス',
+    amount: 4200,
+    occurredAt: jstDate(5, 15),
+    categoryId: CAT_HOUSING,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX004',
+    ownerUserId: DARLING_ID,
+    merchantName: 'NTTドコモ',
+    amount: 4800,
+    occurredAt: jstDate(3, 11),
+    categoryId: CAT_HOUSING,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX005',
+    ownerUserId: DARLING_ID,
+    merchantName: 'BIGLOBE光',
+    amount: 2500,
+    occurredAt: jstDate(3, 12),
+    categoryId: CAT_HOUSING,
+    expenseClass: 'household',
+  },
 
   // 食費 (household & personal mixed)
-  { transactionId: '01JDD0000000000000000TX006', ownerUserId: HONEY_ID, merchantName: 'イオン', amount: 5200, occurredAt: jstDate(2, 18), categoryId: CAT_FOOD, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX007', ownerUserId: HONEY_ID, merchantName: 'セブンイレブン', amount: 1200, occurredAt: jstDate(4, 12), categoryId: CAT_FOOD, expenseClass: 'personal_honey' },
-  { transactionId: '01JDD0000000000000000TX008', ownerUserId: DARLING_ID, merchantName: 'コストコ', amount: 12800, occurredAt: jstDate(6, 14), categoryId: CAT_FOOD, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX009', ownerUserId: HONEY_ID, merchantName: 'まいばすけっと', amount: 980, occurredAt: jstDate(7, 19), categoryId: CAT_FOOD, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX010', ownerUserId: DARLING_ID, merchantName: 'スターバックス', amount: 580, occurredAt: jstDate(8, 10), categoryId: CAT_FOOD, expenseClass: 'personal_darling' },
-  { transactionId: '01JDD0000000000000000TX011', ownerUserId: HONEY_ID, merchantName: 'ライフ', amount: 3400, occurredAt: jstDate(9, 17), categoryId: CAT_FOOD, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX012', ownerUserId: DARLING_ID, merchantName: 'サイゼリヤ', amount: 2200, occurredAt: jstDate(10, 12), categoryId: CAT_FOOD, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX013', ownerUserId: HONEY_ID, merchantName: 'ファミリーマート', amount: 650, occurredAt: jstDate(10, 8), categoryId: CAT_FOOD, expenseClass: 'personal_honey' },
-  { transactionId: '01JDD0000000000000000TX014', ownerUserId: DARLING_ID, merchantName: 'マルエツ', amount: 4800, occurredAt: jstDate(11, 16), categoryId: CAT_FOOD, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX015', ownerUserId: HONEY_ID, merchantName: '松屋', amount: 890, occurredAt: jstDate(12, 13), categoryId: CAT_FOOD, expenseClass: 'personal_honey' },
-  { transactionId: '01JDD0000000000000000TX016', ownerUserId: DARLING_ID, merchantName: 'ドトールコーヒー', amount: 420, occurredAt: jstDate(13, 9), categoryId: CAT_FOOD, expenseClass: 'personal_darling' },
-  { transactionId: '01JDD0000000000000000TX017', ownerUserId: HONEY_ID, merchantName: 'ヨークベニマル', amount: 6200, occurredAt: jstDate(14, 11), categoryId: CAT_FOOD, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX018', ownerUserId: DARLING_ID, merchantName: 'カルディ', amount: 2680, occurredAt: jstDate(14, 15), categoryId: CAT_FOOD, expenseClass: 'household' },
+  {
+    transactionId: '01JDD0000000000000000TX006',
+    ownerUserId: HONEY_ID,
+    merchantName: 'イオン',
+    amount: 5200,
+    occurredAt: jstDate(2, 18),
+    categoryId: CAT_FOOD,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX007',
+    ownerUserId: HONEY_ID,
+    merchantName: 'セブンイレブン',
+    amount: 1200,
+    occurredAt: jstDate(4, 12),
+    categoryId: CAT_FOOD,
+    expenseClass: 'personal_honey',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX008',
+    ownerUserId: DARLING_ID,
+    merchantName: 'コストコ',
+    amount: 12800,
+    occurredAt: jstDate(6, 14),
+    categoryId: CAT_FOOD,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX009',
+    ownerUserId: HONEY_ID,
+    merchantName: 'まいばすけっと',
+    amount: 980,
+    occurredAt: jstDate(7, 19),
+    categoryId: CAT_FOOD,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX010',
+    ownerUserId: DARLING_ID,
+    merchantName: 'スターバックス',
+    amount: 580,
+    occurredAt: jstDate(8, 10),
+    categoryId: CAT_FOOD,
+    expenseClass: 'personal_darling',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX011',
+    ownerUserId: HONEY_ID,
+    merchantName: 'ライフ',
+    amount: 3400,
+    occurredAt: jstDate(9, 17),
+    categoryId: CAT_FOOD,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX012',
+    ownerUserId: DARLING_ID,
+    merchantName: 'サイゼリヤ',
+    amount: 2200,
+    occurredAt: jstDate(10, 12),
+    categoryId: CAT_FOOD,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX013',
+    ownerUserId: HONEY_ID,
+    merchantName: 'ファミリーマート',
+    amount: 650,
+    occurredAt: jstDate(10, 8),
+    categoryId: CAT_FOOD,
+    expenseClass: 'personal_honey',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX014',
+    ownerUserId: DARLING_ID,
+    merchantName: 'マルエツ',
+    amount: 4800,
+    occurredAt: jstDate(11, 16),
+    categoryId: CAT_FOOD,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX015',
+    ownerUserId: HONEY_ID,
+    merchantName: '松屋',
+    amount: 890,
+    occurredAt: jstDate(12, 13),
+    categoryId: CAT_FOOD,
+    expenseClass: 'personal_honey',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX016',
+    ownerUserId: DARLING_ID,
+    merchantName: 'ドトールコーヒー',
+    amount: 420,
+    occurredAt: jstDate(13, 9),
+    categoryId: CAT_FOOD,
+    expenseClass: 'personal_darling',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX017',
+    ownerUserId: HONEY_ID,
+    merchantName: 'ヨークベニマル',
+    amount: 6200,
+    occurredAt: jstDate(14, 11),
+    categoryId: CAT_FOOD,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX018',
+    ownerUserId: DARLING_ID,
+    merchantName: 'カルディ',
+    amount: 2680,
+    occurredAt: jstDate(14, 15),
+    categoryId: CAT_FOOD,
+    expenseClass: 'household',
+  },
 
   // 娯楽 (mixed)
-  { transactionId: '01JDD0000000000000000TX019', ownerUserId: HONEY_ID, merchantName: 'Netflix', amount: 1490, occurredAt: jstDate(1, 9), categoryId: CAT_ENTERTAINMENT, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX020', ownerUserId: DARLING_ID, merchantName: 'TOHOシネマズ', amount: 3600, occurredAt: jstDate(7, 14), categoryId: CAT_ENTERTAINMENT, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX021', ownerUserId: HONEY_ID, merchantName: 'Steam', amount: 4980, occurredAt: jstDate(10, 22), categoryId: CAT_ENTERTAINMENT, expenseClass: 'personal_honey' },
-  { transactionId: '01JDD0000000000000000TX022', ownerUserId: DARLING_ID, merchantName: 'Amazon Kindle', amount: 1430, occurredAt: jstDate(12, 20), categoryId: CAT_ENTERTAINMENT, expenseClass: 'personal_darling' },
+  {
+    transactionId: '01JDD0000000000000000TX019',
+    ownerUserId: HONEY_ID,
+    merchantName: 'Netflix',
+    amount: 1490,
+    occurredAt: jstDate(1, 9),
+    categoryId: CAT_ENTERTAINMENT,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX020',
+    ownerUserId: DARLING_ID,
+    merchantName: 'TOHOシネマズ',
+    amount: 3600,
+    occurredAt: jstDate(7, 14),
+    categoryId: CAT_ENTERTAINMENT,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX021',
+    ownerUserId: HONEY_ID,
+    merchantName: 'Steam',
+    amount: 4980,
+    occurredAt: jstDate(10, 22),
+    categoryId: CAT_ENTERTAINMENT,
+    expenseClass: 'personal_honey',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX022',
+    ownerUserId: DARLING_ID,
+    merchantName: 'Amazon Kindle',
+    amount: 1430,
+    occurredAt: jstDate(12, 20),
+    categoryId: CAT_ENTERTAINMENT,
+    expenseClass: 'personal_darling',
+  },
 
   // その他 (mixed)
-  { transactionId: '01JDD0000000000000000TX023', ownerUserId: HONEY_ID, merchantName: 'ダイソー', amount: 1100, occurredAt: jstDate(2, 15), categoryId: CAT_OTHER, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX024', ownerUserId: DARLING_ID, merchantName: 'マツモトキヨシ', amount: 3200, occurredAt: jstDate(4, 13), categoryId: CAT_OTHER, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX025', ownerUserId: HONEY_ID, merchantName: '東京メトロ', amount: 2400, occurredAt: jstDate(6, 8), categoryId: CAT_OTHER, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX026', ownerUserId: DARLING_ID, merchantName: 'クリーニング屋', amount: 1800, occurredAt: jstDate(8, 16), categoryId: CAT_OTHER, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX027', ownerUserId: HONEY_ID, merchantName: 'ニトリ', amount: 5500, occurredAt: jstDate(9, 11), categoryId: CAT_OTHER, expenseClass: 'household' },
-  { transactionId: '01JDD0000000000000000TX028', ownerUserId: DARLING_ID, merchantName: '美容室HAIR', amount: 4500, occurredAt: jstDate(11, 14), categoryId: CAT_OTHER, expenseClass: 'personal_darling' },
-  { transactionId: '01JDD0000000000000000TX029', ownerUserId: HONEY_ID, merchantName: 'ユニクロ', amount: 500, occurredAt: jstDate(13, 10), categoryId: CAT_OTHER, expenseClass: 'personal_honey' },
+  {
+    transactionId: '01JDD0000000000000000TX023',
+    ownerUserId: HONEY_ID,
+    merchantName: 'ダイソー',
+    amount: 1100,
+    occurredAt: jstDate(2, 15),
+    categoryId: CAT_OTHER,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX024',
+    ownerUserId: DARLING_ID,
+    merchantName: 'マツモトキヨシ',
+    amount: 3200,
+    occurredAt: jstDate(4, 13),
+    categoryId: CAT_OTHER,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX025',
+    ownerUserId: HONEY_ID,
+    merchantName: '東京メトロ',
+    amount: 2400,
+    occurredAt: jstDate(6, 8),
+    categoryId: CAT_OTHER,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX026',
+    ownerUserId: DARLING_ID,
+    merchantName: 'クリーニング屋',
+    amount: 1800,
+    occurredAt: jstDate(8, 16),
+    categoryId: CAT_OTHER,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX027',
+    ownerUserId: HONEY_ID,
+    merchantName: 'ニトリ',
+    amount: 5500,
+    occurredAt: jstDate(9, 11),
+    categoryId: CAT_OTHER,
+    expenseClass: 'household',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX028',
+    ownerUserId: DARLING_ID,
+    merchantName: '美容室HAIR',
+    amount: 4500,
+    occurredAt: jstDate(11, 14),
+    categoryId: CAT_OTHER,
+    expenseClass: 'personal_darling',
+  },
+  {
+    transactionId: '01JDD0000000000000000TX029',
+    ownerUserId: HONEY_ID,
+    merchantName: 'ユニクロ',
+    amount: 500,
+    occurredAt: jstDate(13, 10),
+    categoryId: CAT_OTHER,
+    expenseClass: 'personal_honey',
+  },
 ]
 
 const honeyTxs = txSeeds.filter(t => t.ownerUserId === HONEY_ID)
@@ -216,12 +450,7 @@ const darlingTxs = txSeeds.filter(t => t.ownerUserId === DARLING_ID)
 const honeyCardTotal = honeyTxs.reduce((sum, t) => sum + t.amount, 0)
 const darlingCardTotal = darlingTxs.reduce((sum, t) => sum + t.amount, 0)
 
-function makeUnpaidPayload(
-  unpaidId: string,
-  accountId: string,
-  total: number,
-  txs: TxSeed[],
-) {
+function makeUnpaidPayload(unpaidId: string, accountId: string, total: number, txs: TxSeed[]) {
   let entryCounter = 0
   const entries = txs.map(tx => {
     entryCounter++
@@ -245,13 +474,26 @@ function makeUnpaidPayload(
 async function seed() {
   console.log('Seeding app_users...')
   for (const u of [
-    { userId: HONEY_ID, role: 'honey' as const, kind: 'operation_started' as const, payload: makeAppUserPayload(HONEY_ID, 'honey') },
-    { userId: DARLING_ID, role: 'darling' as const, kind: 'operation_started' as const, payload: makeAppUserPayload(DARLING_ID, 'darling') },
+    {
+      userId: HONEY_ID,
+      role: 'honey' as const,
+      kind: 'operation_started' as const,
+      payload: makeAppUserPayload(HONEY_ID, 'honey'),
+    },
+    {
+      userId: DARLING_ID,
+      role: 'darling' as const,
+      kind: 'operation_started' as const,
+      payload: makeAppUserPayload(DARLING_ID, 'darling'),
+    },
   ]) {
-    await db.insert(schema.appUsers).values(u).onConflictDoUpdate({
-      target: schema.appUsers.userId,
-      set: { role: u.role, kind: u.kind, payload: u.payload, updatedAt: NOW },
-    })
+    await db
+      .insert(schema.appUsers)
+      .values(u)
+      .onConflictDoUpdate({
+        target: schema.appUsers.userId,
+        set: { role: u.role, kind: u.kind, payload: u.payload, updatedAt: NOW },
+      })
   }
 
   console.log('Seeding category_masters...')
@@ -269,26 +511,68 @@ async function seed() {
       ownerUserId: null,
       payload: makeCategoryPayload(c.id, c.name, c.defaultKind),
     }
-    await db.insert(schema.categoryMasters).values(row).onConflictDoUpdate({
-      target: schema.categoryMasters.categoryId,
-      set: { name: row.name, payload: row.payload, updatedAt: NOW },
-    })
+    await db
+      .insert(schema.categoryMasters)
+      .values(row)
+      .onConflictDoUpdate({
+        target: schema.categoryMasters.categoryId,
+        set: { name: row.name, payload: row.payload, updatedAt: NOW },
+      })
   }
 
   console.log('Seeding accounts...')
   const accountRows = [
-    { accountId: ACCT_HONEY_SMBC, ownerUserId: HONEY_ID, kind: 'smbc_bank' as const, isActive: true, payload: makeSmbcPayload(ACCT_HONEY_SMBC, HONEY_ID, 1350000) },
-    { accountId: ACCT_HONEY_CARD, ownerUserId: HONEY_ID, kind: 'mitsui_sumitomo_card' as const, isActive: true, payload: makeCardPayload(ACCT_HONEY_CARD, HONEY_ID, UNPAID_HONEY) },
-    { accountId: ACCT_HONEY_NISA, ownerUserId: HONEY_ID, kind: 'nisa' as const, isActive: true, payload: makeNisaPayload(ACCT_HONEY_NISA, HONEY_ID, 200000) },
-    { accountId: ACCT_DARLING_SMBC, ownerUserId: DARLING_ID, kind: 'smbc_bank' as const, isActive: true, payload: makeSmbcPayload(ACCT_DARLING_SMBC, DARLING_ID, 1100000) },
-    { accountId: ACCT_DARLING_CARD, ownerUserId: DARLING_ID, kind: 'mitsui_sumitomo_card' as const, isActive: true, payload: makeCardPayload(ACCT_DARLING_CARD, DARLING_ID, UNPAID_DARLING) },
-    { accountId: ACCT_DARLING_NISA, ownerUserId: DARLING_ID, kind: 'nisa' as const, isActive: true, payload: makeNisaPayload(ACCT_DARLING_NISA, DARLING_ID, 160000) },
+    {
+      accountId: ACCT_HONEY_SMBC,
+      ownerUserId: HONEY_ID,
+      kind: 'smbc_bank' as const,
+      isActive: true,
+      payload: makeSmbcPayload(ACCT_HONEY_SMBC, HONEY_ID, 1350000),
+    },
+    {
+      accountId: ACCT_HONEY_CARD,
+      ownerUserId: HONEY_ID,
+      kind: 'mitsui_sumitomo_card' as const,
+      isActive: true,
+      payload: makeCardPayload(ACCT_HONEY_CARD, HONEY_ID, UNPAID_HONEY),
+    },
+    {
+      accountId: ACCT_HONEY_NISA,
+      ownerUserId: HONEY_ID,
+      kind: 'nisa' as const,
+      isActive: true,
+      payload: makeNisaPayload(ACCT_HONEY_NISA, HONEY_ID, 200000),
+    },
+    {
+      accountId: ACCT_DARLING_SMBC,
+      ownerUserId: DARLING_ID,
+      kind: 'smbc_bank' as const,
+      isActive: true,
+      payload: makeSmbcPayload(ACCT_DARLING_SMBC, DARLING_ID, 1100000),
+    },
+    {
+      accountId: ACCT_DARLING_CARD,
+      ownerUserId: DARLING_ID,
+      kind: 'mitsui_sumitomo_card' as const,
+      isActive: true,
+      payload: makeCardPayload(ACCT_DARLING_CARD, DARLING_ID, UNPAID_DARLING),
+    },
+    {
+      accountId: ACCT_DARLING_NISA,
+      ownerUserId: DARLING_ID,
+      kind: 'nisa' as const,
+      isActive: true,
+      payload: makeNisaPayload(ACCT_DARLING_NISA, DARLING_ID, 160000),
+    },
   ]
   for (const a of accountRows) {
-    await db.insert(schema.accounts).values(a).onConflictDoUpdate({
-      target: schema.accounts.accountId,
-      set: { kind: a.kind, isActive: a.isActive, payload: a.payload, updatedAt: NOW },
-    })
+    await db
+      .insert(schema.accounts)
+      .values(a)
+      .onConflictDoUpdate({
+        target: schema.accounts.accountId,
+        set: { kind: a.kind, isActive: a.isActive, payload: a.payload, updatedAt: NOW },
+      })
   }
 
   console.log('Seeding mitsui_sumitomo_unpaids...')
@@ -306,10 +590,17 @@ async function seed() {
       payload: makeUnpaidPayload(UNPAID_DARLING, ACCT_DARLING_CARD, darlingCardTotal, darlingTxs),
     },
   ]) {
-    await db.insert(schema.mitsuiSumitomoUnpaids).values(u).onConflictDoUpdate({
-      target: schema.mitsuiSumitomoUnpaids.unpaidAggregateId,
-      set: { currentMonthUnpaidTotal: u.currentMonthUnpaidTotal, payload: u.payload, updatedAt: NOW },
-    })
+    await db
+      .insert(schema.mitsuiSumitomoUnpaids)
+      .values(u)
+      .onConflictDoUpdate({
+        target: schema.mitsuiSumitomoUnpaids.unpaidAggregateId,
+        set: {
+          currentMonthUnpaidTotal: u.currentMonthUnpaidTotal,
+          payload: u.payload,
+          updatedAt: NOW,
+        },
+      })
   }
 
   console.log('Seeding transactions...')
@@ -325,19 +616,22 @@ async function seed() {
       expenseClass: tx.expenseClass,
       payload: makeTransactionPayload(tx),
     }
-    await db.insert(schema.transactions).values(row).onConflictDoUpdate({
-      target: schema.transactions.transactionId,
-      set: {
-        kind: row.kind,
-        merchantName: row.merchantName,
-        amount: row.amount,
-        occurredAt: row.occurredAt,
-        categoryId: row.categoryId,
-        expenseClass: row.expenseClass,
-        payload: row.payload,
-        updatedAt: NOW,
-      },
-    })
+    await db
+      .insert(schema.transactions)
+      .values(row)
+      .onConflictDoUpdate({
+        target: schema.transactions.transactionId,
+        set: {
+          kind: row.kind,
+          merchantName: row.merchantName,
+          amount: row.amount,
+          occurredAt: row.occurredAt,
+          categoryId: row.categoryId,
+          expenseClass: row.expenseClass,
+          payload: row.payload,
+          updatedAt: NOW,
+        },
+      })
   }
 
   console.log('Seed complete!')

@@ -11,10 +11,7 @@ export class InMemoryEventBus implements EventBus {
     }
   }
 
-  subscribe<E extends DomainEvent>(
-    eventType: E['type'],
-    handler: EventHandler<E>,
-  ): void {
+  subscribe<E extends DomainEvent>(eventType: E['type'], handler: EventHandler<E>): void {
     const existing = this.handlers.get(eventType)
     if (existing) {
       existing.push(handler as EventHandler)

@@ -6,9 +6,6 @@ export type EventHandler<E extends DomainEvent = DomainEvent> = (event: E) => vo
 
 export interface EventBus {
   publish(event: DomainEvent): void
-  subscribe<E extends DomainEvent>(
-    eventType: E['type'],
-    handler: EventHandler<E>,
-  ): void
+  subscribe<E extends DomainEvent>(eventType: E['type'], handler: EventHandler<E>): void
   clear(): void
 }
