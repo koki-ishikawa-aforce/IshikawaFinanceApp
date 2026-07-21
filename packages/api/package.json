@@ -9,6 +9,7 @@
     "build": "tsc -b",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
