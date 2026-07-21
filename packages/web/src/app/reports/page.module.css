@@ -1,0 +1,55 @@
+.main {
+  max-width: 300px;
+  margin: 0 auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100dvh;
+}
+
+.statusDates {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.incomplete {
+  color: #a05028;
+  font-weight: 700;
+}
+
+.totalsList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.totalsLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.totalsValue {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.totalsSum {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 5px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.finalizeNote {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}

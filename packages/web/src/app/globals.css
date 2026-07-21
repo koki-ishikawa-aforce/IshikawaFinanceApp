@@ -51,3 +51,8 @@ body {
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
 }
+
+/* 下部固定ナビゲーション（AppNav）と重ならない余白 */
+body {
+  padding-bottom: 56px;
+}
