@@ -8,6 +8,7 @@ import type {
   CsvImportStatusQuery,
   DailyMailImportBatchRepository,
   DashboardQuery,
+  EventBus,
   ExpenseReimbursementDepositRepository,
   ExpenseSettlementManagementQuery,
   ExpenseTypeDeletionRequestRepository,
@@ -26,6 +27,7 @@ import type {
   UserId,
   UserRole,
 } from '@warimaru/domain'
+import { InMemoryEventBus } from '@warimaru/domain'
 import {
   createNeonHttpDb,
   NeonAmazonProductKeyLearningRuleRepository,
@@ -85,6 +87,8 @@ import {
 } from './mock-repositories.js'
 
 export interface AppDeps {
+  // ドメインイベントバス (#34): 同期・インプロセス配信。ハンドラー登録は createApp が行う
+  eventBus: EventBus
   dashboardQuery: DashboardQuery
   transactionListQuery: TransactionListQuery
   monthlyReportQuery: MonthlyReportQuery
@@ -122,6 +126,7 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
   if (!env.DATABASE_URL) {
     console.warn('DATABASE_URL not set — using mock data')
     return {
+      eventBus: new InMemoryEventBus(),
       dashboardQuery: createMockDashboardQuery(),
       transactionListQuery: createMockTransactionListQuery(),
       monthlyReportQuery: createMockMonthlyReportQuery(),
@@ -160,6 +165,7 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
   const now = (): Date => new Date()
 
   return {
+    eventBus: new InMemoryEventBus(),
     dashboardQuery: new NeonDashboardQuery(db, { resolveCategoryNames, resolveViewerRole }),
     transactionListQuery: new NeonTransactionListQuery(db, {
       resolveCategoryNames,

@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   MonthlyExpenseCycleSchema,
+  calculateSettlementMatchDifference,
   confirmCycleCsv,
+  cycleExpenseTotal,
   finalizeCycle,
   type AccumulatingCycle,
 } from '../../../src/expense-settlement/aggregates/MonthlyExpenseCycle'
+import { money } from '../../../src/shared/value-objects/Money'
 import { testUlid } from '../../helpers/ids'
 
 function cappedAccumulation(currentTotal: number, monthlyCap: number, refAmounts: number[]) {
@@ -129,5 +132,61 @@ describe('MonthlyExpenseCycle 集約', () => {
     )
     expect(finalized.kind).toBe('finalized')
     expect(finalized.expenseReimbursementId).toBe('01RMB000000000000000000001')
+  })
+})
+
+describe('突合差額の算出（08e §2「経費精算入金と当月経費を突合する」）', () => {
+  const cycle = MonthlyExpenseCycleSchema.parse({
+    kind: 'csv_confirmed',
+    common: commonWith([cappedAccumulation(8000, 10000, [3000, 5000])]),
+    csvConfirmedAt: new Date(),
+  })
+
+  it('cycleExpenseTotal: 当月経費合計 = Σ 経費種別累計', () => {
+    expect(cycleExpenseTotal(cycle)).toBe(8000)
+  })
+
+  it('cycleExpenseTotal: 無制限累計を含む複数累計も合算される', () => {
+    const mixed = MonthlyExpenseCycleSchema.parse({
+      kind: 'csv_confirmed',
+      common: commonWith([
+        cappedAccumulation(8000, 10000, [3000, 5000]),
+        {
+          kind: 'unlimited',
+          accumulationId: '01ACC000000000000000000002',
+          expenseTypeId: '01EXP000000000000000000002',
+          userId: 'user_honey',
+          currentTotal: 2500,
+          transactionRefs: [
+            {
+              transactionId: '01TXB000000000000000000001',
+              occurredAt: new Date(),
+              amount: 2500,
+              allocation: { kind: 'full' },
+            },
+          ],
+        },
+      ]),
+      csvConfirmedAt: new Date(),
+    })
+    expect(cycleExpenseTotal(mixed)).toBe(10500)
+  })
+
+  it('入金額 < 当月経費合計 → 不認定分（unapproved_shortfall）', () => {
+    expect(calculateSettlementMatchDifference(cycle, money(6500))).toEqual({
+      kind: 'unapproved_shortfall',
+      difference: 1500,
+    })
+  })
+
+  it('入金額 > 当月経費合計 → 認定済み超過（approved_excess）', () => {
+    expect(calculateSettlementMatchDifference(cycle, money(9000))).toEqual({
+      kind: 'approved_excess',
+      difference: 1000,
+    })
+  })
+
+  it('入金額 = 当月経費合計 → 完全一致（exact_match）', () => {
+    expect(calculateSettlementMatchDifference(cycle, money(8000))).toEqual({ kind: 'exact_match' })
   })
 })

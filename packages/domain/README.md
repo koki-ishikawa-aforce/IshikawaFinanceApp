@@ -16,6 +16,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - 値オブジェクト: `Money`, `YearMonth`, `ExpenseClass`, `ParameterStorePath`, `AmazonProductKey`, `UserRole`, `PersonalExpenseClass`（別名 `DefaultExpenseClass`）
 - 共有カーネル語彙（Phase 5 M-A で household-analysis から移設）: `UnclassifiedReason`, `ClassificationBasis`, `ImportSource`（メンバー schema 個別 export あり）, `UnapprovedExpenseTransfer`
 - イベント基底: `DomainEventBase`
+- イベントバス: `EventBus` / `EventHandler`（同期・インプロセス配信、publish はハンドラー完了を await）+ 実装 `InMemoryEventBus`（#34）
 - エラー: `DomainError`, `InvariantViolationError`, `NotFoundError`, `PermissionDeniedError`
 
 ### household-analysis（家計分析）
@@ -25,7 +26,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - Query I/F: `DashboardQuery`, `MonthlyReportQuery`, `TransactionListQuery`
 - View 型: `DashboardKpisView`, `CategoryBreakdownView`, `MonthlyReportView`, `TransactionListItem`
 - プライバシー: `ViewerContext`, `ViewerRole`（`applyPrivacyFilter` 関数群は内部実装、Query 実装層からのみ使用）
-- ドメインイベント: `MonthlyReportCsvConfirmed`, `MonthlyReportFinalized`, `TransactionDeleted`
+- ドメインイベント: `MonthlyReportCsvConfirmed`, `MonthlyReportFinalized`, `TransactionDeleted`, `TransactionManuallyClassified`（`ConfirmedClassification` を含む）
 
 ### balance-asset-tracking（残高・資産推移管理）
 
@@ -38,15 +39,15 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### auto-classification（自動分類・学習、08b）
 
-- 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否）, `AmazonProductKeyLearningRule`, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`）
-- 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `RetroactiveClassificationProposal`
+- 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否。`reflectManualClassification` で手動修正を T-2 軸独立に即時反映）, `AmazonProductKeyLearningRule`, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`）
+- 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `RetroactiveClassificationProposal`, `ManualClassification`（UL「修正後分類」）+ `ReflectManualClassificationResult`
 - Repository I/F: `MerchantLearningRuleRepository`, `AmazonProductKeyLearningRuleRepository`, `BulkClassificationSessionRepository`
 - Query I/F: `RetroactiveCandidateQuery`（J-3）+ `RetroactiveCandidateView`
 - ドメインイベント: `TransactionAutoClassified` ほか 9 種
 
 ### expense-settlement（経費精算、08e）
 
-- 集約: `MonthlyExpenseCycle`（`accumulating` / `csv_confirmed` / `finalized`）, `ProratedChildTransaction`, `ExpenseReimbursementDeposit`（`awaiting_match` / `matched` / `unrecognized_confirmed`）
+- 集約: `MonthlyExpenseCycle`（`accumulating` / `csv_confirmed` / `finalized`。`cycleExpenseTotal` / `calculateSettlementMatchDifference` で突合差額を算出）, `ProratedChildTransaction`, `ExpenseReimbursementDeposit`（`awaiting_match` / `matched` / `unrecognized_confirmed`）
 - 値オブジェクト: `ExpenseTypeAccumulation`（`capped` / `unlimited`、論点15 構造分離）, `ExpenseJudgment`, `SettlementMatchDifference`
 - Repository I/F: `MonthlyExpenseCycleRepository`, `ProratedChildTransactionRepository`, `ExpenseReimbursementDepositRepository`
 - Query I/F: `ExpenseSettlementManagementQuery`（本人のみ可視・論点11）+ `ExpenseSettlementManagementView`
@@ -140,6 +141,6 @@ pnpm lint        # 全 workspace lint
 
 - adapter 層の実装（`packages/adapters-neon/`、Neon PostgreSQL。OQ-41: ID 生成方式の確定と `idSchema` 強化を含む）
 - LIFF アプリ（`packages/web`）と Hono on Lambda（`packages/api`）の追加
-- ドメインイベントバスの実装（M-A まで型定義のみ。OQ-42）
+- ドメインイベントバスの実装（OQ-42）→ #34 で同期・インプロセス配信（`InMemoryEventBus`）と API 層でのハンドラー登録を実装。EventBridge 等での非同期配信は #35 以降で検討
 - OQ-38（SMBC URL 実調査）/ OQ-39（Flex Message サイズ検証）のクローズ
 - 詳細: [Phase 4 spec §13](../../docs/superpowers/specs/2026-05-01-phase4-tactical-design.md) / [ロードマップ §2](../../docs/superpowers/plans/2026-07-06-forward-roadmap.md)

@@ -1,8 +1,25 @@
 import { describe, it, expect } from 'vitest'
+import type { ExpenseDepositMatched, MonthlyExpenseCycleFinalized } from '@warimaru/domain'
 import { createApp } from '../../src/app.js'
 import { createDeps } from '../../src/composition-root.js'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request } from '../helpers/test-app.js'
+
+interface FinalizeEventLog {
+  finalized: MonthlyExpenseCycleFinalized[]
+  matched: ExpenseDepositMatched[]
+}
+
+function subscribeFinalizeEvents(t: TestApp): FinalizeEventLog {
+  const log: FinalizeEventLog = { finalized: [], matched: [] }
+  t.deps.eventBus.subscribe<MonthlyExpenseCycleFinalized>('MonthlyExpenseCycleFinalized', e => {
+    log.finalized.push(e)
+  })
+  t.deps.eventBus.subscribe<ExpenseDepositMatched>('ExpenseDepositMatched', e => {
+    log.matched.push(e)
+  })
+  return log
+}
 
 async function seedCsvConfirmedCycle(t: TestApp): Promise<string> {
   const createRes = await request(t.app, 'POST', '/api/expense-settlement/cycles', {
@@ -133,5 +150,84 @@ describe('PUT /api/expense-settlement/cycles/:id/finalize', () => {
       body: { expenseReimbursementId: depositId },
     })
     expect(res.status).toBe(409)
+  })
+})
+
+describe('サイクル最終確定のイベント発行（#34 チェーン5）', () => {
+  it('正常系で MonthlyExpenseCycleFinalized と ExpenseDepositMatched が発行される', async () => {
+    const t = createTestApp()
+    const log = subscribeFinalizeEvents(t)
+    const cycleId = await seedCsvConfirmedCycle(t)
+    const depositId = await seedDeposit(t)
+    const res = await request(t.app, 'PUT', `/api/expense-settlement/cycles/${cycleId}/finalize`, {
+      body: { expenseReimbursementId: depositId },
+    })
+    expect(res.status).toBe(200)
+    expect(log.finalized).toHaveLength(1)
+    expect(log.finalized[0]?.monthlyExpenseCycleId).toBe(cycleId)
+    expect(log.matched).toHaveLength(1)
+    expect(log.matched[0]?.expenseReimbursementId).toBe(depositId)
+    // 空サイクル（経費合計 0）に対する入金 5000 は認定済み超過
+    expect(log.matched[0]?.difference).toEqual({ kind: 'approved_excess', difference: 5000 })
+  })
+
+  it('完全冪等リプレイでも at-least-once でイベントを再発行する（購読側の取りこぼし回復用）', async () => {
+    const t = createTestApp()
+    const log = subscribeFinalizeEvents(t)
+    const cycleId = await seedCsvConfirmedCycle(t)
+    const depositId = await seedDeposit(t)
+    await request(t.app, 'PUT', `/api/expense-settlement/cycles/${cycleId}/finalize`, {
+      body: { expenseReimbursementId: depositId },
+    })
+    const replay = await request(
+      t.app,
+      'PUT',
+      `/api/expense-settlement/cycles/${cycleId}/finalize`,
+      { body: { expenseReimbursementId: depositId } },
+    )
+    expect(replay.status).toBe(200)
+    expect(log.finalized).toHaveLength(2)
+    expect(log.matched).toHaveLength(2)
+    expect(log.finalized[0]?.monthlyExpenseCycleId).toBe(cycleId)
+    expect(log.finalized[1]?.monthlyExpenseCycleId).toBe(cycleId)
+  })
+
+  it('復旧パス（突合のみ完了）でも at-least-once でイベントを発行する', async () => {
+    const deps = createDeps({})
+    const original = deps.expenseReimbursementDepositRepository
+    let failNextMatchedSave = true
+    deps.expenseReimbursementDepositRepository = {
+      ...original,
+      async save(deposit) {
+        if (deposit.kind === 'matched' && failNextMatchedSave) {
+          failNextMatchedSave = false
+          throw new Error('injected save failure')
+        }
+        return original.save(deposit)
+      },
+    }
+    const t: TestApp = { app: createApp(deps), deps }
+    const log = subscribeFinalizeEvents(t)
+
+    const cycleId = await seedCsvConfirmedCycle(t)
+    const depositId = await seedDeposit(t)
+    const crashed = await request(
+      t.app,
+      'PUT',
+      `/api/expense-settlement/cycles/${cycleId}/finalize`,
+      { body: { expenseReimbursementId: depositId } },
+    )
+    expect(crashed.status).toBe(500)
+    expect(log.finalized).toHaveLength(0)
+
+    const retry = await request(
+      t.app,
+      'PUT',
+      `/api/expense-settlement/cycles/${cycleId}/finalize`,
+      { body: { expenseReimbursementId: depositId } },
+    )
+    expect(retry.status).toBe(200)
+    expect(log.finalized).toHaveLength(1)
+    expect(log.matched).toHaveLength(1)
   })
 })

@@ -1,23 +1,27 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
-  CategoryIdSchema,
-  ExpenseTypeIdSchema,
+  ConfirmedClassificationSchema,
   InvariantViolationError,
   NotFoundError,
   PermissionDeniedError,
   ClassifiedDetailsSchema,
   TransactionIdSchema,
+  TransactionManuallyClassifiedSchema,
   TransactionSchema,
   YearMonthSchema,
   ExpenseClassSchema,
   classify,
   createTransaction,
   deleteTransaction,
+  normalizeMerchantName,
 } from '@warimaru/domain'
 import type {
   ClassifiedDetails,
+  ConfirmedClassification,
+  EventBus,
   Transaction,
+  TransactionId,
   TransactionListQuery,
   TransactionListFilter,
   TransactionRepository,
@@ -26,6 +30,7 @@ import type {
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { domainEventBase } from '../event-handlers/index.js'
 import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const ListParamsSchema = z.object({
@@ -38,22 +43,9 @@ const SummaryParamsSchema = z.object({
   month: YearMonthSchema,
 })
 
-const ClassificationInputSchema = z
-  .object({
-    categoryId: CategoryIdSchema,
-    expenseClass: ExpenseClassSchema,
-    expenseTypeId: ExpenseTypeIdSchema.optional(),
-  })
-  .superRefine((input, ctx) => {
-    if (input.expenseClass === 'business_expense' && input.expenseTypeId === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '経費（business_expense）の分類には expenseTypeId が必須',
-        path: ['expenseTypeId'],
-      })
-    }
-  })
-type ClassificationInput = z.infer<typeof ClassificationInputSchema>
+// 不変条件（経費なら expenseTypeId 必須）は domain 側の確定分類スキーマに一元化する
+const ClassificationInputSchema = ConfirmedClassificationSchema
+type ClassificationInput = ConfirmedClassification
 
 /** CSV パーサと同基準（金額 0 は不正） */
 const AmountSchema = z
@@ -106,8 +98,33 @@ export function transactionsRoutes(
   transactionListQuery: TransactionListQuery,
   transactionRepository: TransactionRepository,
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>,
+  eventBus: EventBus,
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
+
+  /** 手動分類の確定をイベントとして発行する（学習ルールへの反映は購読側 #34） */
+  async function publishManuallyClassified(
+    transactionId: TransactionId,
+    viewerId: UserId,
+    merchantName: string,
+    input: ClassificationInput,
+    at: Date,
+  ): Promise<void> {
+    await eventBus.publish(
+      TransactionManuallyClassifiedSchema.parse({
+        ...domainEventBase(at),
+        type: 'TransactionManuallyClassified',
+        transactionId,
+        userId: viewerId,
+        merchantName,
+        confirmedClassification: {
+          categoryId: input.categoryId,
+          expenseClass: input.expenseClass,
+          ...(input.expenseTypeId !== undefined ? { expenseTypeId: input.expenseTypeId } : {}),
+        },
+      }),
+    )
+  }
 
   app.get('/', async c => {
     const params = ListParamsSchema.parse({
@@ -141,7 +158,8 @@ export function transactionsRoutes(
     const common = {
       transactionId: TransactionIdSchema.parse(newUlid()),
       ownerUserId: viewerId,
-      merchantName: body.merchantName.normalize('NFKC').trim(),
+      // 学習ルールの自然キーになるため、取込経路（CSV/PDF/メール）と同じ正規化を適用する（OQ-23）
+      merchantName: normalizeMerchantName(body.merchantName),
       amount: body.amount,
       occurredAt: body.occurredAt,
       importSource: { kind: 'manual', enteredAt: now, enteredByUserId: viewerId },
@@ -160,6 +178,15 @@ export function transactionsRoutes(
             defaultExpenseClass: roleToPersonalExpenseClass(await resolveViewerRole(viewerId)),
           })
     await transactionRepository.save(transaction)
+    if (body.classification !== undefined) {
+      await publishManuallyClassified(
+        common.transactionId,
+        viewerId,
+        common.merchantName,
+        body.classification,
+        now,
+      )
+    }
     return c.json(transaction, 201)
   })
 
@@ -178,7 +205,7 @@ export function transactionsRoutes(
       common: {
         ...transaction.common,
         ...(body.merchantName !== undefined
-          ? { merchantName: body.merchantName.normalize('NFKC').trim() }
+          ? { merchantName: normalizeMerchantName(body.merchantName) }
           : {}),
         ...(body.amount !== undefined ? { amount: body.amount } : {}),
         ...(body.occurredAt !== undefined ? { occurredAt: body.occurredAt } : {}),
@@ -215,11 +242,18 @@ export function transactionsRoutes(
     }
     const now = new Date()
     const details = buildManualDetails(input, viewerId, now)
-    const classified =
-      transaction.kind === 'unclassified'
-        ? classify(transaction, details)
-        : createTransaction({ kind: 'classified', common: transaction.common, details })
+    const isFirstConfirmation = transaction.kind === 'unclassified'
+    const classified = isFirstConfirmation
+      ? classify(transaction, details)
+      : createTransaction({ kind: 'classified', common: transaction.common, details })
     await transactionRepository.save(classified)
+    // イベント発行は未分類→分類済みの確定（08c「未分類取引を分類して確定する」）に限定する。
+    // 分類済み取引の再分類はカテゴリ／費用区分手動修正イベント + L-4 のユーザー選択
+    // （既存ルールの上書き判定: 「以後このルールに従う」/「今回限り」）を運ぶ別チェーンで
+    // 扱う（後続 Issue）。ここで発行すると学習ルールが選択なしに上書きされてしまう。
+    if (isFirstConfirmation) {
+      await publishManuallyClassified(id, viewerId, transaction.common.merchantName, input, now)
+    }
     return c.json(classified)
   })
 

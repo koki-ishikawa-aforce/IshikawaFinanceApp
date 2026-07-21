@@ -1,9 +1,11 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
+  ExpenseDepositMatchedSchema,
   ExpenseReimbursementDepositSchema,
   ExpenseReimbursementIdSchema,
   InvariantViolationError,
+  MonthlyExpenseCycleFinalizedSchema,
   MonthlyExpenseCycleIdSchema,
   MonthlyExpenseCycleSchema,
   NotFoundError,
@@ -11,11 +13,14 @@ import {
   ProratedChildTransactionSchema,
   UnapprovedExpenseTransferSchema,
   YearMonthSchema,
+  calculateSettlementMatchDifference,
   confirmCycleCsv,
   finalizeCycle,
   matchDeposit,
 } from '@warimaru/domain'
 import type {
+  EventBus,
+  ExpenseReimbursementDeposit,
   ExpenseReimbursementDepositRepository,
   ExpenseSettlementManagementQuery,
   MonthlyExpenseCycle,
@@ -27,6 +32,7 @@ import type {
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { domainEventBase } from '../event-handlers/index.js'
 import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const QueryParamsSchema = z.object({
@@ -55,6 +61,7 @@ export interface ExpenseSettlementRoutesDeps {
   proratedChildTransactionRepository: ProratedChildTransactionRepository
   expenseReimbursementDepositRepository: ExpenseReimbursementDepositRepository
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
+  eventBus: EventBus
 }
 
 function assertCycleOwnedByViewer(cycle: MonthlyExpenseCycle, viewerId: UserId): void {
@@ -65,6 +72,37 @@ function assertCycleOwnedByViewer(cycle: MonthlyExpenseCycle, viewerId: UserId):
 
 export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
+
+  /**
+   * サイクル最終確定の成立をイベントとして発行する（#34 チェーン5）。
+   * 配信は at-least-once（復旧パス・冪等リプレイの再実行でも発行する。ハンドラーの
+   * 取りこぼしは finalize の再実行で回復できる）。発行順は 08e §2 のプロセス順
+   * （突合 → サイクル確定）に合わせる。月次レポートの最終確定昇格（#43）は
+   * MonthlyExpenseCycleFinalized の購読側で実装する。
+   */
+  async function publishCycleFinalized(
+    cycle: Extract<MonthlyExpenseCycle, { kind: 'finalized' }>,
+    deposit: ExpenseReimbursementDeposit,
+    at: Date,
+  ): Promise<void> {
+    await deps.eventBus.publish(
+      ExpenseDepositMatchedSchema.parse({
+        ...domainEventBase(at),
+        type: 'ExpenseDepositMatched',
+        expenseReimbursementId: deposit.common.expenseReimbursementId,
+        monthlyExpenseCycleId: cycle.common.monthlyExpenseCycleId,
+        difference: calculateSettlementMatchDifference(cycle, deposit.common.depositAmount),
+      }),
+    )
+    await deps.eventBus.publish(
+      MonthlyExpenseCycleFinalizedSchema.parse({
+        ...domainEventBase(at),
+        type: 'MonthlyExpenseCycleFinalized',
+        monthlyExpenseCycleId: cycle.common.monthlyExpenseCycleId,
+        finalizedAt: cycle.finalizedAt,
+      }),
+    )
+  }
 
   app.get('/', async c => {
     const params = QueryParamsSchema.parse({ month: c.req.query('month') })
@@ -165,14 +203,18 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
         deposit.kind !== 'awaiting_match' &&
         deposit.matchedCycleId === cycle.common.monthlyExpenseCycleId
       ) {
-        // 完全冪等リプレイ: 双方確定済みなら現状を返す
+        // 完全冪等リプレイ: 双方確定済みなら現状を返す。イベントは at-least-once で
+        // 再発行する（購読側の取りこぼしを finalize の再実行で回復できるようにする）
+        await publishCycleFinalized(cycle, deposit, new Date())
         return c.json({ cycle, deposit })
       }
       if (deposit.kind === 'awaiting_match') {
         // 復旧パス: サイクル保存後・入金保存前に失敗したケース。突合のみ完了させる
         // （unapprovedTransfers は確定済みサイクルの値が正のため body の値は使わない）
-        const matched = matchDeposit(deposit, cycle.common.monthlyExpenseCycleId, new Date())
+        const now = new Date()
+        const matched = matchDeposit(deposit, cycle.common.monthlyExpenseCycleId, now)
         await deps.expenseReimbursementDepositRepository.save(matched)
+        await publishCycleFinalized(cycle, matched, now)
         return c.json({ cycle, deposit: matched })
       }
       throw new InvariantViolationError(
@@ -203,6 +245,7 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
     const matched = matchDeposit(deposit, cycle.common.monthlyExpenseCycleId, now)
     await deps.monthlyExpenseCycleRepository.save(finalized)
     await deps.expenseReimbursementDepositRepository.save(matched)
+    await publishCycleFinalized(finalized, matched, now)
     return c.json({ cycle: finalized, deposit: matched })
   })
 
