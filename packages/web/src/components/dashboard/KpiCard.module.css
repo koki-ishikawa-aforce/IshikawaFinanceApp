@@ -8,6 +8,7 @@
   box-shadow: 0 2px 8px var(--shadow-color);
   position: relative;
   overflow: hidden;
+  container-type: inline-size;
 }
 
 .hero {
@@ -38,6 +39,6 @@
 }
 
 .heroValue {
-  font-size: 26px;
+  font-size: min(24px, 16cqi);
   font-weight: 800;
 }
