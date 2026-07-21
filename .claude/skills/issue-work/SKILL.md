@@ -55,7 +55,7 @@ gh issue edit <番号> --add-label "status:in-progress"
 
 ## 5. DDD レビュー
 
-`/ddd-review` を実行し(ddd-reviewer サブエージェントが main との diff をレビュー)、must-fix を修正したら再度 `/verify` を回す。
+`/ddd-review` を実行し(ddd-reviewer サブエージェントが main との diff をレビュー)、must-fix と suggestion を修正したら再度 `/verify` を回す。suggestion は原則この場で対応し、見送るのは `/ddd-review` の例外基準に該当する場合のみ(その際は Issue 化して追跡する)。
 
 ## 6. PR 作成と CI ループ(外側ループ)
 

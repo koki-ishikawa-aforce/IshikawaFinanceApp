@@ -46,7 +46,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 1. 要件の Issue 化: `/issue-create`
 2. Issue の実装〜PR 作成: `/issue-work`
 3. 検証ループ: `/verify` — コード変更を完了と報告する前に必ず全 green にする
-4. DDD 観点レビュー: `/ddd-review`(PR 前に実施)
+4. DDD 観点レビュー: `/ddd-review`(PR 前に実施)— レビュー指摘は must-fix だけでなく suggestion も原則その場で修正する。見送りは例外(大規模リファクタ相当・設計判断が必要な場合)のみで、必ず Issue 化して追跡する
 
 ブランチ名は `feat/issue-<番号>-<slug>`、PR 本文に `Closes #<番号>` を含める。
 着手中の Issue には `status:in-progress` ラベルを付与する(`/issue-work` が自動で行う)。
