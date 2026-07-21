@@ -171,7 +171,7 @@ describe('サイクル最終確定のイベント発行（#34 チェーン5）',
     expect(log.matched[0]?.difference).toEqual({ kind: 'approved_excess', difference: 5000 })
   })
 
-  it('完全冪等リプレイではイベントを再発行しない', async () => {
+  it('完全冪等リプレイでも at-least-once でイベントを再発行する（購読側の取りこぼし回復用）', async () => {
     const t = createTestApp()
     const log = subscribeFinalizeEvents(t)
     const cycleId = await seedCsvConfirmedCycle(t)
@@ -179,11 +179,17 @@ describe('サイクル最終確定のイベント発行（#34 チェーン5）',
     await request(t.app, 'PUT', `/api/expense-settlement/cycles/${cycleId}/finalize`, {
       body: { expenseReimbursementId: depositId },
     })
-    await request(t.app, 'PUT', `/api/expense-settlement/cycles/${cycleId}/finalize`, {
-      body: { expenseReimbursementId: depositId },
-    })
-    expect(log.finalized).toHaveLength(1)
-    expect(log.matched).toHaveLength(1)
+    const replay = await request(
+      t.app,
+      'PUT',
+      `/api/expense-settlement/cycles/${cycleId}/finalize`,
+      { body: { expenseReimbursementId: depositId } },
+    )
+    expect(replay.status).toBe(200)
+    expect(log.finalized).toHaveLength(2)
+    expect(log.matched).toHaveLength(2)
+    expect(log.finalized[0]?.monthlyExpenseCycleId).toBe(cycleId)
+    expect(log.finalized[1]?.monthlyExpenseCycleId).toBe(cycleId)
   })
 
   it('復旧パス（突合のみ完了）でも at-least-once でイベントを発行する', async () => {

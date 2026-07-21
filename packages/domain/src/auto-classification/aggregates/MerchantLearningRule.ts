@@ -51,9 +51,7 @@ export const MerchantLearningRuleSchema = z
     }),
   ])
   .superRefine((rule, ctx) => {
-    // 上流の正規化（NFKC + 空白圧縮、OQ-23）は大文字小文字を畳まないため、
-    // 表記ゆれをすり抜けさせないよう防御的に正規化して比較する
-    if (rule.common.merchantName.normalize('NFKC').trim().toUpperCase() === 'AMAZON.CO.JP') {
+    if (isAmazonMerchant(rule.common.merchantName)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'AMAZON.CO.JP は加盟店学習の対象外（X-1、Amazon商品キー学習を使用）',
@@ -78,7 +76,11 @@ export function disableMerchantLearning(
   }) as DisabledMerchantLearningRule
 }
 
-/** X-1: 加盟店学習の対象外となる加盟店名（Amazon商品キー学習を使用） */
+/**
+ * X-1: 加盟店学習の対象外となる加盟店名（Amazon商品キー学習を使用）。
+ * 上流の正規化（NFKC + 空白圧縮、OQ-23）は大文字小文字を畳まないため、
+ * 表記ゆれをすり抜けさせないよう防御的に正規化して比較する。
+ */
 function isAmazonMerchant(merchantName: string): boolean {
   return merchantName.normalize('NFKC').trim().toUpperCase() === 'AMAZON.CO.JP'
 }

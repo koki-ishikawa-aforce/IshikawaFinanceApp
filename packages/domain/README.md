@@ -40,7 +40,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 ### auto-classification（自動分類・学習、08b）
 
 - 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否。`reflectManualClassification` で手動修正を T-2 軸独立に即時反映）, `AmazonProductKeyLearningRule`, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`）
-- 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `RetroactiveClassificationProposal`
+- 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `RetroactiveClassificationProposal`, `ManualClassification`（UL「修正後分類」）+ `ReflectManualClassificationResult`
 - Repository I/F: `MerchantLearningRuleRepository`, `AmazonProductKeyLearningRuleRepository`, `BulkClassificationSessionRepository`
 - Query I/F: `RetroactiveCandidateQuery`（J-3）+ `RetroactiveCandidateView`
 - ドメインイベント: `TransactionAutoClassified` ほか 9 種

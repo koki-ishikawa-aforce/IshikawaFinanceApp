@@ -31,7 +31,7 @@ import {
   ExpenseTypeAccumulationSchema,
   type ExpenseTypeAccumulation,
 } from '../value-objects/ExpenseTypeAccumulation'
-import { money, type Money } from '../../shared/value-objects/Money'
+import { addMoney, money, type Money } from '../../shared/value-objects/Money'
 import {
   SettlementMatchDifferenceSchema,
   type SettlementMatchDifference,
@@ -110,7 +110,10 @@ export type FinalizedCycle = Extract<MonthlyExpenseCycle, { kind: 'finalized' }>
 
 /** 当月経費合計（暫定経費合計 = Σ 経費種別累計の当月累計金額、08e §2） */
 export function cycleExpenseTotal(cycle: MonthlyExpenseCycle): Money {
-  return money(cycle.common.accumulations.reduce((total, acc) => total + acc.currentTotal, 0))
+  return cycle.common.accumulations.reduce(
+    (total, acc) => addMoney(total, acc.currentTotal),
+    money(0),
+  )
 }
 
 /**

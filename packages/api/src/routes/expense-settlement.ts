@@ -75,8 +75,10 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
 
   /**
    * サイクル最終確定の成立をイベントとして発行する（#34 チェーン5）。
-   * 配信は at-least-once（復旧パスの再実行でも発行する）。月次レポートの
-   * 最終確定昇格（#43）は MonthlyExpenseCycleFinalized の購読側で実装する。
+   * 配信は at-least-once（復旧パス・冪等リプレイの再実行でも発行する。ハンドラーの
+   * 取りこぼしは finalize の再実行で回復できる）。発行順は 08e §2 のプロセス順
+   * （突合 → サイクル確定）に合わせる。月次レポートの最終確定昇格（#43）は
+   * MonthlyExpenseCycleFinalized の購読側で実装する。
    */
   async function publishCycleFinalized(
     cycle: Extract<MonthlyExpenseCycle, { kind: 'finalized' }>,
@@ -84,20 +86,20 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
     at: Date,
   ): Promise<void> {
     await deps.eventBus.publish(
-      MonthlyExpenseCycleFinalizedSchema.parse({
-        ...domainEventBase(at),
-        type: 'MonthlyExpenseCycleFinalized',
-        monthlyExpenseCycleId: cycle.common.monthlyExpenseCycleId,
-        finalizedAt: cycle.finalizedAt,
-      }),
-    )
-    await deps.eventBus.publish(
       ExpenseDepositMatchedSchema.parse({
         ...domainEventBase(at),
         type: 'ExpenseDepositMatched',
         expenseReimbursementId: deposit.common.expenseReimbursementId,
         monthlyExpenseCycleId: cycle.common.monthlyExpenseCycleId,
         difference: calculateSettlementMatchDifference(cycle, deposit.common.depositAmount),
+      }),
+    )
+    await deps.eventBus.publish(
+      MonthlyExpenseCycleFinalizedSchema.parse({
+        ...domainEventBase(at),
+        type: 'MonthlyExpenseCycleFinalized',
+        monthlyExpenseCycleId: cycle.common.monthlyExpenseCycleId,
+        finalizedAt: cycle.finalizedAt,
       }),
     )
   }
@@ -201,7 +203,9 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
         deposit.kind !== 'awaiting_match' &&
         deposit.matchedCycleId === cycle.common.monthlyExpenseCycleId
       ) {
-        // 完全冪等リプレイ: 双方確定済みなら現状を返す
+        // 完全冪等リプレイ: 双方確定済みなら現状を返す。イベントは at-least-once で
+        // 再発行する（購読側の取りこぼしを finalize の再実行で回復できるようにする）
+        await publishCycleFinalized(cycle, deposit, new Date())
         return c.json({ cycle, deposit })
       }
       if (deposit.kind === 'awaiting_match') {

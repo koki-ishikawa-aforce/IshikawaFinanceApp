@@ -303,19 +303,20 @@ describe('取引分類 → 学習ルール更新チェーン（#34）', () => {
     expect(rule.expenseTypeRef).toEqual({ kind: 'learned', expenseTypeId })
   })
 
-  it('T-2: 再分類で値が変わった軸のみ LearningRuleUpdated が発行される', async () => {
+  it('T-2: 既存ルールと値が変わった軸のみ LearningRuleUpdated が発行される', async () => {
     const t = createTestApp()
-    const id = await createUnclassified(t)
+    const first = await createUnclassified(t)
     const categoryId = newUlid()
-    await request(t.app, 'PUT', `/api/transactions/${id}/classify`, {
+    await request(t.app, 'PUT', `/api/transactions/${first}/classify`, {
       body: { categoryId, expenseClass: 'household' },
     })
     const updates: LearningRuleUpdated[] = []
     t.deps.eventBus.subscribe<LearningRuleUpdated>('LearningRuleUpdated', e => {
       updates.push(e)
     })
-    // カテゴリは同一のまま費用区分だけ修正する
-    await request(t.app, 'PUT', `/api/transactions/${id}/classify`, {
+    // 同一加盟店の別の未分類取引を、カテゴリは同一のまま費用区分だけ変えて確定する
+    const second = await createUnclassified(t)
+    await request(t.app, 'PUT', `/api/transactions/${second}/classify`, {
       body: { categoryId, expenseClass: 'personal_honey' },
     })
     expect(updates.map(e => e.axis)).toEqual(['expense_class'])
@@ -324,6 +325,30 @@ describe('取引分類 → 学習ルール更新チェーン（#34）', () => {
     expect(rule?.kind === 'active' && rule.expenseClassRef).toEqual({
       kind: 'learned',
       expenseClass: 'personal_honey',
+    })
+  })
+
+  it('分類済み取引の再分類ではイベントを発行せず、学習ルールを上書きしない（L-4 選択は後続 Issue）', async () => {
+    const t = createTestApp()
+    const id = await createUnclassified(t)
+    const categoryId = newUlid()
+    await request(t.app, 'PUT', `/api/transactions/${id}/classify`, {
+      body: { categoryId, expenseClass: 'household' },
+    })
+    const events: TransactionManuallyClassified[] = []
+    t.deps.eventBus.subscribe<TransactionManuallyClassified>('TransactionManuallyClassified', e => {
+      events.push(e)
+    })
+    const res = await request(t.app, 'PUT', `/api/transactions/${id}/classify`, {
+      body: { categoryId: newUlid(), expenseClass: 'personal_honey' },
+    })
+    expect(res.status).toBe(200)
+    expect(events).toHaveLength(0)
+    const rule = await t.deps.merchantLearningRuleRepository.findByMerchant(VIEWER_ID, 'スーパーA')
+    expect(rule?.kind === 'active' && rule.categoryRef).toEqual({ kind: 'learned', categoryId })
+    expect(rule?.kind === 'active' && rule.expenseClassRef).toEqual({
+      kind: 'learned',
+      expenseClass: 'household',
     })
   })
 
