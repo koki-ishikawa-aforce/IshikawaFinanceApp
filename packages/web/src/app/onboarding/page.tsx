@@ -51,13 +51,7 @@ function loadState(): OnboardingState {
   }
 }
 
-type StepId =
-  | 'nickname'
-  | 'line_friend'
-  | 'talk_room'
-  | 'notifications'
-  | 'spouse_wait'
-  | 'phase2'
+type StepId = 'nickname' | 'line_friend' | 'talk_room' | 'notifications' | 'spouse_wait' | 'phase2'
 
 const PHASE1_STEPS: { id: StepId; label: string }[] = [
   { id: 'nickname', label: 'ニックネーム' },
@@ -207,7 +201,9 @@ export default function OnboardingPage() {
           <div className={styles.stepAvatar}>⏳</div>
           <span className={ui.sectionTitle}>配偶者の設定完了を待っています</span>
           <p className={styles.note}>
-            ふたりとも Phase 1 の設定を終えると次に進めます。画面を開き直すと最新の状態を確認します（配偶者完了検知 API の接続は準備中です）。
+            ふたりとも Phase 1
+            の設定を終えると次に進めます。画面を開き直すと最新の状態を確認します（配偶者完了検知 API
+            の接続は準備中です）。
           </p>
           <button className={ui.button} onClick={() => update({ spouseConfirmed: true })}>
             配偶者も完了しています
@@ -226,7 +222,8 @@ export default function OnboardingPage() {
           <div className={ui.card}>
             <span className={ui.sectionTitle}>Phase 2 の進捗</span>
             <p className={styles.note}>
-              データ連携と初期設定を進めましょう。A → B の順で完了する必要があります。F はスキップできます。
+              データ連携と初期設定を進めましょう。A → B の順で完了する必要があります。F
+              はスキップできます。
             </p>
 
             <div className={styles.sectionRow}>
@@ -240,7 +237,8 @@ export default function OnboardingPage() {
                 )}
               </div>
               <p className={styles.note}>
-                利用明細メールの自動取込に使います。OAuth 連携フローはバックエンド実装後に有効になります。
+                利用明細メールの自動取込に使います。OAuth
+                連携フローはバックエンド実装後に有効になります。
               </p>
               {!state.sectionADone && (
                 <button className={ui.buttonGhost} onClick={() => update({ sectionADone: true })}>

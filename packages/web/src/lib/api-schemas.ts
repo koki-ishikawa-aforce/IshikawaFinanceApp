@@ -51,9 +51,7 @@ export const MonthlyReportViewWireSchema = z.object({
   common: z.object({
     monthlyReportId: z.string(),
     targetYearMonth: z.string(),
-    householdCategoryTotals: z.array(
-      z.object({ categoryId: z.string(), total: z.number() }),
-    ),
+    householdCategoryTotals: z.array(z.object({ categoryId: z.string(), total: z.number() })),
     personalTotalHoney: z.number(),
     personalTotalDarling: z.number(),
     businessExpenseTotalHoney: z.number(),
@@ -275,10 +273,7 @@ export const ImportJobWireSchema = z.object({
       duplicateExcludedCount: z.number().int(),
     })
     .optional(),
-  failure: z
-    .object({ kind: z.string(), failureDetail: z.string() })
-    .passthrough()
-    .optional(),
+  failure: z.object({ kind: z.string(), failureDetail: z.string() }).passthrough().optional(),
 })
 export type ImportJobWire = z.infer<typeof ImportJobWireSchema>
 

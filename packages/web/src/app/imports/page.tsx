@@ -48,8 +48,7 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
 
   const candidatesQuery = useQuery({
     queryKey: ['imports', 'candidates', importJobId],
-    queryFn: () =>
-      apiFetch(`/api/imports/${importJobId}/candidates`, CandidatesResponseSchema),
+    queryFn: () => apiFetch(`/api/imports/${importJobId}/candidates`, CandidatesResponseSchema),
   })
 
   const candidates = candidatesQuery.data?.candidates ?? []
@@ -64,8 +63,7 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
         `/api/imports/${importJobId}/confirm`,
         {
           method: 'PUT',
-          body:
-            excluded.size === 0 ? {} : { transactionCandidateIds: selectedIds },
+          body: excluded.size === 0 ? {} : { transactionCandidateIds: selectedIds },
         },
         ConfirmResponseSchema,
       ),
@@ -190,7 +188,11 @@ export default function ImportsPage() {
       formData.append('file', file)
       formData.append('targetMonth', month)
       formData.append('fileKind', fileKind)
-      return apiMutate('/api/imports/csv', { method: 'POST', body: formData }, CsvUploadResponseSchema)
+      return apiMutate(
+        '/api/imports/csv',
+        { method: 'POST', body: formData },
+        CsvUploadResponseSchema,
+      )
     },
     onSuccess: async response => {
       setJob(response.job)

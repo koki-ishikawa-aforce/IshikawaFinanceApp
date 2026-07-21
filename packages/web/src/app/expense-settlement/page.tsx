@@ -55,12 +55,16 @@ function AccumulationCard({
       {capped && (
         <div className={styles.progressTrack}>
           <div
-            className={ratio >= 1 ? `${styles.progressBar} ${styles.progressFull}` : styles.progressBar}
+            className={
+              ratio >= 1 ? `${styles.progressBar} ${styles.progressFull}` : styles.progressBar
+            }
             style={{ width: `${ratio * 100}%` }}
           />
         </div>
       )}
-      <span className={styles.accumulationMeta}>{accumulation.transactionRefs.length} 件の取引</span>
+      <span className={styles.accumulationMeta}>
+        {accumulation.transactionRefs.length} 件の取引
+      </span>
     </div>
   )
 }
@@ -114,8 +118,7 @@ function FinalizeModal({ cycle, onClose }: { cycle: CycleWire; onClose: () => vo
 
   const depositsQuery = useQuery({
     queryKey: ['expense-settlement', 'deposits-awaiting'],
-    queryFn: () =>
-      apiFetch('/api/expense-settlement/deposits/awaiting', DepositListWireSchema),
+    queryFn: () => apiFetch('/api/expense-settlement/deposits/awaiting', DepositListWireSchema),
   })
 
   const mutation = useMutation({
@@ -137,7 +140,8 @@ function FinalizeModal({ cycle, onClose }: { cycle: CycleWire; onClose: () => vo
   return (
     <Modal title="サイクルを最終確定" onClose={onClose}>
       <p className={styles.note}>
-        {formatMonthLabel(cycle.common.targetYearMonth)}のサイクルを、突合する精算入金を選んで確定します。
+        {formatMonthLabel(cycle.common.targetYearMonth)}
+        のサイクルを、突合する精算入金を選んで確定します。
       </p>
       {depositsQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
       {deposits.length === 0 && !depositsQuery.isLoading && (
@@ -204,8 +208,7 @@ export default function ExpenseSettlementPage() {
     (expenseTypesQuery.data?.items ?? []).map(t => [t.expenseTypeId, t.name]),
   )
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ['expense-settlement'] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['expense-settlement'] })
 
   const startCycle = useMutation({
     mutationFn: () =>
@@ -288,7 +291,9 @@ export default function ExpenseSettlementPage() {
                   className={ui.button}
                   disabled={confirmCsv.isPending}
                   onClick={() => {
-                    if (window.confirm('CSV 確定するとこの月の集積を締め切ります。よろしいですか？')) {
+                    if (
+                      window.confirm('CSV 確定するとこの月の集積を締め切ります。よろしいですか？')
+                    ) {
                       confirmCsv.mutate()
                     }
                   }}

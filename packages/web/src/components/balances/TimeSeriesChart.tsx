@@ -46,20 +46,15 @@ export function TimeSeriesChart({ series }: TimeSeriesChartProps) {
         aria-label="資産推移チャート"
       >
         {minA < 0 && (
-          <line
-            x1={PAD_X}
-            y1={y(0)}
-            x2={WIDTH - PAD_X}
-            y2={y(0)}
-            className={styles.zeroLine}
-          />
+          <line x1={PAD_X} y1={y(0)} x2={WIDTH - PAD_X} y2={y(0)} className={styles.zeroLine} />
         )}
         {series.map(s => {
           if (s.points.length === 0) return null
           const sorted = [...s.points].sort((a, b) => a.date.getTime() - b.date.getTime())
           const path = sorted
             .map(
-              (p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.date.getTime()).toFixed(1)} ${y(p.amount).toFixed(1)}`,
+              (p, i) =>
+                `${i === 0 ? 'M' : 'L'} ${x(p.date.getTime()).toFixed(1)} ${y(p.amount).toFixed(1)}`,
             )
             .join(' ')
           return (
@@ -81,10 +76,7 @@ export function TimeSeriesChart({ series }: TimeSeriesChartProps) {
       <div className={styles.legend}>
         {series.map(s => (
           <span key={s.label} className={styles.legendItem}>
-            <span
-              className={styles.legendSwatch}
-              style={{ background: `var(${s.cssColorVar})` }}
-            />
+            <span className={styles.legendSwatch} style={{ background: `var(${s.cssColorVar})` }} />
             {s.label}
           </span>
         ))}

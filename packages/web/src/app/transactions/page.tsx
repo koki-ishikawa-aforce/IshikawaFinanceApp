@@ -17,7 +17,7 @@ import {
 } from '@/lib/api-schemas'
 import { EXPENSE_CLASS_LABELS, expenseClassLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
-import { formatDate, getCurrentMonth } from '@/lib/month'
+import { formatDate, formatMonthLabel, getCurrentMonth } from '@/lib/month'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -96,7 +96,7 @@ function ClassificationFields({
             onChange={e =>
               onChange({
                 ...value,
-                ...(e.target.value !== '' ? { expenseTypeId: e.target.value } : {}),
+                expenseTypeId: e.target.value === '' ? undefined : e.target.value,
               })
             }
           >
@@ -118,6 +118,11 @@ function toDateInputValue(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+/** 発生日の初期値。表示中の月が当月なら今日、それ以外の月なら 1 日 */
+function defaultOccurredAt(month: YearMonth): string {
+  return month === getCurrentMonth() ? toDateInputValue(new Date()) : `${month}-01`
 }
 
 function classificationBody(input: ClassificationInput): Record<string, unknown> {
@@ -146,7 +151,7 @@ function CreateModal({ month, onClose }: CreateModalProps) {
   const { categories, expenseTypes } = useMasters()
   const [merchantName, setMerchantName] = useState('')
   const [amount, setAmount] = useState('')
-  const [occurredAt, setOccurredAt] = useState(() => toDateInputValue(new Date()))
+  const [occurredAt, setOccurredAt] = useState(() => defaultOccurredAt(month))
   const [withClassification, setWithClassification] = useState(false)
   const [classification, setClassification] = useState<ClassificationInput>({
     categoryId: '',
@@ -234,7 +239,7 @@ function CreateModal({ month, onClose }: CreateModalProps) {
         disabled={!valid || mutation.isPending}
         onClick={() => mutation.mutate()}
       >
-        {mutation.isPending ? '登録中...' : `${month} に登録`}
+        {mutation.isPending ? '登録中...' : `${formatMonthLabel(month)}に登録`}
       </button>
     </Modal>
   )
@@ -402,7 +407,10 @@ export default function TransactionsPage() {
   const summaryQuery = useQuery({
     queryKey: ['transactions', 'unclassified-summary', month],
     queryFn: () =>
-      apiFetch(`/api/transactions/unclassified-summary?month=${month}`, UnclassifiedSummaryWireSchema),
+      apiFetch(
+        `/api/transactions/unclassified-summary?month=${month}`,
+        UnclassifiedSummaryWireSchema,
+      ),
   })
 
   const items = listQuery.data ?? []
@@ -414,10 +422,7 @@ export default function TransactionsPage() {
       <MonthNavigator month={month} onMonthChange={setMonth} />
 
       {summaryQuery.data && summaryQuery.data.count > 0 && (
-        <button
-          className={styles.unclassifiedBanner}
-          onClick={() => setUnclassifiedOnly(true)}
-        >
+        <button className={styles.unclassifiedBanner} onClick={() => setUnclassifiedOnly(true)}>
           ⚠️ 未分類の取引が {summaryQuery.data.count} 件あります
         </button>
       )}

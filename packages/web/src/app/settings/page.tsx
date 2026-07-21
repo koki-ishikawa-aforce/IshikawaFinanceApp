@@ -65,7 +65,8 @@ function CategoryDeleteModal({
     },
   })
 
-  const valid = destinationCategoryId !== '' && (!needsExpenseType || destinationExpenseTypeId !== '')
+  const valid =
+    destinationCategoryId !== '' && (!needsExpenseType || destinationExpenseTypeId !== '')
 
   return (
     <Modal title={`「${target.name}」を削除`} onClose={onClose}>
@@ -150,7 +151,11 @@ function CategoriesTab() {
 
   const create = useMutation({
     mutationFn: () =>
-      apiMutate('/api/categories', { method: 'POST', body: { name: newName.trim() } }, UnknownResponseSchema),
+      apiMutate(
+        '/api/categories',
+        { method: 'POST', body: { name: newName.trim() } },
+        UnknownResponseSchema,
+      ),
     onSuccess: async () => {
       setNewName('')
       await invalidate()
@@ -466,16 +471,13 @@ function LimitEditModal({
     },
   })
 
-  const valid = unlimited || (amount !== '' && Number.isInteger(Number(amount)) && Number(amount) >= 0)
+  const valid =
+    unlimited || (amount !== '' && Number.isInteger(Number(amount)) && Number(amount) >= 0)
 
   return (
     <Modal title={`「${expenseType.name}」の月次上限`} onClose={onClose}>
       <label className={styles.checkRow}>
-        <input
-          type="checkbox"
-          checked={unlimited}
-          onChange={e => setUnlimited(e.target.checked)}
-        />
+        <input type="checkbox" checked={unlimited} onChange={e => setUnlimited(e.target.checked)} />
         <span>上限なし（無制限）</span>
       </label>
       {!unlimited && (

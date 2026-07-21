@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import type { YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, ApiError } from '@/lib/api-client'
 import {
   CategoryListWireSchema,
   MonthlyReportViewWireSchema,
@@ -21,7 +21,7 @@ async function fetchReport(month: YearMonth): Promise<MonthlyReportViewWire | nu
   try {
     return await apiFetch(`/api/monthly-reports?month=${month}`, MonthlyReportViewWireSchema)
   } catch (e) {
-    if (e instanceof Error && e.message.startsWith('API error 404')) {
+    if (e instanceof ApiError && e.status === 404) {
       return null
     }
     throw e
@@ -94,7 +94,9 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
         <ul className={styles.totalsList}>
           <li className={ui.rowBetween}>
             <span className={styles.totalsLabel}>個人(Honey)</span>
-            <span className={styles.totalsValue}>{formatMoney(report.common.personalTotalHoney)}</span>
+            <span className={styles.totalsValue}>
+              {formatMoney(report.common.personalTotalHoney)}
+            </span>
           </li>
           <li className={ui.rowBetween}>
             <span className={styles.totalsLabel}>個人(Darling)</span>
@@ -132,10 +134,7 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
         ) : (
           <ul className={styles.totalsList}>
             {report.unapprovedTransfers.map(transfer => (
-              <li
-                key={transfer.originalBusinessExpenseTransactionId}
-                className={ui.rowBetween}
-              >
+              <li key={transfer.originalBusinessExpenseTransactionId} className={ui.rowBetween}>
                 <span className={styles.totalsLabel}>
                   → {TRANSFER_TARGET_LABELS[transfer.transferTarget]}
                 </span>

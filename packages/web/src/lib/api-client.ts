@@ -13,21 +13,6 @@ function buildHeaders(): Record<string, string> {
   return { 'X-User-Id': DEV_USER_ID }
 }
 
-export async function apiFetch<T>(
-  path: string,
-  schema: { parse: (input: unknown) => T },
-): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: buildHeaders(),
-  })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`API error ${res.status}: ${body}`)
-  }
-  const json: unknown = await res.json()
-  return schema.parse(json)
-}
-
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -36,6 +21,20 @@ export class ApiError extends Error {
     super(extractMessage(body) ?? `API error ${status}`)
     this.name = 'ApiError'
   }
+}
+
+export async function apiFetch<T>(
+  path: string,
+  schema: { parse: (input: unknown) => T },
+): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: buildHeaders(),
+  })
+  if (!res.ok) {
+    throw new ApiError(res.status, await res.text())
+  }
+  const json: unknown = await res.json()
+  return schema.parse(json)
 }
 
 function extractMessage(body: string): string | null {
