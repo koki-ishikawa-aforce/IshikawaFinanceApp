@@ -232,6 +232,11 @@ export function createMockTransactionCandidateRepository(): TransactionCandidate
         c => c.common.importSource.kind === 'csv' && c.common.importSource.csvFileId === csvFileId,
       )
     },
+    async findByPdfFileId(pdfFileId: UploadFileId) {
+      return [...store.values()].filter(
+        c => c.common.importSource.kind === 'pdf' && c.common.importSource.pdfFileId === pdfFileId,
+      )
+    },
     async save(candidate: TransactionCandidate) {
       store.set(candidate.common.transactionCandidateId, candidate)
     },

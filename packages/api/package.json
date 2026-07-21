@@ -13,12 +13,13 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.4",
     "@hono/node-server": "^1.11.0",
     "@warimaru/adapters-neon": "workspace:*",
     "@warimaru/domain": "workspace:*",
     "hono": "^4.4.0",
     "jose": "^6.2.3",
-    "zod": "^3.23.0"
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

@@ -4,9 +4,11 @@ import {
   InvariantViolationError,
   MoneySchema,
   TransactionIdSchema,
+  UploadFileIdSchema,
   confirmCandidate,
 } from '@warimaru/domain'
 import { db } from './setup'
+import { newUlid } from '../../src/newId'
 import { NeonTransactionCandidateRepository } from '../../src/transaction-import/NeonTransactionCandidateRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import {
@@ -14,6 +16,7 @@ import {
   csvCandidate,
   matchTimeoutCandidate,
   normalCandidate,
+  pdfCandidate,
 } from '../helpers/transactionImportFixtures'
 
 const repo = new NeonTransactionCandidateRepository(db)
@@ -86,6 +89,22 @@ describe('NeonTransactionCandidateRepository', () => {
     expect(
       await repo.findByTripleMatch(DARLING_USER_ID, sameJstDay, money(1200), 'スーパーA'),
     ).toBeNull()
+  })
+
+  it('findByPdfFileId は pdf 由来の候補のみを pdfFileId 一致で返す', async () => {
+    const pdfFileId = UploadFileIdSchema.parse(newUlid())
+    const target1 = pdfCandidate({ pdfFileId, merchantName: 'PDFストアA' })
+    const target2 = pdfCandidate({ pdfFileId, merchantName: 'PDFストアB', amount: 500 })
+    const otherPdf = pdfCandidate({ pdfFileId: newUlid() })
+    const csv = csvCandidate()
+    for (const candidate of [target1, target2, otherPdf, csv]) {
+      await repo.save(candidate)
+    }
+    const found = await repo.findByPdfFileId(pdfFileId)
+    expect(found).toHaveLength(2)
+    expect(found.map(c => c.common.transactionCandidateId).sort()).toEqual(
+      [target1, target2].map(c => c.common.transactionCandidateId).sort(),
+    )
   })
 
   it('confirmed 候補を save → findById で往復できる（kind CHECK 拡張の確認）', async () => {

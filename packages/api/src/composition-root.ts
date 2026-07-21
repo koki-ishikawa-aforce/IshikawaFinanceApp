@@ -53,6 +53,8 @@ import {
   createDbResolveCategoryNames,
   createDbResolveViewerRole,
 } from '@warimaru/adapters-neon'
+import { AnthropicPdfToCsvConverter } from './pdf-conversion/AnthropicPdfToCsvConverter.js'
+import type { PdfToCsvConverter } from './pdf-conversion/PdfToCsvConverter.js'
 import { createMockDashboardQuery } from './mock-dashboard-query.js'
 import {
   createMockTransactionListQuery,
@@ -102,6 +104,8 @@ export interface AppDeps {
   statementImportJobRepository: StatementImportJobRepository
   transactionCandidateRepository: TransactionCandidateRepository
   dailyMailImportBatchRepository: DailyMailImportBatchRepository
+  // PDF→CSV 変換 (#33): ANTHROPIC_API_KEY は adapter が呼び出し時に環境から解決する
+  pdfToCsvConverter: PdfToCsvConverter
   // 自動分類 (#24)
   retroactiveCandidateQuery: RetroactiveCandidateQuery
   merchantLearningRuleRepository: MerchantLearningRuleRepository
@@ -134,6 +138,7 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
       statementImportJobRepository: createMockStatementImportJobRepository(),
       transactionCandidateRepository: createMockTransactionCandidateRepository(),
       dailyMailImportBatchRepository: createMockDailyMailImportBatchRepository(),
+      pdfToCsvConverter: new AnthropicPdfToCsvConverter(),
       retroactiveCandidateQuery: createMockRetroactiveCandidateQuery(),
       merchantLearningRuleRepository: createMockMerchantLearningRuleRepository(),
       amazonProductKeyLearningRuleRepository: createMockAmazonProductKeyLearningRuleRepository(),
@@ -170,6 +175,7 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
     statementImportJobRepository: new NeonStatementImportJobRepository(db),
     transactionCandidateRepository: new NeonTransactionCandidateRepository(db),
     dailyMailImportBatchRepository: new NeonDailyMailImportBatchRepository(db),
+    pdfToCsvConverter: new AnthropicPdfToCsvConverter(),
     retroactiveCandidateQuery: new NeonRetroactiveCandidateQuery(db, { now }),
     merchantLearningRuleRepository: new NeonMerchantLearningRuleRepository(db),
     amazonProductKeyLearningRuleRepository: new NeonAmazonProductKeyLearningRuleRepository(db),

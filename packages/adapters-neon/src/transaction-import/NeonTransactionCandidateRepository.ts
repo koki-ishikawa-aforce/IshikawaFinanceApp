@@ -92,6 +92,18 @@ export class NeonTransactionCandidateRepository implements TransactionCandidateR
     return rows.map(row => parsePayload(TransactionCandidateSchema, row.payload))
   }
 
+  async findByPdfFileId(pdfFileId: UploadFileId): Promise<TransactionCandidate[]> {
+    // pdf_file_id も昇格列を持たないため payload（importSource union の kind='pdf'）を直接参照する
+    const rows = await this.db
+      .select({ payload: transactionCandidates.payload })
+      .from(transactionCandidates)
+      .where(
+        sql`${transactionCandidates.payload}->'common'->'importSource'->>'pdfFileId' = ${pdfFileId}`,
+      )
+      .orderBy(asc(transactionCandidates.transactionCandidateId))
+    return rows.map(row => parsePayload(TransactionCandidateSchema, row.payload))
+  }
+
   async save(candidate: TransactionCandidate): Promise<void> {
     const row = {
       transactionCandidateId: candidate.common.transactionCandidateId,

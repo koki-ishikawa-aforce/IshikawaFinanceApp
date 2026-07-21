@@ -21,5 +21,7 @@ export interface TransactionCandidateRepository {
   ): Promise<TransactionCandidate | null>
   /** CSV 取込ファイル由来の候補一覧（importSource.kind = 'csv' の csvFileId 一致） */
   findByCsvFileId(csvFileId: UploadFileId): Promise<TransactionCandidate[]>
+  /** PDF 取込ファイル由来の候補一覧（importSource.kind = 'pdf' の pdfFileId 一致） */
+  findByPdfFileId(pdfFileId: UploadFileId): Promise<TransactionCandidate[]>
   save(candidate: TransactionCandidate): Promise<void>
 }

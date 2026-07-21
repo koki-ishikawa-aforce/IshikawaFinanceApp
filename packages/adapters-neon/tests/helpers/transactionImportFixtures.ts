@@ -54,6 +54,33 @@ export function csvCandidate(
   })
 }
 
+export function pdfCandidate(
+  input: {
+    userId?: UserId
+    pdfFileId?: string
+    merchantName?: string
+    amount?: number
+    occurredAt?: Date
+  } = {},
+): TransactionCandidate {
+  return TransactionCandidateSchema.parse({
+    kind: 'normal',
+    common: {
+      transactionCandidateId: newUlid(),
+      userId: input.userId ?? HONEY_USER_ID,
+      importSource: {
+        kind: 'pdf',
+        pdfFileId: input.pdfFileId ?? newUlid(),
+        pageNumber: 1,
+        pdfConversionJobId: newUlid(),
+      },
+      merchantName: input.merchantName ?? 'PDFストア',
+      amount: input.amount ?? 2400,
+      occurredAt: input.occurredAt ?? new Date('2026-07-06T03:00:00.000Z'),
+    },
+  })
+}
+
 export function amazonMatchedCandidate(
   input: { userId?: UserId; smbcGmailMessageId?: string } = {},
 ): TransactionCandidate {

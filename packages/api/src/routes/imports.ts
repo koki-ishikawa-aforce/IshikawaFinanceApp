@@ -6,6 +6,7 @@ import {
   ImportJobIdSchema,
   InvariantViolationError,
   NotFoundError,
+  PdfConversionJobIdSchema,
   PermissionDeniedError,
   StatementFileKindSchema,
   StatementImportJobSchema,
@@ -21,6 +22,7 @@ import {
   money,
   startFormatValidation,
   startImporting,
+  startPdfConversion,
 } from '@warimaru/domain'
 import type {
   CsvImportStatusQuery,
@@ -36,6 +38,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { parseStatementCsv } from '../parse-statement-csv.js'
+import type { PdfToCsvConverter } from '../pdf-conversion/PdfToCsvConverter.js'
 import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const StatusParamsSchema = z.object({
@@ -53,6 +56,13 @@ const MAX_CSV_FILE_SIZE = 1_000_000
 const CsvFileSchema = z
   .instanceof(File, { message: 'file フィールドに CSV ファイルが必要' })
   .refine(file => file.size <= MAX_CSV_FILE_SIZE, 'CSV ファイルは 1MB 以下でなければならない')
+
+/** PDF 上限（base64 化して Anthropic API へ送るため、リクエスト上限 32MB に収まる値で制限する） */
+const MAX_PDF_FILE_SIZE = 10_000_000
+
+const PdfFileSchema = z
+  .instanceof(File, { message: 'file フィールドに PDF ファイルが必要' })
+  .refine(file => file.size <= MAX_PDF_FILE_SIZE, 'PDF ファイルは 10MB 以下でなければならない')
 
 const ConfirmBodySchema = z.object({
   transactionCandidateIds: z.array(TransactionCandidateIdSchema).min(1).optional(),
@@ -74,6 +84,7 @@ export interface ImportsRoutesDeps {
   transactionCandidateRepository: TransactionCandidateRepository
   dailyMailImportBatchRepository: DailyMailImportBatchRepository
   transactionRepository: TransactionRepository
+  pdfToCsvConverter: PdfToCsvConverter
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
 }
 
@@ -81,6 +92,16 @@ function assertJobOwnedByViewer(job: StatementImportJob, viewerId: UserId): void
   if (job.common.uploaderUserId !== viewerId) {
     throw new PermissionDeniedError('他ユーザーの取込バッチは参照できない')
   }
+}
+
+/** ジョブのファイル形式に応じた取込候補の参照（csv → csvFileId / pdf → pdfFileId 一致） */
+function findCandidatesForJob(
+  repository: TransactionCandidateRepository,
+  job: StatementImportJob,
+): ReturnType<TransactionCandidateRepository['findByCsvFileId']> {
+  return job.common.fileFormat === 'pdf'
+    ? repository.findByPdfFileId(job.common.fileRef)
+    : repository.findByCsvFileId(job.common.fileRef)
 }
 
 export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
@@ -190,6 +211,116 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
     return c.json({ job: completed }, 201)
   })
 
+  /** PDF アップロード・変換・取込開始（multipart/form-data: file, targetMonth, fileKind） */
+  app.post('/pdf', async c => {
+    const formData = await c.req.parseBody()
+    const fields = CsvUploadFieldsSchema.parse({
+      targetMonth: formData['targetMonth'],
+      fileKind: formData['fileKind'] === undefined ? undefined : formData['fileKind'],
+    })
+    const file = PdfFileSchema.parse(formData['file'])
+    const viewerId = c.get('viewerId')
+    const fileRef = UploadFileIdSchema.parse(newUlid())
+
+    const accepted = StatementImportJobSchema.parse({
+      kind: 'upload_accepted',
+      common: {
+        importJobId: ImportJobIdSchema.parse(newUlid()),
+        uploaderUserId: viewerId,
+        targetMonth: fields.targetMonth,
+        fileKind: fields.fileKind,
+        fileFormat: 'pdf',
+        fileRef,
+      },
+      acceptedAt: new Date(),
+    }) as UploadAcceptedJob
+
+    // 変換の途中失敗でもジョブ記録が残るよう、pdf_converting 状態を先に永続化する
+    const pdfConversionJobId = PdfConversionJobIdSchema.parse(newUlid())
+    const converting = startPdfConversion(accepted, pdfConversionJobId, new Date())
+    await deps.statementImportJobRepository.save(converting)
+
+    const conversion = await deps.pdfToCsvConverter.convert(
+      new Uint8Array(await file.arrayBuffer()),
+    )
+    if (!conversion.ok) {
+      const failed = failImportJob(
+        converting,
+        {
+          kind: 'pdf_conversion_failed',
+          failureDetail: `${conversion.reason}: ${conversion.failureDetail}`,
+          detectedAt: new Date(),
+        },
+        new Date(),
+      )
+      await deps.statementImportJobRepository.save(failed)
+      return c.json({ job: failed, conversionFailureReason: conversion.reason }, 422)
+    }
+
+    const importing = startImporting(converting, new Date())
+    await deps.statementImportJobRepository.save(importing)
+
+    let importedCount = 0
+    let duplicateExcludedCount = 0
+    try {
+      for (const row of conversion.rows) {
+        const duplicate = await deps.transactionCandidateRepository.findByTripleMatch(
+          viewerId,
+          row.occurredAt,
+          money(row.amount),
+          row.merchantName,
+        )
+        if (duplicate !== null) {
+          duplicateExcludedCount++
+          continue
+        }
+        const candidate = TransactionCandidateSchema.parse({
+          kind: 'normal',
+          common: {
+            transactionCandidateId: TransactionCandidateIdSchema.parse(newUlid()),
+            userId: viewerId,
+            importSource: {
+              kind: 'pdf',
+              pdfFileId: fileRef,
+              pageNumber: row.pageNumber,
+              pdfConversionJobId,
+            },
+            merchantName: row.merchantName,
+            amount: row.amount,
+            occurredAt: row.occurredAt,
+          },
+        })
+        await deps.transactionCandidateRepository.save(candidate)
+        importedCount++
+      }
+    } catch (e) {
+      const failed = failImportJob(
+        importing,
+        {
+          kind: 'import_error',
+          failureDetail: e instanceof Error ? e.message : String(e),
+          detectedAt: new Date(),
+        },
+        new Date(),
+      )
+      await deps.statementImportJobRepository.save(failed)
+      throw e
+    }
+
+    const completed = completeImportJob(
+      importing,
+      {
+        newCount: importedCount,
+        autoClassifiedEstimateCount: 0,
+        unclassifiedEstimateCount: importedCount,
+        duplicateExcludedCount,
+      },
+      new Date(),
+    )
+    await deps.statementImportJobRepository.save(completed)
+    return c.json({ job: completed, pdfConversionJobId }, 201)
+  })
+
   /** 取込候補の一覧取得 */
   app.get('/:batchId/candidates', async c => {
     const importJobId = ImportJobIdSchema.parse(c.req.param('batchId'))
@@ -197,7 +328,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
     const job = await deps.statementImportJobRepository.findById(importJobId)
     if (job === null) throw new NotFoundError('StatementImportJob', importJobId)
     assertJobOwnedByViewer(job, viewerId)
-    const candidates = await deps.transactionCandidateRepository.findByCsvFileId(job.common.fileRef)
+    const candidates = await findCandidatesForJob(deps.transactionCandidateRepository, job)
     return c.json({ importJobId, jobKind: job.kind, candidates })
   })
 
@@ -216,7 +347,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
       )
     }
 
-    const all = await deps.transactionCandidateRepository.findByCsvFileId(job.common.fileRef)
+    const all = await findCandidatesForJob(deps.transactionCandidateRepository, job)
     const targetIds = body.transactionCandidateIds
     const targets =
       targetIds === undefined
