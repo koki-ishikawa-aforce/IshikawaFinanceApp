@@ -7,7 +7,7 @@
 }
 
 :root {
-  --font-family: 'Hiragino Maru Gothic ProN', 'Yu Gothic', system-ui, -apple-system, sans-serif;
+  --font-family: var(--font-zen-maru), 'Hiragino Maru Gothic ProN', system-ui, sans-serif;
 
   /* Darling theme (default) */
   --bg-gradient: linear-gradient(180deg, #ffc8d8 0%, #ffd8e0 30%, #ffe0e8 60%, #fff0f5 100%);
