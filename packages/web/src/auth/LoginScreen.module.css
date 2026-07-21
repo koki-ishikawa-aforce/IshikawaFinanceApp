@@ -1,0 +1,43 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  background: var(--bg-gradient);
+}
+
+.card {
+  text-align: center;
+  padding: 40px 32px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+}
+
+.loginButton {
+  display: inline-block;
+  padding: 12px 32px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #ffffff;
+  background-color: #06c755;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font-family);
+  transition: opacity 0.2s;
+}
+
+.loginButton:hover {
+  opacity: 0.85;
+}
