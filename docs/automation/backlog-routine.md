@@ -5,7 +5,7 @@
 ## 全体像
 
 ```
-人間: Issue に ready-to-implement を付与(着手承認。依存の順序もここで担保)
+人間: Issue に ready-to-implement を付与(着手承認。依存が open でも付与可)
   ↓
 Routine(毎時 fire・fresh session): 無人モードで /issue-work
   ├─ WIP 上限超過 or 候補なし → 何もせず終了
@@ -19,14 +19,19 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 - **1 fire = 1 Issue = 1 fresh session** — セッションの長時間化によるコンテキスト劣化を避ける。複数件の消化は fire の回数で稼ぐ(毎時 fire なら1日最大〜24件)
 - **人間の承認は「着手前のラベル付け」に前倒し** — `ready-to-implement` を付ける行為が着手承認。無人モードは承認済みの Issue にしか触れない
 - **Draft PR で止める** — マージ判断は必ず人間。自動マージはしない
+- **ready 化と実装は分離する** — 無人消化 Routine 自身は `/backlog-ready` を実行しない(候補が尽きても自分でラベルを付けて補充しない)。ready 化は人間が起点のセッション(`/issue-create` の手順4、または `/backlog-ready` の明示的な実行)でのみ行う。これを崩すと承認ゲートが消える
 
 ## ラベル運用
 
 | ラベル | 付ける人 | 意味 |
 | --- | --- | --- |
-| `ready-to-implement` | 人間 | 無人実装してよい(受け入れ条件が明確で、依存する先行 Issue がすべてクローズ済み) |
+| `ready-to-implement` | 人間 / `/backlog-ready` | 無人実装してよい(承認)。依存する先行 Issue が open でも付与でき、その間の着手は Routine の依存チェックが自動で遅延する |
 | `status:in-progress` | 無人モード | 着手中(fire 間の排他ロック)。対話モードの着手宣言と共通 |
 | `needs-clarification` | 無人モード | 受け入れ条件が曖昧で撤退した。Issue のコメントに確認事項あり。人間が回答して `ready-to-implement` を付け直すまで対象外 |
+
+ready 化は手動のほか、`/backlog-ready` スキル(`.claude/skills/backlog-ready/SKILL.md`)でまとめて行える。open Issue を「リポジトリ内で完結・受け入れ条件が検証可能・依存解決済み・設計判断なし・1 PR 粒度」の基準で判定し、該当分にラベルを付けて ready/見送りの一覧を報告する。判定は保守的(迷ったら付けない)。
+
+ワークフローへの組み込み: 新規 Issue は `/issue-create` が作成時に同じ基準で判定して ready 化する。依存チェーンの下流も承認済みなら同時に ready にしておけるため、**Draft PR をマージすると次の fire が依存解除された Issue を自動で拾う**(マージするだけでチェーンが順に消化される)。`/backlog-ready` の再実行は、依存以外の理由(条件の曖昧さ・粒度など)で見送っていた Issue を再判定したいときに行う。
 
 ラベルの初回作成(冪等):
 
@@ -39,7 +44,7 @@ gh label create "needs-clarification" --color D93F0B --description "受け入れ
 
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する(Routine はクラウド側で動くため、手元のセッションや PC の状態に依存しない)。
 
-- **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。ネットワークポリシーは `gh` と pnpm install が通る設定にする
+- **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。ネットワークポリシーは pnpm install と GitHub 操作が通る設定にする。`gh` CLI が無い環境でも動くよう、スキル側は GitHub MCP ツールへのフォールバックを定めている(issue-work スキルの「実行環境の注意」)
 - **Trigger**: Schedule、毎時(消化ペースを落としたい場合は間隔を広げる)
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):

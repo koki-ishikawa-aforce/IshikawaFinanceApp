@@ -12,6 +12,8 @@ GitHub Issue を起点に、実装 → 検証ループ → DDD レビュー → 
 - **対話モード**(既定): 以下の手順0〜6に従う。判断に迷ったらユーザーに確認する
 - **無人モード**: 「無人モードで」と明示されて起動された場合(主に Routine からの自動起動)。手順の差分は末尾の「無人モード」節に従う。ユーザーへの確認は一切行わず、確認が必要な状況では**実装せずに撤退する**
 
+> **実行環境の注意**: 本書の `gh` コマンドは操作の意図を示すリファレンス。`gh` CLI が使えない環境(Claude Code on the web / Routine 起動セッションなど)では、GitHub MCP ツール(`mcp__github__*`: `list_issues` / `issue_read` / `issue_write` / `add_issue_comment` / `list_pull_requests` / `create_pull_request` など)で同等の操作を行う。どちらも使えない場合は GitHub 操作を伴う手順を実行できないため、その旨を報告して終了する(無人モードでは何も変更せず終了)。
+
 ## 0. Issue の選定(番号が指定されなかった場合のみ)
 
 番号なしで起動されたら、着手すべき Issue を自動選定する:
@@ -88,7 +90,7 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
 2. **候補選定**: `gh issue list --state open --label "ready-to-implement" --json number,title,labels,assignees,body,createdAt` から、以下をすべて満たす Issue を1件選ぶ:
    - `status:in-progress` / `needs-clarification` ラベルが付いていない
    - 誰にも assign されていない
-   - 本文の「依存」「先行」「関連」に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)
+   - 本文の「依存」「先行」「関連」に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)。依存待ちの ready Issue は正常な状態であり、条件を満たすまで単にスキップして次候補を見る(先行 Issue のマージ後、以降の fire が自動で拾う)
      優先順は `priority:high` → 作成が古い順。候補が1件もなければ「ready な Issue なし」と報告して終了する
 3. **排他ロック**: 選定したら手順1より前に直ちに `status:in-progress` ラベルを付与する(手順2のコマンドを前倒しで実行)。これが並行する fire との排他ロックになる
 4. 選定理由はユーザーに確認せず、最終報告に含める
