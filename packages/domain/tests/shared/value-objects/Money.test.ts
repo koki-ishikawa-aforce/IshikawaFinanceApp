@@ -22,6 +22,20 @@ describe('Money', () => {
     expect(() => money(NaN)).toThrow()
   })
 
+  it('安全整数域の境界を受け入れる', () => {
+    expect(() => money(Number.MAX_SAFE_INTEGER)).not.toThrow()
+    expect(() => money(Number.MIN_SAFE_INTEGER)).not.toThrow()
+  })
+
+  it('安全整数域を超える値を拒否する（精度が失われるため）', () => {
+    expect(() => money(Number.MAX_SAFE_INTEGER + 1)).toThrow()
+    expect(() => money(Number.MIN_SAFE_INTEGER - 1)).toThrow()
+  })
+
+  it('addMoney の結果が安全整数域を超えると parse で検出する', () => {
+    expect(() => addMoney(money(Number.MAX_SAFE_INTEGER), money(1))).toThrow()
+  })
+
   it('addMoney は 2 つの Money を加算する', () => {
     expect(addMoney(money(1000), money(500))).toBe(1500)
   })

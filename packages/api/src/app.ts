@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { AppDeps } from './composition-root.js'
-import type { AppEnv } from './env.js'
+import { isProduction, type AppEnv } from './env.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { meRoutes } from './routes/me.js'
 import { transactionsRoutes } from './routes/transactions.js'
@@ -22,7 +22,10 @@ import { devViewerIdMiddleware } from './middleware/viewer-id.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { registerEventHandlers } from './event-handlers/index.js'
 
-const isDev = process.env['NODE_ENV'] !== 'production'
+// 本番判定は composition-root.ts と同じ isProduction() に統一する。
+// 判定基準が食い違うと、DB は本番なのに認証はなりすまし可能な dev、という
+// fail-open の窓が生まれるため（NODE_ENV=" Production" 等）。
+const isDev = !isProduction()
 
 export function createApp(deps: AppDeps): Hono<AppEnv> {
   // イベントハンドラーは最終的な deps（テストの override 込み）で登録する

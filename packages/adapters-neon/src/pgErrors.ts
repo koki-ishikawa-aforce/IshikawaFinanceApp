@@ -15,9 +15,14 @@ function hasCode(e: unknown, code: string): boolean {
 }
 
 export function isUniqueViolation(e: unknown): boolean {
-  if (hasCode(e, UNIQUE_VIOLATION)) return true
-  if (typeof e === 'object' && e !== null && 'cause' in e) {
-    return hasCode((e as { cause: unknown }).cause, UNIQUE_VIOLATION)
+  // drizzle-orm はドライバエラーを DrizzleQueryError でラップするが、
+  // 将来ラップが多段になっても取りこぼさないよう cause チェーンを辿る
+  // （循環参照に備えて深さ上限を設ける）。
+  let current: unknown = e
+  for (let depth = 0; depth < 8 && typeof current === 'object' && current !== null; depth++) {
+    if (hasCode(current, UNIQUE_VIOLATION)) return true
+    if (!('cause' in current)) break
+    current = (current as { cause: unknown }).cause
   }
   return false
 }

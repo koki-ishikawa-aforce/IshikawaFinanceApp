@@ -167,4 +167,23 @@ describe('InMemoryEventBus', () => {
     const event = makeEvent<TestEventA>({ type: 'TestEventA', value: 0 })
     await expect(bus.publish(event)).rejects.toThrow('async handler failure')
   })
+
+  it('配信中に同一型へ subscribe しても当該 publish には影響しない（スナップショット）', async () => {
+    const order: string[] = []
+    bus.subscribe<TestEventA>('TestEventA', () => {
+      order.push('existing')
+      // 配信中に新しいハンドラを登録する（配列をミューテートする）
+      bus.subscribe<TestEventA>('TestEventA', () => {
+        order.push('added-during-publish')
+      })
+    })
+
+    await bus.publish(makeEvent<TestEventA>({ type: 'TestEventA', value: 1 }))
+    // 実行中に追加したハンドラは当該 publish では呼ばれない
+    expect(order).toEqual(['existing'])
+
+    // 次の publish 以降では反映される
+    await bus.publish(makeEvent<TestEventA>({ type: 'TestEventA', value: 2 }))
+    expect(order).toEqual(['existing', 'existing', 'added-during-publish'])
+  })
 })

@@ -80,6 +80,7 @@ import {
   createDbResolveCategoryNames,
   createDbResolveViewerRole,
 } from '@warimaru/adapters-neon'
+import { isProduction } from './env.js'
 import { AnthropicPdfToCsvConverter } from './pdf-conversion/AnthropicPdfToCsvConverter.js'
 import { createGmailOAuthStateCodec } from './gmail-oauth/state.js'
 import { GoogleGmailOAuthGateway } from './gmail-oauth/GoogleGmailOAuthGateway.js'
@@ -239,7 +240,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
   if (!env.DATABASE_URL) {
     // 本番では DATABASE_URL 未設定を致命的な設定漏れとして扱い、モックへ黙ってフォールバックしない。
     // モックフォールバックは開発環境専用（#47 / #14 と同じ方針）。
-    if (env.NODE_ENV?.trim().toLowerCase() === 'production') {
+    if (isProduction(env.NODE_ENV)) {
       throw new Error(
         'DATABASE_URL is required in production. Refusing to start with mock data — set DATABASE_URL.',
       )
