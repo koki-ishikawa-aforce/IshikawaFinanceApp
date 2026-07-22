@@ -15,24 +15,36 @@
  *  - ニックネームは本人のみ変更可（Phase 3.5。操作者検証は application service、Phase 5 M-B）
  */
 import { z } from 'zod'
-import { UserIdSchema } from '../../shared/ids'
-import { UserRoleSchema } from '../../shared/value-objects/UserRole'
+import { UserIdSchema, type ImportJobId, type TalkRoomId, type UserId } from '../../shared/ids'
+import { UserRoleSchema, type UserRole } from '../../shared/value-objects/UserRole'
+import type { ParameterStorePath } from '../../shared/value-objects/ParameterStorePath'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
-import { NicknameSchema } from '../value-objects/Nickname'
+import { NicknameSchema, type Nickname } from '../value-objects/Nickname'
 import { Phase2ProgressSchema, type Phase2Progress } from '../value-objects/Phase2Progress'
 import {
   LineOperationSettingsSchema,
   type LineOperationSettings,
 } from '../value-objects/LineOperationSettings'
 import { GmailOAuthTokenRefSchema } from '../value-objects/GmailOAuthTokenRef'
-import { InitialBalanceRegistrationRefSchema } from '../value-objects/InitialBalanceRegistrationRef'
+import {
+  InitialBalanceRegistrationRefSchema,
+  type InitialBalanceRegistrationRef,
+} from '../value-objects/InitialBalanceRegistrationRef'
 
-/** 共通属性（userId = LINE userID、OQ-15） */
+/**
+ * 共通属性（userId = LINE userID、OQ-15）
+ *
+ * lineSettings は運用開始前に蓄積される LINE 運用設定（友達追加・トークルーム参加・
+ * 通知有効化。Web オンボーディングの完了記録や follow/join Webhook で更新される、#41）。
+ * 運用開始発火時に `operation_started.lineOperationSettings` へ昇格する。
+ * 未設定は全状態未着手と同義（既存レコード互換のため optional）。
+ */
 export const CommonAppUserAttrsSchema = z.object({
   userId: UserIdSchema,
   role: UserRoleSchema,
   nickname: NicknameSchema.optional(),
   firstRegisteredAt: z.date(),
+  lineSettings: LineOperationSettingsSchema.optional(),
 })
 export type CommonAppUserAttrs = z.infer<typeof CommonAppUserAttrsSchema>
 
@@ -160,4 +172,147 @@ export function updatePhase2Progress(
     common: user.common,
     progress,
   }) as Phase2InProgressUser
+}
+
+/**
+ * アプリユーザーを新規登録する（未登録 → Phase1完了、08f §2）
+ * 事前条件の役割判定（許可リスト照合）と重複登録の拒否は application 層 +
+ * Repository の一意制約（userId / role）が担う。
+ */
+export function registerAppUser(
+  userId: UserId,
+  role: UserRole,
+  nickname: Nickname | undefined,
+  at: Date,
+): Phase1CompletedUser {
+  return AppUserSchema.parse({
+    kind: 'phase1_completed',
+    common: {
+      userId,
+      role,
+      ...(nickname !== undefined ? { nickname } : {}),
+      firstRegisteredAt: at,
+    },
+  }) as Phase1CompletedUser
+}
+
+/**
+ * ニックネームを変更する（Phase 3.5。undefined で未設定に戻す = 表示はロール名フォールバック）
+ * 「本人のみ変更可」の操作者検証は application 層で行う（viewer 本人の集約のみ渡す）。
+ */
+export function changeNickname(user: AppUser, nickname: Nickname | undefined): AppUser {
+  const common = { ...user.common }
+  if (nickname !== undefined) common.nickname = nickname
+  else delete common.nickname
+  return AppUserSchema.parse({ ...user, common })
+}
+
+/** 未設定の lineSettings を全状態未着手として読む */
+export function lineSettingsOf(user: AppUser): LineOperationSettings {
+  return (
+    user.common.lineSettings ?? {
+      friendAdd: { kind: 'not_added' },
+      talkRoomJoin: { kind: 'not_joined' },
+      notificationActivation: { kind: 'not_activated' },
+    }
+  )
+}
+
+function withLineSettings(user: AppUser, settings: LineOperationSettings): AppUser {
+  return AppUserSchema.parse({ ...user, common: { ...user.common, lineSettings: settings } })
+}
+
+/** LINE 友達追加を記録する（冪等: 追加済みなら変更しない） */
+export function recordLineFriendAdded(user: AppUser, at: Date): AppUser {
+  const settings = lineSettingsOf(user)
+  if (settings.friendAdd.kind === 'added') return user
+  return withLineSettings(user, {
+    ...settings,
+    friendAdd: { kind: 'added', followWebhookReceivedAt: at },
+  })
+}
+
+/** 共通トークルーム参加を記録する（冪等: 同一トークルーム参加済みなら変更しない） */
+export function recordTalkRoomJoined(user: AppUser, talkRoomId: TalkRoomId, at: Date): AppUser {
+  const settings = lineSettingsOf(user)
+  if (settings.talkRoomJoin.kind === 'joined' && settings.talkRoomJoin.talkRoomId === talkRoomId) {
+    return user
+  }
+  return withLineSettings(user, {
+    ...settings,
+    talkRoomJoin: { kind: 'joined', talkRoomId, joinWebhookReceivedAt: at },
+  })
+}
+
+/**
+ * 通知機能を有効化する（冪等: 有効化済みなら変更しない）
+ * 友達追加済み かつ トークルーム参加済み でなければ InvariantViolationError を throw する
+ * （LineOperationSettings の不変条件。有効化対象は参加済みトークルーム）。
+ */
+export function activateNotification(user: AppUser, at: Date): AppUser {
+  const settings = lineSettingsOf(user)
+  if (settings.notificationActivation.kind === 'activated') return user
+  if (settings.friendAdd.kind !== 'added' || settings.talkRoomJoin.kind !== 'joined') {
+    throw new InvariantViolationError(
+      '通知機能の有効化には LINE 友達追加とトークルーム参加の完了が必要',
+    )
+  }
+  return withLineSettings(user, {
+    ...settings,
+    notificationActivation: {
+      kind: 'activated',
+      talkRoomId: settings.talkRoomJoin.talkRoomId,
+      activatedAt: at,
+    },
+  })
+}
+
+/** Phase2 SectionA（Gmail 連携）を完了する。再認可による再完了（tokenStoreRef 更新）を許容する */
+export function completeSectionA(
+  user: Phase2InProgressUser,
+  tokenStoreRef: ParameterStorePath,
+  at: Date,
+): Phase2InProgressUser {
+  return updatePhase2Progress(user, {
+    ...user.progress,
+    sectionA: { kind: 'completed', tokenStoreRef, completedAt: at },
+  })
+}
+
+/** Phase2 SectionB（初期残高登録）を完了する。SectionA 完了済みでなければ throw（論点8: 順序強制） */
+export function completeSectionB(
+  user: Phase2InProgressUser,
+  initialBalanceRef: InitialBalanceRegistrationRef,
+  at: Date,
+): Phase2InProgressUser {
+  if (user.progress.sectionA.kind !== 'completed') {
+    throw new InvariantViolationError('SectionA 完了後でなければ SectionB に進めない（論点8）')
+  }
+  return updatePhase2Progress(user, {
+    ...user.progress,
+    sectionB: { kind: 'completed', initialBalanceRef, completedAt: at },
+  })
+}
+
+/** Phase2 SectionF（過去明細取込）を完了する。スキップ後の実行（やり直し）は許容する */
+export function completeSectionF(
+  user: Phase2InProgressUser,
+  importJobId: ImportJobId,
+  at: Date,
+): Phase2InProgressUser {
+  return updatePhase2Progress(user, {
+    ...user.progress,
+    sectionF: { kind: 'completed', importJobId, completedAt: at },
+  })
+}
+
+/** Phase2 SectionF をスキップする。完了済みからのスキップは InvariantViolationError */
+export function skipSectionF(user: Phase2InProgressUser, at: Date): Phase2InProgressUser {
+  if (user.progress.sectionF.kind === 'completed') {
+    throw new InvariantViolationError('完了済みの SectionF はスキップできない')
+  }
+  return updatePhase2Progress(user, {
+    ...user.progress,
+    sectionF: { kind: 'skipped', skippedAt: at },
+  })
 }

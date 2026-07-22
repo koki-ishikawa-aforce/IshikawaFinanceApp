@@ -1,6 +1,8 @@
 import type {
   AccountBalanceQuery,
+  AllowlistQuery,
   AmazonProductKeyLearningRuleRepository,
+  AppUserRepository,
   BalanceTimeSeriesQuery,
   BulkClassificationSessionRepository,
   CategoryDeletionRequestRepository,
@@ -13,6 +15,8 @@ import type {
   ExpenseSettlementManagementQuery,
   ExpenseTypeDeletionRequestRepository,
   ExpenseTypeMasterRepository,
+  GmailOAuthGateway,
+  GmailOAuthTokenRepository,
   MerchantLearningRuleRepository,
   MonthlyExpenseCycleRepository,
   MonthlyLimitRepository,
@@ -20,6 +24,7 @@ import type {
   PdfToCsvConverter,
   ProratedChildTransactionRepository,
   RetroactiveCandidateQuery,
+  SpouseCompletionQuery,
   StatementImportJobRepository,
   TransactionCandidateRepository,
   TransactionListQuery,
@@ -27,9 +32,13 @@ import type {
   UserId,
   UserRole,
 } from '@warimaru/domain'
-import { InMemoryEventBus } from '@warimaru/domain'
+import { AllowlistSchema, InMemoryEventBus } from '@warimaru/domain'
 import {
   createNeonHttpDb,
+  NeonAllowlistQuery,
+  NeonAppUserRepository,
+  NeonGmailOAuthTokenRepository,
+  NeonSpouseCompletionQuery,
   NeonAmazonProductKeyLearningRuleRepository,
   NeonBulkClassificationSessionRepository,
   NeonCategoryDeletionRequestRepository,
@@ -57,6 +66,16 @@ import {
   createDbResolveViewerRole,
 } from '@warimaru/adapters-neon'
 import { AnthropicPdfToCsvConverter } from './pdf-conversion/AnthropicPdfToCsvConverter.js'
+import { createGmailOAuthStateCodec } from './gmail-oauth/state.js'
+import { GoogleGmailOAuthGateway } from './gmail-oauth/GoogleGmailOAuthGateway.js'
+import {
+  createMockGmailOAuthGateway,
+  createUnconfiguredGmailOAuthGateway,
+} from './gmail-oauth/mock.js'
+import {
+  createSsmParameterStore,
+  createUnconfiguredParameterStore,
+} from './aws/ssm-parameter-store.js'
 import { createMockDashboardQuery } from './mock-dashboard-query.js'
 import {
   createMockTransactionListQuery,
@@ -65,8 +84,12 @@ import {
   createMockBalanceTimeSeriesQuery,
   createMockExpenseSettlementManagementQuery,
   createMockCsvImportStatusQuery,
+  createMockAllowlistQuery,
+  createMockSpouseCompletionQuery,
 } from './mock-queries.js'
 import {
+  createMockAppUserRepository,
+  createMockGmailOAuthTokenRepository,
   createMockAmazonProductKeyLearningRuleRepository,
   createMockPdfToCsvConverter,
   createMockBulkClassificationSessionRepository,
@@ -120,12 +143,43 @@ export interface AppDeps {
   monthlyExpenseCycleRepository: MonthlyExpenseCycleRepository
   proratedChildTransactionRepository: ProratedChildTransactionRepository
   expenseReimbursementDepositRepository: ExpenseReimbursementDepositRepository
+  // オンボーディング・認証 (#41)
+  appUserRepository: AppUserRepository
+  gmailOAuthTokenRepository: GmailOAuthTokenRepository
+  spouseCompletionQuery: SpouseCompletionQuery
+  allowlistQuery: AllowlistQuery
+  gmailOAuthGateway: GmailOAuthGateway
 }
 
-export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps {
+export interface CompositionEnv {
+  DATABASE_URL?: string | undefined
+  // Gmail OAuth (#41)。未設定なら実 DB モードでも Gmail 連携のみ未構成エラーになる
+  GOOGLE_OAUTH_CLIENT_ID?: string | undefined
+  GOOGLE_OAUTH_CLIENT_SECRET?: string | undefined
+  GOOGLE_OAUTH_REDIRECT_URI?: string | undefined
+  /** state 署名鍵。未設定なら GOOGLE_OAUTH_CLIENT_SECRET を流用 */
+  GMAIL_OAUTH_STATE_SECRET?: string | undefined
+  /** Parameter Store（許可リスト読出し / トークン保管）の有効化判定 */
+  AWS_REGION?: string | undefined
+}
+
+export function createDeps(env: CompositionEnv): AppDeps {
   if (!env.DATABASE_URL) {
     console.warn('DATABASE_URL not set — using mock data')
+    // 開発モードの許可リスト（devViewerIdMiddleware / テストの X-User-Id と揃える）
+    const devAllowlist = AllowlistSchema.parse({
+      honeyLineUserId: 'user-honey-test',
+      darlingLineUserId: 'user-darling-test',
+    })
+    const appUserRepository = createMockAppUserRepository()
     return {
+      appUserRepository,
+      gmailOAuthTokenRepository: createMockGmailOAuthTokenRepository(),
+      allowlistQuery: createMockAllowlistQuery(devAllowlist),
+      spouseCompletionQuery: createMockSpouseCompletionQuery(appUserRepository, devAllowlist),
+      gmailOAuthGateway: createMockGmailOAuthGateway(
+        createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
+      ),
       eventBus: new InMemoryEventBus(),
       dashboardQuery: createMockDashboardQuery(),
       transactionListQuery: createMockTransactionListQuery(),
@@ -164,8 +218,40 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
   const resolveViewerRole = createDbResolveViewerRole(db)
   const now = (): Date => new Date()
 
+  // Parameter Store（許可リストの実値解決 / Gmail トークン保管）。AWS 未構成なら呼出し時に明示エラー
+  const parameterStore = env.AWS_REGION
+    ? createSsmParameterStore()
+    : createUnconfiguredParameterStore()
+  const allowlistQuery = new NeonAllowlistQuery(db, {
+    resolveParameterStoreValue: path => parameterStore.read(path),
+  })
+  const gmailOAuthGateway =
+    env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET && env.GOOGLE_OAUTH_REDIRECT_URI
+      ? new GoogleGmailOAuthGateway(
+          {
+            clientId: env.GOOGLE_OAUTH_CLIENT_ID,
+            clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+            redirectUri: env.GOOGLE_OAUTH_REDIRECT_URI,
+          },
+          {
+            stateCodec: createGmailOAuthStateCodec(
+              env.GMAIL_OAUTH_STATE_SECRET ?? env.GOOGLE_OAUTH_CLIENT_SECRET,
+            ),
+            storeSecret: (path, value) => parameterStore.write(path, value),
+          },
+        )
+      : createUnconfiguredGmailOAuthGateway()
+
   return {
     eventBus: new InMemoryEventBus(),
+    appUserRepository: new NeonAppUserRepository(db),
+    gmailOAuthTokenRepository: new NeonGmailOAuthTokenRepository(db),
+    allowlistQuery,
+    spouseCompletionQuery: new NeonSpouseCompletionQuery(db, {
+      fetchAllowlist: () => allowlistQuery.fetch(),
+      now,
+    }),
+    gmailOAuthGateway,
     dashboardQuery: new NeonDashboardQuery(db, { resolveCategoryNames, resolveViewerRole }),
     transactionListQuery: new NeonTransactionListQuery(db, {
       resolveCategoryNames,

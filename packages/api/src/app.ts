@@ -13,6 +13,8 @@ import { categoriesRoutes } from './routes/categories.js'
 import { expenseTypesRoutes } from './routes/expense-types.js'
 import { monthlyLimitsRoutes } from './routes/monthly-limits.js'
 import { classificationRoutes } from './routes/classification.js'
+import { onboardingRoutes } from './routes/onboarding.js'
+import { gmailOAuthRoutes } from './routes/gmail-oauth.js'
 import { lineAuthMiddleware } from './middleware/line-auth.js'
 import { devViewerIdMiddleware } from './middleware/viewer-id.js'
 import { errorHandler } from './middleware/error-handler.js'
@@ -31,6 +33,26 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   app.onError(errorHandler)
 
   app.route('/api/me', meRoutes(deps.resolveViewerRole))
+  app.route(
+    '/api/onboarding',
+    onboardingRoutes({
+      appUserRepository: deps.appUserRepository,
+      spouseCompletionQuery: deps.spouseCompletionQuery,
+      allowlistQuery: deps.allowlistQuery,
+      gmailOAuthGateway: deps.gmailOAuthGateway,
+      eventBus: deps.eventBus,
+    }),
+  )
+  // Gmail OAuth コールバックは OS 標準ブラウザから到達するため LIFF 認証（/api/*）の外に置く
+  app.route(
+    '/oauth/gmail',
+    gmailOAuthRoutes({
+      appUserRepository: deps.appUserRepository,
+      gmailOAuthTokenRepository: deps.gmailOAuthTokenRepository,
+      gmailOAuthGateway: deps.gmailOAuthGateway,
+      eventBus: deps.eventBus,
+    }),
+  )
   app.route('/api/dashboard', dashboardRoutes(deps.dashboardQuery))
   app.route(
     '/api/transactions',
