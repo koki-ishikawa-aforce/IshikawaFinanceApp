@@ -189,12 +189,20 @@ describe('POST /api/imports/pdf', () => {
     const res = await request(app, 'POST', '/api/imports/pdf', { formData: pdfFormData() })
     expect(res.status).toBe(422)
     const body = (await res.json()) as {
-      job: { kind: string; failureReason?: { kind: string; failureDetail: string } }
+      job: {
+        kind: string
+        failureReason?: { kind: string; reason: string; failureDetail: string }
+      }
       conversionFailureReason: string
     }
     expect(body.job.kind).toBe('failed')
     expect(body.conversionFailureReason).toBe('row_count_mismatch')
     expect(body.job.failureReason?.kind).toBe('pdf_conversion_failed')
+    // 失敗理由が failureDetail への埋め込みではなく構造化フィールドで保持される（#61）
+    expect(body.job.failureReason?.reason).toBe('row_count_mismatch')
+    expect(body.job.failureReason?.failureDetail).toBe(
+      '明細行数が一致しない（抽出 1 行 / 記載 2 行）',
+    )
 
     const jobs = await deps.statementImportJobRepository.findByUserAndMonth(
       VIEWER_ID,

@@ -5,6 +5,7 @@ import {
   startFormatValidation,
   startImporting,
   completeImportJob,
+  failImportJob,
   type UploadAcceptedJob,
   type FormatValidatingJob,
 } from '../../../src/transaction-import/aggregates/StatementImportJob'
@@ -92,5 +93,47 @@ describe('StatementImportJob 集約', () => {
     )
     expect(completed.kind).toBe('completed')
     expect(completed.summary.newCount).toBe(10)
+  })
+
+  it('failImportJob: PDF変換失敗は構造化された reason を保持する（#61）', () => {
+    const converting = startPdfConversion(
+      StatementImportJobSchema.parse({
+        kind: 'upload_accepted',
+        common: common('pdf'),
+        acceptedAt: new Date(),
+      }) as UploadAcceptedJob,
+      '01PDF000000000000000000001' as never,
+      new Date(),
+    )
+    const failed = failImportJob(
+      converting,
+      {
+        kind: 'pdf_conversion_failed',
+        reason: 'total_amount_mismatch',
+        failureDetail: '利用金額合計が一致しない',
+        detectedAt: new Date(),
+      },
+      new Date(),
+    )
+    expect(failed.kind).toBe('failed')
+    expect(failed.failureReason.kind).toBe('pdf_conversion_failed')
+    if (failed.failureReason.kind === 'pdf_conversion_failed') {
+      expect(failed.failureReason.reason).toBe('total_amount_mismatch')
+    }
+  })
+
+  it('pdf_conversion_failed の失敗理由に reason がないと parse 失敗（不変条件）', () => {
+    expect(() =>
+      StatementImportJobSchema.parse({
+        kind: 'failed',
+        common: common('pdf'),
+        failedAt: new Date(),
+        failureReason: {
+          kind: 'pdf_conversion_failed',
+          failureDetail: '変換に失敗',
+          detectedAt: new Date(),
+        },
+      }),
+    ).toThrow()
   })
 })

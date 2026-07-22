@@ -255,7 +255,8 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
         converting,
         {
           kind: 'pdf_conversion_failed',
-          failureDetail: `${conversion.reason}: ${conversion.failureDetail}`,
+          reason: conversion.reason,
+          failureDetail: conversion.failureDetail,
           detectedAt: new Date(),
         },
         new Date(),
