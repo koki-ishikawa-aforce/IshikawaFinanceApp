@@ -13,16 +13,16 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
   └─ 1件選定 → status:in-progress で排他ロック → 実装 → /verify → /ddd-review
       → Draft PR + マージ判断 Issue(needs-decision → メール通知)
   ↓
-人間: needs-decision の一覧から判断し、Draft PR をレビューしてマージ(これが実質のスロットル)
+人間: needs-decision の一覧から判断し、Draft PR をレビューしてマージ(これが実質のスロットル。/decide で対話消化できる)
 ```
 
 設計原則:
 
-- **人間の判断タスクは needs-decision Issue に集約する** — 撤退時の確認・レビュー見送りの追認・マージ判断のすべてを `needs-decision` ラベル付き Issue にする。判断待ちの全量は [`is:issue is:open label:needs-decision`](https://github.com/koki-ishikawa-aforce/IshikawaFinanceApp/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision) で一覧でき、ラベル付与をトリガーに通知ワークフローがメールを発生させる(後述の「通知」節)。判断依頼の書き方は issue-work スキルのテンプレート(`.claude/skills/issue-work/templates/`)と執筆ルールに従う
+- **人間の判断タスクは needs-decision Issue に集約する** — 撤退時の確認・レビュー見送りの追認・マージ判断のすべてを `needs-decision` ラベル付き Issue にする。判断待ちの全量は [`is:issue is:open label:needs-decision`](https://github.com/koki-ishikawa-aforce/IshikawaFinanceApp/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision) で一覧でき、ラベル付与をトリガーに通知ワークフローがメールを発生させる(後述の「通知」節)。判断依頼の書き方は issue-work スキルのテンプレート(`.claude/skills/issue-work/templates/`)と執筆ルールに従う。消化する側の手順は `/decide` スキル(`.claude/skills/decide/SKILL.md`)に定める
 
 - **1 fire = 1 Issue = 1 fresh session** — セッションの長時間化によるコンテキスト劣化を避ける。複数件の消化は fire の回数で稼ぐ(毎時 fire なら1日最大〜24件)
 - **人間の承認は「着手前のラベル付け」に前倒し** — `ready-to-implement` を付ける行為が着手承認。無人モードは承認済みの Issue にしか触れない
-- **Draft PR で止める** — マージ判断は必ず人間。自動マージはしない
+- **Draft PR で止める** — マージ判断は必ず人間が行う(`/decide` セッション内の明示承認を含む)。Routine 自身による自動マージはしない
 - **ready 化と実装は分離する** — 無人消化 Routine 自身は `/backlog-ready` を実行しない(候補が尽きても自分でラベルを付けて補充しない)。ready 化は人間が起点のセッション(`/issue-create` の手順4、または `/backlog-ready` の明示的な実行)でのみ行う。これを崩すと承認ゲートが消える
 
 ## ラベル運用
@@ -31,7 +31,7 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 | --- | --- | --- |
 | `ready-to-implement` | 人間 / `/backlog-ready` | 無人実装してよい(承認)。依存する先行 Issue が open でも付与でき、その間の着手は Routine の依存チェックが自動で遅延する |
 | `status:in-progress` | 無人モード | 着手中(fire 間の排他ロック)。対話モードの着手宣言と共通 |
-| `needs-decision` | 無人モード | 人間の判断待ち(撤退時の確認・見送り追認・マージ判断)。付与をトリガーに通知ワークフローがメール通知を発生させる。元 Issue に付いた場合は、人間が回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外 |
+| `needs-decision` | 無人モード | 人間の判断待ち(撤退時の確認・見送り追認・マージ判断)。付与をトリガーに通知ワークフローがメール通知を発生させる。元 Issue に付いた場合は、人間が回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外。消化は `/decide` で行える |
 
 旧 `needs-clarification` ラベルは `needs-decision` に統合した(残っている Issue があれば付け替える)。
 

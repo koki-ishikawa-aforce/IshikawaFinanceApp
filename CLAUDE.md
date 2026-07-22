@@ -49,11 +49,12 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 2. Issue の実装〜PR 作成: `/issue-work`
 3. 検証ループ: `/verify` — コード変更を完了と報告する前に必ず全 green にする
 4. DDD 観点レビュー: `/ddd-review`(PR 前に実施)— レビュー指摘は must-fix だけでなく suggestion も原則その場で修正する。見送りは例外(大規模リファクタ相当・設計判断が必要な場合)のみで、必ず Issue 化して追跡する
+5. 判断待ちの消化: `/decide` — 無人モードが `needs-decision` に集約した判断依頼を対話で消化し、決定を Issue と docs に反映する
 
 ブランチ名は `feat/issue-<番号>-<slug>`、PR 本文に `Closes #<番号>` を含める。
 着手中の Issue には `status:in-progress` ラベルを付与する(`/issue-work` が自動で行う)。
 
-バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ Draft PR 化する(運用・セットアップ: `docs/automation/backlog-routine.md`)。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える。依存する先行 Issue が open でも ready は付与でき、着手は Routine の依存チェックが遅延する(マージすると次の fire が自動で後続に着手)。無人モードはユーザー確認の代わりに撤退を選び、マージは必ず人間が行う。
+バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ Draft PR 化する(運用・セットアップ: `docs/automation/backlog-routine.md`)。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える。依存する先行 Issue が open でも ready は付与でき、着手は Routine の依存チェックが遅延する(マージすると次の fire が自動で後続に着手)。無人モードはユーザー確認の代わりに撤退を選び、マージ判断は必ず人間が行う(`/decide` セッション内の明示承認を含む)。溜まった `needs-decision` は `/decide` でまとめて消化する。
 
 ## してはいけないこと
 
