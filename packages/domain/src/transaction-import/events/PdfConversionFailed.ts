@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { DomainEventBaseSchema } from '../../shared/events/DomainEvent'
 import { PdfConversionJobIdSchema, ImportJobIdSchema } from '../../shared/ids'
-import { PdfConversionFailureReasonSchema } from '../value-objects/PdfConversionResult'
+import { PdfConversionFailureReasonSchema } from '../value-objects/PdfConversionFailureReason'
 
 /** PDF変換失敗イベント（08a §3） */
 export const PdfConversionFailedSchema = DomainEventBaseSchema.extend({

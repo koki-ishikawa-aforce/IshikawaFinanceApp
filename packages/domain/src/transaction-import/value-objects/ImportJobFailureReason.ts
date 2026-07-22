@@ -4,7 +4,7 @@
  * @see docs/superpowers/plans/2026-07-06-phase5-m-a-context-typing.md §2.3
  */
 import { z } from 'zod'
-import { PdfConversionFailureReasonSchema } from './PdfConversionResult'
+import { PdfConversionFailureReasonSchema } from './PdfConversionFailureReason'
 
 export const ImportJobFailureReasonSchema = z.discriminatedUnion('kind', [
   z.object({

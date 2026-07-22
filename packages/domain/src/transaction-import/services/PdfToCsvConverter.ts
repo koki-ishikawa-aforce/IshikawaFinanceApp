@@ -8,7 +8,7 @@
  * adapter 層の関心で、変換の検証（行数一致 + 合計金額一致）と失敗理由の
  * `PdfConversionFailureReason` への翻訳は実装側の責務とする。
  */
-import type { PdfConversionFailureReason } from '../value-objects/PdfConversionResult'
+import type { PdfConversionFailureReason } from '../value-objects/PdfConversionFailureReason'
 
 /** 変換で抽出された明細 1 行（取引候補の生成材料） */
 export interface ConvertedStatementRow {
