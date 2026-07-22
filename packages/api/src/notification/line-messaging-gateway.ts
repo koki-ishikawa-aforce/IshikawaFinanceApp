@@ -43,6 +43,9 @@ function toLineMessage(content: DeliveryContent): Record<string, unknown> {
       content.linkUrl !== undefined ? `${content.textBody}\n${content.linkUrl}` : content.textBody
     return { type: 'text', text }
   }
+  // Flex Message の linkUrl は payload 内のアクション（button / uri）として呼出し側が
+  // flexPayloadJson に埋め込む契約（08g: data Flex_Message配信内容 = Flex_payload AND リンクURL）。
+  // ここで別メッセージとして送出はしない
   return {
     type: 'flex',
     altText: FLEX_ALT_TEXT,
@@ -102,7 +105,11 @@ export function createLineMessagingGateway(
           sentPayloadJson,
           result: {
             kind: 'success',
-            lineMessageId: LineMessageIdSchema.parse(body.sentMessages?.[0]?.id ?? 'unknown'),
+            // 応答に id が無い場合の合成値は synthetic: 接頭辞でプロバイダ由来でないことを明示する
+            // （配信ログは不変の監査レコードのため、本物の LINE message ID と区別できる形で凍結する）
+            lineMessageId: LineMessageIdSchema.parse(
+              body.sentMessages?.[0]?.id ?? 'synthetic:missing-line-message-id',
+            ),
           },
         }
       } catch (e) {

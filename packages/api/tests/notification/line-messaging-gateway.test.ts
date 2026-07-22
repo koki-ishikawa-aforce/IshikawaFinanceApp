@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import type { DeliveryContent, DeliveryTarget } from '@warimaru/domain'
+import { DeliveryContentSchema, DeliveryTargetSchema } from '@warimaru/domain'
 import { createLineMessagingGateway } from '../../src/notification/line-messaging-gateway.js'
 
-const talkRoomTarget: DeliveryTarget = {
+const talkRoomTarget: DeliveryTarget = DeliveryTargetSchema.parse({
   kind: 'shared_talk_room',
   talkRoomId: 'room_001',
-} as DeliveryTarget
-const dmTarget: DeliveryTarget = { kind: 'personal_dm', userId: 'user_honey' } as DeliveryTarget
+})
+const dmTarget: DeliveryTarget = DeliveryTargetSchema.parse({
+  kind: 'personal_dm',
+  userId: 'user_honey',
+})
 
 function stubFetch(response: { status: number; body?: unknown }): {
   fetchImpl: typeof fetch
@@ -32,11 +36,11 @@ describe('createLineMessagingGateway', () => {
       resolveChannelAccessToken: () => Promise.resolve('token-123'),
       fetchImpl,
     })
-    const content: DeliveryContent = {
+    const content: DeliveryContent = DeliveryContentSchema.parse({
       kind: 'plain_text',
       textBody: 'CSV 取込をお願いします',
       linkUrl: 'https://example.com/import',
-    } as DeliveryContent
+    })
     const outcome = await gateway.sendPush(talkRoomTarget, content)
 
     expect(outcome.result).toEqual({ kind: 'success', lineMessageId: 'line-message-id-1' })
@@ -61,11 +65,11 @@ describe('createLineMessagingGateway', () => {
       resolveChannelAccessToken: () => Promise.resolve('token-123'),
       fetchImpl,
     })
-    const content: DeliveryContent = {
+    const content: DeliveryContent = DeliveryContentSchema.parse({
       kind: 'flex_message',
       flexPayloadJson: '{"type":"bubble"}',
       linkUrl: 'https://example.com/report',
-    } as DeliveryContent
+    })
     const outcome = await gateway.sendPush(dmTarget, content)
 
     expect(outcome.result.kind).toBe('success')
@@ -90,10 +94,10 @@ describe('createLineMessagingGateway', () => {
         resolveChannelAccessToken: () => Promise.resolve('token-123'),
         fetchImpl,
       })
-      const outcome = await gateway.sendPush(talkRoomTarget, {
-        kind: 'plain_text',
-        textBody: 'x',
-      } as DeliveryContent)
+      const outcome = await gateway.sendPush(
+        talkRoomTarget,
+        DeliveryContentSchema.parse({ kind: 'plain_text', textBody: 'x' }),
+      )
       expect(outcome.result.kind).toBe('failure')
       if (outcome.result.kind === 'failure') {
         expect(outcome.result.failureReason).toBe(expected)
@@ -111,10 +115,10 @@ describe('createLineMessagingGateway', () => {
       resolveChannelAccessToken: () => Promise.resolve('token-123'),
       fetchImpl,
     })
-    const outcome = await gateway.sendPush(talkRoomTarget, {
-      kind: 'plain_text',
-      textBody: 'x',
-    } as DeliveryContent)
+    const outcome = await gateway.sendPush(
+      talkRoomTarget,
+      DeliveryContentSchema.parse({ kind: 'plain_text', textBody: 'x' }),
+    )
     expect(outcome.result.kind).toBe('failure')
     if (outcome.result.kind === 'failure') {
       expect(outcome.result.failureReason).toBe('timeout')
@@ -125,10 +129,10 @@ describe('createLineMessagingGateway', () => {
     const gateway = createLineMessagingGateway({
       resolveChannelAccessToken: () => Promise.reject(new Error('Phase0Config not found')),
     })
-    const outcome = await gateway.sendPush(talkRoomTarget, {
-      kind: 'plain_text',
-      textBody: 'x',
-    } as DeliveryContent)
+    const outcome = await gateway.sendPush(
+      talkRoomTarget,
+      DeliveryContentSchema.parse({ kind: 'plain_text', textBody: 'x' }),
+    )
     expect(outcome.result.kind).toBe('failure')
     if (outcome.result.kind === 'failure') {
       expect(outcome.result.failureReason).toBe('line_api_failure')

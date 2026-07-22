@@ -6,6 +6,7 @@ import {
   type FailsafeEmailId,
 } from '../../shared/ids'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
+import type { DeliveryTarget } from './DeliveryTarget'
 
 /**
  * 連続失敗カウンタ（しきい値到達でフェイルセーフメールを発火）
@@ -82,6 +83,16 @@ export type ConsecutiveFailureCounter = z.infer<typeof ConsecutiveFailureCounter
  * 呼出し側（api 層）が環境設定で上書きできる。
  */
 export const DEFAULT_FAILSAFE_FAILURE_THRESHOLD = 3
+
+/**
+ * 配信先 → 連続失敗カウンタの参照単位
+ * （08g §1: data 連続失敗カウンタ = ユーザーID OR 共通トークルームID）
+ */
+export function counterRefOf(target: DeliveryTarget): FailureCounterRef {
+  return target.kind === 'shared_talk_room'
+    ? { kind: 'talk_room', talkRoomId: target.talkRoomId }
+    : { kind: 'user', userId: target.userId }
+}
 
 /** 失敗履歴のない初期カウンタを生成する */
 export function initialFailureCounter(counterRef: FailureCounterRef): ConsecutiveFailureCounter {

@@ -19,7 +19,6 @@ import type {
   DeliveryMessageRepository,
   DeliveryPurpose,
   DeliveryTarget,
-  DeliveryTimingKind,
   EventBus,
   FailedDeliveryMessage,
   FailsafeEmailGateway,
@@ -31,6 +30,7 @@ import type {
   SentDeliveryMessage,
 } from '@warimaru/domain'
 import {
+  counterRefOf,
   createLineDeliveryLog,
   DeliveryLogIdSchema,
   DeliveryLogSavedSchema,
@@ -40,6 +40,7 @@ import {
   FailsafeEmailSentSchema,
   FailureThresholdReachedSchema,
   initialFailureCounter,
+  isFailsafeCovered,
   markFailsafeFired,
   markFailsafeEmailFailed,
   markFailsafeEmailSent,
@@ -89,22 +90,6 @@ export interface NotificationDeliveryServiceDeps {
   now?: (() => Date) | undefined
 }
 
-/** 配信用途 → 配信タイミング種別（LINE 配信ログの分類） */
-const TIMING_KIND: Record<DeliveryPurpose, DeliveryTimingKind> = {
-  csv_import_reminder: 'reminder',
-  monthly_report_household_summary: 'csv_confirmation',
-  monthly_report_personal_summary: 'csv_confirmation',
-  oauth_revocation_notice: 'oauth_revocation_detected',
-  test_message: 'test_send',
-}
-
-/** 配信先 → 連続失敗カウンタの参照単位 */
-function counterRefOf(target: DeliveryTarget): FailureCounterRef {
-  return target.kind === 'shared_talk_room'
-    ? { kind: 'talk_room', talkRoomId: target.talkRoomId }
-    : { kind: 'user', userId: target.userId }
-}
-
 function describeCounterRef(ref: FailureCounterRef): string {
   return ref.kind === 'talk_room' ? `共通トークルーム ${ref.talkRoomId}` : `ユーザー ${ref.userId}`
 }
@@ -123,7 +108,6 @@ export function createNotificationDeliveryService(
     const log = createLineDeliveryLog({
       deliveryLogId: DeliveryLogIdSchema.parse(newUlid()),
       message,
-      timingKind: TIMING_KIND[message.common.purpose],
       sentPayloadJson,
       idempotencyKey,
     })
@@ -259,8 +243,7 @@ export function createNotificationDeliveryService(
         }),
       )
 
-      // OAuth 失効通知はメールフェイルセーフ対象外（OQ-2）: カウンタを更新しない
-      if (input.purpose !== 'oauth_revocation_notice') {
+      if (isFailsafeCovered(input.purpose)) {
         const ref = counterRefOf(input.target)
         const counter =
           (await deps.consecutiveFailureCounterRepository.findByRef(ref)) ??

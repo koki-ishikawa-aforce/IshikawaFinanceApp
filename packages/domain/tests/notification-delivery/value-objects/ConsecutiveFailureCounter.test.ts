@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   ConsecutiveFailureCounterSchema,
+  counterRefOf,
+  FailureCounterRefSchema,
   initialFailureCounter,
   markFailsafeFired,
   recordSendFailure,
@@ -8,6 +10,7 @@ import {
   shouldFireFailsafe,
   type FailureCounterRef,
 } from '../../../src/notification-delivery/value-objects/ConsecutiveFailureCounter'
+import { DeliveryTargetSchema } from '../../../src/notification-delivery/value-objects/DeliveryTarget'
 import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 import { FailsafeEmailIdSchema } from '../../../src/shared/ids'
 
@@ -120,7 +123,10 @@ describe('ConsecutiveFailureCounter 値オブジェクト', () => {
 })
 
 describe('ConsecutiveFailureCounter 状態遷移', () => {
-  const ref: FailureCounterRef = { kind: 'talk_room', talkRoomId: 'room_001' as never }
+  const ref: FailureCounterRef = FailureCounterRefSchema.parse({
+    kind: 'talk_room',
+    talkRoomId: 'room_001',
+  })
   const failsafeEmailId = FailsafeEmailIdSchema.parse('01HZX3F2M9GQ4T8VWYJ5KNBC6D')
 
   it('initialFailureCounter は 0 回・未到達で生成する', () => {
@@ -184,6 +190,17 @@ describe('ConsecutiveFailureCounter 状態遷移', () => {
     for (let i = 0; i < 3; i++) counter = recordSendFailure(counter, at, 3)
     const fired = markFailsafeFired(counter, failsafeEmailId, at)
     expect(() => markFailsafeFired(fired, failsafeEmailId, at)).toThrow(InvariantViolationError)
+  })
+
+  it('counterRefOf は配信先からカウンタ参照単位を導出する（08g §1）', () => {
+    expect(
+      counterRefOf(
+        DeliveryTargetSchema.parse({ kind: 'shared_talk_room', talkRoomId: 'room_001' }),
+      ),
+    ).toEqual({ kind: 'talk_room', talkRoomId: 'room_001' })
+    expect(
+      counterRefOf(DeliveryTargetSchema.parse({ kind: 'personal_dm', userId: 'user_honey' })),
+    ).toEqual({ kind: 'user', userId: 'user_honey' })
   })
 
   it('resetFailureCounter は送信成功で初期状態へ戻す（0 回なら同一参照を返す）', () => {

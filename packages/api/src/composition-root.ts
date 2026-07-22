@@ -321,10 +321,21 @@ export function createDeps(env: CompositionEnv): AppDeps {
       return parameterStore.read(config.channelAccessTokenRef)
     },
   })
+  // 送信ゲートウェイ未構成なら宛先も空にして発火自体を保留する（発火は 1 回だけ = OQ-14 のため、
+  // 必ず失敗する送信で唯一の発火を消費しない。構成後の後続失敗で改めて発火する）
+  const failsafeConfigured = Boolean(env.AWS_REGION && env.FAILSAFE_EMAIL_FROM)
   const failsafeEmailGateway =
-    env.AWS_REGION && env.FAILSAFE_EMAIL_FROM
+    failsafeConfigured && env.FAILSAFE_EMAIL_FROM
       ? createSesFailsafeEmailGateway({ fromAddress: env.FAILSAFE_EMAIL_FROM })
       : createUnconfiguredFailsafeEmailGateway()
+  const failsafeEmailRecipients = failsafeConfigured
+    ? parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO)
+    : []
+  if (!failsafeConfigured && parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO).length > 0) {
+    console.warn(
+      'FAILSAFE_EMAIL_TO は設定されているが送信ゲートウェイが未構成（AWS_REGION / FAILSAFE_EMAIL_FROM を設定する）— フェイルセーフ発火を保留する',
+    )
+  }
 
   return {
     eventBus: new InMemoryEventBus(),
@@ -371,7 +382,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
     consecutiveFailureCounterRepository: new NeonConsecutiveFailureCounterRepository(db),
     lineMessagingGateway,
     failsafeEmailGateway,
-    failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
+    failsafeEmailRecipients,
     failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
   }
 }

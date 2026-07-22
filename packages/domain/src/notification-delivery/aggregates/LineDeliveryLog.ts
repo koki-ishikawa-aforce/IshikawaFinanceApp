@@ -24,6 +24,7 @@ import {
   type DeliveryLogId,
 } from '../../shared/ids'
 import { DeliveryTargetSchema } from '../value-objects/DeliveryTarget'
+import type { DeliveryPurpose } from '../value-objects/DeliveryPurpose'
 import {
   SendFailureReasonSchema,
   DeliverySkipReasonSchema,
@@ -66,15 +67,24 @@ export const LineDeliveryLogSchema = z.object({
 })
 export type LineDeliveryLog = z.infer<typeof LineDeliveryLogSchema>
 
+/** 配信用途 → 配信タイミング種別（08g §1 の両語彙の対応。月次サマリは CSV 確定昇格で配信される） */
+const TIMING_KIND_BY_PURPOSE: Record<DeliveryPurpose, DeliveryTimingKind> = {
+  csv_import_reminder: 'reminder',
+  monthly_report_household_summary: 'csv_confirmation',
+  monthly_report_personal_summary: 'csv_confirmation',
+  oauth_revocation_notice: 'oauth_revocation_detected',
+  test_message: 'test_send',
+}
+
 /**
  * 送信処理の終端状態から配信ログを組み立てる（08g §2「LINE 配信ログを保存する」）。
- * 送信結果ステータスは配信メッセージの終端状態から導出し、配信時点の payload を
- * json で凍結する（OQ-34）。
+ * 送信結果ステータスは配信メッセージの終端状態から、配信タイミング種別は配信用途から
+ * それぞれ導出し（不整合な組合せを構造的に排除）、配信時点の payload を json で
+ * 凍結する（OQ-34）。
  */
 export function createLineDeliveryLog(params: {
   deliveryLogId: DeliveryLogId
   message: SentDeliveryMessage | FailedDeliveryMessage | SkippedDeliveryMessage
-  timingKind: DeliveryTimingKind
   sentPayloadJson: string
   idempotencyKey: string
 }): LineDeliveryLog {
@@ -88,7 +98,7 @@ export function createLineDeliveryLog(params: {
   return LineDeliveryLogSchema.parse({
     deliveryLogId: params.deliveryLogId,
     deliveryMessageId: message.common.deliveryMessageId,
-    timingKind: params.timingKind,
+    timingKind: TIMING_KIND_BY_PURPOSE[message.common.purpose],
     target: message.common.target,
     sentPayloadJson: params.sentPayloadJson,
     resultStatus,

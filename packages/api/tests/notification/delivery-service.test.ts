@@ -7,7 +7,13 @@ import type {
   LineMessagingGateway,
   LinePushResult,
 } from '@warimaru/domain'
-import { InMemoryEventBus, LineMessageIdSchema } from '@warimaru/domain'
+import {
+  DeliveryContentSchema,
+  DeliveryTargetSchema,
+  FailureCounterRefSchema,
+  InMemoryEventBus,
+  LineMessageIdSchema,
+} from '@warimaru/domain'
 import {
   createNotificationDeliveryService,
   type NotificationDeliveryService,
@@ -20,15 +26,18 @@ import {
   createMockLineDeliveryLogRepository,
 } from '../../src/mock-repositories.js'
 
-const talkRoomTarget: DeliveryTarget = {
+const talkRoomTarget: DeliveryTarget = DeliveryTargetSchema.parse({
   kind: 'shared_talk_room',
   talkRoomId: 'room_001',
-} as DeliveryTarget
-const dmTarget: DeliveryTarget = { kind: 'personal_dm', userId: 'user_honey' } as DeliveryTarget
-const textContent: DeliveryContent = {
+})
+const dmTarget: DeliveryTarget = DeliveryTargetSchema.parse({
+  kind: 'personal_dm',
+  userId: 'user_honey',
+})
+const textContent: DeliveryContent = DeliveryContentSchema.parse({
   kind: 'plain_text',
   textBody: 'テスト本文',
-} as DeliveryContent
+})
 
 /** 応答列を順に返すスタブ LINE ゲートウェイ（列を使い切ったら最後の応答を繰り返す） */
 function stubLineGateway(results: LinePushResult[]): LineMessagingGateway & { calls: number } {
@@ -155,10 +164,9 @@ describe('NotificationDeliveryService', () => {
     expect(outcome.message.retryState).toBe('retry_abandoned')
     expect(outcome.log.resultStatus.kind).toBe('failure')
     expect(events.map(e => e.type)).toEqual(['DeliveryLogSaved', 'SingleSendFailureLogged'])
-    const counter = await deps.consecutiveFailureCounterRepository.findByRef({
-      kind: 'talk_room',
-      talkRoomId: talkRoomTarget.kind === 'shared_talk_room' ? talkRoomTarget.talkRoomId : '',
-    } as never)
+    const counter = await deps.consecutiveFailureCounterRepository.findByRef(
+      FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' }),
+    )
     expect(counter?.consecutiveFailureCount).toBe(1)
     expect(counter?.thresholdState.kind).toBe('not_reached')
   })
@@ -201,10 +209,9 @@ describe('NotificationDeliveryService', () => {
         idempotencyKey: `key-r${i}`,
       })
     }
-    const counter = await deps.consecutiveFailureCounterRepository.findByRef({
-      kind: 'talk_room',
-      talkRoomId: 'room_001',
-    } as never)
+    const counter = await deps.consecutiveFailureCounterRepository.findByRef(
+      FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' }),
+    )
     expect(counter?.consecutiveFailureCount).toBe(0)
     expect(events.filter(e => e.type === 'FailureThresholdReached')).toHaveLength(0)
   })
@@ -219,10 +226,9 @@ describe('NotificationDeliveryService', () => {
       idempotencyKey: 'key-oauth',
     })
     expect(outcome.kind).toBe('failed')
-    const counter = await deps.consecutiveFailureCounterRepository.findByRef({
-      kind: 'user',
-      userId: 'user_honey',
-    } as never)
+    const counter = await deps.consecutiveFailureCounterRepository.findByRef(
+      FailureCounterRefSchema.parse({ kind: 'user', userId: 'user_honey' }),
+    )
     expect(counter).toBeNull()
     expect(events.filter(e => e.type === 'FailureThresholdReached')).toHaveLength(0)
     expect(events.filter(e => e.type === 'FailsafeEmailSent')).toHaveLength(0)
@@ -237,10 +243,9 @@ describe('NotificationDeliveryService', () => {
       purpose: 'csv_import_reminder',
       idempotencyKey: 'key-n1',
     })
-    const counter = await deps.consecutiveFailureCounterRepository.findByRef({
-      kind: 'talk_room',
-      talkRoomId: 'room_001',
-    } as never)
+    const counter = await deps.consecutiveFailureCounterRepository.findByRef(
+      FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' }),
+    )
     expect(counter?.thresholdState.kind).toBe('reached')
     expect(events.filter(e => e.type === 'FailsafeEmailSent')).toHaveLength(0)
   })

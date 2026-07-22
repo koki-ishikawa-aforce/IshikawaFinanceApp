@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
+  CommonDeliveryMessageAttrsSchema,
   DeliveryMessageSchema,
+  reserveDeliveryMessage,
   startSendingMessage,
   markMessageSent,
   markMessageSendFailed,
@@ -69,5 +71,34 @@ describe('DeliveryMessage 集約', () => {
       markMessageSendFailed(sending, 'line_api_failure', 'retry_scheduled', new Date()).kind,
     ).toBe('failed')
     expect(skipDeliveryMessage(msg, 'reminder_stop_condition_met', new Date()).kind).toBe('skipped')
+  })
+})
+
+describe('reserveDeliveryMessage（予約ファクトリ）', () => {
+  const common = (purpose: string, target: unknown) => ({
+    deliveryMessageId: '01HZX3F2M9GQ4T8VWYJ5KNBC6D',
+    target,
+    content,
+    purpose,
+  })
+
+  it('整合する用途 × 配信先で送信予約済みメッセージを生成する', () => {
+    const reserved = reserveDeliveryMessage(
+      CommonDeliveryMessageAttrsSchema.parse(common('test_message', talkRoomTarget)),
+      new Date('2026-07-01T00:00:00Z'),
+    )
+    expect(reserved.kind).toBe('reserved')
+    expect(reserved.reservedAt).toEqual(new Date('2026-07-01T00:00:00Z'))
+  })
+
+  it('用途 × 配信先が不整合なら throw（superRefine が予約段階で拒否）', () => {
+    expect(() =>
+      reserveDeliveryMessage(
+        CommonDeliveryMessageAttrsSchema.parse(
+          common('monthly_report_personal_summary', talkRoomTarget),
+        ),
+        new Date(),
+      ),
+    ).toThrow()
   })
 })
