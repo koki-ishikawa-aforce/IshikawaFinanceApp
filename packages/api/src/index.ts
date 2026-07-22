@@ -4,6 +4,7 @@ import { createDeps } from './composition-root.js'
 import { createApp } from './app.js'
 
 const deps = createDeps({
+  NODE_ENV: process.env['NODE_ENV'],
   DATABASE_URL: process.env['DATABASE_URL'],
   GOOGLE_OAUTH_CLIENT_ID: process.env['GOOGLE_OAUTH_CLIENT_ID'],
   GOOGLE_OAUTH_CLIENT_SECRET: process.env['GOOGLE_OAUTH_CLIENT_SECRET'],
