@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import type { CategoryBreakdownView } from '@warimaru/domain'
 import { DonutChart } from './DonutChart'
 import { formatMoney } from '@/lib/format'
@@ -29,14 +30,23 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
       <DonutChart segments={segments} totalAmount={data.totalAmount} />
       <ul className={styles.legend}>
         {data.items.map((item, i) => (
-          <li key={item.categoryId} className={styles.legendItem}>
-            <span
-              className={styles.dot}
-              style={{ backgroundColor: getColor(item.categoryName, i, categoryColors) }}
-            />
-            <span className={styles.name}>{item.categoryName}</span>
-            <span className={styles.amount}>{formatMoney(item.total)}</span>
-            <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
+          <li key={item.categoryId}>
+            {/* ドリルダウン ⑧: 凡例タップで取引一覧へ（フィルタ: 表示中の月 + そのカテゴリ） */}
+            <Link
+              href={`/transactions?month=${data.yearMonth}&categoryId=${item.categoryId}`}
+              className={styles.legendItem}
+            >
+              <span
+                className={styles.dot}
+                style={{ backgroundColor: getColor(item.categoryName, i, categoryColors) }}
+              />
+              <span className={styles.name}>{item.categoryName}</span>
+              <span className={styles.amount}>{formatMoney(item.total)}</span>
+              <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
+              <span className={styles.chevron} aria-hidden="true">
+                ›
+              </span>
+            </Link>
           </li>
         ))}
       </ul>

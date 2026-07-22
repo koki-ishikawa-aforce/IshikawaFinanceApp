@@ -140,6 +140,40 @@ describe('NeonTransactionListQuery.fetch（プライバシー 3 段階）', () =
     )
   })
 
+  it('categoryId フィルタは該当カテゴリの取引のみ返す（未分類は categoryId null のため落ちる）', async () => {
+    const otherCategory = newCategoryId()
+    const food = classifiedTransaction({
+      ownerUserId: HONEY_USER_ID,
+      categoryId: CATEGORY_FOOD,
+      occurredAt: new Date('2026-07-05T03:00:00.000Z'),
+    })
+    const foodByDarling = classifiedTransaction({
+      ownerUserId: DARLING_USER_ID,
+      categoryId: CATEGORY_FOOD,
+      amount: 4500,
+      occurredAt: new Date('2026-07-06T03:00:00.000Z'),
+    })
+    const other = classifiedTransaction({
+      ownerUserId: HONEY_USER_ID,
+      categoryId: otherCategory,
+      occurredAt: new Date('2026-07-07T03:00:00.000Z'),
+    })
+    const unclassified = unclassifiedTransaction({
+      ownerUserId: HONEY_USER_ID,
+      occurredAt: new Date('2026-07-08T03:00:00.000Z'),
+    })
+    for (const tx of [food, foodByDarling, other, unclassified]) {
+      await repo.save(tx)
+    }
+
+    const items = await query.fetch(HONEY_USER_ID, { month: JUL, categoryId: CATEGORY_FOOD })
+    // 世帯取引は配偶者所有分もカテゴリ明細に含まれる
+    expect(items.map(i => i.transactionId).sort()).toEqual(
+      [food.common.transactionId, foodByDarling.common.transactionId].sort(),
+    )
+    expect(items.every(i => i.categoryId === CATEGORY_FOOD)).toBe(true)
+  })
+
   it('isUnclassifiedOnly は未分類のみ返す', async () => {
     await repo.save(
       classifiedTransaction({

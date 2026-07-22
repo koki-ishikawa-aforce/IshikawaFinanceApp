@@ -5,10 +5,11 @@
  * プライバシー 3 段階は SQL では表現しない。行を取得後、ドメインの唯一の
  * プライバシー判定ポイントである toListItems へ通して View を組み立てる。
  *
- * filter.expenseClass は SQL でなくメモリ上の item に適用する:
+ * filter.expenseClass / filter.categoryId は SQL でなくメモリ上の item に適用する:
  * 未分類取引は DB では expense_class が NULL だが、View では
  * defaultExpenseClass を expenseClass として持つため、SQL で絞ると
- * 未分類行が不当に落ちる（データ量は世帯 2 名 × 1 ヶ月分で問題なし）。
+ * 未分類行が不当に落ちる。categoryId は payload JSON 内にあり SQL で絞れない
+ * ため同様にメモリ適用とする（データ量は世帯 2 名 × 1 ヶ月分で問題なし）。
  */
 import { and, count, desc, eq, gte, lt, ne } from 'drizzle-orm'
 import type {
@@ -68,9 +69,14 @@ export class NeonTransactionListQuery implements TransactionListQuery {
     ]
     const categoryNames = await this.deps.resolveCategoryNames(categoryIds)
 
-    const items = toListItems(txs, { viewerId, role }, categoryNames)
-    if (filter.expenseClass === undefined) return items
-    return items.filter(item => item.expenseClass === filter.expenseClass)
+    let items = toListItems(txs, { viewerId, role }, categoryNames)
+    if (filter.expenseClass !== undefined) {
+      items = items.filter(item => item.expenseClass === filter.expenseClass)
+    }
+    if (filter.categoryId !== undefined) {
+      items = items.filter(item => item.categoryId === filter.categoryId)
+    }
+    return items
   }
 
   async fetchUnclassifiedSummary(viewerId: UserId, month: YearMonth): Promise<UnclassifiedSummary> {

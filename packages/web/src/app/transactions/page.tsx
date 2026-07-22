@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { YearMonth } from '@warimaru/domain'
+import { YearMonthSchema, type YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { Modal } from '@/components/ui/Modal'
 import { apiFetch, apiMutate } from '@/lib/api-client'
@@ -387,18 +388,32 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
   )
 }
 
-export default function TransactionsPage() {
-  const [month, setMonth] = useState<YearMonth>(getCurrentMonth)
+/** Deep Link の month パラメータ。YYYY-MM として不正なら当月にフォールバック */
+function parseMonthParam(value: string | null): YearMonth {
+  const parsed = YearMonthSchema.safeParse(value)
+  return parsed.success ? parsed.data : getCurrentMonth()
+}
+
+function TransactionsPageContent() {
+  // ダッシュボードのドリルダウン（spec §5.5 ⑧）から
+  // /transactions?month=YYYY-MM&categoryId=... で遷移してくる
+  const searchParams = useSearchParams()
+  const [month, setMonth] = useState<YearMonth>(() => parseMonthParam(searchParams.get('month')))
   const [classFilter, setClassFilter] = useState<ClassFilter>('all')
+  const [categoryFilter, setCategoryFilter] = useState<string>(
+    () => searchParams.get('categoryId') ?? '',
+  )
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false)
   const [creating, setCreating] = useState(false)
   const [selected, setSelected] = useState<TransactionListItemWire | null>(null)
+  const { categories } = useMasters()
 
   const listQuery = useQuery({
-    queryKey: ['transactions', month, classFilter, unclassifiedOnly],
+    queryKey: ['transactions', month, classFilter, categoryFilter, unclassifiedOnly],
     queryFn: () => {
       const params = new URLSearchParams({ month })
       if (classFilter !== 'all') params.set('expenseClass', classFilter)
+      if (categoryFilter !== '') params.set('categoryId', categoryFilter)
       if (unclassifiedOnly) params.set('isUnclassifiedOnly', 'true')
       return apiFetch(`/api/transactions?${params.toString()}`, TransactionListWireSchema)
     },
@@ -439,6 +454,23 @@ export default function TransactionsPage() {
               {label}
             </option>
           ))}
+        </select>
+        <select
+          className={ui.select}
+          value={categoryFilter}
+          onChange={e => setCategoryFilter(e.target.value)}
+        >
+          <option value="">すべてのカテゴリ</option>
+          {categories.map(category => (
+            <option key={category.categoryId} value={category.categoryId}>
+              {category.name}
+            </option>
+          ))}
+          {/* Deep Link のカテゴリがマスタ未取得・不明でも選択状態を可視化する */}
+          {categoryFilter !== '' &&
+            !categories.some(category => category.categoryId === categoryFilter) && (
+              <option value={categoryFilter}>指定カテゴリ</option>
+            )}
         </select>
         <label className={styles.checkRow}>
           <input
@@ -498,5 +530,14 @@ export default function TransactionsPage() {
       {creating && <CreateModal month={month} onClose={() => setCreating(false)} />}
       {selected && <DetailModal transaction={selected} onClose={() => setSelected(null)} />}
     </main>
+  )
+}
+
+export default function TransactionsPage() {
+  // Static Export では useSearchParams を使うコンポーネントに Suspense 境界が必須
+  return (
+    <Suspense fallback={<div className={ui.loading}>読み込み中...</div>}>
+      <TransactionsPageContent />
+    </Suspense>
   )
 }

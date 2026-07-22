@@ -5,6 +5,7 @@ import {
   InvariantViolationError,
   NotFoundError,
   PermissionDeniedError,
+  CategoryIdSchema,
   ClassifiedDetailsSchema,
   TransactionIdSchema,
   TransactionManuallyClassifiedSchema,
@@ -36,6 +37,7 @@ import { roleToPersonalExpenseClass } from '../role-mapping.js'
 const ListParamsSchema = z.object({
   month: YearMonthSchema,
   expenseClass: ExpenseClassSchema.optional(),
+  categoryId: CategoryIdSchema.optional(),
   isUnclassifiedOnly: z.enum(['true', 'false']).optional(),
 })
 
@@ -130,11 +132,15 @@ export function transactionsRoutes(
     const params = ListParamsSchema.parse({
       month: c.req.query('month'),
       expenseClass: c.req.query('expenseClass'),
+      categoryId: c.req.query('categoryId'),
       isUnclassifiedOnly: c.req.query('isUnclassifiedOnly'),
     })
     const filter: TransactionListFilter = { month: params.month }
     if (params.expenseClass !== undefined) {
       filter.expenseClass = params.expenseClass
+    }
+    if (params.categoryId !== undefined) {
+      filter.categoryId = params.categoryId
     }
     if (params.isUnclassifiedOnly !== undefined) {
       filter.isUnclassifiedOnly = params.isUnclassifiedOnly === 'true'

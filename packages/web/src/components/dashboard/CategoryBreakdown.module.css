@@ -18,6 +18,20 @@
   align-items: center;
   gap: 8px;
   font-size: 11px;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+}
+
+.legendItem:active {
+  background: var(--surface-alt, rgba(0, 0, 0, 0.05));
+}
+
+.chevron {
+  color: var(--text-secondary);
+  opacity: 0.6;
+  flex-shrink: 0;
 }
 
 .dot {
