@@ -1,4 +1,9 @@
-import { InvariantViolationError, MonthlyReportFinalizedSchema, finalize } from '@warimaru/domain'
+import {
+  InvariantViolationError,
+  MonthlyReportFinalizedSchema,
+  // 同じ barrel の finalizeCycle（サイクル確定）との取り違え防止でエイリアスする
+  finalize as finalizeMonthlyReport,
+} from '@warimaru/domain'
 import type {
   EventBus,
   ExpenseReimbursementDepositRepository,
@@ -76,7 +81,7 @@ export function registerMonthlyReportFinalizationEventHandlers(
         )
       }
 
-      const finalized = finalize(
+      const finalized = finalizeMonthlyReport(
         report,
         cycle.expenseReimbursementId,
         deposit.matchedAt,

@@ -59,6 +59,7 @@ import type {
   UserId,
   YearMonth,
 } from '@warimaru/domain'
+import { InvariantViolationError } from '@warimaru/domain'
 
 /** JST（UTC+9）暦日ベースの 'YYYY-MM' / 'YYYY-MM-DD'（Neon 実装の月境界規約に合わせる） */
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000
@@ -385,6 +386,17 @@ export function createMockMonthlyReportRepository(): MonthlyReportRepository {
       return [...store.values()].find(r => r.common.targetYearMonth === month) ?? null
     },
     async save(report: MonthlyReport) {
+      // target_year_month UNIQUE を Neon 実装と同じ失敗モードで再現する
+      const conflict = [...store.values()].find(
+        r =>
+          r.common.targetYearMonth === report.common.targetYearMonth &&
+          r.common.monthlyReportId !== report.common.monthlyReportId,
+      )
+      if (conflict !== undefined) {
+        throw new InvariantViolationError(
+          `月次レポートは 1 月 1 件（世帯）: ${report.common.targetYearMonth} は既に存在する`,
+        )
+      }
       store.set(report.common.monthlyReportId, report)
     },
   }
