@@ -73,7 +73,7 @@ GitHub は**自分自身の操作を通知しない**。Routine はあなたの�
 | イベント | bot の動作 | 結果 |
 | --- | --- | --- |
 | Issue に `needs-decision` が付いた | あなたを assignee に追加 + @メンションコメント | メール通知 |
-| Draft PR が作成された | あなたを assignee に追加 | メール通知(マージ判断 Issue が作られなかった場合の保険) |
+| PR が作成された(Draft・通常を問わない) | あなたを assignee に追加 | メール通知(Draft の場合はマージ判断 Issue が作られなかった場合の保険も兼ねる) |
 | PR がマージ/クローズされた | 対応するマージ判断 Issue(本文の `<!-- merge-judgment-pr: N -->` マーカーで特定)を自動クローズ | 判断待ち一覧が自動で片付く |
 
 前提条件: GitHub の [Settings → Notifications](https://github.com/settings/notifications) で「Participating, @mentions and custom」の Email が有効になっていること(既定で有効)。メールが届かない場合はまずここを確認する。

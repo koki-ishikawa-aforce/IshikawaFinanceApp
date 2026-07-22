@@ -36,9 +36,10 @@ jobs:
               body: `@${owner} あなたの判断が必要です。本文の「判断してほしいこと」を確認してください。`,
             });
 
-  # Draft PR が作られたらオーナーを assign する(マージ判断 Issue が作られなかった場合の保険通知)
-  notify-draft-pr:
-    if: github.event_name == 'pull_request' && github.event.action == 'opened' && github.event.pull_request.draft
+  # PR が作られたらオーナーを assign する。Draft/通常を問わない(自分のアカウントで
+  # 作られた PR は GitHub が通知しないため、bot の assign でメール通知を発生させる)
+  notify-pr-opened:
+    if: github.event_name == 'pull_request' && github.event.action == 'opened'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
