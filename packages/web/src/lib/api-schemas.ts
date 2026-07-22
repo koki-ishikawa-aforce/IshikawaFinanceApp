@@ -394,23 +394,34 @@ const Phase2ProgressWireSchema = z.object({
   ]),
 })
 
-export const AppUserWireSchema = z.object({
-  kind: z.enum(['phase1_completed', 'phase2_in_progress', 'phase2_completed', 'operation_started']),
-  common: z.object({
-    userId: z.string(),
-    role: z.enum(['honey', 'darling']),
-    nickname: z.string().optional(),
-    firstRegisteredAt: IsoDate,
-    lineOperationSettings: LineOperationSettingsWireSchema.optional(),
-  }),
-  progress: Phase2ProgressWireSchema.optional(),
+const AppUserCommonWireSchema = z.object({
+  userId: z.string(),
+  role: z.enum(['honey', 'darling']),
+  nickname: z.string().optional(),
+  firstRegisteredAt: IsoDate,
   lineOperationSettings: LineOperationSettingsWireSchema.optional(),
 })
+
+/** AppUser 集約のワイヤー形式（kind ごとの必須フィールドはドメインの discriminated union をミラー） */
+export const AppUserWireSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('phase1_completed'), common: AppUserCommonWireSchema }),
+  z.object({
+    kind: z.literal('phase2_in_progress'),
+    common: AppUserCommonWireSchema,
+    progress: Phase2ProgressWireSchema,
+  }),
+  z.object({ kind: z.literal('phase2_completed'), common: AppUserCommonWireSchema }),
+  z.object({
+    kind: z.literal('operation_started'),
+    common: AppUserCommonWireSchema,
+    lineOperationSettings: LineOperationSettingsWireSchema,
+  }),
+])
 export type AppUserWire = z.infer<typeof AppUserWireSchema>
 
 export const OnboardingMeWireSchema = z.object({ user: AppUserWireSchema.nullable() })
 
-export const SpouseCompletionWireSchema = z.discriminatedUnion('kind', [
+export const SpouseCompletionResultWireSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('awaiting_spouse'),
     userId: z.string(),
@@ -424,7 +435,7 @@ export const SpouseCompletionWireSchema = z.discriminatedUnion('kind', [
     bothCompletedAt: IsoDate,
   }),
 ])
-export type SpouseCompletionWire = z.infer<typeof SpouseCompletionWireSchema>
+export type SpouseCompletionResultWire = z.infer<typeof SpouseCompletionResultWireSchema>
 
 export const GmailAuthorizeResponseSchema = z.object({ authorizationUrl: z.string() })
 

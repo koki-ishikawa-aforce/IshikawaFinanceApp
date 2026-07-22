@@ -10,7 +10,7 @@ import {
   GmailAuthorizeResponseSchema,
   ImportStatusResponseSchema,
   OnboardingMeWireSchema,
-  SpouseCompletionWireSchema,
+  SpouseCompletionResultWireSchema,
   type AppUserWire,
   type LineOperationSettingsWire,
 } from '@/lib/api-schemas'
@@ -32,11 +32,11 @@ import styles from './page.module.css'
  */
 
 /**
- * 共通トークルーム ID の自己申告値。LIFF context（グループ内で開いた場合）を
- * 優先し、外部ブラウザ・1:1 トークでは環境変数で運用のルーム ID を渡す。
- * 正式には join Webhook が正となる（onboarding API 側の暫定契約に従う）。
+ * 共通トークルーム ID の自己申告値（正は join Webhook — onboarding API 側の暫定契約）。
+ * LIFF context（グループ内で開いた場合）を優先し、1:1 トーク・外部ブラウザでは
+ * 環境変数の運用ルーム ID を使う。どちらも無ければ null（参加記録は送らない）。
  */
-const FALLBACK_TALK_ROOM_ID = process.env['NEXT_PUBLIC_TALK_ROOM_ID'] ?? 'TR_DEV'
+const CONFIGURED_TALK_ROOM_ID = process.env['NEXT_PUBLIC_TALK_ROOM_ID'] ?? null
 
 const EMPTY_LINE_SETTINGS: LineOperationSettingsWire = {
   friendAdd: { kind: 'not_added' },
@@ -44,10 +44,13 @@ const EMPTY_LINE_SETTINGS: LineOperationSettingsWire = {
   notificationActivation: { kind: 'not_activated' },
 }
 
+/**
+ * ワイヤー形式向けの LINE 運用設定の読取り。
+ * @see packages/domain/src/onboarding-auth/aggregates/AppUser.ts の lineOperationSettingsOf
+ *     （運用開始済みは集約直下・それ以前は common・未設定は全未着手、と同一規約）
+ */
 function lineSettingsOf(user: AppUserWire): LineOperationSettingsWire {
-  if (user.kind === 'operation_started') {
-    return user.lineOperationSettings ?? EMPTY_LINE_SETTINGS
-  }
+  if (user.kind === 'operation_started') return user.lineOperationSettings
   return user.common.lineOperationSettings ?? EMPTY_LINE_SETTINGS
 }
 
@@ -133,10 +136,10 @@ export default function OnboardingPage() {
   })
 
   const recordTalkRoom = useMutation({
-    mutationFn: () =>
+    mutationFn: (talkRoomId: string) =>
       apiMutate(
         '/api/onboarding/phase1/talk-room',
-        { method: 'POST', body: { talkRoomId: getTalkRoomContextId() ?? FALLBACK_TALK_ROOM_ID } },
+        { method: 'POST', body: { talkRoomId } },
         OnboardingMeWireSchema,
       ),
     onSuccess: invalidate,
@@ -231,7 +234,7 @@ export default function OnboardingPage() {
 
   const spouseQuery = useQuery({
     queryKey: ['onboarding', 'spouse-completion'],
-    queryFn: () => apiFetch('/api/onboarding/spouse-completion', SpouseCompletionWireSchema),
+    queryFn: () => apiFetch('/api/onboarding/spouse-completion', SpouseCompletionResultWireSchema),
     enabled: user?.kind === 'phase2_completed',
   })
 
@@ -257,6 +260,7 @@ export default function OnboardingPage() {
   const avatar = role === 'honey' ? '⛵' : '🌸'
   const nickname = user?.common.nickname ?? ''
   const spouse = spouseQuery.data
+  const talkRoomId = getTalkRoomContextId() ?? CONFIGURED_TALK_ROOM_ID
 
   return (
     <main className={styles.main}>
@@ -328,10 +332,18 @@ export default function OnboardingPage() {
           <p className={styles.note}>
             ふたりの家計通知が届く共有トークルームに参加してください。招待リンクは配偶者または公式アカウントのメッセージから開けます。
           </p>
+          {talkRoomId === null && (
+            <p className={styles.note}>
+              ⚠
+              参加を記録するトークルームを特定できません。共有トークルーム内からこの画面を開き直してください。
+            </p>
+          )}
           <button
             className={ui.buttonGhost}
-            disabled={recordTalkRoom.isPending}
-            onClick={() => recordTalkRoom.mutate()}
+            disabled={talkRoomId === null || recordTalkRoom.isPending}
+            onClick={() => {
+              if (talkRoomId !== null) recordTalkRoom.mutate(talkRoomId)
+            }}
           >
             参加しました
           </button>
