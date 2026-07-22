@@ -19,6 +19,7 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 - **1 fire = 1 Issue = 1 fresh session** — セッションの長時間化によるコンテキスト劣化を避ける。複数件の消化は fire の回数で稼ぐ(毎時 fire なら1日最大〜24件)
 - **人間の承認は「着手前のラベル付け」に前倒し** — `ready-to-implement` を付ける行為が着手承認。無人モードは承認済みの Issue にしか触れない
 - **Draft PR で止める** — マージ判断は必ず人間。自動マージはしない
+- **ready 化と実装は分離する** — 無人消化 Routine 自身は `/backlog-ready` を実行しない(候補が尽きても自分でラベルを付けて補充しない)。ready 化は人間が起点のセッション(`/issue-create` の手順4、または `/backlog-ready` の明示的な実行)でのみ行う。これを崩すと承認ゲートが消える
 
 ## ラベル運用
 
@@ -29,6 +30,8 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 | `needs-clarification` | 無人モード | 受け入れ条件が曖昧で撤退した。Issue のコメントに確認事項あり。人間が回答して `ready-to-implement` を付け直すまで対象外 |
 
 ready 化は手動のほか、`/backlog-ready` スキル(`.claude/skills/backlog-ready/SKILL.md`)でまとめて行える。open Issue を「リポジトリ内で完結・受け入れ条件が検証可能・依存解決済み・設計判断なし・1 PR 粒度」の基準で判定し、該当分にラベルを付けて ready/見送りの一覧を報告する。判定は保守的(迷ったら付けない)。
+
+ワークフローへの組み込み: 新規 Issue は `/issue-create` が作成時に同じ基準で判定して ready 化する。**Draft PR をマージしたら `/backlog-ready` を再実行**すると、依存が解除された Issue が ready に昇格し、次の fire から消化が再開される(マージ → ready 補充、が運用の1サイクル)。
 
 ラベルの初回作成(冪等):
 

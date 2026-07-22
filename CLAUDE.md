@@ -51,7 +51,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 ブランチ名は `feat/issue-<番号>-<slug>`、PR 本文に `Closes #<番号>` を含める。
 着手中の Issue には `status:in-progress` ラベルを付与する(`/issue-work` が自動で行う)。
 
-バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ Draft PR 化する(運用・セットアップ: `docs/automation/backlog-routine.md`)。ready 化の判定・ラベル付けは `/backlog-ready` でまとめて行える。無人モードはユーザー確認の代わりに撤退を選び、マージは必ず人間が行う。
+バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ Draft PR 化する(運用・セットアップ: `docs/automation/backlog-routine.md`)。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える(Draft PR のマージ後に再実行すると依存解除された Issue が昇格する)。無人モードはユーザー確認の代わりに撤退を選び、マージは必ず人間が行う。
 
 ## してはいけないこと
 

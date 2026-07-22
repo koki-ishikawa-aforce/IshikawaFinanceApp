@@ -7,6 +7,12 @@ description: open Issue を分析し、Claude が無人で処理できるもの�
 
 open Issue を判定基準にかけ、無人消化 Routine(`docs/automation/backlog-routine.md`)の対象にしてよいものへ `ready-to-implement` ラベルを付ける。
 
+ワークフロー上の実行タイミング:
+
+- **Issue 作成時**: `/issue-create` が手順4で同じ基準を新規 Issue に適用する(本スキルの部分実行)
+- **PR マージ後**: 依存 Issue のクローズで基準を満たすようになった Issue が出るため、まとめて再実行すると ready に昇格できる
+- **随時**: バックログ全体のトリアージとして
+
 **ready 化 = 無人実装の承認**である。判定は保守的に行い、迷ったら付けない(付け損ねてもユーザーが手動で付けられるが、誤って付けると無人セッションが走ってしまう)。
 
 > `gh` CLI が使えない環境では GitHub MCP ツールで同等の操作を行う(issue-work スキルの「実行環境の注意」と同じ)。

@@ -29,4 +29,12 @@ description: 要件をヒアリングして GitHub Issue を作成・分解す�
 - 対象コンテキストを明記する
 - 関連するドメイン資料(`docs/domain/09-aggregates.md` の該当集約など)を参考資料に挙げる
 
-作成後、Issue の URL を一覧でユーザーに報告する。
+### 4. ready 判定(無人消化への接続)
+
+作成した各 Issue に `/backlog-ready` の判定基準(backlog-ready スキル参照: リポジトリ内で完結・受け入れ条件が検証可能・依存解決済み・設計判断なし・1 PR 粒度)を適用する:
+
+- 基準を満たすものは `ready-to-implement` を付与する(無人消化 Routine の対象になる旨を報告に添える。外せばいつでも取り消せる)
+- 依存する Issue が open のものは付与せず、「#X のマージ後に `/backlog-ready` で ready 化」と報告する
+- ユーザーが「無人消化に流さない」と明示した Issue には付与しない
+
+作成後、Issue の URL 一覧と ready 判定の結果をユーザーに報告する。
