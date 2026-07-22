@@ -54,8 +54,8 @@ export const MonthlyReportViewWireSchema = z.object({
     householdCategoryTotals: z.array(z.object({ categoryId: z.string(), total: z.number() })),
     personalTotalHoney: z.number(),
     personalTotalDarling: z.number(),
-    businessExpenseTotalHoney: z.number(),
-    businessExpenseTotalDarling: z.number(),
+    // OQ-47: 経費(会社)合計は本人分のみ（配偶者分は API が返さない）
+    businessExpenseTotalSelf: z.number(),
     nisaContributionAccumulated: z.number(),
     balanceTrend: z.object({
       smbcBalanceTrend: z.array(BalanceTrendPointWire),

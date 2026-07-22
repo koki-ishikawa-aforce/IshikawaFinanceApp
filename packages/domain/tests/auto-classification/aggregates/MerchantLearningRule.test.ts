@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import {
+  ManualClassificationSchema,
   MerchantLearningRuleSchema,
   disableMerchantLearning,
   reenableMerchantLearning,
   reflectManualClassification,
+  resolveActiveRuleClassification,
   type ActiveMerchantLearningRule,
   type DisabledMerchantLearningRule,
 } from '../../../src/auto-classification/aggregates/MerchantLearningRule'
+import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 
 const activeRule = {
   kind: 'active',
@@ -214,5 +217,81 @@ describe('reflectManualClassification（手動修正を学習に反映する、0
       at,
     )
     expect(result).toEqual({ kind: 'skipped', reason: 'learning_disabled' })
+  })
+
+  it('C9: 修正後分類は経費 ⇒ 経費種別ID 必須（弱い版の重複を持たない）', () => {
+    expect(
+      ManualClassificationSchema.safeParse({
+        categoryId: categoryA,
+        expenseClass: 'business_expense',
+      }).success,
+    ).toBe(false)
+    expect(
+      ManualClassificationSchema.safeParse({
+        categoryId: categoryA,
+        expenseClass: 'business_expense',
+        expenseTypeId: expenseTypeX,
+      }).success,
+    ).toBe(true)
+    expect(
+      ManualClassificationSchema.safeParse({
+        categoryId: categoryA,
+        expenseClass: 'household',
+      }).success,
+    ).toBe(true)
+  })
+})
+
+describe('resolveActiveRuleClassification（学習済みルール → 確定分類の素性、08b §2 遡及適用の前提）', () => {
+  const merchantName = 'スターバックス'
+  const categoryA = '01CAT000000000000000000001' as never
+  const expenseTypeX = '01EXT000000000000000000001' as never
+
+  function activeRuleWith(overrides: Record<string, unknown>): ActiveMerchantLearningRule {
+    return MerchantLearningRuleSchema.parse({
+      kind: 'active',
+      common: { userId: 'user_honey' as never, merchantName },
+      categoryRef: { kind: 'learned', categoryId: categoryA },
+      expenseClassRef: { kind: 'learned', expenseClass: 'household' },
+      expenseTypeRef: { kind: 'unlearned' },
+      lastUpdatedAt: new Date(),
+      ...overrides,
+    }) as ActiveMerchantLearningRule
+  }
+
+  it('全軸学習済み（非経費）は expenseTypeId なしの素性を返す', () => {
+    const result = resolveActiveRuleClassification(activeRuleWith({}))
+    expect(result).toEqual({ categoryId: categoryA, expenseClass: 'household' })
+  })
+
+  it('経費(会社) は expenseTypeId を含む素性を返す', () => {
+    const result = resolveActiveRuleClassification(
+      activeRuleWith({
+        expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+        expenseTypeRef: { kind: 'learned', expenseTypeId: expenseTypeX },
+      }),
+    )
+    expect(result).toEqual({
+      categoryId: categoryA,
+      expenseClass: 'business_expense',
+      expenseTypeId: expenseTypeX,
+    })
+  })
+
+  it('未学習軸が残るルールは適用不可（InvariantViolationError）', () => {
+    expect(() =>
+      resolveActiveRuleClassification(activeRuleWith({ categoryRef: { kind: 'unlearned' } })),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('経費(会社) で経費種別が未学習なら適用不可（InvariantViolationError）', () => {
+    expect(() =>
+      resolveActiveRuleClassification(
+        activeRuleWith({
+          expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+          expenseTypeRef: { kind: 'unlearned' },
+        }),
+      ),
+    ).toThrow(InvariantViolationError)
   })
 })

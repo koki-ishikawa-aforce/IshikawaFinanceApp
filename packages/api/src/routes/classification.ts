@@ -12,6 +12,7 @@ import {
   abortBulkClassificationSession,
   classify,
   completeBulkClassificationSession,
+  resolveActiveRuleClassification,
 } from '@warimaru/domain'
 import type {
   ActiveMerchantLearningRule,
@@ -53,25 +54,19 @@ export interface ClassificationRoutesDeps {
   transactionRepository: TransactionRepository
 }
 
-/** 学習済みの 3 軸から分類詳細を構築する（未学習軸が残る場合は適用不可） */
+/**
+ * 学習済みの 3 軸から分類詳細を構築する。
+ * 「学習が完了しているか」「経費 ⇒ 経費種別必須」の不変条件はドメイン
+ * （resolveActiveRuleClassification / ClassifiedDetailsSchema）に委譲し、api 層で再実装しない。
+ */
 function detailsFromRule(rule: ActiveMerchantLearningRule): ClassifiedDetails {
-  if (rule.categoryRef.kind !== 'learned' || rule.expenseClassRef.kind !== 'learned') {
-    throw new InvariantViolationError(
-      `学習が完了していないルールは遡及適用できない: ${rule.common.merchantName}`,
-    )
-  }
-  const expenseClass = rule.expenseClassRef.expenseClass
-  if (expenseClass === 'business_expense' && rule.expenseTypeRef.kind !== 'learned') {
-    throw new InvariantViolationError(
-      `経費種別が未学習のため遡及適用できない: ${rule.common.merchantName}`,
-    )
-  }
+  const classification = resolveActiveRuleClassification(rule)
   return ClassifiedDetailsSchema.parse({
-    categoryId: rule.categoryRef.categoryId,
-    expenseClass,
+    categoryId: classification.categoryId,
+    expenseClass: classification.expenseClass,
     expenseTypeRef:
-      expenseClass === 'business_expense' && rule.expenseTypeRef.kind === 'learned'
-        ? { kind: 'business', expenseTypeId: rule.expenseTypeRef.expenseTypeId }
+      classification.expenseTypeId !== undefined
+        ? { kind: 'business', expenseTypeId: classification.expenseTypeId }
         : { kind: 'non_business' },
     basis: {
       kind: 'merchant_rule',

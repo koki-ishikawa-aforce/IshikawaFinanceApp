@@ -15,8 +15,16 @@
  * 専用 ID は持たない（自然キー = userId + merchantName、09-aggregates.md #4）。
  */
 import { z } from 'zod'
-import { CategoryIdSchema, ExpenseTypeIdSchema, UserIdSchema, type UserId } from '../../shared/ids'
-import { ExpenseClassSchema } from '../../shared/value-objects/ExpenseClass'
+import {
+  CategoryIdSchema,
+  ExpenseTypeIdSchema,
+  UserIdSchema,
+  type CategoryId,
+  type ExpenseTypeId,
+  type UserId,
+} from '../../shared/ids'
+import { ExpenseClassSchema, type ExpenseClass } from '../../shared/value-objects/ExpenseClass'
+import { InvariantViolationError } from '../../shared/errors/DomainError'
 import {
   CategoryLearningRefSchema,
   ExpenseClassLearningRefSchema,
@@ -64,6 +72,41 @@ export type MerchantLearningRule = z.infer<typeof MerchantLearningRuleSchema>
 export type ActiveMerchantLearningRule = Extract<MerchantLearningRule, { kind: 'active' }>
 export type DisabledMerchantLearningRule = Extract<MerchantLearningRule, { kind: 'disabled' }>
 
+/** 有効ルールから取り出した確定分類の素性（BC 中立。household-analysis 型に依存しない） */
+export interface ResolvedRuleClassification {
+  categoryId: CategoryId
+  expenseClass: ExpenseClass
+  expenseTypeId?: ExpenseTypeId
+}
+
+/**
+ * 学習済みの 3 軸から確定分類の素性を取り出す（08b §2 遡及適用の前提）。
+ * 未学習軸が残るルールは適用できない。経費(会社) ⇒ 経費種別が学習済みであることも要求する。
+ * 「学習が完了しているか」の判定を api / adapters 層で再実装させないためのドメイン関数。
+ */
+export function resolveActiveRuleClassification(
+  rule: ActiveMerchantLearningRule,
+): ResolvedRuleClassification {
+  if (rule.categoryRef.kind !== 'learned' || rule.expenseClassRef.kind !== 'learned') {
+    throw new InvariantViolationError(
+      `学習が完了していないルールは適用できない: ${rule.common.merchantName}`,
+    )
+  }
+  const expenseClass = rule.expenseClassRef.expenseClass
+  if (expenseClass === 'business_expense' && rule.expenseTypeRef.kind !== 'learned') {
+    throw new InvariantViolationError(
+      `経費種別が未学習のため適用できない: ${rule.common.merchantName}`,
+    )
+  }
+  return {
+    categoryId: rule.categoryRef.categoryId,
+    expenseClass,
+    ...(expenseClass === 'business_expense' && rule.expenseTypeRef.kind === 'learned'
+      ? { expenseTypeId: rule.expenseTypeRef.expenseTypeId }
+      : {}),
+  }
+}
+
 /** 状態遷移: 有効 → 学習無効化（M-1「この加盟店は学習しない」） */
 export function disableMerchantLearning(
   rule: ActiveMerchantLearningRule,
@@ -88,12 +131,28 @@ function isAmazonMerchant(merchantName: string): boolean {
 /**
  * 修正後分類（08b §2「手動修正を学習に反映する」の入力）
  * 経費種別ID は費用区分が経費（business_expense）のときのみ意味を持つ。
+ *
+ * household-analysis の確定分類（ConfirmedClassification）を BC 境界で受け直す ACL 表現。
+ * 不変条件（経費 ⇒ 経費種別ID 必須）は確定分類と同一で、弱い版を持たない。
  */
-export const ManualClassificationSchema = z.object({
-  categoryId: CategoryIdSchema,
-  expenseClass: ExpenseClassSchema,
-  expenseTypeId: ExpenseTypeIdSchema.optional(),
-})
+export const ManualClassificationSchema = z
+  .object({
+    categoryId: CategoryIdSchema,
+    expenseClass: ExpenseClassSchema,
+    expenseTypeId: ExpenseTypeIdSchema.optional(),
+  })
+  .superRefine((classification, ctx) => {
+    if (
+      classification.expenseClass === 'business_expense' &&
+      classification.expenseTypeId === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '経費（business_expense）の修正後分類には経費種別ID が必須',
+        path: ['expenseTypeId'],
+      })
+    }
+  })
 export type ManualClassification = z.infer<typeof ManualClassificationSchema>
 
 export type ReflectManualClassificationResult =

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   toListItems,
   isVisibleAsDetail,
-  isVisibleAsAggregate,
 } from '../../../src/household-analysis/privacy/applyPrivacyFilter'
 import type { ViewerContext } from '../../../src/household-analysis/privacy/ViewerContext'
 import type {
@@ -76,26 +75,6 @@ describe('applyPrivacyFilter', () => {
     })
   })
 
-  describe('isVisibleAsAggregate マトリクス', () => {
-    it('世帯費用は両者の合計に含まれる', () => {
-      const tx = makeClassified(HONEY_ID, 'household')
-      expect(isVisibleAsAggregate(tx, honeyViewer)).toBe(true)
-      expect(isVisibleAsAggregate(tx, darlingViewer)).toBe(true)
-    })
-
-    it('個人(本人) は両者の合計に含まれる（合計のみ可視）', () => {
-      const tx = makeClassified(HONEY_ID, 'personal_honey')
-      expect(isVisibleAsAggregate(tx, honeyViewer)).toBe(true)
-      expect(isVisibleAsAggregate(tx, darlingViewer)).toBe(true)
-    })
-
-    it('経費(会社) は本人の合計のみ含まれる', () => {
-      const tx = makeClassified(HONEY_ID, 'business_expense')
-      expect(isVisibleAsAggregate(tx, honeyViewer)).toBe(true)
-      expect(isVisibleAsAggregate(tx, darlingViewer)).toBe(false)
-    })
-  })
-
   describe('toListItems', () => {
     const categoryNames = new Map<string, string>([['01CAT000000000000000000001', '食費']])
 
@@ -113,12 +92,18 @@ describe('applyPrivacyFilter', () => {
       expect(items[0]?.amount).toBe(1000)
     })
 
-    it('個人(本人) の取引は配偶者には merchantName / amount が null', () => {
+    it('個人(本人) の取引は配偶者のリストから完全除外（OQ-47: 伏せ字行を残さない）', () => {
       const txs: Transaction[] = [makeClassified(HONEY_ID, 'personal_honey')]
       const items = toListItems(txs, darlingViewer, categoryNames)
+      expect(items).toHaveLength(0)
+    })
+
+    it('個人(本人) の取引は本人には明細フル表示', () => {
+      const txs: Transaction[] = [makeClassified(HONEY_ID, 'personal_honey')]
+      const items = toListItems(txs, honeyViewer, categoryNames)
       expect(items).toHaveLength(1)
-      expect(items[0]?.merchantName).toBeNull()
-      expect(items[0]?.amount).toBeNull()
+      expect(items[0]?.merchantName).toBe('スーパーA')
+      expect(items[0]?.amount).toBe(1000)
     })
 
     it('世帯費用は両者に明細可視', () => {

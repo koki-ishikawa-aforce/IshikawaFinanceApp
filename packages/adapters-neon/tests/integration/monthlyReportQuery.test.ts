@@ -5,7 +5,10 @@ import { db } from './setup'
 import { HONEY_USER_ID, csvConfirmedReport, finalizedReport, ym } from '../helpers/fixtures'
 
 const repo = new NeonMonthlyReportRepository(db)
-const query = new NeonMonthlyReportQuery(db)
+// HONEY 視点で射影する（経費(会社)合計は本人分のみ）
+const query = new NeonMonthlyReportQuery(db, {
+  resolveViewerRole: () => Promise.resolve('honey' as const),
+})
 
 describe('NeonMonthlyReportQuery', () => {
   it('csv_confirmed は finalizedAt / unapprovedTransfers が null の View になる', async () => {
@@ -13,7 +16,13 @@ describe('NeonMonthlyReportQuery', () => {
     await repo.save(report)
     const view = await query.fetchByMonth(HONEY_USER_ID, ym('2026-06'))
     expect(view?.status).toBe('csv_confirmed')
-    expect(view?.common).toEqual(report.common)
+    // OQ-47: view.common は経費(会社)合計を本人分（honey）のみに射影する
+    const { businessExpenseTotalHoney, businessExpenseTotalDarling, ...restCommon } = report.common
+    expect(view?.common).toEqual({
+      ...restCommon,
+      businessExpenseTotalSelf: businessExpenseTotalHoney,
+    })
+    expect(businessExpenseTotalDarling).toBeGreaterThanOrEqual(0)
     expect(view?.finalizedAt).toBeNull()
     expect(view?.unapprovedTransfers).toBeNull()
   })

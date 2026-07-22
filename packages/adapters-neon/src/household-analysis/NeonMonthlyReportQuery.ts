@@ -2,11 +2,9 @@
  * MonthlyReportQuery の Neon 実装
  * @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §4.2
  *
- * viewerId は I/F 契約として受け取るが、本実装では未使用（予約引数）:
- * MonthlyReportView の common は経費(会社)サマリ（businessExpenseTotalHoney /
- * Darling）を non-null で要求するため、adapter 層でのマスキングは構造的に
- * 不可能。「経費(会社)サマリは本人のみ表示」は viewer の役割を知る画面層の
- * 責務とする（Phase 3.5 spec §6.3 ⑦）。
+ * OQ-47: プライバシー3段階は Query/API 層で完全強制する。経費(会社)合計は本人のみ可視のため、
+ * viewer の役割（honey / darling）を解決し、集約が保持する businessExpenseTotalHoney /
+ * Darling から本人分だけを businessExpenseTotalSelf として射影する（配偶者分は返さない）。
  */
 import { eq } from 'drizzle-orm'
 import type {
@@ -15,17 +13,26 @@ import type {
   MonthlyReportQuery,
   MonthlyReportView,
   UserId,
+  UserRole,
   YearMonth,
 } from '@warimaru/domain'
 import { MonthlyReportSchema, MonthlyReportViewSchema } from '@warimaru/domain'
 import type { Db } from '../client'
 import { monthlyReports } from '../schema'
 import { parsePayload } from '../serialize'
+import type { ResolveViewerRole } from '../queryDeps'
 
-function toView(report: MonthlyReport): MonthlyReportView {
+export interface NeonMonthlyReportQueryDeps {
+  resolveViewerRole: ResolveViewerRole
+}
+
+function toView(report: MonthlyReport, viewerRole: UserRole): MonthlyReportView {
+  const { businessExpenseTotalHoney, businessExpenseTotalDarling, ...restCommon } = report.common
+  const businessExpenseTotalSelf =
+    viewerRole === 'honey' ? businessExpenseTotalHoney : businessExpenseTotalDarling
   return MonthlyReportViewSchema.parse({
     status: report.kind,
-    common: report.common,
+    common: { ...restCommon, businessExpenseTotalSelf },
     csvConfirmedAt: report.csvConfirmedAt,
     finalizedAt: report.kind === 'finalized' ? report.finalizedAt : null,
     unapprovedTransfers: report.kind === 'finalized' ? report.unapprovedTransfers : null,
@@ -33,9 +40,12 @@ function toView(report: MonthlyReport): MonthlyReportView {
 }
 
 export class NeonMonthlyReportQuery implements MonthlyReportQuery {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    private readonly deps: NeonMonthlyReportQueryDeps,
+  ) {}
 
-  async fetchByMonth(_viewerId: UserId, month: YearMonth): Promise<MonthlyReportView | null> {
+  async fetchByMonth(viewerId: UserId, month: YearMonth): Promise<MonthlyReportView | null> {
     const rows = await this.db
       .select({ payload: monthlyReports.payload })
       .from(monthlyReports)
@@ -43,10 +53,11 @@ export class NeonMonthlyReportQuery implements MonthlyReportQuery {
       .limit(1)
     const row = rows[0]
     if (row === undefined) return null
-    return toView(parsePayload(MonthlyReportSchema, row.payload))
+    const role = await this.deps.resolveViewerRole(viewerId)
+    return toView(parsePayload(MonthlyReportSchema, row.payload), role)
   }
 
-  async fetchById(_viewerId: UserId, id: MonthlyReportId): Promise<MonthlyReportView | null> {
+  async fetchById(viewerId: UserId, id: MonthlyReportId): Promise<MonthlyReportView | null> {
     const rows = await this.db
       .select({ payload: monthlyReports.payload })
       .from(monthlyReports)
@@ -54,6 +65,7 @@ export class NeonMonthlyReportQuery implements MonthlyReportQuery {
       .limit(1)
     const row = rows[0]
     if (row === undefined) return null
-    return toView(parsePayload(MonthlyReportSchema, row.payload))
+    const role = await this.deps.resolveViewerRole(viewerId)
+    return toView(parsePayload(MonthlyReportSchema, row.payload), role)
   }
 }

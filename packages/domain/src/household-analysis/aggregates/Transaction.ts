@@ -42,13 +42,34 @@ export const ExpenseTypeRefSchema = z.discriminatedUnion('kind', [
 ])
 export type ExpenseTypeRef = z.infer<typeof ExpenseTypeRefSchema>
 
-/** 分類済み取引固有データ */
-export const ClassifiedDetailsSchema = z.object({
-  categoryId: CategoryIdSchema,
-  expenseClass: ExpenseClassSchema,
-  expenseTypeRef: ExpenseTypeRefSchema,
-  basis: ClassificationBasisSchema,
-})
+/**
+ * 分類済み取引固有データ。
+ * 不変条件（経費(会社) ⟺ expenseTypeRef.kind = business）はここに一元化する。
+ * 上位（Transaction / api・adapters の分類詳細組み立て）はこのスキーマに委譲し、再実装しない。
+ */
+export const ClassifiedDetailsSchema = z
+  .object({
+    categoryId: CategoryIdSchema,
+    expenseClass: ExpenseClassSchema,
+    expenseTypeRef: ExpenseTypeRefSchema,
+    basis: ClassificationBasisSchema,
+  })
+  .superRefine((details, ctx) => {
+    if (details.expenseClass === 'business_expense' && details.expenseTypeRef.kind !== 'business') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '経費(会社) 取引は expenseTypeRef.kind = business が必須',
+        path: ['expenseTypeRef'],
+      })
+    }
+    if (details.expenseClass !== 'business_expense' && details.expenseTypeRef.kind === 'business') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '経費(会社) 以外の取引は expenseTypeRef.kind = non_business である必要がある',
+        path: ['expenseTypeRef'],
+      })
+    }
+  })
 export type ClassifiedDetails = z.infer<typeof ClassifiedDetailsSchema>
 
 /** 削除理由 */
@@ -59,50 +80,29 @@ export const DeletionReasonSchema = z.enum([
 ])
 export type DeletionReason = z.infer<typeof DeletionReasonSchema>
 
-/** 取引（discriminated union） */
-export const TransactionSchema = z
-  .discriminatedUnion('kind', [
-    z.object({
-      kind: z.literal('unclassified'),
-      common: CommonTransactionAttrsSchema,
-      reason: UnclassifiedReasonSchema,
-      defaultExpenseClass: DefaultExpenseClassSchema,
-    }),
-    z.object({
-      kind: z.literal('classified'),
-      common: CommonTransactionAttrsSchema,
-      details: ClassifiedDetailsSchema,
-    }),
-    z.object({
-      kind: z.literal('deleted'),
-      common: CommonTransactionAttrsSchema,
-      deletedAt: z.date(),
-      deletionReason: DeletionReasonSchema,
-    }),
-  ])
-  .superRefine((tx, ctx) => {
-    if (tx.kind !== 'classified') return
-    if (
-      tx.details.expenseClass === 'business_expense' &&
-      tx.details.expenseTypeRef.kind !== 'business'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '経費(会社) 取引は expenseTypeRef.kind = business が必須',
-        path: ['details', 'expenseTypeRef'],
-      })
-    }
-    if (
-      tx.details.expenseClass !== 'business_expense' &&
-      tx.details.expenseTypeRef.kind === 'business'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '経費(会社) 以外の取引は expenseTypeRef.kind = non_business である必要がある',
-        path: ['details', 'expenseTypeRef'],
-      })
-    }
-  })
+/**
+ * 取引（discriminated union）
+ * 分類済み取引の経費種別不変条件は ClassifiedDetailsSchema に一元化済み（details 検証時に適用される）。
+ */
+export const TransactionSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('unclassified'),
+    common: CommonTransactionAttrsSchema,
+    reason: UnclassifiedReasonSchema,
+    defaultExpenseClass: DefaultExpenseClassSchema,
+  }),
+  z.object({
+    kind: z.literal('classified'),
+    common: CommonTransactionAttrsSchema,
+    details: ClassifiedDetailsSchema,
+  }),
+  z.object({
+    kind: z.literal('deleted'),
+    common: CommonTransactionAttrsSchema,
+    deletedAt: z.date(),
+    deletionReason: DeletionReasonSchema,
+  }),
+])
 export type Transaction = z.infer<typeof TransactionSchema>
 
 export type UnclassifiedTransaction = Extract<Transaction, { kind: 'unclassified' }>
