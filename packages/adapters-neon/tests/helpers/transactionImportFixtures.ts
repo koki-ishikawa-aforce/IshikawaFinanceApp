@@ -190,6 +190,7 @@ export function failedJob(
     failedAt: new Date('2026-07-01T02:00:00.000Z'),
     failureReason: {
       kind: 'pdf_conversion_failed',
+      reason: 'timeout',
       failureDetail: '変換タイムアウト',
       detectedAt: new Date('2026-07-01T02:00:00.000Z'),
     },
