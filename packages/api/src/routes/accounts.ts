@@ -6,7 +6,8 @@
  *
  * - 一覧は viewer 本人が所有する口座のみ（世帯合算の残高表示は /api/balances が担う）
  * - 「同一ユーザー × 口座種別の一意性」は Repository.save の一意制約が最終保証（409 に翻訳）
- * - 銀行名・証券会社名の変更は所有者本人のみ（配偶者の口座は 403）
+ * - 銀行名・証券会社名の変更は所有者本人のみ（ドメイン関数 changeBankName /
+ *   changeBrokerageName が操作者を検証し、error-handler が 403 に翻訳する）
  */
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -17,16 +18,17 @@ import {
   BankNameSchema,
   BrokerageNameChangedSchema,
   BrokerageNameSchema,
-  InvariantViolationError,
+  InitialBalanceRegisteredSchema,
   MoneySchema,
   NotFoundError,
-  PermissionDeniedError,
+  asNisaAccount,
+  asOtherSavingsAccount,
   changeBankName,
   changeBrokerageName,
   registerNisaAccount,
   registerOtherSavingsAccount,
 } from '@warimaru/domain'
-import type { Account, AccountId, AccountRepository, EventBus, UserId } from '@warimaru/domain'
+import type { Account, AccountId, AccountRepository, EventBus } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
@@ -54,12 +56,9 @@ export interface AccountsRoutesDeps {
 export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
 
-  async function getOwnAccountOr404(viewerId: UserId, id: AccountId): Promise<Account> {
+  async function getAccountOr404(id: AccountId): Promise<Account> {
     const account = await deps.accountRepository.findById(id)
     if (account === null) throw new NotFoundError('Account', id)
-    if (account.common.ownerUserId !== viewerId) {
-      throw new PermissionDeniedError('口座の管理は所有者本人のみ行える（配偶者の口座は変更不可）')
-    }
     return account
   }
 
@@ -104,6 +103,17 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
         accountKind: account.kind,
       }),
     )
+    // 登録は UL の「口座をアプリに登録する」+「初期残高を登録する」の統合アクション（08d §2）
+    await deps.eventBus.publish(
+      InitialBalanceRegisteredSchema.parse({
+        ...domainEventBase(now),
+        type: 'InitialBalanceRegistered',
+        userId: viewerId,
+        accountId,
+        initialBalance:
+          body.kind === 'other_savings' ? body.initialBalance : body.initialAccumulated,
+      }),
+    )
     return c.json({ account }, 201)
   })
 
@@ -111,15 +121,10 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
   app.put('/:accountId/bank-name', async c => {
     const body = BankNameBodySchema.parse(await c.req.json())
     const accountId = AccountIdSchema.parse(c.req.param('accountId'))
-    const account = await getOwnAccountOr404(c.get('viewerId'), accountId)
-    if (account.kind !== 'other_savings') {
-      throw new InvariantViolationError(
-        `銀行名を変更できるのは別銀行貯蓄口座のみ（現種別: ${account.kind}）`,
-      )
-    }
+    const account = asOtherSavingsAccount(await getAccountOr404(accountId))
     const now = new Date()
     const oldBankName = account.bankName
-    const updated = changeBankName(account, body.bankName)
+    const updated = changeBankName(account, body.bankName, c.get('viewerId'))
     await deps.accountRepository.save(updated)
     await deps.eventBus.publish(
       BankNameChangedSchema.parse({
@@ -139,15 +144,10 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
   app.put('/:accountId/brokerage-name', async c => {
     const body = BrokerageNameBodySchema.parse(await c.req.json())
     const accountId = AccountIdSchema.parse(c.req.param('accountId'))
-    const account = await getOwnAccountOr404(c.get('viewerId'), accountId)
-    if (account.kind !== 'nisa') {
-      throw new InvariantViolationError(
-        `証券会社名を変更できるのは NISA 口座のみ（現種別: ${account.kind}）`,
-      )
-    }
+    const account = asNisaAccount(await getAccountOr404(accountId))
     const now = new Date()
     const oldBrokerageName = account.brokerageName
-    const updated = changeBrokerageName(account, body.brokerageName)
+    const updated = changeBrokerageName(account, body.brokerageName, c.get('viewerId'))
     await deps.accountRepository.save(updated)
     await deps.eventBus.publish(
       BrokerageNameChangedSchema.parse({

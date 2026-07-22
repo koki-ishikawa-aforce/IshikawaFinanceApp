@@ -8,7 +8,8 @@
  *
  * 不変条件:
  *  - 同一ユーザーID + 口座種別の組合せは一意（Repository.save 時にチェック、Phase 5）
- *  - 銀行名・証券会社名は所有者本人のみ変更可（Repository 呼び出し側で検証、Phase 5）
+ *  - 銀行名・証券会社名は所有者本人のみ変更可（changeBankName / changeBrokerageName が
+ *    操作者ユーザーID で検証する、08d §2）
  */
 import { z } from 'zod'
 import {
@@ -19,18 +20,9 @@ import {
   type UserId,
 } from '../../shared/ids'
 import { MoneySchema, addMoney, type Money } from '../../shared/value-objects/Money'
-import { InvariantViolationError } from '../../shared/errors/DomainError'
+import { InvariantViolationError, PermissionDeniedError } from '../../shared/errors/DomainError'
 import { BankNameSchema, type BankName } from '../value-objects/BankName'
 import { BrokerageNameSchema, type BrokerageName } from '../value-objects/BrokerageName'
-
-/** data 口座種別 = SMBC銀行 OR 三井住友カード OR 別銀行貯蓄 OR NISA（08d §1） */
-export const AccountKindSchema = z.enum([
-  'smbc_bank',
-  'mitsui_sumitomo_card',
-  'other_savings',
-  'nisa',
-])
-export type AccountKind = z.infer<typeof AccountKindSchema>
 
 export const ActivenessSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('active') }),
@@ -175,26 +167,58 @@ export function registerNisaAccount(params: {
   }) as NisaAccount
 }
 
+/** 口座を別銀行貯蓄口座として絞り込む。種別不一致は InvariantViolationError */
+export function asOtherSavingsAccount(account: Account): OtherSavingsAccount {
+  if (account.kind !== 'other_savings') {
+    throw new InvariantViolationError(
+      `銀行名を変更できるのは別銀行貯蓄口座のみ（現種別: ${account.kind}）`,
+    )
+  }
+  return account
+}
+
+/** 口座を NISA 口座として絞り込む。種別不一致は InvariantViolationError */
+export function asNisaAccount(account: Account): NisaAccount {
+  if (account.kind !== 'nisa') {
+    throw new InvariantViolationError(
+      `証券会社名を変更できるのは NISA 口座のみ（現種別: ${account.kind}）`,
+    )
+  }
+  return account
+}
+
 /**
  * behavior 別銀行貯蓄口座の銀行名を変更する（08d §2、Phase 3.5）
- * 「所有者本人のみ変更可（配偶者の口座名は変更不可）」の操作者検証は
- * application 層で行う（viewer 本人が所有する口座のみ渡す）。
+ * 事前: 操作者 = 口座所有者本人（配偶者の口座名は変更不可）。
+ * 違反は PermissionDeniedError を throw する（09-aggregates #9 の不変条件）。
  */
 export function changeBankName(
   account: OtherSavingsAccount,
   bankName: BankName,
+  operatorUserId: UserId,
 ): OtherSavingsAccount {
+  if (account.common.ownerUserId !== operatorUserId) {
+    throw new PermissionDeniedError(
+      '銀行名は口座所有者本人のみ変更できる（配偶者の口座は変更不可）',
+    )
+  }
   return AccountSchema.parse({ ...account, bankName }) as OtherSavingsAccount
 }
 
 /**
  * behavior NISA口座の証券会社名を変更する（08d §2、Phase 3.5）
- * 操作者検証（所有者本人のみ）は changeBankName と同じく application 層で行う。
+ * 事前: 操作者 = 口座所有者本人。違反は PermissionDeniedError を throw する。
  */
 export function changeBrokerageName(
   account: NisaAccount,
   brokerageName: BrokerageName,
+  operatorUserId: UserId,
 ): NisaAccount {
+  if (account.common.ownerUserId !== operatorUserId) {
+    throw new PermissionDeniedError(
+      '証券会社名は口座所有者本人のみ変更できる（配偶者の口座は変更不可）',
+    )
+  }
   return AccountSchema.parse({ ...account, brokerageName }) as NisaAccount
 }
 

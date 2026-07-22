@@ -5,7 +5,7 @@
 import { z } from 'zod'
 import { DomainEventBaseSchema } from '../../shared/events/DomainEvent'
 import { AccountIdSchema, UserIdSchema } from '../../shared/ids'
-import { AccountKindSchema } from '../aggregates/Account'
+import { AccountKindSchema } from '../value-objects/AccountKind'
 
 export const AccountRegisteredSchema = DomainEventBaseSchema.extend({
   type: z.literal('AccountRegistered'),
