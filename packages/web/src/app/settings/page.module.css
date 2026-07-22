@@ -10,6 +10,7 @@
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 12px;
   padding: 3px;
@@ -17,7 +18,7 @@
 }
 
 .tab {
-  flex: 1;
+  flex: 1 0 30%;
   padding: 6px 0;
   border: none;
   border-radius: 10px;
@@ -100,6 +101,12 @@
 
 .linkDanger {
   color: #c04050;
+}
+
+.roleValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .limitValue {

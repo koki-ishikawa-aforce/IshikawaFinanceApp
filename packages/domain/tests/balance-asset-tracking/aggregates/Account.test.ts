@@ -2,9 +2,20 @@ import { describe, it, expect } from 'vitest'
 import {
   AccountSchema,
   applySmbcBalanceChange,
+  asNisaAccount,
+  asOtherSavingsAccount,
+  changeBankName,
+  changeBrokerageName,
+  registerNisaAccount,
+  registerOtherSavingsAccount,
+  type NisaAccount,
+  type OtherSavingsAccount,
   type SmbcBankAccount,
 } from '../../../src/balance-asset-tracking/aggregates/Account'
-import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
+import {
+  InvariantViolationError,
+  PermissionDeniedError,
+} from '../../../src/shared/errors/DomainError'
 
 const baseCommon = {
   accountId: '01ACC000000000000000000001' as never,
@@ -108,6 +119,194 @@ describe('Account 集約', () => {
         },
       }),
     ).not.toThrow()
+  })
+})
+
+// --- #48: 口座登録（設定画面 / オンボーディング Phase 2-B） ---
+
+describe('registerOtherSavingsAccount()', () => {
+  const at = new Date('2026-07-01')
+  const register = () =>
+    registerOtherSavingsAccount({
+      accountId: '01ACC000000000000000000002' as never,
+      ownerUserId: 'user_honey' as never,
+      bankName: '楽天銀行' as never,
+      initialBalance: 500000 as never,
+      at,
+    })
+
+  it('アクティブ状態で登録され、現在残高 = 初期残高になる', () => {
+    const account = register()
+    expect(account.kind).toBe('other_savings')
+    expect(account.common.activeness.kind).toBe('active')
+    expect(account.common.registeredAt).toEqual(at)
+    expect(account.balance.currentBalance).toBe(500000)
+    expect(account.balance.initialBalance).toBe(500000)
+  })
+
+  it('初期残高基準時刻・最終更新日時・残高鮮度根拠 = 登録日時（論点9）', () => {
+    const account = register()
+    expect(account.balance.initialBalanceBaselineAt).toEqual(at)
+    expect(account.balance.lastUpdatedAt).toEqual(at)
+    expect(account.freshnessSource.lastUpdatedAt).toEqual(at)
+  })
+
+  it('空の銀行名は登録できない（BankName の不変条件）', () => {
+    expect(() =>
+      registerOtherSavingsAccount({
+        accountId: '01ACC000000000000000000002' as never,
+        ownerUserId: 'user_honey' as never,
+        bankName: '' as never,
+        initialBalance: 0 as never,
+        at,
+      }),
+    ).toThrow()
+  })
+})
+
+describe('registerNisaAccount()', () => {
+  const at = new Date('2026-07-01')
+
+  it('アクティブ状態で登録され、現在累計 = 初期累計・基準時刻 = 登録日時になる', () => {
+    const account = registerNisaAccount({
+      accountId: '01ACC000000000000000000003' as never,
+      ownerUserId: 'user_darling' as never,
+      brokerageName: { kind: 'sbi' },
+      initialAccumulated: 200000 as never,
+      at,
+    })
+    expect(account.kind).toBe('nisa')
+    expect(account.common.activeness.kind).toBe('active')
+    expect(account.contribution.currentAccumulated).toBe(200000)
+    expect(account.contribution.initialAccumulated).toBe(200000)
+    expect(account.contribution.initialAccumulatedBaselineAt).toEqual(at)
+    expect(account.contribution.lastUpdatedAt).toEqual(at)
+  })
+
+  it('その他証券会社は任意名で登録できる', () => {
+    const account = registerNisaAccount({
+      accountId: '01ACC000000000000000000003' as never,
+      ownerUserId: 'user_darling' as never,
+      brokerageName: { kind: 'other', customName: 'マネックス証券' },
+      initialAccumulated: 0 as never,
+      at,
+    })
+    expect(account.brokerageName).toEqual({ kind: 'other', customName: 'マネックス証券' })
+  })
+})
+
+// --- #48: 銀行名・証券会社名の変更（Phase 3.5） ---
+
+describe('changeBankName()', () => {
+  const otherSavings = () =>
+    AccountSchema.parse({
+      kind: 'other_savings',
+      common: baseCommon,
+      bankName: '楽天銀行' as never,
+      balance: {
+        currentBalance: 500000 as never,
+        initialBalance: 500000 as never,
+        initialBalanceBaselineAt: new Date('2026-04-01'),
+        lastUpdatedAt: new Date('2026-04-01'),
+      },
+      freshnessSource: { lastUpdatedAt: new Date('2026-04-01') },
+    }) as OtherSavingsAccount
+
+  it('銀行名だけが変わり、残高・鮮度根拠は変更されない', () => {
+    const updated = changeBankName(
+      otherSavings(),
+      '住信SBIネット銀行' as never,
+      'user_honey' as never,
+    )
+    expect(updated.bankName).toBe('住信SBIネット銀行')
+    expect(updated.balance).toEqual(otherSavings().balance)
+    expect(updated.freshnessSource).toEqual(otherSavings().freshnessSource)
+    expect(updated.common).toEqual(otherSavings().common)
+  })
+
+  it('空の銀行名には変更できない（BankName の不変条件）', () => {
+    expect(() => changeBankName(otherSavings(), '' as never, 'user_honey' as never)).toThrow()
+  })
+
+  it('所有者本人以外の操作は PermissionDeniedError（配偶者の口座名は変更不可）', () => {
+    expect(() =>
+      changeBankName(otherSavings(), '住信SBIネット銀行' as never, 'user_darling' as never),
+    ).toThrow(PermissionDeniedError)
+  })
+})
+
+describe('changeBrokerageName()', () => {
+  const nisa = () =>
+    AccountSchema.parse({
+      kind: 'nisa',
+      common: baseCommon,
+      brokerageName: { kind: 'sbi' },
+      contribution: {
+        currentAccumulated: 200000 as never,
+        initialAccumulated: 0 as never,
+        initialAccumulatedBaselineAt: new Date('2026-04-01'),
+        lastUpdatedAt: new Date('2026-04-01'),
+      },
+    }) as NisaAccount
+
+  it('証券会社名だけが変わり、積立累計は変更されない', () => {
+    const updated = changeBrokerageName(nisa(), { kind: 'rakuten' }, 'user_honey' as never)
+    expect(updated.brokerageName).toEqual({ kind: 'rakuten' })
+    expect(updated.contribution).toEqual(nisa().contribution)
+  })
+
+  it('その他証券会社の空のカスタム名には変更できない', () => {
+    expect(() =>
+      changeBrokerageName(
+        nisa(),
+        { kind: 'other', customName: '' } as never,
+        'user_honey' as never,
+      ),
+    ).toThrow()
+  })
+
+  it('所有者本人以外の操作は PermissionDeniedError', () => {
+    expect(() => changeBrokerageName(nisa(), { kind: 'rakuten' }, 'user_darling' as never)).toThrow(
+      PermissionDeniedError,
+    )
+  })
+})
+
+describe('asOtherSavingsAccount() / asNisaAccount()', () => {
+  const smbc = () =>
+    AccountSchema.parse({
+      kind: 'smbc_bank',
+      common: baseCommon,
+      balance: {
+        currentBalance: 0 as never,
+        initialBalance: 0 as never,
+        initialBalanceBaselineAt: new Date('2026-04-01'),
+        lastUpdatedAt: new Date('2026-04-01'),
+      },
+    })
+
+  it('種別が一致すればそのまま返す', () => {
+    const otherSavings = registerOtherSavingsAccount({
+      accountId: '01ACC000000000000000000002' as never,
+      ownerUserId: 'user_honey' as never,
+      bankName: '楽天銀行' as never,
+      initialBalance: 0 as never,
+      at: new Date('2026-07-01'),
+    })
+    expect(asOtherSavingsAccount(otherSavings)).toBe(otherSavings)
+    const nisa = registerNisaAccount({
+      accountId: '01ACC000000000000000000003' as never,
+      ownerUserId: 'user_honey' as never,
+      brokerageName: { kind: 'sbi' },
+      initialAccumulated: 0 as never,
+      at: new Date('2026-07-01'),
+    })
+    expect(asNisaAccount(nisa)).toBe(nisa)
+  })
+
+  it('種別不一致は InvariantViolationError', () => {
+    expect(() => asOtherSavingsAccount(smbc())).toThrow(InvariantViolationError)
+    expect(() => asNisaAccount(smbc())).toThrow(InvariantViolationError)
   })
 })
 
