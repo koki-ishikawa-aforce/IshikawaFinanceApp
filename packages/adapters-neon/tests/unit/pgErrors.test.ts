@@ -12,6 +12,23 @@ describe('isUniqueViolation', () => {
     expect(isUniqueViolation(wrapped)).toBe(true)
   })
 
+  it('多段にラップされた cause チェーンの 23505 も検知する', () => {
+    const inner = { code: '23505' }
+    const mid = new Error('driver error')
+    ;(mid as Error & { cause: unknown }).cause = inner
+    const outer = new Error('Failed query')
+    ;(outer as Error & { cause: unknown }).cause = mid
+    expect(isUniqueViolation(outer)).toBe(true)
+  })
+
+  it('深さ上限を超える循環 cause でも無限ループせず false を返す', () => {
+    const a = new Error('a') as Error & { cause: unknown }
+    const b = new Error('b') as Error & { cause: unknown }
+    a.cause = b
+    b.cause = a // 循環参照
+    expect(isUniqueViolation(a)).toBe(false)
+  })
+
   it('unique violation 以外のコードは検知しない（例: FK 違反 23503）', () => {
     expect(isUniqueViolation({ code: '23503' })).toBe(false)
     expect(isUniqueViolation({ cause: { code: '23503' } })).toBe(false)

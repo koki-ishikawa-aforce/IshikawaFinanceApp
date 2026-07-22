@@ -6,7 +6,9 @@ export class InMemoryEventBus implements EventBus {
   async publish(event: DomainEvent): Promise<void> {
     const handlers = this.handlers.get(event.type)
     if (!handlers) return
-    for (const handler of handlers) {
+    // ハンドラーが配信中に subscribe しても当該 publish に影響しないよう、
+    // 反復前にスナップショットを取る（配列のミューテーション対策）。
+    for (const handler of [...handlers]) {
       await handler(event)
     }
   }
