@@ -39,6 +39,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     '/api/onboarding',
     onboardingRoutes({
       appUserRepository: deps.appUserRepository,
+      accountRepository: deps.accountRepository,
       spouseCompletionQuery: deps.spouseCompletionQuery,
       allowlistQuery: deps.allowlistQuery,
       gmailOAuthGateway: deps.gmailOAuthGateway,

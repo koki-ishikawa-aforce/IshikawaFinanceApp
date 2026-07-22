@@ -42,11 +42,14 @@ import {
   startPhase2,
 } from '@warimaru/domain'
 import type {
+  AccountId,
+  AccountRepository,
   AllowlistQuery,
   AppUser,
   AppUserRepository,
   EventBus,
   GmailOAuthGateway,
+  InitialBalanceRegistrationRef,
   Phase2InProgressUser,
   SpouseCompletionQuery,
   UserId,
@@ -65,6 +68,8 @@ const SectionFBodySchema = z.discriminatedUnion('kind', [
 
 export interface OnboardingRoutesDeps {
   appUserRepository: AppUserRepository
+  /** SectionB の事前条件「初期残高が登録された」を残高・資産推移管理コンテキスト越しに照合する */
+  accountRepository: AccountRepository
   spouseCompletionQuery: SpouseCompletionQuery
   allowlistQuery: AllowlistQuery
   gmailOAuthGateway: GmailOAuthGateway
@@ -85,6 +90,26 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
       throw new InvariantViolationError(`Phase2 進行中ではない（現状態: ${user.kind}）`)
     }
     return user
+  }
+
+  /**
+   * SectionB の事前条件「初期残高が登録された」（08f §2）をコンテキスト越しに検証する。
+   * initialBalanceRef が指す 3 口座が残高・資産推移管理コンテキストに実在する（口座は
+   * 登録と同時に初期残高を持つため、実在 = 初期残高登録済み。08d §2）ことを application 層で
+   * 照合する。ドメイン不変条件の再実装ではなく、境界づけられたコンテキスト間の参照整合性チェック。
+   * 実在しない口座 ID は NotFoundError（404）に翻訳する。
+   */
+  async function assertReferencedAccountsExist(ref: InitialBalanceRegistrationRef): Promise<void> {
+    const accountIds: AccountId[] = [
+      ref.smbcAccountId,
+      ref.otherSavingsAccountId,
+      ref.nisaAccountId,
+    ]
+    for (const accountId of accountIds) {
+      if ((await deps.accountRepository.findById(accountId)) === null) {
+        throw new NotFoundError('Account', accountId)
+      }
+    }
   }
 
   /** 自分の AppUser（Phase / 進捗）の取得。未登録なら user: null */
@@ -256,7 +281,10 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const viewerId = c.get('viewerId')
     const user = asPhase2InProgress(await getUserOr404(viewerId))
     const now = new Date()
+    // SectionA 完了（順序強制）をドメインで検証したうえで、参照先口座の実在を照合する。
+    // completeSectionB は純粋関数のため、404 の場合は永続化前に中断される。
     const updated = completeSectionB(user, body.initialBalanceRef, now)
+    await assertReferencedAccountsExist(body.initialBalanceRef)
     await deps.appUserRepository.save(updated)
     await deps.eventBus.publish(
       SectionBCompletedSchema.parse({

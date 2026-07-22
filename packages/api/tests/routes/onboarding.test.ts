@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { UserIdSchema } from '@warimaru/domain'
-import type { AppUser } from '@warimaru/domain'
+import {
+  AccountIdSchema,
+  AccountSchema,
+  BankNameSchema,
+  BrokerageNameSchema,
+  UserIdSchema,
+  money,
+  registerNisaAccount,
+  registerOtherSavingsAccount,
+} from '@warimaru/domain'
+import type { AppUser, UserId } from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, SPOUSE_ID, VIEWER_ID } from '../helpers/test-app.js'
 
@@ -50,6 +59,50 @@ const INITIAL_BALANCE_REF = {
   smbcAccountId: '01HZZZZZZZZZZZZZZZZZZZZZ01',
   otherSavingsAccountId: '01HZZZZZZZZZZZZZZZZZZZZZ02',
   nisaAccountId: '01HZZZZZZZZZZZZZZZZZZZZZ03',
+}
+
+/**
+ * SectionB の事前条件「初期残高が登録された」を満たすため、INITIAL_BALANCE_REF が指す
+ * 3 口座（SMBC 銀行・別銀行貯蓄・NISA）を残高・資産推移管理コンテキストに先に登録しておく。
+ * 参照整合チェックは実在のみを見る（所有者は問わない）ため、同一 REF を夫婦双方が参照できる。
+ */
+async function seedInitialBalanceAccounts(t: TestApp, ownerId: UserId = VIEWER_ID): Promise<void> {
+  const at = new Date('2026-01-01T00:00:00Z')
+  await t.deps.accountRepository.save(
+    AccountSchema.parse({
+      kind: 'smbc_bank',
+      common: {
+        accountId: INITIAL_BALANCE_REF.smbcAccountId,
+        ownerUserId: ownerId,
+        registeredAt: at,
+        activeness: { kind: 'active' },
+      },
+      balance: {
+        currentBalance: 0,
+        initialBalance: 0,
+        initialBalanceBaselineAt: at,
+        lastUpdatedAt: at,
+      },
+    }),
+  )
+  await t.deps.accountRepository.save(
+    registerOtherSavingsAccount({
+      accountId: AccountIdSchema.parse(INITIAL_BALANCE_REF.otherSavingsAccountId),
+      ownerUserId: ownerId,
+      bankName: BankNameSchema.parse('楽天銀行'),
+      initialBalance: money(500000),
+      at,
+    }),
+  )
+  await t.deps.accountRepository.save(
+    registerNisaAccount({
+      accountId: AccountIdSchema.parse(INITIAL_BALANCE_REF.nisaAccountId),
+      ownerUserId: ownerId,
+      brokerageName: BrokerageNameSchema.parse({ kind: 'sbi' }),
+      initialAccumulated: money(200000),
+      at,
+    }),
+  )
 }
 
 describe('POST /api/onboarding/register', () => {
@@ -179,6 +232,7 @@ describe('Phase2 進捗', () => {
 
   it('OAuth コールバックで SectionA が完了し、SectionB に進める', async () => {
     const t = createTestApp()
+    await seedInitialBalanceAccounts(t)
     await startPhase2(t)
 
     const callback = await completeSectionAViaOAuth(t)
@@ -192,6 +246,43 @@ describe('Phase2 進捗', () => {
     })
     expect(sectionB.status).toBe(200)
     expect((await json<UserResponse>(sectionB)).user?.progress?.sectionB.kind).toBe('completed')
+  })
+
+  it('SectionA 完了後でも参照先口座が実在しなければ SectionB は 404（初期残高未登録）', async () => {
+    const t = createTestApp()
+    // 口座を seed せず、実在しない initialBalanceRef を渡す
+    await startPhase2(t)
+    await completeSectionAViaOAuth(t)
+
+    const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
+      body: { initialBalanceRef: INITIAL_BALANCE_REF },
+    })
+    expect(res.status).toBe(404)
+
+    // SectionB は完了扱いにならない（永続化前に中断される）
+    const me = await request(t.app, 'GET', '/api/onboarding/me')
+    expect((await json<UserResponse>(me)).user?.progress?.sectionB.kind).toBe('not_started')
+  })
+
+  it('一部の参照先口座のみ実在する場合も SectionB は 404', async () => {
+    const t = createTestApp()
+    await startPhase2(t)
+    await completeSectionAViaOAuth(t)
+    // NISA 口座だけ実在させ、SMBC・別銀行貯蓄は未登録のままにする
+    await t.deps.accountRepository.save(
+      registerNisaAccount({
+        accountId: AccountIdSchema.parse(INITIAL_BALANCE_REF.nisaAccountId),
+        ownerUserId: VIEWER_ID,
+        brokerageName: BrokerageNameSchema.parse({ kind: 'sbi' }),
+        initialAccumulated: money(200000),
+        at: new Date('2026-01-01T00:00:00Z'),
+      }),
+    )
+
+    const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
+      body: { initialBalanceRef: INITIAL_BALANCE_REF },
+    })
+    expect(res.status).toBe(404)
   })
 
   it('改竄された state のコールバックは 403 で SectionA は完了しない', async () => {
@@ -221,6 +312,7 @@ describe('Phase2 進捗', () => {
 
   it('A/B 未完了の phase2/complete は 409、完了後は phase2_completed になる', async () => {
     const t = createTestApp()
+    await seedInitialBalanceAccounts(t)
     await startPhase2(t)
     const premature = await request(t.app, 'POST', '/api/onboarding/phase2/complete')
     expect(premature.status).toBe(409)
@@ -250,6 +342,7 @@ describe('GET /api/onboarding/spouse-completion', () => {
 
   it('配偶者が未完了なら awaiting_spouse', async () => {
     const t = createTestApp()
+    await seedInitialBalanceAccounts(t)
     await completePhase2For(t, VIEWER_ID)
     const res = await request(t.app, 'GET', '/api/onboarding/spouse-completion')
     expect(res.status).toBe(200)
@@ -260,6 +353,7 @@ describe('GET /api/onboarding/spouse-completion', () => {
 
   it('両者完了なら both_completed', async () => {
     const t = createTestApp()
+    await seedInitialBalanceAccounts(t)
     await completePhase2For(t, VIEWER_ID)
     await completePhase2For(t, SPOUSE_ID)
     const res = await request(t.app, 'GET', '/api/onboarding/spouse-completion')
