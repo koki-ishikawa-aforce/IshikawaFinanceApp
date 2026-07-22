@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { YearMonthSchema, type YearMonth } from '@warimaru/domain'
+import { CategoryIdSchema, YearMonthSchema, type YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { Modal } from '@/components/ui/Modal'
 import { apiFetch, apiMutate } from '@/lib/api-client'
@@ -394,14 +394,20 @@ function parseMonthParam(value: string | null): YearMonth {
   return parsed.success ? parsed.data : getCurrentMonth()
 }
 
+/** Deep Link の categoryId パラメータ。ULID として不正なら「すべてのカテゴリ」にフォールバック */
+function parseCategoryParam(value: string | null): string {
+  const parsed = CategoryIdSchema.safeParse(value)
+  return parsed.success ? parsed.data : ''
+}
+
 function TransactionsPageContent() {
   // ダッシュボードのドリルダウン（spec §5.5 ⑧）から
   // /transactions?month=YYYY-MM&categoryId=... で遷移してくる
   const searchParams = useSearchParams()
   const [month, setMonth] = useState<YearMonth>(() => parseMonthParam(searchParams.get('month')))
   const [classFilter, setClassFilter] = useState<ClassFilter>('all')
-  const [categoryFilter, setCategoryFilter] = useState<string>(
-    () => searchParams.get('categoryId') ?? '',
+  const [categoryFilter, setCategoryFilter] = useState<string>(() =>
+    parseCategoryParam(searchParams.get('categoryId')),
   )
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false)
   const [creating, setCreating] = useState(false)

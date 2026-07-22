@@ -174,6 +174,35 @@ describe('NeonTransactionListQuery.fetch（プライバシー 3 段階）', () =
     expect(items.every(i => i.categoryId === CATEGORY_FOOD)).toBe(true)
   })
 
+  it('categoryId フィルタはプライバシー適用後に絞る（配偶者の個人はマスクのまま残り、経費(会社)は除外）', async () => {
+    const personalByDarling = classifiedTransaction({
+      ownerUserId: DARLING_USER_ID,
+      expenseClass: 'personal_darling',
+      categoryId: CATEGORY_FOOD,
+      merchantName: 'ダーリンの店',
+      amount: 700,
+      occurredAt: new Date('2026-07-05T03:00:00.000Z'),
+    })
+    const businessByDarling = classifiedTransaction({
+      ownerUserId: DARLING_USER_ID,
+      expenseClass: 'business_expense',
+      categoryId: CATEGORY_FOOD,
+      amount: 50000,
+      occurredAt: new Date('2026-07-06T03:00:00.000Z'),
+    })
+    for (const tx of [personalByDarling, businessByDarling]) {
+      await repo.save(tx)
+    }
+
+    const items = await query.fetch(HONEY_USER_ID, { month: JUL, categoryId: CATEGORY_FOOD })
+    // 経費(会社)はカテゴリ一致でもリスト自体から除外（ルール 3）
+    expect(items.map(i => i.transactionId)).toEqual([personalByDarling.common.transactionId])
+    // 配偶者の個人取引は合計のみ可視（ルール 2）— カテゴリ明細でも明細フィールドはマスクのまま
+    expect(items[0]?.merchantName).toBeNull()
+    expect(items[0]?.amount).toBeNull()
+    expect(items[0]?.categoryId).toBe(CATEGORY_FOOD)
+  })
+
   it('isUnclassifiedOnly は未分類のみ返す', async () => {
     await repo.save(
       classifiedTransaction({
