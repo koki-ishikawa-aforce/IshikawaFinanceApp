@@ -198,6 +198,12 @@ export interface AppDeps {
 
 export interface CompositionEnv {
   DATABASE_URL?: string | undefined
+  /**
+   * 実行環境。'production' の場合は DATABASE_URL 未設定でのモックフォールバックを禁止し、
+   * 起動エラーとする（本番で環境変数の設定漏れがモックデータの黙認になるのを防ぐ）。
+   * 未設定・その他の値は開発環境扱い（#14 の DEFAULT_USER_ID フォールバックと同じ方針）。
+   */
+  NODE_ENV?: string | undefined
   // Gmail OAuth (#41)。未設定なら実 DB モードでも Gmail 連携のみ未構成エラーになる
   GOOGLE_OAUTH_CLIENT_ID?: string | undefined
   GOOGLE_OAUTH_CLIENT_SECRET?: string | undefined
@@ -231,7 +237,14 @@ function parseFailsafeThreshold(value: string | undefined): number | undefined {
 
 export function createDeps(env: CompositionEnv): AppDeps {
   if (!env.DATABASE_URL) {
-    console.warn('DATABASE_URL not set — using mock data')
+    // 本番では DATABASE_URL 未設定を致命的な設定漏れとして扱い、モックへ黙ってフォールバックしない。
+    // モックフォールバックは開発環境専用（#47 / #14 と同じ方針）。
+    if (env.NODE_ENV?.trim().toLowerCase() === 'production') {
+      throw new Error(
+        'DATABASE_URL is required in production. Refusing to start with mock data — set DATABASE_URL.',
+      )
+    }
+    console.warn('DATABASE_URL not set — using mock data (development only)')
     // 開発モードの許可リスト（devViewerIdMiddleware / テストの X-User-Id と揃える）
     const devAllowlist = AllowlistSchema.parse({
       honeyLineUserId: 'user-honey-test',
