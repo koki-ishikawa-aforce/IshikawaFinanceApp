@@ -1,7 +1,7 @@
 import {
   AccountBalanceListViewSchema,
   InvariantViolationError,
-  SpouseCompletionResultSchema,
+  detectSpouseCompletion,
   AssetTotalViewSchema,
   BalanceTimeSeriesViewSchema,
   ExpenseSettlementManagementViewSchema,
@@ -106,63 +106,32 @@ export function createMockAllowlistQuery(allowlist: Allowlist): AllowlistQuery {
 }
 
 /**
- * SpouseCompletionQuery のインメモリ実装（NeonSpouseCompletionQuery と同じ判定規約）。
- * 「完了」= Phase2 完了以降。両者完了なら both_completed（遅い方の phase2CompletedAt）、
- * そうでなければ awaiting_spouse（配偶者行が未登録なら許可リストで補完）。
+ * SpouseCompletionQuery のインメモリ実装。
+ * 判定規約はドメイン関数 `detectSpouseCompletion`（Neon 実装と共通）に委譲する。
  */
 export function createMockSpouseCompletionQuery(
   appUserRepository: AppUserRepository,
   allowlist: Allowlist,
 ): SpouseCompletionQuery {
-  type CompletedUser = Extract<AppUser, { kind: 'phase2_completed' | 'operation_started' }>
-  const asCompleted = (user: AppUser | undefined): CompletedUser | null =>
-    user !== undefined && (user.kind === 'phase2_completed' || user.kind === 'operation_started')
-      ? user
-      : null
   return {
     async check(viewerId) {
       const users = [
         await appUserRepository.findByRole('honey'),
         await appUserRepository.findByRole('darling'),
       ].filter((u): u is AppUser => u !== null)
-      const viewer = users.find(u => u.common.userId === viewerId)
-      const spouse = users.find(u => u.common.userId !== viewerId)
-
-      const viewerCompleted = asCompleted(viewer)
-      const spouseCompleted = asCompleted(spouse)
-      if (viewerCompleted !== null && spouseCompleted !== null) {
-        const [honey, darling] =
-          viewerCompleted.common.role === 'honey'
-            ? [viewerCompleted, spouseCompleted]
-            : [spouseCompleted, viewerCompleted]
-        return SpouseCompletionResultSchema.parse({
-          kind: 'both_completed',
-          honeyUserId: honey.common.userId,
-          darlingUserId: darling.common.userId,
-          bothCompletedAt: new Date(
-            Math.max(
-              viewerCompleted.phase2CompletedAt.getTime(),
-              spouseCompleted.phase2CompletedAt.getTime(),
-            ),
-          ),
-        })
-      }
-
-      const spouseUserId =
-        spouse?.common.userId ??
-        (allowlist.honeyLineUserId === viewerId
-          ? allowlist.darlingLineUserId
-          : allowlist.darlingLineUserId === viewerId
-            ? allowlist.honeyLineUserId
-            : null)
-      if (spouseUserId === null) {
-        throw new InvariantViolationError(`viewer ${viewerId} は許可リストに含まれていない`)
-      }
-      return SpouseCompletionResultSchema.parse({
-        kind: 'awaiting_spouse',
-        userId: viewerId,
-        spouseUserId,
-        detectedAt: new Date(),
+      return detectSpouseCompletion(viewerId, users, {
+        resolveSpouseUserId: () => {
+          if (allowlist.honeyLineUserId === viewerId) {
+            return Promise.resolve(allowlist.darlingLineUserId)
+          }
+          if (allowlist.darlingLineUserId === viewerId) {
+            return Promise.resolve(allowlist.honeyLineUserId)
+          }
+          return Promise.reject(
+            new InvariantViolationError(`viewer ${viewerId} は許可リストに含まれていない`),
+          )
+        },
+        now: () => new Date(),
       })
     },
   }

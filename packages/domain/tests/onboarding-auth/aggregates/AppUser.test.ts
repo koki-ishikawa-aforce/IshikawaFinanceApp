@@ -6,7 +6,7 @@ import {
   startOperation,
   registerAppUser,
   changeNickname,
-  lineSettingsOf,
+  lineOperationSettingsOf,
   recordLineFriendAdded,
   recordTalkRoomJoined,
   activateNotification,
@@ -138,24 +138,18 @@ describe('AppUser 集約', () => {
     expect(completed.gmailTokenRef.tokenStoreRef).toBe('/warimaru/gmail/honey/token')
     expect(completed.initialBalanceRef.nisaAccountId).toBe('01ACC00000000000000000N1SA')
 
-    const operating = startOperation(
-      completed,
-      {
-        friendAdd: { kind: 'added', followWebhookReceivedAt: new Date() },
-        talkRoomJoin: {
-          kind: 'joined',
-          talkRoomId: 'room_001' as never,
-          joinWebhookReceivedAt: new Date(),
-        },
-        notificationActivation: {
-          kind: 'activated',
-          talkRoomId: 'room_001' as never,
-          activatedAt: new Date(),
-        },
-      },
-      new Date(),
+    const at = new Date()
+    const withSettings = activateNotification(
+      recordTalkRoomJoined(recordLineFriendAdded(completed, at), 'room_001' as never, at),
+      at,
     )
+    const operating = startOperation(withSettings as typeof completed, at)
     expect(operating.kind).toBe('operation_started')
+    // 事前蓄積した LINE 運用設定が集約直下へ昇格し、common 側からは除去される
+    expect(operating.lineOperationSettings.notificationActivation.kind).toBe('activated')
+    expect(operating.common.lineOperationSettings).toBeUndefined()
+    // 昇格後も lineOperationSettingsOf は集約直下を読む
+    expect(lineOperationSettingsOf(operating).friendAdd.kind).toBe('added')
   })
 })
 
@@ -184,8 +178,8 @@ describe('LINE 運用設定の事前蓄積（#41）', () => {
   const base = (): Phase1CompletedUser =>
     registerAppUser('line_user_honey' as never, 'honey', undefined, new Date())
 
-  it('未設定の lineSettings は全状態未着手として読める', () => {
-    const settings = lineSettingsOf(base())
+  it('未設定の LINE 運用設定は全状態未着手として読める', () => {
+    const settings = lineOperationSettingsOf(base())
     expect(settings.friendAdd.kind).toBe('not_added')
     expect(settings.talkRoomJoin.kind).toBe('not_joined')
     expect(settings.notificationActivation.kind).toBe('not_activated')
@@ -195,7 +189,7 @@ describe('LINE 運用設定の事前蓄積（#41）', () => {
     const first = new Date('2026-07-01T00:00:00Z')
     const added = recordLineFriendAdded(base(), first)
     const again = recordLineFriendAdded(added, new Date('2026-07-02T00:00:00Z'))
-    const settings = lineSettingsOf(again)
+    const settings = lineOperationSettingsOf(again)
     expect(settings.friendAdd).toEqual({ kind: 'added', followWebhookReceivedAt: first })
   })
 
@@ -208,7 +202,7 @@ describe('LINE 運用設定の事前蓄積（#41）', () => {
 
     const joined = recordTalkRoomJoined(friendOnly, 'room_001' as never, at)
     const activated = activateNotification(joined, at)
-    const settings = lineSettingsOf(activated)
+    const settings = lineOperationSettingsOf(activated)
     expect(settings.notificationActivation).toEqual({
       kind: 'activated',
       talkRoomId: 'room_001',
@@ -216,10 +210,10 @@ describe('LINE 運用設定の事前蓄積（#41）', () => {
     })
   })
 
-  it('lineSettings は Phase 遷移（startPhase2）を越えて引き継がれる', () => {
+  it('LINE 運用設定は Phase 遷移（startPhase2）を越えて引き継がれる', () => {
     const user = recordLineFriendAdded(base(), new Date()) as Phase1CompletedUser
     const inProgress = startPhase2(user)
-    expect(lineSettingsOf(inProgress).friendAdd.kind).toBe('added')
+    expect(lineOperationSettingsOf(inProgress).friendAdd.kind).toBe('added')
   })
 })
 

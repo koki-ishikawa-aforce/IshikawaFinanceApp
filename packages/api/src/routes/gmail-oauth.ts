@@ -64,7 +64,8 @@ export function gmailOAuthRoutes(deps: GmailOAuthRoutesDeps): Hono {
 
       const existing = await deps.gmailOAuthTokenRepository.findByUserId(userId)
       if (existing?.kind === 'revocation_detected') {
-        await deps.gmailOAuthTokenRepository.save(reauthorizeToken(existing, now))
+        // 再認可: 保管先は gateway が実際に書き込んだパス（tokenStoreRef）を正とする
+        await deps.gmailOAuthTokenRepository.save(reauthorizeToken(existing, now, tokenStoreRef))
         await deps.eventBus.publish(
           GmailReauthorizationCompletedSchema.parse({
             ...domainEventBase(now),

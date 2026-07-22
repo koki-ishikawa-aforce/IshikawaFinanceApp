@@ -30,21 +30,27 @@ import {
   InitialBalanceRegistrationRefSchema,
   type InitialBalanceRegistrationRef,
 } from '../value-objects/InitialBalanceRegistrationRef'
+import {
+  SpouseCompletionResultSchema,
+  type SpouseCompletionResult,
+} from '../value-objects/SpouseCompletionResult'
 
 /**
  * 共通属性（userId = LINE userID、OQ-15）
  *
- * lineSettings は運用開始前に蓄積される LINE 運用設定（友達追加・トークルーム参加・
- * 通知有効化。Web オンボーディングの完了記録や follow/join Webhook で更新される、#41）。
- * 運用開始発火時に `operation_started.lineOperationSettings` へ昇格する。
- * 未設定は全状態未着手と同義（既存レコード互換のため optional）。
+ * lineOperationSettings は運用開始前に事前蓄積される LINE 運用設定（友達追加・
+ * トークルーム参加・通知有効化。Web オンボーディングの完了記録や follow/join
+ * Webhook で更新される、#41）。運用開始発火（startOperation）時に
+ * `operation_started.lineOperationSettings` へ昇格し、common 側からは除去する
+ * （二重管理の禁止は superRefine が検査）。未設定は全状態未着手と同義
+ * （既存レコード互換のため optional）。
  */
 export const CommonAppUserAttrsSchema = z.object({
   userId: UserIdSchema,
   role: UserRoleSchema,
   nickname: NicknameSchema.optional(),
   firstRegisteredAt: z.date(),
-  lineSettings: LineOperationSettingsSchema.optional(),
+  lineOperationSettings: LineOperationSettingsSchema.optional(),
 })
 export type CommonAppUserAttrs = z.infer<typeof CommonAppUserAttrsSchema>
 
@@ -77,6 +83,14 @@ export const AppUserSchema = z
     }),
   ])
   .superRefine((user, ctx) => {
+    if (user.kind === 'operation_started' && user.common.lineOperationSettings !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          '運用開始済みでは LINE 運用設定は集約直下（lineOperationSettings）に一本化する（common 側を持たない）',
+        path: ['common', 'lineOperationSettings'],
+      })
+    }
     if (user.kind !== 'phase2_in_progress') return
     const { sectionA, sectionB, sectionC, sectionD, sectionE } = user.progress
     if (sectionB.kind === 'completed' && sectionA.kind !== 'completed') {
@@ -145,20 +159,22 @@ export function completePhase2(user: Phase2InProgressUser, at: Date): Phase2Comp
   }) as Phase2CompletedUser
 }
 
-/** 状態遷移: Phase2完了 → 運用開始済み（両者完了検知後、論点16） */
-export function startOperation(
-  user: Phase2CompletedUser,
-  settings: LineOperationSettings,
-  at: Date,
-): OperationStartedUser {
+/**
+ * 状態遷移: Phase2完了 → 運用開始済み（両者完了検知後、論点16）
+ * 事前蓄積した LINE 運用設定（common.lineOperationSettings）を集約直下へ昇格し、
+ * common 側からは除去する（以後は集約直下が唯一の置き場所）。
+ */
+export function startOperation(user: Phase2CompletedUser, at: Date): OperationStartedUser {
+  const common = { ...user.common }
+  delete common.lineOperationSettings
   return AppUserSchema.parse({
     kind: 'operation_started',
-    common: user.common,
+    common,
     phase2CompletedAt: user.phase2CompletedAt,
     gmailTokenRef: user.gmailTokenRef,
     initialBalanceRef: user.initialBalanceRef,
     operationStartedAt: at,
-    lineOperationSettings: settings,
+    lineOperationSettings: lineOperationSettingsOf(user),
   }) as OperationStartedUser
 }
 
@@ -207,26 +223,36 @@ export function changeNickname(user: AppUser, nickname: Nickname | undefined): A
   return AppUserSchema.parse({ ...user, common })
 }
 
-/** 未設定の lineSettings を全状態未着手として読む */
-export function lineSettingsOf(user: AppUser): LineOperationSettings {
-  return (
-    user.common.lineSettings ?? {
-      friendAdd: { kind: 'not_added' },
-      talkRoomJoin: { kind: 'not_joined' },
-      notificationActivation: { kind: 'not_activated' },
-    }
-  )
+const EMPTY_LINE_OPERATION_SETTINGS: LineOperationSettings = {
+  friendAdd: { kind: 'not_added' },
+  talkRoomJoin: { kind: 'not_joined' },
+  notificationActivation: { kind: 'not_activated' },
 }
 
-function withLineSettings(user: AppUser, settings: LineOperationSettings): AppUser {
-  return AppUserSchema.parse({ ...user, common: { ...user.common, lineSettings: settings } })
+/**
+ * LINE 運用設定の読取り。運用開始済みは集約直下、それ以前は common の事前蓄積を読む
+ * （未設定は全状態未着手と同義）。
+ */
+export function lineOperationSettingsOf(user: AppUser): LineOperationSettings {
+  if (user.kind === 'operation_started') return user.lineOperationSettings
+  return user.common.lineOperationSettings ?? EMPTY_LINE_OPERATION_SETTINGS
+}
+
+function withLineOperationSettings(user: AppUser, settings: LineOperationSettings): AppUser {
+  if (user.kind === 'operation_started') {
+    return AppUserSchema.parse({ ...user, lineOperationSettings: settings })
+  }
+  return AppUserSchema.parse({
+    ...user,
+    common: { ...user.common, lineOperationSettings: settings },
+  })
 }
 
 /** LINE 友達追加を記録する（冪等: 追加済みなら変更しない） */
 export function recordLineFriendAdded(user: AppUser, at: Date): AppUser {
-  const settings = lineSettingsOf(user)
+  const settings = lineOperationSettingsOf(user)
   if (settings.friendAdd.kind === 'added') return user
-  return withLineSettings(user, {
+  return withLineOperationSettings(user, {
     ...settings,
     friendAdd: { kind: 'added', followWebhookReceivedAt: at },
   })
@@ -234,11 +260,11 @@ export function recordLineFriendAdded(user: AppUser, at: Date): AppUser {
 
 /** 共通トークルーム参加を記録する（冪等: 同一トークルーム参加済みなら変更しない） */
 export function recordTalkRoomJoined(user: AppUser, talkRoomId: TalkRoomId, at: Date): AppUser {
-  const settings = lineSettingsOf(user)
+  const settings = lineOperationSettingsOf(user)
   if (settings.talkRoomJoin.kind === 'joined' && settings.talkRoomJoin.talkRoomId === talkRoomId) {
     return user
   }
-  return withLineSettings(user, {
+  return withLineOperationSettings(user, {
     ...settings,
     talkRoomJoin: { kind: 'joined', talkRoomId, joinWebhookReceivedAt: at },
   })
@@ -250,14 +276,14 @@ export function recordTalkRoomJoined(user: AppUser, talkRoomId: TalkRoomId, at: 
  * （LineOperationSettings の不変条件。有効化対象は参加済みトークルーム）。
  */
 export function activateNotification(user: AppUser, at: Date): AppUser {
-  const settings = lineSettingsOf(user)
+  const settings = lineOperationSettingsOf(user)
   if (settings.notificationActivation.kind === 'activated') return user
   if (settings.friendAdd.kind !== 'added' || settings.talkRoomJoin.kind !== 'joined') {
     throw new InvariantViolationError(
       '通知機能の有効化には LINE 友達追加とトークルーム参加の完了が必要',
     )
   }
-  return withLineSettings(user, {
+  return withLineOperationSettings(user, {
     ...settings,
     notificationActivation: {
       kind: 'activated',
@@ -314,5 +340,58 @@ export function skipSectionF(user: Phase2InProgressUser, at: Date): Phase2InProg
   return updatePhase2Progress(user, {
     ...user.progress,
     sectionF: { kind: 'skipped', skippedAt: at },
+  })
+}
+
+type SpouseCompletedUser = Extract<AppUser, { kind: 'phase2_completed' | 'operation_started' }>
+
+function asPhase2CompletedOrLater(user: AppUser | undefined): SpouseCompletedUser | null {
+  if (user === undefined) return null
+  return user.kind === 'phase2_completed' || user.kind === 'operation_started' ? user : null
+}
+
+/**
+ * 配偶者完了を検知する（論点19: 画面ロード時のみ判定、08f §2）
+ *
+ * 「完了」= Phase2 完了以降（phase2_completed / operation_started）。
+ * 両者完了なら both_completed（bothCompletedAt = 遅い方の phase2CompletedAt）、
+ * そうでなければ awaiting_spouse。配偶者の AppUser が未登録のときの spouseUserId は
+ * deps.resolveSpouseUserId（許可リスト解決）で補う。
+ * Query 実装（Neon / モック）はこの規約を共有する。
+ */
+export async function detectSpouseCompletion(
+  viewerId: UserId,
+  users: readonly AppUser[],
+  deps: { resolveSpouseUserId: () => Promise<UserId>; now: () => Date },
+): Promise<SpouseCompletionResult> {
+  const viewer = users.find(u => u.common.userId === viewerId)
+  const spouse = users.find(u => u.common.userId !== viewerId)
+
+  const viewerCompleted = asPhase2CompletedOrLater(viewer)
+  const spouseCompleted = asPhase2CompletedOrLater(spouse)
+  if (viewerCompleted !== null && spouseCompleted !== null) {
+    const [honey, darling] =
+      viewerCompleted.common.role === 'honey'
+        ? [viewerCompleted, spouseCompleted]
+        : [spouseCompleted, viewerCompleted]
+    return SpouseCompletionResultSchema.parse({
+      kind: 'both_completed',
+      honeyUserId: honey.common.userId,
+      darlingUserId: darling.common.userId,
+      bothCompletedAt: new Date(
+        Math.max(
+          viewerCompleted.phase2CompletedAt.getTime(),
+          spouseCompleted.phase2CompletedAt.getTime(),
+        ),
+      ),
+    })
+  }
+
+  const spouseUserId = spouse?.common.userId ?? (await deps.resolveSpouseUserId())
+  return SpouseCompletionResultSchema.parse({
+    kind: 'awaiting_spouse',
+    userId: viewerId,
+    spouseUserId,
+    detectedAt: deps.now(),
   })
 }

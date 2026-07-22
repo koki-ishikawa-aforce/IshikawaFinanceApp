@@ -146,9 +146,9 @@ describe('Phase1 ステップの完了記録', () => {
 
     const me = await request(t.app, 'GET', '/api/onboarding/me')
     const user = (await json<{ user: AppUser }>(me)).user
-    expect(user.common.lineSettings?.friendAdd.kind).toBe('added')
-    expect(user.common.lineSettings?.talkRoomJoin.kind).toBe('joined')
-    expect(user.common.lineSettings?.notificationActivation.kind).toBe('activated')
+    expect(user.common.lineOperationSettings?.friendAdd.kind).toBe('added')
+    expect(user.common.lineOperationSettings?.talkRoomJoin.kind).toBe('joined')
+    expect(user.common.lineOperationSettings?.notificationActivation.kind).toBe('activated')
   })
 
   it('友だち追加・トークルーム参加前の通知有効化は 409', async () => {

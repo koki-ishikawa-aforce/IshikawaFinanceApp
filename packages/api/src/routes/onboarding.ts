@@ -20,7 +20,6 @@ import {
   NicknameChangedSchema,
   NicknameSchema,
   NotFoundError,
-  NotificationActivatedSchema,
   OauthAuthorizationStartedSchema,
   PermissionDeniedError,
   Phase2CompletedSchema,
@@ -35,7 +34,7 @@ import {
   completePhase2,
   completeSectionB,
   completeSectionF,
-  lineSettingsOf,
+  judgeRole,
   recordLineFriendAdded,
   recordTalkRoomJoined,
   registerAppUser,
@@ -105,54 +104,35 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     if (existing !== null) return c.json({ user: existing })
 
     const now = new Date()
-    const allowlist = await deps.allowlistQuery.fetch()
-    const role =
-      allowlist.honeyLineUserId === viewerId
-        ? ('honey' as const)
-        : allowlist.darlingLineUserId === viewerId
-          ? ('darling' as const)
-          : null
-    if (role === null) {
-      await deps.eventBus.publish(
-        RoleJudgedSchema.parse({
-          ...domainEventBase(now),
-          type: 'RoleJudged',
-          lineUserId: viewerId,
-          result: {
-            kind: 'rejected',
-            lineUserId: viewerId,
-            rejectedAt: now,
-            reason: 'allowlist_mismatch',
-          },
-        }),
-      )
-      await deps.eventBus.publish(
-        AccessDeniedSchema.parse({
-          ...domainEventBase(now),
-          type: 'AccessDenied',
-          lineUserId: viewerId,
-          reason: 'allowlist_mismatch',
-        }),
-      )
-      throw new PermissionDeniedError('このアプリは特定ユーザー専用です（許可リスト不一致）')
-    }
-
-    const user = registerAppUser(viewerId, role, body.nickname, now)
-    await deps.appUserRepository.save(user)
+    const judgment = judgeRole(viewerId, await deps.allowlistQuery.fetch(), now)
     await deps.eventBus.publish(
       RoleJudgedSchema.parse({
         ...domainEventBase(now),
         type: 'RoleJudged',
         lineUserId: viewerId,
-        result: { kind: 'accepted', lineUserId: viewerId, role, judgedAt: now },
+        result: judgment,
       }),
     )
+    if (judgment.kind === 'rejected') {
+      await deps.eventBus.publish(
+        AccessDeniedSchema.parse({
+          ...domainEventBase(now),
+          type: 'AccessDenied',
+          lineUserId: viewerId,
+          reason: judgment.reason,
+        }),
+      )
+      throw new PermissionDeniedError('このアプリは特定ユーザー専用です（許可リスト不一致）')
+    }
+
+    const user = registerAppUser(viewerId, judgment.role, body.nickname, now)
+    await deps.appUserRepository.save(user)
     await deps.eventBus.publish(
       AppUserRegisteredSchema.parse({
         ...domainEventBase(now),
         type: 'AppUserRegistered',
         userId: viewerId,
-        role,
+        role: judgment.role,
       }),
     )
     return c.json({ user }, 201)
@@ -163,12 +143,13 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const body = NicknameBodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
     const user = await getUserOr404(viewerId)
+    const now = new Date()
     const oldNickname = user.common.nickname
     const updated = changeNickname(user, body.nickname ?? undefined)
     await deps.appUserRepository.save(updated)
     await deps.eventBus.publish(
       NicknameChangedSchema.parse({
-        ...domainEventBase(),
+        ...domainEventBase(now),
         type: 'NicknameChanged',
         userId: viewerId,
         ...(oldNickname !== undefined ? { oldNickname } : {}),
@@ -198,7 +179,12 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     return c.json({ user: updated })
   })
 
-  /** Phase1: 共通トークルーム参加の完了記録（冪等） */
+  /**
+   * Phase1: 共通トークルーム参加の完了記録（冪等）。
+   * 暫定: talkRoomId は Web（LIFF context）からの自己申告。共通トークルームID の正は
+   * join Webhook（08f §2）であり、LINE Webhook 受信ルートの実装時にそちらを正とする
+   * （フォローアップ Issue で追跡）。
+   */
   app.post('/phase1/talk-room', async c => {
     const body = TalkRoomBodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
@@ -219,7 +205,12 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     return c.json({ user: updated })
   })
 
-  /** Phase1: 通知有効化の完了記録（友だち追加 + トークルーム参加が前提。冪等） */
+  /**
+   * Phase1: 通知有効化の完了記録（友だち追加 + トークルーム参加が前提。冪等）。
+   * NotificationActivated イベント（世帯レベル、通知配信のテスト送信を起動）は
+   * ここでは発行しない — 08f §2 のとおり両者の運用開始が揃った時点（運用開始発火、
+   * 本 Issue のスコープ外）で一元発行する。
+   */
   app.post('/phase1/notification', async c => {
     const viewerId = c.get('viewerId')
     const user = await getUserOr404(viewerId)
@@ -227,17 +218,6 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const updated = activateNotification(user, now)
     if (updated !== user) {
       await deps.appUserRepository.save(updated)
-      const activation = lineSettingsOf(updated).notificationActivation
-      if (activation.kind === 'activated') {
-        await deps.eventBus.publish(
-          NotificationActivatedSchema.parse({
-            ...domainEventBase(now),
-            type: 'NotificationActivated',
-            talkRoomId: activation.talkRoomId,
-            activatedAt: now,
-          }),
-        )
-      }
     }
     return c.json({ user: updated })
   })
