@@ -201,6 +201,22 @@ describe('PUT /api/accounts/:accountId/bank-name', () => {
     expect(res.status).toBe(404)
   })
 
+  it('非所有者による種別不一致の口座への変更は 403（所有者チェックを先行し種別を漏らさない）', async () => {
+    const t = createTestApp()
+    // 配偶者が NISA 口座（bank-name の対象外種別）を登録
+    const nisaRes = await request(t.app, 'POST', '/api/accounts', {
+      viewerId: SPOUSE_ID,
+      body: { kind: 'nisa', brokerageName: { kind: 'sbi' }, initialAccumulated: 200000 },
+    })
+    const { account } = await json<{ account: AccountWire }>(nisaRes)
+    // 非所有者(VIEWER)が銀行名変更を試みる。所有者チェックが種別絞り込みより先に走り
+    // 409（種別不一致）ではなく 403 を返す（存在・種別を非所有者に漏らさない）
+    const res = await request(t.app, 'PUT', `/api/accounts/${account.common.accountId}/bank-name`, {
+      body: { bankName: '楽天銀行' },
+    })
+    expect(res.status).toBe(403)
+  })
+
   it('NISA 口座への銀行名変更は 409（種別不一致）', async () => {
     const t = createTestApp()
     const { account } = await json<{ account: AccountWire }>(await registerNisa(t))

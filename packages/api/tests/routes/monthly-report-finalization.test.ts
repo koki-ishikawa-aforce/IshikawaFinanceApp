@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   CommonMonthlyReportAttrsSchema,
   ExpenseReimbursementIdSchema,
+  MonthlyExpenseCycleSchema,
   MonthlyReportIdSchema,
   TransactionIdSchema,
   YearMonthSchema,
@@ -11,6 +12,7 @@ import {
 import type {
   CommonMonthlyReportAttrs,
   CsvConfirmedReport,
+  MonthlyExpenseCycle,
   MonthlyReportFinalized,
   YearMonth,
 } from '@warimaru/domain'
@@ -18,7 +20,7 @@ import { newUlid } from '@warimaru/adapters-neon'
 import { createApp } from '../../src/app.js'
 import { createDeps } from '../../src/composition-root.js'
 import type { TestApp } from '../helpers/test-app.js'
-import { createTestApp, request } from '../helpers/test-app.js'
+import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
 
 const TARGET_MONTH: YearMonth = YearMonthSchema.parse('2026-07')
 
@@ -75,6 +77,46 @@ async function seedDeposit(t: TestApp): Promise<string> {
     .expenseReimbursementId
 }
 
+/**
+ * 経費合計 total 円の CSV確定サイクルをリポジトリ直挿しで用意する（経費マーキングは別スライス）。
+ * 不認定分振替を伴う finalize を検証するため、入金 5000 円との差額が実在する状態を作る。
+ */
+async function seedCsvConfirmedCycleWithTotal(t: TestApp, total: number): Promise<string> {
+  const cycleId = newUlid()
+  const cycle: MonthlyExpenseCycle = MonthlyExpenseCycleSchema.parse({
+    kind: 'csv_confirmed',
+    common: {
+      monthlyExpenseCycleId: cycleId,
+      userId: VIEWER_ID,
+      targetYearMonth: TARGET_MONTH,
+      cycleStartedAt: new Date('2026-07-01T00:00:00Z'),
+      accumulations: [
+        {
+          kind: 'capped',
+          accumulationId: newUlid(),
+          expenseTypeId: newUlid(),
+          userId: VIEWER_ID,
+          monthlyCap: total + 100000,
+          currentTotal: total,
+          capReached: { kind: 'not_reached' },
+          transactionRefs: [
+            {
+              transactionId: newUlid(),
+              occurredAt: new Date('2026-07-10T00:00:00Z'),
+              amount: total,
+              allocation: { kind: 'full' },
+            },
+          ],
+        },
+      ],
+      childTransactionRefs: [],
+    },
+    csvConfirmedAt: new Date('2026-07-20T00:00:00Z'),
+  })
+  await t.deps.monthlyExpenseCycleRepository.save(cycle)
+  return cycleId
+}
+
 async function finalizeCycleViaApi(
   t: TestApp,
   cycleId: string,
@@ -96,7 +138,8 @@ describe('サイクル最終確定 → 月次レポート最終確定（#43）',
     const report = csvConfirmedReport(TARGET_MONTH)
     await t.deps.monthlyReportRepository.save(report)
 
-    const cycleId = await seedCsvConfirmedCycle(t)
+    // 経費合計 8000 に対し入金 5000 → 不認定分 3000。振替 3000 が差額と一致する
+    const cycleId = await seedCsvConfirmedCycleWithTotal(t, 8000)
     const depositId = await seedDeposit(t)
     const transfer = {
       originalBusinessExpenseTransactionId: TransactionIdSchema.parse(newUlid()),
