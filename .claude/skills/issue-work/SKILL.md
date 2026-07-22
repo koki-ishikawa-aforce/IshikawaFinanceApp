@@ -90,7 +90,7 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
 2. **候補選定**: `gh issue list --state open --label "ready-to-implement" --json number,title,labels,assignees,body,createdAt` から、以下をすべて満たす Issue を1件選ぶ:
    - `status:in-progress` / `needs-clarification` ラベルが付いていない
    - 誰にも assign されていない
-   - 本文の「依存」「先行」「関連」に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)
+   - 本文の「依存」「先行」「関連」に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)。依存待ちの ready Issue は正常な状態であり、条件を満たすまで単にスキップして次候補を見る(先行 Issue のマージ後、以降の fire が自動で拾う)
      優先順は `priority:high` → 作成が古い順。候補が1件もなければ「ready な Issue なし」と報告して終了する
 3. **排他ロック**: 選定したら手順1より前に直ちに `status:in-progress` ラベルを付与する(手順2のコマンドを前倒しで実行)。これが並行する fire との排他ロックになる
 4. 選定理由はユーザーに確認せず、最終報告に含める
