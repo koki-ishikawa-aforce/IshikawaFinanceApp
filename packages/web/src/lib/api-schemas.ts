@@ -375,6 +375,70 @@ export const MonthlyLimitListWireSchema = z.object({
   items: z.array(MonthlyLimitWireSchema),
 })
 
+// ---------- オンボーディング（#42） ----------
+
+const LineOperationSettingsWireSchema = z.object({
+  friendAdd: z.object({ kind: z.enum(['not_added', 'added']) }),
+  talkRoomJoin: z.object({ kind: z.enum(['not_joined', 'joined']) }),
+  notificationActivation: z.object({ kind: z.enum(['not_activated', 'activated']) }),
+})
+export type LineOperationSettingsWire = z.infer<typeof LineOperationSettingsWireSchema>
+
+const Phase2ProgressWireSchema = z.object({
+  sectionA: z.object({ kind: z.enum(['not_started', 'completed']) }),
+  sectionB: z.object({ kind: z.enum(['not_started', 'completed']) }),
+  sectionF: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('not_started') }),
+    z.object({ kind: z.literal('skipped') }),
+    z.object({ kind: z.literal('completed'), importJobId: z.string() }),
+  ]),
+})
+
+const AppUserCommonWireSchema = z.object({
+  userId: z.string(),
+  role: z.enum(['honey', 'darling']),
+  nickname: z.string().optional(),
+  firstRegisteredAt: IsoDate,
+  lineOperationSettings: LineOperationSettingsWireSchema.optional(),
+})
+
+/** AppUser 集約のワイヤー形式（kind ごとの必須フィールドはドメインの discriminated union をミラー） */
+export const AppUserWireSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('phase1_completed'), common: AppUserCommonWireSchema }),
+  z.object({
+    kind: z.literal('phase2_in_progress'),
+    common: AppUserCommonWireSchema,
+    progress: Phase2ProgressWireSchema,
+  }),
+  z.object({ kind: z.literal('phase2_completed'), common: AppUserCommonWireSchema }),
+  z.object({
+    kind: z.literal('operation_started'),
+    common: AppUserCommonWireSchema,
+    lineOperationSettings: LineOperationSettingsWireSchema,
+  }),
+])
+export type AppUserWire = z.infer<typeof AppUserWireSchema>
+
+export const OnboardingMeWireSchema = z.object({ user: AppUserWireSchema.nullable() })
+
+export const SpouseCompletionResultWireSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('awaiting_spouse'),
+    userId: z.string(),
+    spouseUserId: z.string(),
+    detectedAt: IsoDate,
+  }),
+  z.object({
+    kind: z.literal('both_completed'),
+    honeyUserId: z.string(),
+    darlingUserId: z.string(),
+    bothCompletedAt: IsoDate,
+  }),
+])
+export type SpouseCompletionResultWire = z.infer<typeof SpouseCompletionResultWireSchema>
+
+export const GmailAuthorizeResponseSchema = z.object({ authorizationUrl: z.string() })
+
 // ---------- 共通 ----------
 
 export const MeWireSchema = z.object({
