@@ -9,18 +9,443 @@ import {
   CategoryListWireSchema,
   ExpenseTypeListWireSchema,
   MonthlyLimitListWireSchema,
+  OwnAccountListWireSchema,
+  SettingsProfileWireSchema,
   UnknownResponseSchema,
+  type BrokerageNameWire,
   type CategoryWire,
   type ExpenseClassWire,
   type ExpenseTypeWire,
   type MonthlyLimitWire,
+  type OwnAccountWire,
 } from '@/lib/api-schemas'
-import { EXPENSE_CLASS_LABELS } from '@/lib/labels'
+import { ACCOUNT_KIND_LABELS, EXPENSE_CLASS_LABELS, brokerageNameLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
-type Tab = 'categories' | 'expense-types' | 'limits'
+type Tab = 'profile' | 'accounts' | 'categories' | 'expense-types' | 'limits'
+
+// ---------- プロフィール（#48） ----------
+
+const ROLE_LABELS = { honey: '⛵ Honey', darling: '🌸 Darling' } as const
+
+function ProfileForm({
+  role,
+  initialNickname,
+}: {
+  role: 'honey' | 'darling'
+  initialNickname: string | null
+}) {
+  const queryClient = useQueryClient()
+  const [nickname, setNickname] = useState(initialNickname ?? '')
+
+  const save = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        '/api/settings/nickname',
+        { method: 'PUT', body: { nickname: nickname.trim() === '' ? null : nickname.trim() } },
+        SettingsProfileWireSchema,
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['settings-profile'] })
+    },
+  })
+
+  return (
+    <>
+      <div className={ui.field}>
+        <label className={ui.fieldLabel}>役割（変更不可）</label>
+        <span className={styles.roleValue}>{ROLE_LABELS[role]}</span>
+      </div>
+      <div className={ui.field}>
+        <label className={ui.fieldLabel}>ニックネーム（10 文字まで）</label>
+        <input
+          className={ui.input}
+          value={nickname}
+          maxLength={10}
+          onChange={e => setNickname(e.target.value)}
+          placeholder="未設定（ロール名で表示）"
+        />
+      </div>
+      <p className={styles.note}>
+        空欄で保存するとニックネームを解除し、ロール名の表示に戻ります。
+      </p>
+      {save.error && <div className={ui.error}>{save.error.message}</div>}
+      {save.isSuccess && <p className={styles.note}>保存しました</p>}
+      <button className={ui.button} disabled={save.isPending} onClick={() => save.mutate()}>
+        {save.isPending ? '保存中...' : '保存'}
+      </button>
+    </>
+  )
+}
+
+function ProfileTab() {
+  const profileQuery = useQuery({
+    queryKey: ['settings-profile'],
+    queryFn: () => apiFetch('/api/settings/profile', SettingsProfileWireSchema),
+  })
+
+  const profile = profileQuery.data?.profile
+
+  return (
+    <div className={ui.card}>
+      <span className={ui.sectionTitle}>プロフィール</span>
+      {profileQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
+      {profileQuery.error && <div className={ui.error}>プロフィールの取得に失敗しました</div>}
+      {profile && (
+        <ProfileForm
+          key={`${profile.userId}:${profile.nickname ?? ''}`}
+          role={profile.role}
+          initialNickname={profile.nickname}
+        />
+      )}
+    </div>
+  )
+}
+
+// ---------- 口座管理（#48） ----------
+
+function BrokerageNameFields({
+  value,
+  onChange,
+}: {
+  value: BrokerageNameWire
+  onChange: (next: BrokerageNameWire) => void
+}) {
+  return (
+    <>
+      <div className={ui.field}>
+        <label className={ui.fieldLabel}>証券会社</label>
+        <select
+          className={ui.select}
+          value={value.kind}
+          onChange={e => {
+            const kind = e.target.value as BrokerageNameWire['kind']
+            onChange(kind === 'other' ? { kind, customName: '' } : { kind })
+          }}
+        >
+          <option value="sbi">SBI証券</option>
+          <option value="rakuten">楽天証券</option>
+          <option value="other">その他</option>
+        </select>
+      </div>
+      {value.kind === 'other' && (
+        <div className={ui.field}>
+          <label className={ui.fieldLabel}>証券会社名</label>
+          <input
+            className={ui.input}
+            value={value.customName}
+            maxLength={50}
+            onChange={e => onChange({ kind: 'other', customName: e.target.value })}
+            placeholder="例: マネックス証券"
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
+function isBrokerageNameValid(value: BrokerageNameWire): boolean {
+  return value.kind !== 'other' || value.customName.trim() !== ''
+}
+
+function normalizeBrokerageName(value: BrokerageNameWire): BrokerageNameWire {
+  return value.kind === 'other' ? { kind: 'other', customName: value.customName.trim() } : value
+}
+
+function OtherSavingsAddModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [bankName, setBankName] = useState('')
+  const [initialBalance, setInitialBalance] = useState('')
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        '/api/accounts',
+        {
+          method: 'POST',
+          body: {
+            kind: 'other_savings',
+            bankName: bankName.trim(),
+            initialBalance: Number(initialBalance),
+          },
+        },
+        UnknownResponseSchema,
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      onClose()
+    },
+  })
+
+  const valid =
+    bankName.trim() !== '' &&
+    initialBalance !== '' &&
+    Number.isInteger(Number(initialBalance)) &&
+    Number(initialBalance) >= 0
+
+  return (
+    <Modal title="別銀行貯蓄口座を追加" onClose={onClose}>
+      <div className={ui.field}>
+        <label className={ui.fieldLabel}>銀行名</label>
+        <input
+          className={ui.input}
+          value={bankName}
+          maxLength={50}
+          onChange={e => setBankName(e.target.value)}
+          placeholder="例: 楽天銀行"
+        />
+      </div>
+      <div className={ui.field}>
+        <label className={ui.fieldLabel}>現在の残高（円、初期残高として登録）</label>
+        <input
+          className={ui.input}
+          type="number"
+          value={initialBalance}
+          onChange={e => setInitialBalance(e.target.value)}
+          placeholder="例: 500000"
+        />
+      </div>
+      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      <button
+        className={ui.button}
+        disabled={!valid || mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        {mutation.isPending ? '登録中...' : '登録'}
+      </button>
+    </Modal>
+  )
+}
+
+function NisaAddModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [brokerageName, setBrokerageName] = useState<BrokerageNameWire>({ kind: 'sbi' })
+  const [initialAccumulated, setInitialAccumulated] = useState('')
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        '/api/accounts',
+        {
+          method: 'POST',
+          body: {
+            kind: 'nisa',
+            brokerageName: normalizeBrokerageName(brokerageName),
+            initialAccumulated: Number(initialAccumulated),
+          },
+        },
+        UnknownResponseSchema,
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      onClose()
+    },
+  })
+
+  const valid =
+    isBrokerageNameValid(brokerageName) &&
+    initialAccumulated !== '' &&
+    Number.isInteger(Number(initialAccumulated)) &&
+    Number(initialAccumulated) >= 0
+
+  return (
+    <Modal title="NISA口座を追加" onClose={onClose}>
+      <BrokerageNameFields value={brokerageName} onChange={setBrokerageName} />
+      <div className={ui.field}>
+        <label className={ui.fieldLabel}>積立累計（円、初期累計として登録）</label>
+        <input
+          className={ui.input}
+          type="number"
+          value={initialAccumulated}
+          onChange={e => setInitialAccumulated(e.target.value)}
+          placeholder="例: 200000"
+        />
+      </div>
+      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      <button
+        className={ui.button}
+        disabled={!valid || mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        {mutation.isPending ? '登録中...' : '登録'}
+      </button>
+    </Modal>
+  )
+}
+
+function BankNameEditModal({
+  account,
+  onClose,
+}: {
+  account: Extract<OwnAccountWire, { kind: 'other_savings' }>
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [bankName, setBankName] = useState(account.bankName)
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        `/api/accounts/${account.common.accountId}/bank-name`,
+        { method: 'PUT', body: { bankName: bankName.trim() } },
+        UnknownResponseSchema,
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      onClose()
+    },
+  })
+
+  return (
+    <Modal title="銀行名を変更" onClose={onClose}>
+      <input
+        className={ui.input}
+        value={bankName}
+        maxLength={50}
+        onChange={e => setBankName(e.target.value)}
+      />
+      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      <button
+        className={ui.button}
+        disabled={bankName.trim() === '' || mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        {mutation.isPending ? '保存中...' : '保存'}
+      </button>
+    </Modal>
+  )
+}
+
+function BrokerageNameEditModal({
+  account,
+  onClose,
+}: {
+  account: Extract<OwnAccountWire, { kind: 'nisa' }>
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [brokerageName, setBrokerageName] = useState<BrokerageNameWire>(account.brokerageName)
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        `/api/accounts/${account.common.accountId}/brokerage-name`,
+        { method: 'PUT', body: { brokerageName: normalizeBrokerageName(brokerageName) } },
+        UnknownResponseSchema,
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      onClose()
+    },
+  })
+
+  return (
+    <Modal title="証券会社名を変更" onClose={onClose}>
+      <BrokerageNameFields value={brokerageName} onChange={setBrokerageName} />
+      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      <button
+        className={ui.button}
+        disabled={!isBrokerageNameValid(brokerageName) || mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        {mutation.isPending ? '保存中...' : '保存'}
+      </button>
+    </Modal>
+  )
+}
+
+function AccountRow({ account, onEdit }: { account: OwnAccountWire; onEdit: (() => void) | null }) {
+  const detail =
+    account.kind === 'smbc_bank'
+      ? formatMoney(account.balance.currentBalance)
+      : account.kind === 'other_savings'
+        ? `${account.bankName} / ${formatMoney(account.balance.currentBalance)}`
+        : account.kind === 'nisa'
+          ? `${brokerageNameLabel(account.brokerageName)} / ${formatMoney(account.contribution.currentAccumulated)}`
+          : null
+  return (
+    <li className={styles.masterRow}>
+      <span className={styles.masterName}>{ACCOUNT_KIND_LABELS[account.kind]}</span>
+      <span className={styles.rowActions}>
+        {detail !== null && <span className={styles.limitValue}>{detail}</span>}
+        {onEdit !== null ? (
+          <button className={styles.linkButton} onClick={onEdit}>
+            編集
+          </button>
+        ) : (
+          <span className={ui.badge}>固定</span>
+        )}
+      </span>
+    </li>
+  )
+}
+
+function AccountsTab() {
+  const [adding, setAdding] = useState<'other_savings' | 'nisa' | null>(null)
+  const [editing, setEditing] = useState<OwnAccountWire | null>(null)
+
+  const accountsQuery = useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => apiFetch('/api/accounts', OwnAccountListWireSchema),
+  })
+
+  const items = accountsQuery.data?.items ?? []
+  const hasOtherSavings = items.some(a => a.kind === 'other_savings')
+  const hasNisa = items.some(a => a.kind === 'nisa')
+
+  return (
+    <div className={ui.card}>
+      <span className={ui.sectionTitle}>口座管理</span>
+      <p className={styles.note}>
+        自分が所有する口座の一覧です。別銀行貯蓄口座の銀行名と NISA
+        口座の証券会社名を編集できます。三井住友系の口座は自動管理のため固定です。
+      </p>
+      {accountsQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
+      {accountsQuery.error && <div className={ui.error}>口座の取得に失敗しました</div>}
+      {!accountsQuery.isLoading && items.length === 0 && (
+        <p className={styles.note}>登録済みの口座はありません。</p>
+      )}
+      <ul className={styles.masterList}>
+        {items.map(account => (
+          <AccountRow
+            key={account.common.accountId}
+            account={account}
+            onEdit={
+              account.kind === 'other_savings' || account.kind === 'nisa'
+                ? () => setEditing(account)
+                : null
+            }
+          />
+        ))}
+      </ul>
+      {(!hasOtherSavings || !hasNisa) && (
+        <div className={styles.addRow}>
+          {!hasOtherSavings && (
+            <button className={ui.button} onClick={() => setAdding('other_savings')}>
+              ＋ 別銀行貯蓄口座
+            </button>
+          )}
+          {!hasNisa && (
+            <button className={ui.button} onClick={() => setAdding('nisa')}>
+              ＋ NISA口座
+            </button>
+          )}
+        </div>
+      )}
+
+      {adding === 'other_savings' && <OtherSavingsAddModal onClose={() => setAdding(null)} />}
+      {adding === 'nisa' && <NisaAddModal onClose={() => setAdding(null)} />}
+      {editing?.kind === 'other_savings' && (
+        <BankNameEditModal account={editing} onClose={() => setEditing(null)} />
+      )}
+      {editing?.kind === 'nisa' && (
+        <BrokerageNameEditModal account={editing} onClose={() => setEditing(null)} />
+      )}
+    </div>
+  )
+}
 
 // ---------- カテゴリ ----------
 
@@ -569,17 +994,19 @@ function LimitsTab() {
 // ---------- ページ ----------
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'profile', label: 'プロフィール' },
+  { id: 'accounts', label: '口座' },
   { id: 'categories', label: 'カテゴリ' },
   { id: 'expense-types', label: '経費種別' },
   { id: 'limits', label: '月次上限' },
 ]
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>('categories')
+  const [tab, setTab] = useState<Tab>('profile')
 
   return (
     <main className={styles.main}>
-      <h1 className={ui.pageTitle}>マスタ管理</h1>
+      <h1 className={ui.pageTitle}>設定</h1>
 
       <div className={styles.tabs}>
         {TABS.map(t => (
@@ -593,6 +1020,8 @@ export default function SettingsPage() {
         ))}
       </div>
 
+      {tab === 'profile' && <ProfileTab />}
+      {tab === 'accounts' && <AccountsTab />}
       {tab === 'categories' && <CategoriesTab />}
       {tab === 'expense-types' && <ExpenseTypesTab />}
       {tab === 'limits' && <LimitsTab />}

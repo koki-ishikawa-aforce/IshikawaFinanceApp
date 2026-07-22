@@ -7,6 +7,8 @@ import { meRoutes } from './routes/me.js'
 import { transactionsRoutes } from './routes/transactions.js'
 import { monthlyReportsRoutes } from './routes/monthly-reports.js'
 import { balancesRoutes } from './routes/balances.js'
+import { accountsRoutes } from './routes/accounts.js'
+import { settingsRoutes } from './routes/settings.js'
 import { expenseSettlementRoutes } from './routes/expense-settlement.js'
 import { importsRoutes } from './routes/imports.js'
 import { categoriesRoutes } from './routes/categories.js'
@@ -65,6 +67,21 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   )
   app.route('/api/monthly-reports', monthlyReportsRoutes(deps.monthlyReportQuery))
   app.route('/api/balances', balancesRoutes(deps.accountBalanceQuery, deps.balanceTimeSeriesQuery))
+  app.route(
+    '/api/accounts',
+    accountsRoutes({
+      accountRepository: deps.accountRepository,
+      eventBus: deps.eventBus,
+    }),
+  )
+  app.route(
+    '/api/settings',
+    settingsRoutes({
+      appUserRepository: deps.appUserRepository,
+      resolveViewerRole: deps.resolveViewerRole,
+      eventBus: deps.eventBus,
+    }),
+  )
   app.route(
     '/api/expense-settlement',
     expenseSettlementRoutes({

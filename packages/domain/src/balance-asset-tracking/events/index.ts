@@ -1,4 +1,7 @@
 export * from './AccountBalanceUpdated'
+export * from './AccountRegistered'
+export * from './BankNameChanged'
+export * from './BrokerageNameChanged'
 export * from './UnpaidBookkept'
 export * from './UnpaidSettled'
 export * from './NisaContributionAdded'

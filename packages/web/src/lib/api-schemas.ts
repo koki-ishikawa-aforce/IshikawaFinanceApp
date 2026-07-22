@@ -446,3 +446,57 @@ export const MeWireSchema = z.object({
   role: z.enum(['honey', 'darling']),
 })
 export type MeWire = z.infer<typeof MeWireSchema>
+
+// ---------- 設定（#48: プロフィール / 口座管理） ----------
+
+export const SettingsProfileWireSchema = z.object({
+  profile: z.object({
+    userId: z.string(),
+    role: z.enum(['honey', 'darling']),
+    nickname: z.string().nullable(),
+  }),
+})
+export type SettingsProfileWire = z.infer<typeof SettingsProfileWireSchema>
+
+export const BrokerageNameWireSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('sbi') }),
+  z.object({ kind: z.literal('rakuten') }),
+  z.object({ kind: z.literal('other'), customName: z.string() }),
+])
+export type BrokerageNameWire = z.infer<typeof BrokerageNameWireSchema>
+
+const OwnAccountCommonWire = z.object({
+  accountId: z.string(),
+  ownerUserId: z.string(),
+  activeness: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('active') }),
+    z.object({ kind: z.literal('inactive'), inactivatedAt: IsoDate, reason: z.string() }),
+  ]),
+})
+
+export const OwnAccountWireSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('smbc_bank'),
+    common: OwnAccountCommonWire,
+    balance: z.object({ currentBalance: z.number() }).passthrough(),
+  }),
+  z.object({
+    kind: z.literal('mitsui_sumitomo_card'),
+    common: OwnAccountCommonWire,
+  }),
+  z.object({
+    kind: z.literal('other_savings'),
+    common: OwnAccountCommonWire,
+    bankName: z.string(),
+    balance: z.object({ currentBalance: z.number() }).passthrough(),
+  }),
+  z.object({
+    kind: z.literal('nisa'),
+    common: OwnAccountCommonWire,
+    brokerageName: BrokerageNameWireSchema,
+    contribution: z.object({ currentAccumulated: z.number() }).passthrough(),
+  }),
+])
+export type OwnAccountWire = z.infer<typeof OwnAccountWireSchema>
+
+export const OwnAccountListWireSchema = z.object({ items: z.array(OwnAccountWireSchema) })

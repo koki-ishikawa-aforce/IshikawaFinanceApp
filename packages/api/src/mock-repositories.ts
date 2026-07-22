@@ -4,6 +4,9 @@
  */
 import { InvariantViolationError } from '@warimaru/domain'
 import type {
+  Account,
+  AccountId,
+  AccountRepository,
   AmazonProductKey,
   AppUser,
   AppUserRepository,
@@ -447,6 +450,35 @@ export function createMockExpenseReimbursementDepositRepository(): ExpenseReimbu
     },
     async save(deposit: ExpenseReimbursementDeposit) {
       store.set(deposit.common.expenseReimbursementId, deposit)
+    },
+  }
+}
+
+export function createMockAccountRepository(): AccountRepository {
+  const store = new Map<string, Account>()
+  return {
+    async findById(id: AccountId) {
+      return store.get(id) ?? null
+    },
+    async findByOwner(ownerId: UserId) {
+      return [...store.values()]
+        .filter(a => a.common.ownerUserId === ownerId)
+        .sort((a, b) => a.kind.localeCompare(b.kind))
+    },
+    async save(account: Account) {
+      // Neon 実装の UNIQUE (owner_user_id, kind) と同じ失敗モードを再現する
+      const conflict = [...store.values()].find(
+        a =>
+          a.common.ownerUserId === account.common.ownerUserId &&
+          a.kind === account.kind &&
+          a.common.accountId !== account.common.accountId,
+      )
+      if (conflict !== undefined) {
+        throw new InvariantViolationError(
+          `同一ユーザー × 口座種別は一意: (${account.common.ownerUserId}, ${account.kind}) は既に存在する`,
+        )
+      }
+      store.set(account.common.accountId, account)
     },
   }
 }

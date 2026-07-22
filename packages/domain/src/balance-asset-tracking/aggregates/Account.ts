@@ -11,11 +11,26 @@
  *  - 銀行名・証券会社名は所有者本人のみ変更可（Repository 呼び出し側で検証、Phase 5）
  */
 import { z } from 'zod'
-import { AccountIdSchema, UserIdSchema, MitsuiSumitomoUnpaidIdSchema } from '../../shared/ids'
+import {
+  AccountIdSchema,
+  UserIdSchema,
+  MitsuiSumitomoUnpaidIdSchema,
+  type AccountId,
+  type UserId,
+} from '../../shared/ids'
 import { MoneySchema, addMoney, type Money } from '../../shared/value-objects/Money'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
-import { BankNameSchema } from '../value-objects/BankName'
-import { BrokerageNameSchema } from '../value-objects/BrokerageName'
+import { BankNameSchema, type BankName } from '../value-objects/BankName'
+import { BrokerageNameSchema, type BrokerageName } from '../value-objects/BrokerageName'
+
+/** data 口座種別 = SMBC銀行 OR 三井住友カード OR 別銀行貯蓄 OR NISA（08d §1） */
+export const AccountKindSchema = z.enum([
+  'smbc_bank',
+  'mitsui_sumitomo_card',
+  'other_savings',
+  'nisa',
+])
+export type AccountKind = z.infer<typeof AccountKindSchema>
 
 export const ActivenessSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('active') }),
@@ -95,6 +110,93 @@ export type SmbcBankAccount = Extract<Account, { kind: 'smbc_bank' }>
 export type MitsuiSumitomoCardAccount = Extract<Account, { kind: 'mitsui_sumitomo_card' }>
 export type OtherSavingsAccount = Extract<Account, { kind: 'other_savings' }>
 export type NisaAccount = Extract<Account, { kind: 'nisa' }>
+
+/**
+ * behavior 口座をアプリに登録する（08d §2、別銀行貯蓄口座）
+ * 設定画面・オンボーディング Phase 2-B からの登録。アクティブ状態で登録され、
+ * 現在残高 = 初期残高、初期残高基準時刻・最終更新日時 = 登録日時（論点9: ユーザー入力時点）。
+ *
+ * 事前: 同種別の口座が未登録（集約境界をまたぐため Repository.save の一意制約が最終保証、
+ * 09-aggregates #9）。ユーザーIDの許可リスト照合は認証済み viewer を渡す application 層が担う。
+ */
+export function registerOtherSavingsAccount(params: {
+  accountId: AccountId
+  ownerUserId: UserId
+  bankName: BankName
+  initialBalance: Money
+  at: Date
+}): OtherSavingsAccount {
+  return AccountSchema.parse({
+    kind: 'other_savings',
+    common: {
+      accountId: params.accountId,
+      ownerUserId: params.ownerUserId,
+      registeredAt: params.at,
+      activeness: { kind: 'active' },
+    },
+    bankName: params.bankName,
+    balance: {
+      currentBalance: params.initialBalance,
+      initialBalance: params.initialBalance,
+      initialBalanceBaselineAt: params.at,
+      lastUpdatedAt: params.at,
+    },
+    freshnessSource: { lastUpdatedAt: params.at },
+  }) as OtherSavingsAccount
+}
+
+/**
+ * behavior 口座をアプリに登録する（08d §2、NISA 口座）
+ * 現在累計 = 初期累計、初期累計基準時刻・最終更新日時 = 登録日時。
+ * 事前条件は registerOtherSavingsAccount と同じ（同種別未登録は Repository の一意制約が最終保証）。
+ */
+export function registerNisaAccount(params: {
+  accountId: AccountId
+  ownerUserId: UserId
+  brokerageName: BrokerageName
+  initialAccumulated: Money
+  at: Date
+}): NisaAccount {
+  return AccountSchema.parse({
+    kind: 'nisa',
+    common: {
+      accountId: params.accountId,
+      ownerUserId: params.ownerUserId,
+      registeredAt: params.at,
+      activeness: { kind: 'active' },
+    },
+    brokerageName: params.brokerageName,
+    contribution: {
+      currentAccumulated: params.initialAccumulated,
+      initialAccumulated: params.initialAccumulated,
+      initialAccumulatedBaselineAt: params.at,
+      lastUpdatedAt: params.at,
+    },
+  }) as NisaAccount
+}
+
+/**
+ * behavior 別銀行貯蓄口座の銀行名を変更する（08d §2、Phase 3.5）
+ * 「所有者本人のみ変更可（配偶者の口座名は変更不可）」の操作者検証は
+ * application 層で行う（viewer 本人が所有する口座のみ渡す）。
+ */
+export function changeBankName(
+  account: OtherSavingsAccount,
+  bankName: BankName,
+): OtherSavingsAccount {
+  return AccountSchema.parse({ ...account, bankName }) as OtherSavingsAccount
+}
+
+/**
+ * behavior NISA口座の証券会社名を変更する（08d §2、Phase 3.5）
+ * 操作者検証（所有者本人のみ）は changeBankName と同じく application 層で行う。
+ */
+export function changeBrokerageName(
+  account: NisaAccount,
+  brokerageName: BrokerageName,
+): NisaAccount {
+  return AccountSchema.parse({ ...account, brokerageName }) as NisaAccount
+}
 
 /**
  * behavior 取引で口座残高を更新する（08d §2）
