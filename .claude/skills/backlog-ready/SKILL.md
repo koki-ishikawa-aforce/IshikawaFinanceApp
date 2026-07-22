@@ -27,7 +27,7 @@ gh issue list --state open --json number,title,labels,assignees,body,createdAt
 
 以下は判定対象から除外する:
 
-- `ready-to-implement` / `status:in-progress` / `needs-clarification` ラベルが既に付いているもの
+- `ready-to-implement` / `status:in-progress` / `needs-decision` ラベルが既に付いているもの
 - 誰かに assign 済みのもの
 
 ### 2. 判定基準(すべて満たしたら ready)
