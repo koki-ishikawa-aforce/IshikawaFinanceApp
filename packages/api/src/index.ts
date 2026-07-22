@@ -10,6 +10,9 @@ const deps = createDeps({
   GOOGLE_OAUTH_REDIRECT_URI: process.env['GOOGLE_OAUTH_REDIRECT_URI'],
   GMAIL_OAUTH_STATE_SECRET: process.env['GMAIL_OAUTH_STATE_SECRET'],
   AWS_REGION: process.env['AWS_REGION'],
+  FAILSAFE_EMAIL_FROM: process.env['FAILSAFE_EMAIL_FROM'],
+  FAILSAFE_EMAIL_TO: process.env['FAILSAFE_EMAIL_TO'],
+  FAILSAFE_FAILURE_THRESHOLD: process.env['FAILSAFE_FAILURE_THRESHOLD'],
 })
 const app = createApp(deps)
 const port = Number(process.env['PORT'] ?? 3001)

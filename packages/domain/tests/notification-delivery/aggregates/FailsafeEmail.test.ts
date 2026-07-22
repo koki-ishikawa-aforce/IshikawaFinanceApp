@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
+  CommonFailsafeEmailAttrsSchema,
   FailsafeEmailSchema,
+  isFailsafeCovered,
+  reserveFailsafeEmail,
   startSendingFailsafeEmail,
   markFailsafeEmailSent,
   markFailsafeEmailFailed,
@@ -50,5 +53,28 @@ describe('FailsafeEmail 集約', () => {
     expect(sending.kind).toBe('sending')
     expect(markFailsafeEmailSent(sending, 'ses-message-id-001', new Date()).kind).toBe('sent')
     expect(markFailsafeEmailFailed(sending, 'ses_failure', new Date()).kind).toBe('failed')
+  })
+})
+
+describe('reserveFailsafeEmail / isFailsafeCovered', () => {
+  it('起因カウンタ参照付きで送信予約済みメールを生成する', () => {
+    const reserved = reserveFailsafeEmail(
+      CommonFailsafeEmailAttrsSchema.parse(common),
+      new Date('2026-07-01T00:00:00Z'),
+    )
+    expect(reserved.kind).toBe('reserved')
+    expect(reserved.common.causingCounterRef).toEqual(common.causingCounterRef)
+  })
+
+  it('OAuth 失効通知のみメールフェイルセーフの対象外（OQ-2）', () => {
+    expect(isFailsafeCovered('oauth_revocation_notice')).toBe(false)
+    for (const purpose of [
+      'csv_import_reminder',
+      'monthly_report_household_summary',
+      'monthly_report_personal_summary',
+      'test_message',
+    ] as const) {
+      expect(isFailsafeCovered(purpose)).toBe(true)
+    }
   })
 })

@@ -99,6 +99,21 @@ export type SentDeliveryMessage = Extract<DeliveryMessage, { kind: 'sent' }>
 export type FailedDeliveryMessage = Extract<DeliveryMessage, { kind: 'failed' }>
 export type SkippedDeliveryMessage = Extract<DeliveryMessage, { kind: 'skipped' }>
 
+/**
+ * 配信メッセージを予約する（08g §2「配信メッセージを予約する」）。
+ * 配信用途 × 配信先の整合は schema の superRefine が強制する。
+ */
+export function reserveDeliveryMessage(
+  common: CommonDeliveryMessageAttrs,
+  at: Date,
+): ReservedDeliveryMessage {
+  return DeliveryMessageSchema.parse({
+    kind: 'reserved',
+    common,
+    reservedAt: at,
+  }) as ReservedDeliveryMessage
+}
+
 /** 状態遷移: 送信予約済み → 送信中 */
 export function startSendingMessage(
   message: ReservedDeliveryMessage,

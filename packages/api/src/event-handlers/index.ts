@@ -10,8 +10,10 @@
  */
 import type { EventBus } from '@warimaru/domain'
 import type { AppDeps } from '../composition-root.js'
+import { createNotificationDeliveryService } from '../notification/delivery-service.js'
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
 import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
+import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
 
 export { domainEventBase } from './event-base.js'
 
@@ -28,5 +30,9 @@ export function registerEventHandlers(deps: AppDeps): void {
     monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
     expenseReimbursementDepositRepository: deps.expenseReimbursementDepositRepository,
     monthlyReportRepository: deps.monthlyReportRepository,
+  })
+  // 通知配信 (#36): AppDeps の Repository / Gateway から配信サービスを組み立てて購読する
+  registerNotificationDeliveryEventHandlers(deps.eventBus, {
+    notificationDeliveryService: createNotificationDeliveryService(deps),
   })
 }

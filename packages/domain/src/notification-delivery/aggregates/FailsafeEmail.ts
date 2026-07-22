@@ -14,6 +14,7 @@
 import { z } from 'zod'
 import { FailsafeEmailIdSchema } from '../../shared/ids'
 import { FailureCounterRefSchema } from '../value-objects/ConsecutiveFailureCounter'
+import type { DeliveryPurpose } from '../value-objects/DeliveryPurpose'
 
 export const EmailSendFailureReasonSchema = z.enum(['smtp_failure', 'ses_failure', 'timeout'])
 export type EmailSendFailureReason = z.infer<typeof EmailSendFailureReasonSchema>
@@ -58,6 +59,29 @@ export type ReservedFailsafeEmail = Extract<FailsafeEmail, { kind: 'reserved' }>
 export type SendingFailsafeEmail = Extract<FailsafeEmail, { kind: 'sending' }>
 export type SentFailsafeEmail = Extract<FailsafeEmail, { kind: 'sent' }>
 export type FailedFailsafeEmail = Extract<FailsafeEmail, { kind: 'failed' }>
+
+/**
+ * 配信用途がメールフェイルセーフの対象か
+ * （OQ-2: OAuth失効通知は対象外 = 個人 DM のみで、連続失敗カウンタも更新しない）
+ */
+export function isFailsafeCovered(purpose: DeliveryPurpose): boolean {
+  return purpose !== 'oauth_revocation_notice'
+}
+
+/**
+ * フェイルセーフメールを予約する。しきい値到達済みの連続失敗カウンタ参照
+ * （causingCounterRef）を必須で受け取ることで生成条件を構造表現する。
+ */
+export function reserveFailsafeEmail(
+  common: CommonFailsafeEmailAttrs,
+  at: Date,
+): ReservedFailsafeEmail {
+  return FailsafeEmailSchema.parse({
+    kind: 'reserved',
+    common,
+    reservedAt: at,
+  }) as ReservedFailsafeEmail
+}
 
 /** 状態遷移: 送信予約済み → 送信中 */
 export function startSendingFailsafeEmail(

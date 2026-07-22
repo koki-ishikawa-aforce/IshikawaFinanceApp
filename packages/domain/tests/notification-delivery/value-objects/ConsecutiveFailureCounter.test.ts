@@ -1,5 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { ConsecutiveFailureCounterSchema } from '../../../src/notification-delivery/value-objects/ConsecutiveFailureCounter'
+import {
+  ConsecutiveFailureCounterSchema,
+  counterRefOf,
+  FailureCounterRefSchema,
+  initialFailureCounter,
+  markFailsafeFired,
+  recordSendFailure,
+  resetFailureCounter,
+  shouldFireFailsafe,
+  type FailureCounterRef,
+} from '../../../src/notification-delivery/value-objects/ConsecutiveFailureCounter'
+import { DeliveryTargetSchema } from '../../../src/notification-delivery/value-objects/DeliveryTarget'
+import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
+import { FailsafeEmailIdSchema } from '../../../src/shared/ids'
 
 describe('ConsecutiveFailureCounter 値オブジェクト', () => {
   it('しきい値未到達のカウンタは parse 成功', () => {
@@ -106,5 +119,98 @@ describe('ConsecutiveFailureCounter 値オブジェクト', () => {
         thresholdState: { kind: 'not_reached' },
       }),
     ).not.toThrow()
+  })
+})
+
+describe('ConsecutiveFailureCounter 状態遷移', () => {
+  const ref: FailureCounterRef = FailureCounterRefSchema.parse({
+    kind: 'talk_room',
+    talkRoomId: 'room_001',
+  })
+  const failsafeEmailId = FailsafeEmailIdSchema.parse('01HZX3F2M9GQ4T8VWYJ5KNBC6D')
+
+  it('initialFailureCounter は 0 回・未到達で生成する', () => {
+    const counter = initialFailureCounter(ref)
+    expect(counter.consecutiveFailureCount).toBe(0)
+    expect(counter.lastFailedAt).toBeNull()
+    expect(counter.thresholdState.kind).toBe('not_reached')
+  })
+
+  it('recordSendFailure はカウンタ +1 し、しきい値未満なら未到達のまま', () => {
+    const at = new Date('2026-07-01T00:00:00Z')
+    const counter = recordSendFailure(initialFailureCounter(ref), at, 3)
+    expect(counter.consecutiveFailureCount).toBe(1)
+    expect(counter.lastFailedAt).toEqual(at)
+    expect(counter.thresholdState.kind).toBe('not_reached')
+    expect(shouldFireFailsafe(counter)).toBe(false)
+  })
+
+  it('しきい値到達で reached（未発火）へ遷移し shouldFireFailsafe が真になる', () => {
+    const at = new Date('2026-07-01T00:00:00Z')
+    let counter = initialFailureCounter(ref)
+    for (let i = 0; i < 3; i++) counter = recordSendFailure(counter, at, 3)
+    expect(counter.consecutiveFailureCount).toBe(3)
+    expect(counter.thresholdState).toEqual({
+      kind: 'reached',
+      reachedAt: at,
+      failsafeState: { kind: 'not_fired' },
+    })
+    expect(shouldFireFailsafe(counter)).toBe(true)
+  })
+
+  it('到達済みカウンタへの追加失敗は到達日時・発火状態を維持する（再到達扱いにしない）', () => {
+    const reachedAt = new Date('2026-07-01T00:00:00Z')
+    let counter = initialFailureCounter(ref)
+    for (let i = 0; i < 3; i++) counter = recordSendFailure(counter, reachedAt, 3)
+    const fired = markFailsafeFired(counter, failsafeEmailId, reachedAt)
+    const after = recordSendFailure(fired, new Date('2026-07-02T00:00:00Z'), 3)
+    expect(after.consecutiveFailureCount).toBe(4)
+    expect(after.thresholdState).toEqual(fired.thresholdState)
+    expect(shouldFireFailsafe(after)).toBe(false)
+  })
+
+  it('markFailsafeFired は到達済み・未発火のカウンタを発火済みへ遷移する', () => {
+    const at = new Date('2026-07-01T00:00:00Z')
+    let counter = initialFailureCounter(ref)
+    for (let i = 0; i < 3; i++) counter = recordSendFailure(counter, at, 3)
+    const fired = markFailsafeFired(counter, failsafeEmailId, at)
+    expect(fired.thresholdState).toEqual({
+      kind: 'reached',
+      reachedAt: at,
+      failsafeState: { kind: 'fired', firedAt: at, failsafeEmailId },
+    })
+  })
+
+  it('markFailsafeFired は未到達・発火済みカウンタには適用できない（1 回だけ発火、OQ-14）', () => {
+    const at = new Date('2026-07-01T00:00:00Z')
+    expect(() => markFailsafeFired(initialFailureCounter(ref), failsafeEmailId, at)).toThrow(
+      InvariantViolationError,
+    )
+    let counter = initialFailureCounter(ref)
+    for (let i = 0; i < 3; i++) counter = recordSendFailure(counter, at, 3)
+    const fired = markFailsafeFired(counter, failsafeEmailId, at)
+    expect(() => markFailsafeFired(fired, failsafeEmailId, at)).toThrow(InvariantViolationError)
+  })
+
+  it('counterRefOf は配信先からカウンタ参照単位を導出する（08g §1）', () => {
+    expect(
+      counterRefOf(
+        DeliveryTargetSchema.parse({ kind: 'shared_talk_room', talkRoomId: 'room_001' }),
+      ),
+    ).toEqual({ kind: 'talk_room', talkRoomId: 'room_001' })
+    expect(
+      counterRefOf(DeliveryTargetSchema.parse({ kind: 'personal_dm', userId: 'user_honey' })),
+    ).toEqual({ kind: 'user', userId: 'user_honey' })
+  })
+
+  it('resetFailureCounter は送信成功で初期状態へ戻す（0 回なら同一参照を返す）', () => {
+    const at = new Date('2026-07-01T00:00:00Z')
+    let counter = initialFailureCounter(ref)
+    counter = recordSendFailure(counter, at, 3)
+    const reset = resetFailureCounter(counter)
+    expect(reset.consecutiveFailureCount).toBe(0)
+    expect(reset.thresholdState.kind).toBe('not_reached')
+    const initial = initialFailureCounter(ref)
+    expect(resetFailureCounter(initial)).toBe(initial)
   })
 })
