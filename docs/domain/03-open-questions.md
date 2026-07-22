@@ -142,6 +142,7 @@
 | OQ-44 | 鮮度アラート閾値の実値確定（OQ-7 続） | **解決予定: Phase 5**。Phase 4 spec §14.2 で発生。現状 30 日仮置き。Query 側で参照するため、実運用値を確定する |
 | OQ-45 ✅ | パッケージ名のスコープ | **解決（2026-07-06）**: OQ-37 のアプリ名確定（わりまる）を受けて `@household/domain` → `@warimaru/domain` にリネーム済み。以後のパッケージは `@warimaru/*` スコープで統一する |
 | OQ-46 ✅ | 技術スタック記述の不整合解消 | **解決（2026-07-06）: OQ-27 を正とする**。スタック = フロント Next.js (TS) Static Export ／ バックエンド Hono on Lambda ／ DB Neon (PostgreSQL) ／ 静的配信 S3 + CloudFront ／ シークレット Parameter Store。食い違っていた Phase 4 spec §13.1〜13.2（React + Vite ／ DynamoDB vs RDS 選定）は修正済み |
+| OQ-47 ✅ | プライバシー3段階の強制レイヤ（Q-D の実装層確定） | **解決（2026-07-22、判断セッション / #86）: Query/API 層で完全強制する**。Static Export / LIFF 構成では UI 層マスキングがセキュリティ境界にならないため、配偶者に不可視のデータは API レスポンスに含めない（UI での null 化・マスキングに依存しない）。① 月次レポート Query は `viewerId` を用いて非本人の経費(会社)合計（`businessExpenseTotal*`）を除外。② 取引一覧 Query は配偶者の個人取引（`personal_honey/darling`）明細行を**完全除外**し、相手には合計のみを返す（従来の「店名・金額を null 化した伏せ字行」を廃止）。従来の spec §6.3⑦「経費(会社)サマリのマスキングは画面層の責務」および `applyPrivacyFilter` の伏せ字行挙動を上書きする |
 
 ## C. 参考: 改訂で対象外とした初期論点
 
