@@ -1,109 +1,269 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useViewerRole } from '@/hooks/useViewerRole'
+import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
+import {
+  AccountBalanceListWireSchema,
+  GmailAuthorizeResponseSchema,
+  ImportStatusResponseSchema,
+  OnboardingMeWireSchema,
+  SpouseCompletionWireSchema,
+  type AppUserWire,
+  type LineOperationSettingsWire,
+} from '@/lib/api-schemas'
+import { getTalkRoomContextId, openExternal } from '@/lib/liff'
+import { getCurrentMonth } from '@/lib/month'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
 /**
- * オンボーディングフロー（Phase1 → Phase2）。
+ * オンボーディングフロー（Phase1 → Phase2 → 配偶者完了待ち）。
  *
- * オンボーディング専用のバックエンド API は未実装のため、進捗は
- * localStorage に保持する。配偶者完了検知（SpouseCompletionQuery）と
- * Gmail OAuth はエンドポイント実装後にこの画面へ接続する。
+ * 進捗の正はサーバーの AppUser 集約（GET /api/onboarding/me）。表示ステップは
+ * サーバー状態から導出し、各操作はオンボーディング API へ記録する（#42 で
+ * localStorage 暫定実装を置き換え）。Phase 遷移は前進のみ（ドメイン不変条件）
+ * のため「戻る」導線は持たない。
+ *
+ * 配偶者完了待ちは Phase2 完了後に置く（08f §2: 配偶者完了検知の事前条件は
+ * 「ユーザーが Phase2 を完了し、画面ロード」。論点19: 画面ロード時のみ判定）。
  */
 
-const STORAGE_KEY = 'warimaru.onboarding.v1'
+/**
+ * 共通トークルーム ID の自己申告値。LIFF context（グループ内で開いた場合）を
+ * 優先し、外部ブラウザ・1:1 トークでは環境変数で運用のルーム ID を渡す。
+ * 正式には join Webhook が正となる（onboarding API 側の暫定契約に従う）。
+ */
+const FALLBACK_TALK_ROOM_ID = process.env['NEXT_PUBLIC_TALK_ROOM_ID'] ?? 'TR_DEV'
 
-interface OnboardingState {
-  nickname: string
-  nicknameDone: boolean
-  lineFriendAdded: boolean
-  talkRoomJoined: boolean
-  notificationsEnabled: boolean | null
-  spouseConfirmed: boolean
-  sectionADone: boolean
-  sectionBDone: boolean
-  sectionFDone: boolean | 'skipped'
+const EMPTY_LINE_SETTINGS: LineOperationSettingsWire = {
+  friendAdd: { kind: 'not_added' },
+  talkRoomJoin: { kind: 'not_joined' },
+  notificationActivation: { kind: 'not_activated' },
 }
 
-const INITIAL_STATE: OnboardingState = {
-  nickname: '',
-  nicknameDone: false,
-  lineFriendAdded: false,
-  talkRoomJoined: false,
-  notificationsEnabled: null,
-  spouseConfirmed: false,
-  sectionADone: false,
-  sectionBDone: false,
-  sectionFDone: false,
-}
-
-function loadState(): OnboardingState {
-  if (typeof window === 'undefined') return INITIAL_STATE
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (raw === null) return INITIAL_STATE
-    return { ...INITIAL_STATE, ...(JSON.parse(raw) as Partial<OnboardingState>) }
-  } catch {
-    return INITIAL_STATE
+function lineSettingsOf(user: AppUserWire): LineOperationSettingsWire {
+  if (user.kind === 'operation_started') {
+    return user.lineOperationSettings ?? EMPTY_LINE_SETTINGS
   }
+  return user.common.lineOperationSettings ?? EMPTY_LINE_SETTINGS
 }
 
-type StepId = 'nickname' | 'line_friend' | 'talk_room' | 'notifications' | 'spouse_wait' | 'phase2'
+type StepId =
+  | 'nickname'
+  | 'line_friend'
+  | 'talk_room'
+  | 'notifications'
+  | 'phase2'
+  | 'spouse_wait'
+  | 'done'
 
-const PHASE1_STEPS: { id: StepId; label: string }[] = [
+const STEPS: { id: StepId; label: string }[] = [
   { id: 'nickname', label: 'ニックネーム' },
   { id: 'line_friend', label: '友だち追加' },
   { id: 'talk_room', label: 'トークルーム' },
   { id: 'notifications', label: '通知設定' },
-  { id: 'spouse_wait', label: '配偶者待ち' },
   { id: 'phase2', label: 'Phase 2' },
+  { id: 'spouse_wait', label: '完了確認' },
 ]
 
-function currentStep(state: OnboardingState): StepId {
-  if (!state.nicknameDone) return 'nickname'
-  if (!state.lineFriendAdded) return 'line_friend'
-  if (!state.talkRoomJoined) return 'talk_room'
-  if (state.notificationsEnabled === null) return 'notifications'
-  if (!state.spouseConfirmed) return 'spouse_wait'
+function currentStep(user: AppUserWire | null, notificationsDeferred: boolean): StepId {
+  if (user === null) return 'nickname'
+  if (user.kind === 'phase2_in_progress') return 'phase2'
+  if (user.kind === 'phase2_completed') return 'spouse_wait'
+  if (user.kind === 'operation_started') return 'done'
+  if (user.common.nickname === undefined) return 'nickname'
+  const settings = lineSettingsOf(user)
+  if (settings.friendAdd.kind !== 'added') return 'line_friend'
+  if (settings.talkRoomJoin.kind !== 'joined') return 'talk_room'
+  if (settings.notificationActivation.kind !== 'activated' && !notificationsDeferred) {
+    return 'notifications'
+  }
   return 'phase2'
+}
+
+function errorNote(error: unknown): string | null {
+  if (error === null || error === undefined) return null
+  if (error instanceof ApiError) return error.message
+  return error instanceof Error ? error.message : '通信に失敗しました'
+}
+
+function ErrorNote({ error }: { error: unknown }) {
+  const message = errorNote(error)
+  if (message === null) return null
+  return <p className={styles.note}>⚠ {message}</p>
 }
 
 export default function OnboardingPage() {
   const { data: me } = useViewerRole()
-  const [state, setState] = useState<OnboardingState>(INITIAL_STATE)
-  const [loaded, setLoaded] = useState(false)
+  const queryClient = useQueryClient()
   const [nicknameInput, setNicknameInput] = useState('')
+  const [notificationsDeferred, setNotificationsDeferred] = useState(false)
 
-  useEffect(() => {
-    const restored = loadState()
-    setState(restored)
-    setNicknameInput(restored.nickname)
-    setLoaded(true)
-  }, [])
+  const meQuery = useQuery({
+    queryKey: ['onboarding', 'me'],
+    queryFn: () => apiFetch('/api/onboarding/me', OnboardingMeWireSchema),
+  })
+  const user = meQuery.data?.user ?? null
 
-  const update = (patch: Partial<OnboardingState>) => {
-    setState(prev => {
-      const next = { ...prev, ...patch }
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-      return next
-    })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['onboarding'] })
+
+  const saveNickname = useMutation({
+    mutationFn: (nickname: string) =>
+      user === null
+        ? apiMutate(
+            '/api/onboarding/register',
+            { method: 'POST', body: { nickname } },
+            OnboardingMeWireSchema,
+          )
+        : apiMutate(
+            '/api/onboarding/nickname',
+            { method: 'PUT', body: { nickname } },
+            OnboardingMeWireSchema,
+          ),
+    onSuccess: invalidate,
+  })
+
+  const recordLineFriend = useMutation({
+    mutationFn: () =>
+      apiMutate('/api/onboarding/phase1/line-friend', { method: 'POST' }, OnboardingMeWireSchema),
+    onSuccess: invalidate,
+  })
+
+  const recordTalkRoom = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        '/api/onboarding/phase1/talk-room',
+        { method: 'POST', body: { talkRoomId: getTalkRoomContextId() ?? FALLBACK_TALK_ROOM_ID } },
+        OnboardingMeWireSchema,
+      ),
+    onSuccess: invalidate,
+  })
+
+  const activateNotification = useMutation({
+    mutationFn: () =>
+      apiMutate('/api/onboarding/phase1/notification', { method: 'POST' }, OnboardingMeWireSchema),
+    onSuccess: invalidate,
+  })
+
+  const startPhase2 = useMutation({
+    mutationFn: () =>
+      apiMutate('/api/onboarding/phase2/start', { method: 'POST' }, OnboardingMeWireSchema),
+    onSuccess: invalidate,
+  })
+
+  const gmailAuthorize = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        '/api/onboarding/gmail/authorize',
+        { method: 'POST' },
+        GmailAuthorizeResponseSchema,
+      ),
+    onSuccess: result => {
+      openExternal(result.authorizationUrl)
+    },
+  })
+
+  const completeSectionB = useMutation({
+    mutationFn: (initialBalanceRef: {
+      smbcAccountId: string
+      otherSavingsAccountId: string
+      nisaAccountId: string
+    }) =>
+      apiMutate(
+        '/api/onboarding/phase2/section-b',
+        { method: 'PUT', body: { initialBalanceRef } },
+        OnboardingMeWireSchema,
+      ),
+    onSuccess: invalidate,
+  })
+
+  const finishSectionF = useMutation({
+    mutationFn: (body: { kind: 'completed'; importJobId: string } | { kind: 'skipped' }) =>
+      apiMutate(
+        '/api/onboarding/phase2/section-f',
+        { method: 'PUT', body },
+        OnboardingMeWireSchema,
+      ),
+    onSuccess: invalidate,
+  })
+
+  const completePhase2 = useMutation({
+    mutationFn: () =>
+      apiMutate('/api/onboarding/phase2/complete', { method: 'POST' }, OnboardingMeWireSchema),
+    onSuccess: invalidate,
+  })
+
+  const progress = user?.kind === 'phase2_in_progress' ? user.progress : undefined
+  const needsSectionB = progress?.sectionB.kind === 'not_started'
+  const needsSectionF = progress?.sectionF.kind === 'not_started'
+
+  // Section B: 初期残高登録参照は登録済み口座（残高一覧）から組み立てる
+  const balancesQuery = useQuery({
+    queryKey: ['balances', 'list'],
+    queryFn: () => apiFetch('/api/balances', AccountBalanceListWireSchema),
+    enabled: needsSectionB,
+  })
+  const accounts = balancesQuery.data?.items ?? []
+  const smbcAccount = accounts.find(item => item.kind === 'smbc_bank')
+  const otherSavingsAccount = accounts.find(item => item.kind === 'other_savings')
+  const nisaAccount = accounts.find(item => item.kind === 'nisa')
+  const initialBalanceRef =
+    smbcAccount !== undefined && otherSavingsAccount !== undefined && nisaAccount !== undefined
+      ? {
+          smbcAccountId: smbcAccount.accountId,
+          otherSavingsAccountId: otherSavingsAccount.accountId,
+          nisaAccountId: nisaAccount.accountId,
+        }
+      : null
+
+  // Section F: 今月分の取込完了があれば、その取込ジョブで完了扱いにできる
+  const currentMonth = getCurrentMonth()
+  const importStatusQuery = useQuery({
+    queryKey: ['imports', 'status', currentMonth],
+    queryFn: () =>
+      apiFetch(`/api/imports/status?month=${currentMonth}`, ImportStatusResponseSchema),
+    enabled: needsSectionF,
+  })
+  const importCompletion = importStatusQuery.data?.completion ?? null
+
+  const spouseQuery = useQuery({
+    queryKey: ['onboarding', 'spouse-completion'],
+    queryFn: () => apiFetch('/api/onboarding/spouse-completion', SpouseCompletionWireSchema),
+    enabled: user?.kind === 'phase2_completed',
+  })
+
+  if (meQuery.isPending) return null
+  if (meQuery.isError) {
+    return (
+      <main className={styles.main}>
+        <h1 className={ui.pageTitle}>はじめての設定</h1>
+        <div className={ui.card}>
+          <span className={ui.sectionTitle}>読み込みに失敗しました</span>
+          <ErrorNote error={meQuery.error} />
+          <button className={ui.buttonGhost} onClick={() => void meQuery.refetch()}>
+            再読み込み
+          </button>
+        </div>
+      </main>
+    )
   }
 
-  if (!loaded) return null
-
-  const step = currentStep(state)
-  const stepIndex = PHASE1_STEPS.findIndex(s => s.id === step)
-  const avatar = me?.role === 'honey' ? '⛵' : '🌸'
+  const step = currentStep(user, notificationsDeferred)
+  const stepIndex = step === 'done' ? STEPS.length : STEPS.findIndex(s => s.id === step)
+  const role = user?.common.role ?? me?.role
+  const avatar = role === 'honey' ? '⛵' : '🌸'
+  const nickname = user?.common.nickname ?? ''
+  const spouse = spouseQuery.data
 
   return (
     <main className={styles.main}>
       <h1 className={ui.pageTitle}>はじめての設定</h1>
 
       <div className={styles.stepper}>
-        {PHASE1_STEPS.map((s, i) => (
+        {STEPS.map((s, i) => (
           <div
             key={s.id}
             className={
@@ -124,21 +284,22 @@ export default function OnboardingPage() {
         <div className={ui.card}>
           <div className={styles.stepAvatar}>{avatar}</div>
           <span className={ui.sectionTitle}>ニックネームを設定</span>
-          <p className={styles.note}>アプリ内で表示される呼び名を決めましょう。</p>
+          <p className={styles.note}>アプリ内で表示される呼び名を決めましょう（10文字まで）。</p>
           <input
             className={ui.input}
             value={nicknameInput}
             onChange={e => setNicknameInput(e.target.value)}
             placeholder="例: はにー"
-            maxLength={20}
+            maxLength={10}
           />
           <button
             className={ui.button}
-            disabled={nicknameInput.trim() === ''}
-            onClick={() => update({ nickname: nicknameInput.trim(), nicknameDone: true })}
+            disabled={nicknameInput.trim() === '' || saveNickname.isPending}
+            onClick={() => saveNickname.mutate(nicknameInput.trim())}
           >
             決定して次へ
           </button>
+          <ErrorNote error={saveNickname.error} />
         </div>
       )}
 
@@ -149,12 +310,14 @@ export default function OnboardingPage() {
           <p className={styles.note}>
             通知の受け取りに使う「わりまる」公式アカウントを LINE で友だち追加してください。
           </p>
-          <button className={ui.buttonGhost} onClick={() => update({ lineFriendAdded: true })}>
+          <button
+            className={ui.buttonGhost}
+            disabled={recordLineFriend.isPending}
+            onClick={() => recordLineFriend.mutate()}
+          >
             友だち追加しました
           </button>
-          <button className={styles.backLink} onClick={() => update({ nicknameDone: false })}>
-            ← 戻る
-          </button>
+          <ErrorNote error={recordLineFriend.error} />
         </div>
       )}
 
@@ -165,12 +328,14 @@ export default function OnboardingPage() {
           <p className={styles.note}>
             ふたりの家計通知が届く共有トークルームに参加してください。招待リンクは配偶者または公式アカウントのメッセージから開けます。
           </p>
-          <button className={ui.buttonGhost} onClick={() => update({ talkRoomJoined: true })}>
+          <button
+            className={ui.buttonGhost}
+            disabled={recordTalkRoom.isPending}
+            onClick={() => recordTalkRoom.mutate()}
+          >
             参加しました
           </button>
-          <button className={styles.backLink} onClick={() => update({ lineFriendAdded: false })}>
-            ← 戻る
-          </button>
+          <ErrorNote error={recordTalkRoom.error} />
         </div>
       )}
 
@@ -179,138 +344,223 @@ export default function OnboardingPage() {
           <div className={styles.stepAvatar}>🔔</div>
           <span className={ui.sectionTitle}>通知の設定</span>
           <p className={styles.note}>
-            リマインダーやレポート完成の通知を LINE で受け取りますか？あとから設定で変更できます。
+            リマインダーやレポート完成の通知を LINE
+            で受け取りますか？あとからこの画面で有効化できます。
           </p>
-          <button className={ui.button} onClick={() => update({ notificationsEnabled: true })}>
+          <button
+            className={ui.button}
+            disabled={activateNotification.isPending}
+            onClick={() => activateNotification.mutate()}
+          >
             通知を受け取る
           </button>
+          <button className={ui.buttonGhost} onClick={() => setNotificationsDeferred(true)}>
+            あとで設定する
+          </button>
+          <ErrorNote error={activateNotification.error} />
+        </div>
+      )}
+
+      {step === 'phase2' && user?.kind === 'phase1_completed' && (
+        <div className={ui.card}>
+          <div className={styles.stepAvatar}>🚀</div>
+          <span className={ui.sectionTitle}>Phase 2 をはじめる</span>
+          <p className={styles.note}>
+            データ連携と初期設定に進みます。Gmail 連携（A）→
+            初期残高の登録（B）の順で完了し、過去明細の取込（F）は任意です。
+          </p>
           <button
-            className={ui.buttonGhost}
-            onClick={() => update({ notificationsEnabled: false })}
+            className={ui.button}
+            disabled={startPhase2.isPending}
+            onClick={() => startPhase2.mutate()}
           >
-            今は受け取らない
+            Phase 2 を開始する
           </button>
-          <button className={styles.backLink} onClick={() => update({ talkRoomJoined: false })}>
-            ← 戻る
-          </button>
+          <ErrorNote error={startPhase2.error} />
+        </div>
+      )}
+
+      {step === 'phase2' && progress !== undefined && (
+        <div className={ui.card}>
+          <span className={ui.sectionTitle}>Phase 2 の進捗</span>
+          <p className={styles.note}>A → B の順で完了する必要があります。F はスキップできます。</p>
+
+          <div className={styles.sectionRow}>
+            <div className={styles.sectionHead}>
+              <span className={styles.sectionBadge}>A</span>
+              <span className={styles.sectionName}>Gmail 連携</span>
+              {progress.sectionA.kind === 'completed' ? (
+                <span className={ui.badgeAccent}>完了</span>
+              ) : (
+                <span className={ui.badge}>未完了</span>
+              )}
+            </div>
+            {progress.sectionA.kind !== 'completed' && (
+              <>
+                <p className={styles.note}>
+                  利用明細メールの自動取込に使います。認可は外部ブラウザで行い、完了後にこの画面へ戻って「連携状態を更新」を押してください。
+                </p>
+                <div className={ui.row}>
+                  <button
+                    className={ui.buttonGhost}
+                    disabled={gmailAuthorize.isPending}
+                    onClick={() => gmailAuthorize.mutate()}
+                  >
+                    Gmail 連携をはじめる
+                  </button>
+                  <button className={ui.buttonGhost} onClick={() => void invalidate()}>
+                    連携状態を更新
+                  </button>
+                </div>
+                <ErrorNote error={gmailAuthorize.error} />
+              </>
+            )}
+          </div>
+
+          <div className={styles.sectionRow}>
+            <div className={styles.sectionHead}>
+              <span className={styles.sectionBadge}>B</span>
+              <span className={styles.sectionName}>初期残高の登録</span>
+              {progress.sectionB.kind === 'completed' ? (
+                <span className={ui.badgeAccent}>完了</span>
+              ) : (
+                <span className={ui.badge}>未完了</span>
+              )}
+            </div>
+            {progress.sectionB.kind !== 'completed' && (
+              <>
+                <p className={styles.note}>
+                  口座の現在残高を登録して資産管理を始めます。登録済みの口座（SMBC・その他貯蓄・NISA）を初期残高として記録します。
+                </p>
+                {initialBalanceRef !== null ? (
+                  <button
+                    className={ui.buttonGhost}
+                    disabled={progress.sectionA.kind !== 'completed' || completeSectionB.isPending}
+                    onClick={() => completeSectionB.mutate(initialBalanceRef)}
+                  >
+                    {progress.sectionA.kind === 'completed'
+                      ? '登録済みの口座で確定する'
+                      : 'A の完了後に登録できます'}
+                  </button>
+                ) : (
+                  <p className={styles.note}>
+                    口座（SMBC・その他貯蓄・NISA）が未登録です。
+                    <Link href="/balances">残高ページ</Link>で登録状況を確認してください。
+                  </p>
+                )}
+                <ErrorNote error={completeSectionB.error} />
+              </>
+            )}
+          </div>
+
+          <div className={styles.sectionRow}>
+            <div className={styles.sectionHead}>
+              <span className={styles.sectionBadge}>F</span>
+              <span className={styles.sectionName}>過去明細の取込</span>
+              {progress.sectionF.kind === 'completed' && (
+                <span className={ui.badgeAccent}>完了</span>
+              )}
+              {progress.sectionF.kind === 'skipped' && <span className={ui.badge}>スキップ</span>}
+              {progress.sectionF.kind === 'not_started' && <span className={ui.badge}>未完了</span>}
+            </div>
+            {progress.sectionF.kind === 'not_started' && (
+              <>
+                <p className={styles.note}>
+                  過去のカード・銀行明細を取り込んで、これまでの家計も見えるようにします（任意）。
+                </p>
+                <div className={ui.row}>
+                  <Link href="/imports" className={ui.buttonGhost}>
+                    取込画面を開く
+                  </Link>
+                  {importCompletion !== null && (
+                    <button
+                      className={ui.buttonGhost}
+                      disabled={finishSectionF.isPending}
+                      onClick={() =>
+                        finishSectionF.mutate({
+                          kind: 'completed',
+                          importJobId: importCompletion.importJobId,
+                        })
+                      }
+                    >
+                      完了にする
+                    </button>
+                  )}
+                  <button
+                    className={styles.backLink}
+                    disabled={finishSectionF.isPending}
+                    onClick={() => finishSectionF.mutate({ kind: 'skipped' })}
+                  >
+                    スキップ
+                  </button>
+                </div>
+                <ErrorNote error={finishSectionF.error} />
+              </>
+            )}
+          </div>
+
+          {progress.sectionA.kind === 'completed' && progress.sectionB.kind === 'completed' && (
+            <div className={styles.sectionRow}>
+              <button
+                className={ui.button}
+                disabled={completePhase2.isPending}
+                onClick={() => completePhase2.mutate()}
+              >
+                Phase 2 を完了する
+              </button>
+              <ErrorNote error={completePhase2.error} />
+            </div>
+          )}
         </div>
       )}
 
       {step === 'spouse_wait' && (
         <div className={ui.card}>
-          <div className={styles.stepAvatar}>⏳</div>
-          <span className={ui.sectionTitle}>配偶者の設定完了を待っています</span>
-          <p className={styles.note}>
-            ふたりとも Phase 1
-            の設定を終えると次に進めます。画面を開き直すと最新の状態を確認します（配偶者完了検知 API
-            の接続は準備中です）。
-          </p>
-          <button className={ui.button} onClick={() => update({ spouseConfirmed: true })}>
-            配偶者も完了しています
-          </button>
-          <button
-            className={styles.backLink}
-            onClick={() => update({ notificationsEnabled: null })}
-          >
-            ← 戻る
-          </button>
-        </div>
-      )}
-
-      {step === 'phase2' && (
-        <>
-          <div className={ui.card}>
-            <span className={ui.sectionTitle}>Phase 2 の進捗</span>
-            <p className={styles.note}>
-              データ連携と初期設定を進めましょう。A → B の順で完了する必要があります。F
-              はスキップできます。
-            </p>
-
-            <div className={styles.sectionRow}>
-              <div className={styles.sectionHead}>
-                <span className={styles.sectionBadge}>A</span>
-                <span className={styles.sectionName}>Gmail 連携</span>
-                {state.sectionADone ? (
-                  <span className={ui.badgeAccent}>完了</span>
-                ) : (
-                  <span className={ui.badge}>未完了</span>
-                )}
-              </div>
-              <p className={styles.note}>
-                利用明細メールの自動取込に使います。OAuth
-                連携フローはバックエンド実装後に有効になります。
-              </p>
-              {!state.sectionADone && (
-                <button className={ui.buttonGhost} onClick={() => update({ sectionADone: true })}>
-                  連携済みにする
-                </button>
-              )}
-            </div>
-
-            <div className={styles.sectionRow}>
-              <div className={styles.sectionHead}>
-                <span className={styles.sectionBadge}>B</span>
-                <span className={styles.sectionName}>初期残高の登録</span>
-                {state.sectionBDone ? (
-                  <span className={ui.badgeAccent}>完了</span>
-                ) : (
-                  <span className={ui.badge}>未完了</span>
-                )}
-              </div>
-              <p className={styles.note}>口座の現在残高を登録して資産管理を始めます。</p>
-              {!state.sectionBDone && (
-                <button
-                  className={ui.buttonGhost}
-                  disabled={!state.sectionADone}
-                  onClick={() => update({ sectionBDone: true })}
-                >
-                  {state.sectionADone ? '登録済みにする' : 'A の完了後に登録できます'}
-                </button>
-              )}
-            </div>
-
-            <div className={styles.sectionRow}>
-              <div className={styles.sectionHead}>
-                <span className={styles.sectionBadge}>F</span>
-                <span className={styles.sectionName}>マスタのカスタマイズ</span>
-                {state.sectionFDone === true && <span className={ui.badgeAccent}>完了</span>}
-                {state.sectionFDone === 'skipped' && <span className={ui.badge}>スキップ</span>}
-                {state.sectionFDone === false && <span className={ui.badge}>未完了</span>}
-              </div>
-              <p className={styles.note}>カテゴリや経費種別を好みに合わせて調整します（任意）。</p>
-              {state.sectionFDone === false && (
-                <div className={ui.row}>
-                  <Link href="/settings" className={ui.buttonGhost}>
-                    設定を開く
-                  </Link>
-                  <button className={ui.buttonGhost} onClick={() => update({ sectionFDone: true })}>
-                    完了にする
-                  </button>
-                  <button
-                    className={styles.backLink}
-                    onClick={() => update({ sectionFDone: 'skipped' })}
-                  >
-                    スキップ
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {state.sectionADone && state.sectionBDone && state.sectionFDone !== false && (
-            <div className={ui.card}>
+          {spouse?.kind === 'both_completed' ? (
+            <>
               <div className={styles.stepAvatar}>🎉</div>
-              <span className={ui.sectionTitle}>設定完了！</span>
+              <span className={ui.sectionTitle}>ふたりの設定が完了しました！</span>
               <p className={styles.note}>
-                {state.nickname !== '' ? `${state.nickname}さん、` : ''}
+                {nickname !== '' ? `${nickname}さん、` : ''}
                 おつかれさまでした。ダッシュボードから家計管理を始めましょう。
               </p>
               <Link href="/" className={ui.button} style={{ textAlign: 'center' }}>
                 ダッシュボードへ
               </Link>
-            </div>
+            </>
+          ) : (
+            <>
+              <div className={styles.stepAvatar}>⏳</div>
+              <span className={ui.sectionTitle}>配偶者の設定完了を待っています</span>
+              <p className={styles.note}>
+                あなたの設定は完了しています。ふたりとも Phase 2
+                まで完了すると運用が始まります。画面を開き直すと最新の状態を確認します。
+              </p>
+              <button
+                className={ui.buttonGhost}
+                disabled={spouseQuery.isFetching}
+                onClick={() => void spouseQuery.refetch()}
+              >
+                最新の状態を確認
+              </button>
+              <ErrorNote error={spouseQuery.error} />
+            </>
           )}
-        </>
+        </div>
+      )}
+
+      {step === 'done' && (
+        <div className={ui.card}>
+          <div className={styles.stepAvatar}>🎉</div>
+          <span className={ui.sectionTitle}>運用開始済みです</span>
+          <p className={styles.note}>
+            {nickname !== '' ? `${nickname}さん、` : ''}
+            設定はすべて完了しています。ダッシュボードから家計管理を続けましょう。
+          </p>
+          <Link href="/" className={ui.button} style={{ textAlign: 'center' }}>
+            ダッシュボードへ
+          </Link>
+        </div>
       )}
     </main>
   )

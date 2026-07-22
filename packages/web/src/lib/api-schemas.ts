@@ -375,6 +375,59 @@ export const MonthlyLimitListWireSchema = z.object({
   items: z.array(MonthlyLimitWireSchema),
 })
 
+// ---------- オンボーディング（#42） ----------
+
+const LineOperationSettingsWireSchema = z.object({
+  friendAdd: z.object({ kind: z.enum(['not_added', 'added']) }),
+  talkRoomJoin: z.object({ kind: z.enum(['not_joined', 'joined']) }),
+  notificationActivation: z.object({ kind: z.enum(['not_activated', 'activated']) }),
+})
+export type LineOperationSettingsWire = z.infer<typeof LineOperationSettingsWireSchema>
+
+const Phase2ProgressWireSchema = z.object({
+  sectionA: z.object({ kind: z.enum(['not_started', 'completed']) }),
+  sectionB: z.object({ kind: z.enum(['not_started', 'completed']) }),
+  sectionF: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('not_started') }),
+    z.object({ kind: z.literal('skipped') }),
+    z.object({ kind: z.literal('completed'), importJobId: z.string() }),
+  ]),
+})
+
+export const AppUserWireSchema = z.object({
+  kind: z.enum(['phase1_completed', 'phase2_in_progress', 'phase2_completed', 'operation_started']),
+  common: z.object({
+    userId: z.string(),
+    role: z.enum(['honey', 'darling']),
+    nickname: z.string().optional(),
+    firstRegisteredAt: IsoDate,
+    lineOperationSettings: LineOperationSettingsWireSchema.optional(),
+  }),
+  progress: Phase2ProgressWireSchema.optional(),
+  lineOperationSettings: LineOperationSettingsWireSchema.optional(),
+})
+export type AppUserWire = z.infer<typeof AppUserWireSchema>
+
+export const OnboardingMeWireSchema = z.object({ user: AppUserWireSchema.nullable() })
+
+export const SpouseCompletionWireSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('awaiting_spouse'),
+    userId: z.string(),
+    spouseUserId: z.string(),
+    detectedAt: IsoDate,
+  }),
+  z.object({
+    kind: z.literal('both_completed'),
+    honeyUserId: z.string(),
+    darlingUserId: z.string(),
+    bothCompletedAt: IsoDate,
+  }),
+])
+export type SpouseCompletionWire = z.infer<typeof SpouseCompletionWireSchema>
+
+export const GmailAuthorizeResponseSchema = z.object({ authorizationUrl: z.string() })
+
 // ---------- 共通 ----------
 
 export const MeWireSchema = z.object({
