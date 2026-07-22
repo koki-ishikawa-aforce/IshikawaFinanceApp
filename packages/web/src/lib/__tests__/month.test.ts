@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { YearMonth } from '@warimaru/domain'
+import { YearMonthSchema } from '@warimaru/domain'
 import { formatDate, formatDateTime, formatMonthLabel, getCurrentMonth, shiftMonth } from '../month'
 
-const ym = (value: string) => value as YearMonth
+const ym = (value: string) => YearMonthSchema.parse(value)
 
 describe('getCurrentMonth', () => {
   afterEach(() => {

@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { YearMonth } from '@warimaru/domain'
+import { YearMonthSchema } from '@warimaru/domain'
 import { MonthNavigator } from '../MonthNavigator'
 
-const ym = (value: string) => value as YearMonth
+const ym = (value: string) => YearMonthSchema.parse(value)
 
 describe('MonthNavigator', () => {
   it('対象月を YYYY年M月 形式で表示する', () => {

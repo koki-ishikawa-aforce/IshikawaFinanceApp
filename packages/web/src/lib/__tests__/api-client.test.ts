@@ -1,12 +1,25 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { ApiError, apiFetch, apiMutate } from '../api-client'
-import { getIdToken, isLiffEnabled } from '@/lib/liff'
 
-vi.mock('@/lib/liff', () => ({
-  isLiffEnabled: vi.fn(() => false),
+// vi.resetModules() 後もモジュール再評価で同一インスタンスが返るよう hoisted で共有する
+const liffMock = vi.hoisted(() => ({
+  isLiffEnabled: vi.fn((): boolean => false),
   getIdToken: vi.fn((): string | null => null),
 }))
+
+vi.mock('@/lib/liff', () => liffMock)
+
+// BASE_URL / DEV_USER_ID はモジュール読み込み時に process.env から確定するため、
+// 実行環境の NEXT_PUBLIC_* に依存しないよう env を消してから再評価する
+type ApiClient = typeof import('../api-client')
+let api: ApiClient
+
+beforeAll(async () => {
+  delete process.env['NEXT_PUBLIC_API_URL']
+  delete process.env['NEXT_PUBLIC_USER_ID']
+  vi.resetModules()
+  api = await import('../api-client')
+})
 
 const fetchMock = vi.fn()
 
@@ -18,6 +31,8 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 beforeEach(() => {
+  liffMock.isLiffEnabled.mockReturnValue(false)
+  liffMock.getIdToken.mockReturnValue(null)
   vi.stubGlobal('fetch', fetchMock)
 })
 
@@ -30,7 +45,7 @@ describe('apiFetch', () => {
   it('スキーマで parse した結果を返す', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { value: 42 }))
 
-    const result = await apiFetch('/api/test', z.object({ value: z.number() }))
+    const result = await api.apiFetch('/api/test', z.object({ value: z.number() }))
 
     expect(result).toEqual({ value: 42 })
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -40,29 +55,29 @@ describe('apiFetch', () => {
   it('LIFF 無効時は X-User-Id ヘッダを送る', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, {}))
 
-    await apiFetch('/api/test', z.object({}))
+    await api.apiFetch('/api/test', z.object({}))
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.headers).toEqual({ 'X-User-Id': 'U_DARLING_DEV' })
   })
 
   it('LIFF 有効かつトークンありなら Authorization ヘッダを送る', async () => {
-    vi.mocked(isLiffEnabled).mockReturnValue(true)
-    vi.mocked(getIdToken).mockReturnValue('token-123')
+    liffMock.isLiffEnabled.mockReturnValue(true)
+    liffMock.getIdToken.mockReturnValue('token-123')
     fetchMock.mockResolvedValue(jsonResponse(200, {}))
 
-    await apiFetch('/api/test', z.object({}))
+    await api.apiFetch('/api/test', z.object({}))
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.headers).toEqual({ Authorization: 'Bearer token-123' })
   })
 
   it('LIFF 有効でもトークンがなければ X-User-Id にフォールバックする', async () => {
-    vi.mocked(isLiffEnabled).mockReturnValue(true)
-    vi.mocked(getIdToken).mockReturnValue(null)
+    liffMock.isLiffEnabled.mockReturnValue(true)
+    liffMock.getIdToken.mockReturnValue(null)
     fetchMock.mockResolvedValue(jsonResponse(200, {}))
 
-    await apiFetch('/api/test', z.object({}))
+    await api.apiFetch('/api/test', z.object({}))
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.headers).toEqual({ 'X-User-Id': 'U_DARLING_DEV' })
@@ -71,13 +86,13 @@ describe('apiFetch', () => {
   it('非 2xx なら ApiError を投げる', async () => {
     fetchMock.mockResolvedValue(jsonResponse(404, { message: 'not found' }))
 
-    await expect(apiFetch('/api/test', z.object({}))).rejects.toThrowError(ApiError)
+    await expect(api.apiFetch('/api/test', z.object({}))).rejects.toThrowError(api.ApiError)
   })
 
   it('スキーマ不一致なら ZodError を投げる', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { value: 'string' }))
 
-    await expect(apiFetch('/api/test', z.object({ value: z.number() }))).rejects.toThrowError(
+    await expect(api.apiFetch('/api/test', z.object({ value: z.number() }))).rejects.toThrowError(
       z.ZodError,
     )
   })
@@ -87,7 +102,7 @@ describe('apiMutate', () => {
   it('JSON ボディを Content-Type 付きで送る', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }))
 
-    const result = await apiMutate(
+    const result = await api.apiMutate(
       '/api/test',
       { method: 'POST', body: { name: 'test' } },
       z.object({ ok: z.boolean() }),
@@ -105,7 +120,7 @@ describe('apiMutate', () => {
     const formData = new FormData()
     formData.append('file', new Blob(['csv']), 'test.csv')
 
-    await apiMutate('/api/test', { method: 'POST', body: formData }, z.object({}))
+    await api.apiMutate('/api/test', { method: 'POST', body: formData }, z.object({}))
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.body).toBe(formData)
@@ -115,7 +130,7 @@ describe('apiMutate', () => {
   it('body なしの DELETE を送れる', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, {}))
 
-    await apiMutate('/api/test/1', { method: 'DELETE' }, z.object({}))
+    await api.apiMutate('/api/test/1', { method: 'DELETE' }, z.object({}))
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('DELETE')
@@ -125,7 +140,7 @@ describe('apiMutate', () => {
   it('空レスポンスは null として parse する', async () => {
     fetchMock.mockResolvedValue(new Response('', { status: 200 }))
 
-    const result = await apiMutate('/api/test', { method: 'DELETE' }, z.null())
+    const result = await api.apiMutate('/api/test', { method: 'DELETE' }, z.null())
 
     expect(result).toBeNull()
   })
@@ -133,32 +148,32 @@ describe('apiMutate', () => {
   it('非 2xx なら ApiError を投げる', async () => {
     fetchMock.mockResolvedValue(jsonResponse(409, { message: 'conflict' }))
 
-    await expect(apiMutate('/api/test', { method: 'PUT', body: {} }, z.object({}))).rejects.toThrow(
-      'conflict',
-    )
+    await expect(
+      api.apiMutate('/api/test', { method: 'PUT', body: {} }, z.object({})),
+    ).rejects.toThrow('conflict')
   })
 })
 
 describe('ApiError', () => {
   it('JSON ボディの message をエラーメッセージに使う', () => {
-    const error = new ApiError(400, JSON.stringify({ message: '入力が不正です' }))
+    const error = new api.ApiError(400, JSON.stringify({ message: '入力が不正です' }))
     expect(error.message).toBe('入力が不正です')
     expect(error.status).toBe(400)
   })
 
   it('JSON でないボディはそのままメッセージに使う', () => {
-    const error = new ApiError(500, 'Internal Server Error')
+    const error = new api.ApiError(500, 'Internal Server Error')
     expect(error.message).toBe('Internal Server Error')
   })
 
   it('空ボディならステータス入りの既定メッセージを使う', () => {
-    const error = new ApiError(502, '')
+    const error = new api.ApiError(502, '')
     expect(error.message).toBe('API error 502')
   })
 
   it('message フィールドが文字列でなければボディ全体を使う', () => {
     const body = JSON.stringify({ message: 123 })
-    const error = new ApiError(400, body)
+    const error = new api.ApiError(400, body)
     expect(error.message).toBe(body)
   })
 })
