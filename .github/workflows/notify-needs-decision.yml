@@ -1,7 +1,7 @@
 # 無人モード(backlog Routine)の判断待ちをメール通知につなげるワークフロー。
 #
 # GitHub は「自分自身の操作」を通知しないため、Routine があなたのアカウントで
-# 作った Issue / Draft PR はそのままでは通知されない。github-actions bot という
+# 作った Issue / PR はそのままでは通知されない。github-actions bot という
 # 別のアクターから assign / @メンションを行うことで Participating 通知(メール)を
 # 発生させる。運用ドキュメント: docs/automation/backlog-routine.md の「通知」節。
 

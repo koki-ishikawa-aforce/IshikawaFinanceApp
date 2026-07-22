@@ -86,15 +86,15 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
 
 1. **撤退時の確認**(受け入れ条件が曖昧・設計判断が分かれる) → 元 Issue に判断依頼コメント + `needs-decision`
 2. **見送り追認**(`/ddd-review` suggestion の見送りなど) → 新規 Issue + `needs-decision`
-3. **マージ判断** → Draft PR ごとに新規 Issue + `needs-decision`
+3. **マージ判断** → 無人モードが作成した PR ごとに新規 Issue + `needs-decision`
 
 これによりユーザーは `is:issue is:open label:needs-decision` の一覧だけで判断すべきことを全量把握でき、ラベル付与をトリガーに通知ワークフロー(`.github/workflows/notify-needs-decision.yml`)がメール通知を発生させる。
 
-判断依頼・Draft PR の本文を書く前に、**必ず対応するテンプレート(`templates/judgment-issue.md` / `templates/draft-pr.md`)を読み**、そのフォーマットで書く。
+判断依頼・PR の本文を書く前に、**必ず対応するテンプレート(`templates/judgment-issue.md` / `templates/pr-body.md`)を読み**、そのフォーマットで書く。
 
 ### 人間向け報告の執筆ルール
 
-判断依頼 Issue・コメント・Draft PR 本文など、人間が読む出力すべてに適用する:
+判断依頼 Issue・コメント・PR 本文など、人間が読む出力すべてに適用する:
 
 - 読み手はこのセッションの経緯を**一切見ていない**前提で書く。前置きなしにセッション中の出来事や検討過程へ言及しない
 - 冒頭に「何の機能の話か」をアプリを使う人の言葉で1〜3行書く(技術構成ではなく「使う人に何が起きるか」で説明する)
@@ -105,9 +105,9 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
 
 ### 手順0の代替: 着手判定
 
-1. **WIP 上限チェック**: open な Draft PR の件数を数える:
+1. **WIP 上限チェック**: open な PR の件数を数える:
    ```bash
-   gh pr list --state open --json isDraft --jq '[.[] | select(.isDraft)] | length'
+   gh pr list --state open --json number --jq 'length'
    ```
    **3件以上**なら新規着手せず、「WIP 上限のためスキップ」と報告して終了する(レビュー待ち PR が溜まった状態で着手を重ねると、PR 同士のコンフリクトと依存切れを招くため)
 2. **候補選定**: `gh issue list --state open --label "ready-to-implement" --json number,title,labels,assignees,body,createdAt` から、以下をすべて満たす Issue を1件選ぶ:
@@ -129,10 +129,10 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
   (`needs-decision` はユーザーが回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外になる)
 - `/ddd-review` の suggestion でユーザーの意思決定が必要なもの(見送り例外に該当)は、既存ルール通り Issue 化する。その Issue も `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする
 
-### 手順6の差分: Draft PR とマージ判断 Issue
+### 手順6の差分: PR 作成とマージ判断 Issue
 
-- PR 本文は `templates/draft-pr.md` のフォーマットで書き、`gh pr create --draft` で **Draft PR** として作成する。マージ判断は必ず人間が行う(自動マージ・ready 化は禁止)
-- Draft PR 作成後、**マージ判断 Issue** を作成する:
+- PR 本文は `templates/pr-body.md` のフォーマットで書き、通常の PR(Draft ではない)として作成する。ただし**マージ判断は必ず人間が行う**(自動マージは禁止。マージは `/decide` セッション内の明示承認か、ユーザー自身の操作でのみ行われる)
+- PR 作成後、**マージ判断 Issue** を作成する:
   - タイトル: `[マージ判断] PR #<PR番号> <PRタイトル>`
   - 本文: `templates/judgment-issue.md` に従い、先頭にマーカー `<!-- merge-judgment-pr: <PR番号> -->` を含める(PR のマージ/クローズ時に通知ワークフローがこの Issue を自動クローズするための目印)
   - ラベル: `needs-decision`

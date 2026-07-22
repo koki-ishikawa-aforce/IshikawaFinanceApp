@@ -24,7 +24,7 @@ description: needs-decision ラベル付きの判断待ち Issue を1件ずつ�
 gh issue list --state open --label "needs-decision" --json number,title,body,labels,assignees,createdAt,url
 ```
 
-0件なら「判断待ちなし」と報告して終了する。その際、保険としてマージ判断 Issue が作られていない open Draft PR がないかを確認し(`gh pr list --state open --json number,isDraft,title`)、あれば列挙する。
+0件なら「判断待ちなし」と報告して終了する。その際、保険としてマージ判断 Issue が作られていない open PR がないかを確認し(`gh pr list --state open --json number,title`)、あれば列挙する。
 
 各 Issue を3種に分類する:
 
@@ -40,7 +40,7 @@ gh issue list --state open --label "needs-decision" --json number,title,body,lab
 
 全量を表(番号・種別・タイトル・作成日)で提示する。推奨順:
 
-1. マージ判断(Draft PR を減らすと WIP 上限が解放され、次の fire が進む)
+1. マージ判断(open PR を減らすと WIP 上限が解放され、次の fire が進む)
 2. 撤退時の確認(`ready-to-implement` を付け直すと Routine が再稼働する)
 3. 見送り追認
 
@@ -74,7 +74,7 @@ stale は末尾に「後始末」として載せる。AskUserQuestion で「こ�
 
 #### 3c. マージ判断 Issue(Issue 自体のラベル・状態は操作しない)
 
-- **マージ承認**: `gh pr ready <PR番号>` → `gh pr merge <PR番号> --squash --delete-branch`(マージ方式はリポジトリの既定に合わせる)。マージ後、通知ワークフローが判断 Issue を自動クローズしたことを確認する。閉じていなければ(マーカー欠落など)経緯をコメントして手動クローズする
+- **マージ承認**: `gh pr merge <PR番号> --squash --delete-branch`(マージ方式はリポジトリの既定に合わせる。PR が Draft のまま残っている場合のみ先に `gh pr ready <PR番号>`)。マージ後、通知ワークフローが判断 Issue を自動クローズしたことを確認する。閉じていなければ(マーカー欠落など)経緯をコメントして手動クローズする
 - **修正してから**: PR に具体的な修正依頼をコメントし、判断 Issue に「修正待ち」と記録する。`needs-decision` は残す(次回セッションで再判断)
 - **不採用**: 理由をコメントし `gh pr close <PR番号> --delete-branch`(判断 Issue は自動クローズされる)
 - **stale**(PR が既に merged / closed): 唯一の手動クローズ例外。経緯を1行コメントして判断 Issue をクローズする
@@ -113,7 +113,7 @@ git fetch origin main && git switch -c docs/decision-session-<YYYYMMDD> origin/m
 
 ## エッジケース
 
-- **0件**: 手順1で報告して終了。判断 Issue のない open Draft PR だけ保険で列挙する
+- **0件**: 手順1で報告して終了。判断 Issue のない open PR だけ保険で列挙する
 - **スキップ**: 状態変更ゼロ。最終報告の残件に載せる
 - **解決済み論点との矛盾**: 手順3-2 で提示し、上書きが確定したら `✅(改訂)` パターンで旧行を改訂する
 - **自由回答が選択肢の枠を超える(新要件になっている)**: 全文を決定コメントに記録したうえで `/issue-create` での Issue 化を提案し、その件は `needs-decision` を残してスキップ扱いにする
