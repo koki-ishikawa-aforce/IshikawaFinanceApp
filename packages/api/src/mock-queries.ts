@@ -1,11 +1,18 @@
 import {
   AccountBalanceListViewSchema,
+  InvariantViolationError,
+  detectSpouseCompletion,
   AssetTotalViewSchema,
   BalanceTimeSeriesViewSchema,
   ExpenseSettlementManagementViewSchema,
 } from '@warimaru/domain'
 import type {
   AccountBalanceQuery,
+  Allowlist,
+  AllowlistQuery,
+  AppUser,
+  AppUserRepository,
+  SpouseCompletionQuery,
   BalanceTimeSeriesQuery,
   CsvImportStatusQuery,
   ExpenseSettlementManagementQuery,
@@ -86,6 +93,46 @@ export function createMockCsvImportStatusQuery(): CsvImportStatusQuery {
   return {
     async fetchCompletion() {
       return null
+    },
+  }
+}
+
+export function createMockAllowlistQuery(allowlist: Allowlist): AllowlistQuery {
+  return {
+    async fetch() {
+      return allowlist
+    },
+  }
+}
+
+/**
+ * SpouseCompletionQuery のインメモリ実装。
+ * 判定規約はドメイン関数 `detectSpouseCompletion`（Neon 実装と共通）に委譲する。
+ */
+export function createMockSpouseCompletionQuery(
+  appUserRepository: AppUserRepository,
+  allowlist: Allowlist,
+): SpouseCompletionQuery {
+  return {
+    async check(viewerId) {
+      const users = [
+        await appUserRepository.findByRole('honey'),
+        await appUserRepository.findByRole('darling'),
+      ].filter((u): u is AppUser => u !== null)
+      return detectSpouseCompletion(viewerId, users, {
+        resolveSpouseUserId: () => {
+          if (allowlist.honeyLineUserId === viewerId) {
+            return Promise.resolve(allowlist.darlingLineUserId)
+          }
+          if (allowlist.darlingLineUserId === viewerId) {
+            return Promise.resolve(allowlist.honeyLineUserId)
+          }
+          return Promise.reject(
+            new InvariantViolationError(`viewer ${viewerId} は許可リストに含まれていない`),
+          )
+        },
+        now: () => new Date(),
+      })
     },
   }
 }

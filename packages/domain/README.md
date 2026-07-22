@@ -64,9 +64,10 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### onboarding-auth（オンボーディング・認証、08f）
 
-- 集約: `AppUser`（`phase1_completed` → `phase2_in_progress` → `phase2_completed` → `operation_started`、論点8 順序強制）, `GmailOAuthToken`（`valid` / `revocation_detected`）
-- 値オブジェクト: `Nickname`（≤10 文字・省略可、Phase 3.5）, `Phase2Progress`, `LineOperationSettings`, `RoleJudgment`, `SpouseCompletionResult`, `GmailOAuthTokenRef`, `InitialBalanceRegistrationRef`
+- 集約: `AppUser`（`phase1_completed` → `phase2_in_progress` → `phase2_completed` → `operation_started`、論点8 順序強制。登録 `registerAppUser` / ニックネーム変更 `changeNickname` / LINE 運用設定の事前蓄積 `recordLineFriendAdded` / `recordTalkRoomJoined` / `activateNotification`（+ 読取り `lineOperationSettingsOf`、運用開始発火 `startOperation` で集約直下へ昇格）/ Phase2 セクション遷移 `completeSectionA` / `completeSectionB` / `completeSectionF` / `skipSectionF` / 配偶者完了検知 `detectSpouseCompletion`（論点19 の判定規約、Query 実装が共有）を含む）, `GmailOAuthToken`（`valid` / `revocation_detected`）
+- 値オブジェクト: `Nickname`（≤10 文字・省略可、Phase 3.5）, `Phase2Progress`, `LineOperationSettings`, `RoleJudgment`（+ 役割判定 `judgeRole`、許可リスト照合）, `SpouseCompletionResult`, `GmailOAuthTokenRef`, `InitialBalanceRegistrationRef`
 - Repository I/F: `AppUserRepository`, `GmailOAuthTokenRepository`
+- Service I/F（ACL 翻訳層の driven port、実装は api 層）: `GmailOAuthGateway`（OQ-7、トークン実体は Parameter Store へ保管しドメインはパスのみ受領）
 - Query I/F: `SpouseCompletionQuery`（論点19: 画面ロード時のみ）
 - ドメインイベント: `RoleJudged`, `GmailOauthRevocationDetected`（OAuth 所有者として一元宣言）ほか 20 種
 

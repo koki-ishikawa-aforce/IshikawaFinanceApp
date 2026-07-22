@@ -11,7 +11,10 @@
  */
 import { z } from 'zod'
 import { UserIdSchema } from '../../shared/ids'
-import { ParameterStorePathSchema } from '../../shared/value-objects/ParameterStorePath'
+import {
+  ParameterStorePathSchema,
+  type ParameterStorePath,
+} from '../../shared/value-objects/ParameterStorePath'
 
 export const TokenRevocationReasonSchema = z.enum(['api_call_failure', 'expired'])
 export type TokenRevocationReason = z.infer<typeof TokenRevocationReasonSchema>
@@ -54,12 +57,19 @@ export function detectTokenRevocation(
   }) as RevokedGmailOAuthToken
 }
 
-/** 状態遷移: 失効検知済み → 有効（再認可完了。メール取込が再開される） */
-export function reauthorizeToken(token: RevokedGmailOAuthToken, at: Date): ValidGmailOAuthToken {
+/**
+ * 状態遷移: 失効検知済み → 有効（再認可完了。メール取込が再開される）
+ * tokenStoreRef 省略時は既存の保管先を維持する（再認可で保管先が変わる場合は明示的に渡す）。
+ */
+export function reauthorizeToken(
+  token: RevokedGmailOAuthToken,
+  at: Date,
+  tokenStoreRef: ParameterStorePath = token.tokenStoreRef,
+): ValidGmailOAuthToken {
   return GmailOAuthTokenSchema.parse({
     kind: 'valid',
     userId: token.userId,
-    tokenStoreRef: token.tokenStoreRef,
+    tokenStoreRef,
     authorizedAt: at,
     lastVerifiedAt: at,
   }) as ValidGmailOAuthToken

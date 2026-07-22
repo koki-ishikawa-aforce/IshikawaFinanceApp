@@ -2,8 +2,11 @@
  * DATABASE_URL 未設定時（開発モード）のインメモリ Repository 実装。
  * プロセス再起動でデータは消える。永続化・一意制約の最終保証は Neon 実装側が担う。
  */
+import { InvariantViolationError } from '@warimaru/domain'
 import type {
   AmazonProductKey,
+  AppUser,
+  AppUserRepository,
   AmazonProductKeyLearningRule,
   AmazonProductKeyLearningRuleRepository,
   BulkClassificationSession,
@@ -29,6 +32,8 @@ import type {
   ExpenseTypeMaster,
   ExpenseTypeMasterRepository,
   GmailMessageId,
+  GmailOAuthToken,
+  GmailOAuthTokenRepository,
   ImportBatchId,
   ImportJobId,
   MerchantLearningRule,
@@ -57,9 +62,9 @@ import type {
   TransactionRepository,
   UploadFileId,
   UserId,
+  UserRole,
   YearMonth,
 } from '@warimaru/domain'
-import { InvariantViolationError } from '@warimaru/domain'
 
 /** JST（UTC+9）暦日ベースの 'YYYY-MM' / 'YYYY-MM-DD'（Neon 実装の月境界規約に合わせる） */
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000
@@ -430,6 +435,42 @@ export function createMockExpenseReimbursementDepositRepository(): ExpenseReimbu
     },
     async save(deposit: ExpenseReimbursementDeposit) {
       store.set(deposit.common.expenseReimbursementId, deposit)
+    },
+  }
+}
+
+export function createMockAppUserRepository(): AppUserRepository {
+  const store = new Map<string, AppUser>()
+  return {
+    async findById(id: UserId) {
+      return store.get(id) ?? null
+    },
+    async findByRole(role: UserRole) {
+      return [...store.values()].find(u => u.common.role === role) ?? null
+    },
+    async save(user: AppUser) {
+      // Neon 実装の unique (role) と同じ「Honey / Darling 各 1 名」を模倣する
+      const conflict = [...store.values()].find(
+        u => u.common.role === user.common.role && u.common.userId !== user.common.userId,
+      )
+      if (conflict !== undefined) {
+        throw new InvariantViolationError(
+          `役割 ${user.common.role} のユーザーは既に存在する（Honey / Darling 各 1 名）`,
+        )
+      }
+      store.set(user.common.userId, user)
+    },
+  }
+}
+
+export function createMockGmailOAuthTokenRepository(): GmailOAuthTokenRepository {
+  const store = new Map<string, GmailOAuthToken>()
+  return {
+    async findByUserId(userId: UserId) {
+      return store.get(userId) ?? null
+    },
+    async save(token: GmailOAuthToken) {
+      store.set(token.userId, token)
     },
   }
 }
