@@ -24,9 +24,11 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 
 | ラベル | 付ける人 | 意味 |
 | --- | --- | --- |
-| `ready-to-implement` | 人間 | 無人実装してよい(受け入れ条件が明確で、依存する先行 Issue がすべてクローズ済み) |
+| `ready-to-implement` | 人間 / `/backlog-ready` | 無人実装してよい(受け入れ条件が明確で、依存する先行 Issue がすべてクローズ済み) |
 | `status:in-progress` | 無人モード | 着手中(fire 間の排他ロック)。対話モードの着手宣言と共通 |
 | `needs-clarification` | 無人モード | 受け入れ条件が曖昧で撤退した。Issue のコメントに確認事項あり。人間が回答して `ready-to-implement` を付け直すまで対象外 |
+
+ready 化は手動のほか、`/backlog-ready` スキル(`.claude/skills/backlog-ready/SKILL.md`)でまとめて行える。open Issue を「リポジトリ内で完結・受け入れ条件が検証可能・依存解決済み・設計判断なし・1 PR 粒度」の基準で判定し、該当分にラベルを付けて ready/見送りの一覧を報告する。判定は保守的(迷ったら付けない)。
 
 ラベルの初回作成(冪等):
 
@@ -39,7 +41,7 @@ gh label create "needs-clarification" --color D93F0B --description "受け入れ
 
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する(Routine はクラウド側で動くため、手元のセッションや PC の状態に依存しない)。
 
-- **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。ネットワークポリシーは `gh` と pnpm install が通る設定にする
+- **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。ネットワークポリシーは pnpm install と GitHub 操作が通る設定にする。`gh` CLI が無い環境でも動くよう、スキル側は GitHub MCP ツールへのフォールバックを定めている(issue-work スキルの「実行環境の注意」)
 - **Trigger**: Schedule、毎時(消化ペースを落としたい場合は間隔を広げる)
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):
