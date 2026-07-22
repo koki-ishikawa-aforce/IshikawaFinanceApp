@@ -1,4 +1,4 @@
-import type { UserId, TransactionId } from '../../shared/ids'
+import type { UserId, TransactionId, CategoryId } from '../../shared/ids'
 import type { YearMonth } from '../../shared/value-objects/YearMonth'
 import type { ExpenseClass } from '../../shared/value-objects/ExpenseClass'
 import type { TransactionListItem } from './views/TransactionListItem'
@@ -6,6 +6,7 @@ import type { TransactionListItem } from './views/TransactionListItem'
 export interface TransactionListFilter {
   month: YearMonth
   expenseClass?: ExpenseClass
+  categoryId?: CategoryId
   isUnclassifiedOnly?: boolean
 }
 

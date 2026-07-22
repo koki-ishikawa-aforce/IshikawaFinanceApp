@@ -33,10 +33,11 @@ describe('GET /api/transactions', () => {
       },
     }
     const t = createTestApp({ transactionListQuery: stub })
+    const categoryId = newUlid()
     const res = await request(
       t.app,
       'GET',
-      '/api/transactions?month=2026-07&expenseClass=household&isUnclassifiedOnly=true',
+      `/api/transactions?month=2026-07&expenseClass=household&categoryId=${categoryId}&isUnclassifiedOnly=true`,
     )
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual([])
@@ -45,6 +46,7 @@ describe('GET /api/transactions', () => {
     expect(calls[0]?.filter).toEqual({
       month: '2026-07',
       expenseClass: 'household',
+      categoryId,
       isUnclassifiedOnly: true,
     })
   })
@@ -58,6 +60,12 @@ describe('GET /api/transactions', () => {
   it('expenseClass が不正な値なら 400', async () => {
     const t = createTestApp()
     const res = await request(t.app, 'GET', '/api/transactions?month=2026-07&expenseClass=food')
+    expect(res.status).toBe(400)
+  })
+
+  it('categoryId が ULID でなければ 400', async () => {
+    const t = createTestApp()
+    const res = await request(t.app, 'GET', '/api/transactions?month=2026-07&categoryId=not-a-ulid')
     expect(res.status).toBe(400)
   })
 })
