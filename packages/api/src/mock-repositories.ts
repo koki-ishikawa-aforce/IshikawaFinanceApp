@@ -40,6 +40,9 @@ import type {
   MonthlyLimit,
   MonthlyLimitId,
   MonthlyLimitRepository,
+  MonthlyReport,
+  MonthlyReportId,
+  MonthlyReportRepository,
   PdfToCsvConverter,
   ProratedChildTransaction,
   ProratedChildTransactionRepository,
@@ -367,6 +370,22 @@ export function createMockMonthlyExpenseCycleRepository(): MonthlyExpenseCycleRe
     },
     async save(cycle: MonthlyExpenseCycle) {
       store.set(cycle.common.monthlyExpenseCycleId, cycle)
+    },
+  }
+}
+
+export function createMockMonthlyReportRepository(): MonthlyReportRepository {
+  const store = new Map<string, MonthlyReport>()
+  return {
+    async findById(id: MonthlyReportId) {
+      return store.get(id) ?? null
+    },
+    async findByMonth(month: YearMonth) {
+      // target_year_month UNIQUE（Neon 実装と同じく 0..1 件）
+      return [...store.values()].find(r => r.common.targetYearMonth === month) ?? null
+    },
+    async save(report: MonthlyReport) {
+      store.set(report.common.monthlyReportId, report)
     },
   }
 }
