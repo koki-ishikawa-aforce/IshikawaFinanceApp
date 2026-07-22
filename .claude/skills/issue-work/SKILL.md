@@ -80,6 +80,29 @@ PR が green になったら、PR の URL と受け入れ条件の充足状況�
 
 Routine のセットアップ手順とラベル運用は `docs/automation/backlog-routine.md` を参照。無人モードでは以下の差分を適用する。**1回の起動で処理するのは1 Issue のみ**。完了しても次の Issue には進まない(次の fire が拾う)。
 
+### 原則: 人間の判断は Issue に集約する
+
+無人モードでユーザーの判断が必要になったら、種類を問わず **`needs-decision` ラベル付きの Issue** に集約する(チャットの最終報告や PR 本文だけに書いて済ませない)。判断が必要な事象は3種:
+
+1. **撤退時の確認**(受け入れ条件が曖昧・設計判断が分かれる) → 元 Issue に判断依頼コメント + `needs-decision`
+2. **見送り追認**(`/ddd-review` suggestion の見送りなど) → 新規 Issue + `needs-decision`
+3. **マージ判断** → Draft PR ごとに新規 Issue + `needs-decision`
+
+これによりユーザーは `is:issue is:open label:needs-decision` の一覧だけで判断すべきことを全量把握でき、ラベル付与をトリガーに通知ワークフロー(`.github/workflows/notify-needs-decision.yml`)がメール通知を発生させる。
+
+判断依頼・Draft PR の本文を書く前に、**必ず対応するテンプレート(`templates/judgment-issue.md` / `templates/draft-pr.md`)を読み**、そのフォーマットで書く。
+
+### 人間向け報告の執筆ルール
+
+判断依頼 Issue・コメント・Draft PR 本文など、人間が読む出力すべてに適用する:
+
+- 読み手はこのセッションの経緯を**一切見ていない**前提で書く。前置きなしにセッション中の出来事や検討過程へ言及しない
+- 冒頭に「何の機能の話か」をアプリを使う人の言葉で1〜3行書く(技術構成ではなく「使う人に何が起きるか」で説明する)
+- 判断依頼は「質問1文(疑問文)→ 選択肢 → 各選択肢を選んだ場合の影響」の順で書く
+- 専門用語・略語には初出時に括弧で平易な説明を添える(例: 「fail-open(異常時にチェックを素通しにしてしまう状態)」)
+- 結論・質問を先頭に置き、技術詳細は後ろに回す。体言止めや用語の羅列を避け、主語と述語のある文で書く
+- 量より選別。判断に影響しない詳細は書かない
+
 ### 手順0の代替: 着手判定
 
 1. **WIP 上限チェック**: open な Draft PR の件数を数える:
@@ -88,25 +111,29 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
    ```
    **3件以上**なら新規着手せず、「WIP 上限のためスキップ」と報告して終了する(レビュー待ち PR が溜まった状態で着手を重ねると、PR 同士のコンフリクトと依存切れを招くため)
 2. **候補選定**: `gh issue list --state open --label "ready-to-implement" --json number,title,labels,assignees,body,createdAt` から、以下をすべて満たす Issue を1件選ぶ:
-   - `status:in-progress` / `needs-clarification` ラベルが付いていない
+   - `status:in-progress` / `needs-decision` ラベルが付いていない
    - 誰にも assign されていない
    - 本文の「依存」「先行」「関連」に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)。依存待ちの ready Issue は正常な状態であり、条件を満たすまで単にスキップして次候補を見る(先行 Issue のマージ後、以降の fire が自動で拾う)
      優先順は `priority:high` → 作成が古い順。候補が1件もなければ「ready な Issue なし」と報告して終了する
 3. **排他ロック**: 選定したら手順1より前に直ちに `status:in-progress` ラベルを付与する(手順2のコマンドを前倒しで実行)。これが並行する fire との排他ロックになる
 4. 選定理由はユーザーに確認せず、最終報告に含める
 
-### 手順1・5の差分: 確認の代わりに撤退
+### 手順1・5の差分: 確認の代わりに判断依頼を残して撤退
 
-- 受け入れ条件が曖昧、または設計判断が分かれる場合は**実装しない**。確認したい点を Issue にコメントで残し、ラベルを付け替えて終了する:
+- 受け入れ条件が曖昧、または設計判断が分かれる場合は**実装しない**。`templates/judgment-issue.md` のフォーマットで判断依頼を元 Issue にコメントし、ラベルを付け替えて終了する:
   ```bash
-  gh issue comment <番号> --body "<確認したい点>"
-  gh label create "needs-clarification" --color D93F0B --description "受け入れ条件の確認待ち" 2>/dev/null || true
-  gh issue edit <番号> --add-label "needs-clarification" --remove-label "ready-to-implement" --remove-label "status:in-progress"
+  gh issue comment <番号> --body "<templates/judgment-issue.md に従った判断依頼>"
+  gh label create "needs-decision" --color D93F0B --description "人間の判断待ち" 2>/dev/null || true
+  gh issue edit <番号> --add-label "needs-decision" --remove-label "ready-to-implement" --remove-label "status:in-progress"
   ```
-  (`needs-clarification` はユーザーが回答して `ready-to-implement` を付け直すまで無人モードの対象外になる)
-- `/ddd-review` の suggestion でユーザーの意思決定が必要なもの(見送り例外に該当)は、既存ルール通り Issue 化したうえで、PR 本文の「レビューで見送った点」に列挙する
+  (`needs-decision` はユーザーが回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外になる)
+- `/ddd-review` の suggestion でユーザーの意思決定が必要なもの(見送り例外に該当)は、既存ルール通り Issue 化する。その Issue も `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする
 
-### 手順6の差分: Draft PR で止める
+### 手順6の差分: Draft PR とマージ判断 Issue
 
-- `gh pr create --draft` で **Draft PR** として作成する。マージ判断は必ず人間が行う(自動マージ・ready 化は禁止)
-- CI が green になったら、PR の URL・受け入れ条件の充足状況・選定理由を最終報告して終了する。CI が失敗した場合の修正ループは対話モードと同じだが、同一エラーで3回失敗したら PR にその旨をコメントして終了する(無限リトライ禁止)
+- PR 本文は `templates/draft-pr.md` のフォーマットで書き、`gh pr create --draft` で **Draft PR** として作成する。マージ判断は必ず人間が行う(自動マージ・ready 化は禁止)
+- Draft PR 作成後、**マージ判断 Issue** を作成する:
+  - タイトル: `[マージ判断] PR #<PR番号> <PRタイトル>`
+  - 本文: `templates/judgment-issue.md` に従い、先頭にマーカー `<!-- merge-judgment-pr: <PR番号> -->` を含める(PR のマージ/クローズ時に通知ワークフローがこの Issue を自動クローズするための目印)
+  - ラベル: `needs-decision`
+- CI が green になったら、PR とマージ判断 Issue の URL・受け入れ条件の充足状況・選定理由を最終報告して終了する。CI が失敗した場合の修正ループは対話モードと同じだが、同一エラーで3回失敗したらマージ判断 Issue に状況(何が失敗し、何を試したか)を執筆ルールに従ってコメントして終了する(無限リトライ禁止)

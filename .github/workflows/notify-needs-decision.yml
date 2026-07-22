@@ -1,0 +1,90 @@
+# 無人モード(backlog Routine)の判断待ちをメール通知につなげるワークフロー。
+#
+# GitHub は「自分自身の操作」を通知しないため、Routine があなたのアカウントで
+# 作った Issue / Draft PR はそのままでは通知されない。github-actions bot という
+# 別のアクターから assign / @メンションを行うことで Participating 通知(メール)を
+# 発生させる。運用ドキュメント: docs/automation/backlog-routine.md の「通知」節。
+
+name: Notify needs-decision
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [opened, closed]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  # Issue に needs-decision が付いたら、リポジトリオーナーを assign して @メンションする
+  notify-judgment-issue:
+    if: github.event_name == 'issues' && github.event.label.name == 'needs-decision'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.issue.number;
+            await github.rest.issues.addAssignees({ owner, repo, issue_number, assignees: [owner] });
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: `@${owner} あなたの判断が必要です。本文の「判断してほしいこと」を確認してください。`,
+            });
+
+  # Draft PR が作られたらオーナーを assign する(マージ判断 Issue が作られなかった場合の保険通知)
+  notify-draft-pr:
+    if: github.event_name == 'pull_request' && github.event.action == 'opened' && github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            await github.rest.issues.addAssignees({
+              owner,
+              repo,
+              issue_number: context.payload.pull_request.number,
+              assignees: [owner],
+            });
+
+  # PR がマージ/クローズされたら、対応するマージ判断 Issue を自動クローズする
+  close-merge-judgment:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const marker = `<!-- merge-judgment-pr: ${pr.number} -->`;
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              labels: 'needs-decision',
+              per_page: 100,
+            });
+            for (const issue of issues) {
+              if (issue.pull_request) continue; // PR は対象外(Issues API は PR も返すため)
+              if (!(issue.body ?? '').includes(marker)) continue;
+              const outcome = pr.merged ? 'マージされた' : 'マージせずクローズされた';
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: `PR #${pr.number} が${outcome}ため、このマージ判断 Issue を自動クローズします。`,
+              });
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: pr.merged ? 'completed' : 'not_planned',
+              });
+            }
