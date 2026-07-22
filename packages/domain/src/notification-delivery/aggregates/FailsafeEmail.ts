@@ -59,6 +59,21 @@ export type SendingFailsafeEmail = Extract<FailsafeEmail, { kind: 'sending' }>
 export type SentFailsafeEmail = Extract<FailsafeEmail, { kind: 'sent' }>
 export type FailedFailsafeEmail = Extract<FailsafeEmail, { kind: 'failed' }>
 
+/**
+ * フェイルセーフメールを予約する。しきい値到達済みの連続失敗カウンタ参照
+ * （causingCounterRef）を必須で受け取ることで生成条件を構造表現する。
+ */
+export function reserveFailsafeEmail(
+  common: CommonFailsafeEmailAttrs,
+  at: Date,
+): ReservedFailsafeEmail {
+  return FailsafeEmailSchema.parse({
+    kind: 'reserved',
+    common,
+    reservedAt: at,
+  }) as ReservedFailsafeEmail
+}
+
 /** 状態遷移: 送信予約済み → 送信中 */
 export function startSendingFailsafeEmail(
   email: ReservedFailsafeEmail,

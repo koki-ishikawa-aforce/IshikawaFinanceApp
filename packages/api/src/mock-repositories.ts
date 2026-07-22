@@ -19,6 +19,18 @@ import type {
   CategoryMaster,
   CategoryMasterRepository,
   ChildTransactionId,
+  ConsecutiveFailureCounter,
+  ConsecutiveFailureCounterRepository,
+  DeliveryLogId,
+  DeliveryMessage,
+  DeliveryMessageId,
+  DeliveryMessageRepository,
+  FailsafeEmail,
+  FailsafeEmailId,
+  FailsafeEmailRepository,
+  FailureCounterRef,
+  LineDeliveryLog,
+  LineDeliveryLogRepository,
   ClassifiedTransaction,
   DailyMailImportBatch,
   DailyMailImportBatchRepository,
@@ -471,6 +483,72 @@ export function createMockGmailOAuthTokenRepository(): GmailOAuthTokenRepository
     },
     async save(token: GmailOAuthToken) {
       store.set(token.userId, token)
+    },
+  }
+}
+
+// --- 通知配信 (#36) ---
+
+export function createMockDeliveryMessageRepository(): DeliveryMessageRepository {
+  const store = new Map<DeliveryMessageId, DeliveryMessage>()
+  return {
+    async findById(id: DeliveryMessageId) {
+      return store.get(id) ?? null
+    },
+    async save(message: DeliveryMessage) {
+      store.set(message.common.deliveryMessageId, message)
+    },
+  }
+}
+
+export function createMockLineDeliveryLogRepository(): LineDeliveryLogRepository {
+  const store = new Map<DeliveryLogId, LineDeliveryLog>()
+  return {
+    async findById(id: DeliveryLogId) {
+      return store.get(id) ?? null
+    },
+    async findByIdempotencyKey(idempotencyKey: string) {
+      return [...store.values()].find(log => log.idempotencyKey === idempotencyKey) ?? null
+    },
+    async save(log: LineDeliveryLog) {
+      // append-only + idempotency_key UNIQUE を Neon 実装と同じ失敗モードで再現する
+      const conflict = [...store.values()].find(
+        existing =>
+          existing.deliveryLogId === log.deliveryLogId ||
+          existing.idempotencyKey === log.idempotencyKey,
+      )
+      if (conflict !== undefined) {
+        throw new InvariantViolationError(
+          `LINE配信ログは不変の監査レコード（append-only）: ${log.deliveryLogId} / 冪等性キー ${log.idempotencyKey} は既に記録済み`,
+        )
+      }
+      store.set(log.deliveryLogId, log)
+    },
+  }
+}
+
+export function createMockFailsafeEmailRepository(): FailsafeEmailRepository {
+  const store = new Map<FailsafeEmailId, FailsafeEmail>()
+  return {
+    async findById(id: FailsafeEmailId) {
+      return store.get(id) ?? null
+    },
+    async save(email: FailsafeEmail) {
+      store.set(email.common.failsafeEmailId, email)
+    },
+  }
+}
+
+export function createMockConsecutiveFailureCounterRepository(): ConsecutiveFailureCounterRepository {
+  const store = new Map<string, ConsecutiveFailureCounter>()
+  const keyOf = (ref: FailureCounterRef): string =>
+    ref.kind === 'user' ? `user:${ref.userId}` : `talk_room:${ref.talkRoomId}`
+  return {
+    async findByRef(ref: FailureCounterRef) {
+      return store.get(keyOf(ref)) ?? null
+    },
+    async save(counter: ConsecutiveFailureCounter) {
+      store.set(keyOf(counter.counterRef), counter)
     },
   }
 }

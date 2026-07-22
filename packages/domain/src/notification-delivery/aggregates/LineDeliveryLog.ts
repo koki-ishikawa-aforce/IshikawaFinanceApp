@@ -17,9 +17,20 @@
  * スナップショット廃止（OQ-3 撤回）の代替として配信時点の値を凍結する（OQ-34）。
  */
 import { z } from 'zod'
-import { DeliveryLogIdSchema, DeliveryMessageIdSchema, LineMessageIdSchema } from '../../shared/ids'
+import {
+  DeliveryLogIdSchema,
+  DeliveryMessageIdSchema,
+  LineMessageIdSchema,
+  type DeliveryLogId,
+} from '../../shared/ids'
 import { DeliveryTargetSchema } from '../value-objects/DeliveryTarget'
-import { SendFailureReasonSchema, DeliverySkipReasonSchema } from './DeliveryMessage'
+import {
+  SendFailureReasonSchema,
+  DeliverySkipReasonSchema,
+  type SentDeliveryMessage,
+  type FailedDeliveryMessage,
+  type SkippedDeliveryMessage,
+} from './DeliveryMessage'
 
 export const DeliveryTimingKindSchema = z.enum([
   'reminder',
@@ -54,3 +65,33 @@ export const LineDeliveryLogSchema = z.object({
   idempotencyKey: z.string().min(1),
 })
 export type LineDeliveryLog = z.infer<typeof LineDeliveryLogSchema>
+
+/**
+ * 送信処理の終端状態から配信ログを組み立てる（08g §2「LINE 配信ログを保存する」）。
+ * 送信結果ステータスは配信メッセージの終端状態から導出し、配信時点の payload を
+ * json で凍結する（OQ-34）。
+ */
+export function createLineDeliveryLog(params: {
+  deliveryLogId: DeliveryLogId
+  message: SentDeliveryMessage | FailedDeliveryMessage | SkippedDeliveryMessage
+  timingKind: DeliveryTimingKind
+  sentPayloadJson: string
+  idempotencyKey: string
+}): LineDeliveryLog {
+  const { message } = params
+  const resultStatus: DeliveryResultStatus =
+    message.kind === 'sent'
+      ? { kind: 'success', lineMessageId: message.lineMessageId, sentAt: message.sentAt }
+      : message.kind === 'failed'
+        ? { kind: 'failure', failureReason: message.failureReason, failedAt: message.failedAt }
+        : { kind: 'skipped', skipReason: message.skipReason, skippedAt: message.skippedAt }
+  return LineDeliveryLogSchema.parse({
+    deliveryLogId: params.deliveryLogId,
+    deliveryMessageId: message.common.deliveryMessageId,
+    timingKind: params.timingKind,
+    target: message.common.target,
+    sentPayloadJson: params.sentPayloadJson,
+    resultStatus,
+    idempotencyKey: params.idempotencyKey,
+  })
+}

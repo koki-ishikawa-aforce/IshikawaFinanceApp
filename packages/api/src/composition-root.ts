@@ -7,16 +7,22 @@ import type {
   BulkClassificationSessionRepository,
   CategoryDeletionRequestRepository,
   CategoryMasterRepository,
+  ConsecutiveFailureCounterRepository,
   CsvImportStatusQuery,
   DailyMailImportBatchRepository,
   DashboardQuery,
+  DeliveryMessageRepository,
   EventBus,
+  FailsafeEmailGateway,
+  FailsafeEmailRepository,
   ExpenseReimbursementDepositRepository,
   ExpenseSettlementManagementQuery,
   ExpenseTypeDeletionRequestRepository,
   ExpenseTypeMasterRepository,
   GmailOAuthGateway,
   GmailOAuthTokenRepository,
+  LineDeliveryLogRepository,
+  LineMessagingGateway,
   MerchantLearningRuleRepository,
   MonthlyExpenseCycleRepository,
   MonthlyLimitRepository,
@@ -44,6 +50,11 @@ import {
   NeonBulkClassificationSessionRepository,
   NeonCategoryDeletionRequestRepository,
   NeonCategoryMasterRepository,
+  NeonConsecutiveFailureCounterRepository,
+  NeonDeliveryMessageRepository,
+  NeonFailsafeEmailRepository,
+  NeonLineChannelConfigQuery,
+  NeonLineDeliveryLogRepository,
   NeonDashboardQuery,
   NeonDailyMailImportBatchRepository,
   NeonExpenseReimbursementDepositRepository,
@@ -78,6 +89,15 @@ import {
   createSsmParameterStore,
   createUnconfiguredParameterStore,
 } from './aws/ssm-parameter-store.js'
+import { createLineMessagingGateway } from './notification/line-messaging-gateway.js'
+import {
+  createSesFailsafeEmailGateway,
+  createUnconfiguredFailsafeEmailGateway,
+} from './notification/failsafe-email-gateway.js'
+import {
+  createMockFailsafeEmailGateway,
+  createMockLineMessagingGateway,
+} from './notification/mock.js'
 import { createMockDashboardQuery } from './mock-dashboard-query.js'
 import {
   createMockTransactionListQuery,
@@ -102,6 +122,10 @@ import {
   createMockExpenseTypeDeletionRequestRepository,
   createMockExpenseTypeMasterRepository,
   createMockMerchantLearningRuleRepository,
+  createMockConsecutiveFailureCounterRepository,
+  createMockDeliveryMessageRepository,
+  createMockFailsafeEmailRepository,
+  createMockLineDeliveryLogRepository,
   createMockMonthlyExpenseCycleRepository,
   createMockMonthlyLimitRepository,
   createMockMonthlyReportRepository,
@@ -154,6 +178,17 @@ export interface AppDeps {
   spouseCompletionQuery: SpouseCompletionQuery
   allowlistQuery: AllowlistQuery
   gmailOAuthGateway: GmailOAuthGateway
+  // 通知配信 (#36): NotificationDeliveryService は createApp が本 deps から組み立てる
+  deliveryMessageRepository: DeliveryMessageRepository
+  lineDeliveryLogRepository: LineDeliveryLogRepository
+  failsafeEmailRepository: FailsafeEmailRepository
+  consecutiveFailureCounterRepository: ConsecutiveFailureCounterRepository
+  lineMessagingGateway: LineMessagingGateway
+  failsafeEmailGateway: FailsafeEmailGateway
+  /** フェイルセーフメールの宛先（FAILSAFE_EMAIL_TO、カンマ区切り。未設定なら発火を保留） */
+  failsafeEmailRecipients: string[]
+  /** フェイルセーフ発火しきい値（FAILSAFE_FAILURE_THRESHOLD。省略時はドメイン既定値） */
+  failsafeFailureThreshold?: number | undefined
 }
 
 export interface CompositionEnv {
@@ -166,6 +201,27 @@ export interface CompositionEnv {
   GMAIL_OAUTH_STATE_SECRET?: string | undefined
   /** Parameter Store（許可リスト読出し / トークン保管）の有効化判定 */
   AWS_REGION?: string | undefined
+  // フェイルセーフメール (#36)。未設定なら発火を保留 / 送信時に明示エラー
+  FAILSAFE_EMAIL_FROM?: string | undefined
+  /** カンマ区切りの宛先（夫婦各自の登録メールアドレス） */
+  FAILSAFE_EMAIL_TO?: string | undefined
+  /** フェイルセーフ発火しきい値（省略時はドメイン既定値 = 3） */
+  FAILSAFE_FAILURE_THRESHOLD?: string | undefined
+}
+
+/** FAILSAFE_EMAIL_TO（カンマ区切り）→ 宛先リスト */
+function parseFailsafeRecipients(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+}
+
+/** FAILSAFE_FAILURE_THRESHOLD → 正の整数（不正値は undefined = ドメイン既定値） */
+function parseFailsafeThreshold(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
 }
 
 export function createDeps(env: CompositionEnv): AppDeps {
@@ -216,6 +272,14 @@ export function createDeps(env: CompositionEnv): AppDeps {
       proratedChildTransactionRepository: createMockProratedChildTransactionRepository(),
       expenseReimbursementDepositRepository: createMockExpenseReimbursementDepositRepository(),
       monthlyReportRepository: createMockMonthlyReportRepository(),
+      deliveryMessageRepository: createMockDeliveryMessageRepository(),
+      lineDeliveryLogRepository: createMockLineDeliveryLogRepository(),
+      failsafeEmailRepository: createMockFailsafeEmailRepository(),
+      consecutiveFailureCounterRepository: createMockConsecutiveFailureCounterRepository(),
+      lineMessagingGateway: createMockLineMessagingGateway(),
+      failsafeEmailGateway: createMockFailsafeEmailGateway(),
+      failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
+      failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
     }
   }
 
@@ -247,6 +311,20 @@ export function createDeps(env: CompositionEnv): AppDeps {
           },
         )
       : createUnconfiguredGmailOAuthGateway()
+
+  // LINE Channel Access Token はマスタ管理（Phase0Config）の保管参照 → Parameter Store 復号
+  // で毎回解決する（08g「LINE Channel設定値を取得する」。未投入・AWS 未構成は送信失敗に翻訳される）
+  const lineChannelConfigQuery = new NeonLineChannelConfigQuery(db)
+  const lineMessagingGateway = createLineMessagingGateway({
+    resolveChannelAccessToken: async () => {
+      const config = await lineChannelConfigQuery.fetch()
+      return parameterStore.read(config.channelAccessTokenRef)
+    },
+  })
+  const failsafeEmailGateway =
+    env.AWS_REGION && env.FAILSAFE_EMAIL_FROM
+      ? createSesFailsafeEmailGateway({ fromAddress: env.FAILSAFE_EMAIL_FROM })
+      : createUnconfiguredFailsafeEmailGateway()
 
   return {
     eventBus: new InMemoryEventBus(),
@@ -287,5 +365,13 @@ export function createDeps(env: CompositionEnv): AppDeps {
     proratedChildTransactionRepository: new NeonProratedChildTransactionRepository(db),
     expenseReimbursementDepositRepository: new NeonExpenseReimbursementDepositRepository(db),
     monthlyReportRepository: new NeonMonthlyReportRepository(db),
+    deliveryMessageRepository: new NeonDeliveryMessageRepository(db),
+    lineDeliveryLogRepository: new NeonLineDeliveryLogRepository(db),
+    failsafeEmailRepository: new NeonFailsafeEmailRepository(db),
+    consecutiveFailureCounterRepository: new NeonConsecutiveFailureCounterRepository(db),
+    lineMessagingGateway,
+    failsafeEmailGateway,
+    failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
+    failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
   }
 }
