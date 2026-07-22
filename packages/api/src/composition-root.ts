@@ -17,6 +17,7 @@ import type {
   MonthlyExpenseCycleRepository,
   MonthlyLimitRepository,
   MonthlyReportQuery,
+  MonthlyReportRepository,
   PdfToCsvConverter,
   ProratedChildTransactionRepository,
   RetroactiveCandidateQuery,
@@ -42,6 +43,7 @@ import {
   NeonMerchantLearningRuleRepository,
   NeonMonthlyExpenseCycleRepository,
   NeonMonthlyLimitRepository,
+  NeonMonthlyReportRepository,
   NeonProratedChildTransactionRepository,
   NeonRetroactiveCandidateQuery,
   NeonStatementImportJobRepository,
@@ -79,6 +81,7 @@ import {
   createMockMerchantLearningRuleRepository,
   createMockMonthlyExpenseCycleRepository,
   createMockMonthlyLimitRepository,
+  createMockMonthlyReportRepository,
   createMockProratedChildTransactionRepository,
   createMockRetroactiveCandidateQuery,
   createMockStatementImportJobRepository,
@@ -120,6 +123,8 @@ export interface AppDeps {
   monthlyExpenseCycleRepository: MonthlyExpenseCycleRepository
   proratedChildTransactionRepository: ProratedChildTransactionRepository
   expenseReimbursementDepositRepository: ExpenseReimbursementDepositRepository
+  // 家計分析 (#43): サイクル確定 → 月次レポート最終確定ハンドラーが使用
+  monthlyReportRepository: MonthlyReportRepository
 }
 
 export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps {
@@ -156,6 +161,7 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
       monthlyExpenseCycleRepository: createMockMonthlyExpenseCycleRepository(),
       proratedChildTransactionRepository: createMockProratedChildTransactionRepository(),
       expenseReimbursementDepositRepository: createMockExpenseReimbursementDepositRepository(),
+      monthlyReportRepository: createMockMonthlyReportRepository(),
     }
   }
 
@@ -194,5 +200,6 @@ export function createDeps(env: { DATABASE_URL?: string | undefined }): AppDeps 
     monthlyExpenseCycleRepository: new NeonMonthlyExpenseCycleRepository(db),
     proratedChildTransactionRepository: new NeonProratedChildTransactionRepository(db),
     expenseReimbursementDepositRepository: new NeonExpenseReimbursementDepositRepository(db),
+    monthlyReportRepository: new NeonMonthlyReportRepository(db),
   }
 }

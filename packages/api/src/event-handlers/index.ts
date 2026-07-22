@@ -11,6 +11,7 @@
 import type { EventBus } from '@warimaru/domain'
 import type { AppDeps } from '../composition-root.js'
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
+import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
 
 export { domainEventBase } from './event-base.js'
 
@@ -22,5 +23,10 @@ export function registerEventHandlers(deps: AppDeps): void {
   registeredBuses.add(deps.eventBus)
   registerAutoClassificationEventHandlers(deps.eventBus, {
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
+  })
+  registerMonthlyReportFinalizationEventHandlers(deps.eventBus, {
+    monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
+    expenseReimbursementDepositRepository: deps.expenseReimbursementDepositRepository,
+    monthlyReportRepository: deps.monthlyReportRepository,
   })
 }
