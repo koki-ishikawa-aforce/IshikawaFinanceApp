@@ -65,7 +65,6 @@ import type {
   UserRole,
   YearMonth,
 } from '@warimaru/domain'
-import { InvariantViolationError } from '@warimaru/domain'
 
 /** JST（UTC+9）暦日ベースの 'YYYY-MM' / 'YYYY-MM-DD'（Neon 実装の月境界規約に合わせる） */
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000
