@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { judgeRole } from '../../../src/onboarding-auth/value-objects/RoleJudgment'
+import {
+  judgeRole,
+  resolveSpouseUserId,
+} from '../../../src/onboarding-auth/value-objects/RoleJudgment'
+import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 
 const allowlist = {
   honeyLineUserId: 'line_user_honey' as never,
@@ -30,5 +34,18 @@ describe('judgeRole（役割判定、08f §2）', () => {
       rejectedAt: at,
       reason: 'allowlist_mismatch',
     })
+  })
+})
+
+describe('resolveSpouseUserId（配偶者ID導出、08f §1）', () => {
+  it('Honey が閲覧者なら Darling を返し、逆も成り立つ', () => {
+    expect(resolveSpouseUserId('line_user_honey' as never, allowlist)).toBe('line_user_darling')
+    expect(resolveSpouseUserId('line_user_darling' as never, allowlist)).toBe('line_user_honey')
+  })
+
+  it('閲覧者が許可リストに含まれなければ不変条件違反', () => {
+    expect(() => resolveSpouseUserId('line_user_stranger' as never, allowlist)).toThrow(
+      InvariantViolationError,
+    )
   })
 })

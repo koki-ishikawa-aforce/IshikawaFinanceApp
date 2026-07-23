@@ -13,7 +13,7 @@ import type {
   SpouseCompletionResult,
   UserId,
 } from '@warimaru/domain'
-import { AppUserSchema, InvariantViolationError, detectSpouseCompletion } from '@warimaru/domain'
+import { AppUserSchema, detectSpouseCompletion, resolveSpouseUserId } from '@warimaru/domain'
 import type { Db } from '../client'
 import { appUsers } from '../schema'
 import { parsePayload } from '../serialize'
@@ -35,15 +35,9 @@ export class NeonSpouseCompletionQuery implements SpouseCompletionQuery {
     const rows = await this.db.select({ payload: appUsers.payload }).from(appUsers)
     const users = rows.map(row => parsePayload(AppUserSchema, row.payload))
     return detectSpouseCompletion(viewerId, users, {
-      resolveSpouseUserId: () => this.resolveSpouseFromAllowlist(viewerId),
+      resolveSpouseUserId: async () =>
+        resolveSpouseUserId(viewerId, await this.deps.fetchAllowlist()),
       now: this.deps.now,
     })
-  }
-
-  private async resolveSpouseFromAllowlist(viewerId: UserId): Promise<UserId> {
-    const allowlist = await this.deps.fetchAllowlist()
-    if (allowlist.honeyLineUserId === viewerId) return allowlist.darlingLineUserId
-    if (allowlist.darlingLineUserId === viewerId) return allowlist.honeyLineUserId
-    throw new InvariantViolationError(`viewer ${viewerId} は許可リストに含まれていない`)
   }
 }

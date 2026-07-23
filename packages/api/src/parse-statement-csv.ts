@@ -10,6 +10,7 @@
  * ジョブを format_validation_failed へ遷移させる。
  */
 import { normalizeMerchantName } from '@warimaru/domain'
+import { parseJstCalendarDate } from './parse-jst-calendar-date.js'
 
 export interface StatementCsvRow {
   /** 元 CSV の物理行番号（1 始まり、ヘッダー行を含む通し番号） */
@@ -22,8 +23,6 @@ export interface StatementCsvRow {
 export type StatementCsvParseResult =
   | { ok: true; rows: StatementCsvRow[] }
   | { ok: false; error: string }
-
-const DATE_REGEX = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/
 
 /** 引用符が閉じていない行は null を返す */
 function splitCsvLine(line: string): string[] | null {
@@ -57,25 +56,6 @@ function splitCsvLine(line: string): string[] | null {
   return fields
 }
 
-function parseDate(raw: string): Date | null {
-  const m = DATE_REGEX.exec(raw.trim())
-  if (m === null) return null
-  const [, y, mo, d] = m
-  const year = Number(y)
-  const month = Number(mo)
-  const day = Number(d)
-  const date = new Date(Date.UTC(year, month - 1, day))
-  // 2/30 等の繰り上がりを不正とする
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null
-  }
-  return date
-}
-
 function parseAmount(raw: string): number | null {
   const normalized = raw.trim().replace(/,/g, '').replace(/^¥/, '')
   if (!/^-?\d+$/.test(normalized)) return null
@@ -102,7 +82,7 @@ export function parseStatementCsv(content: string): StatementCsvParseResult {
     return { ok: false, error: `${first.lineNumber} 行目: 引用符が閉じていない` }
   }
   // 先頭行の第 1 フィールドが日付でなければヘッダー行として読み飛ばす
-  const startIndex = parseDate(firstFields[0] ?? '') === null ? 1 : 0
+  const startIndex = parseJstCalendarDate(firstFields[0] ?? '') === null ? 1 : 0
   const dataLines = lines.slice(startIndex)
   if (dataLines.length === 0) {
     return { ok: false, error: 'データ行が存在しない（ヘッダー行のみ）' }
@@ -117,7 +97,7 @@ export function parseStatementCsv(content: string): StatementCsvParseResult {
     if (fields.length < 3) {
       return { ok: false, error: `${lineNumber} 行目: 列数が不足している（日付,店名,金額 が必要）` }
     }
-    const occurredAt = parseDate(fields[0] ?? '')
+    const occurredAt = parseJstCalendarDate(fields[0] ?? '')
     if (occurredAt === null) {
       return { ok: false, error: `${lineNumber} 行目: 日付が不正である: ${fields[0] ?? ''}` }
     }
