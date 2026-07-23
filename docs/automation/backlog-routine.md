@@ -75,8 +75,21 @@ GitHub は**自分自身の操作を通知しない**。Routine はあなたの�
 | Issue に `needs-decision` が付いた | あなたを assignee に追加 + @メンションコメント | メール通知 |
 | PR が作成された(Draft・通常を問わない) | あなたを assignee に追加 | メール通知(マージ判断 Issue が作られなかった場合の保険も兼ねる) |
 | PR がマージ/クローズされた | 対応するマージ判断 Issue(本文の `<!-- merge-judgment-pr: N -->` マーカーで特定)を自動クローズ | 判断待ち一覧が自動で片付く |
+| PR が**マージされずに**クローズされた | その PR が `Closes #N` で紐づけていた open Issue の `status:in-progress` を自動解除 | 着手中ロックが残らず、次の fire が再着手できる(下記「ゴミロックの自動回収」) |
 
 前提条件: GitHub の [Settings → Notifications](https://github.com/settings/notifications) で「Participating, @mentions and custom」の Email が有効になっていること(既定で有効)。メールが届かない場合はまずここを確認する。
+
+## ゴミロックの自動回収
+
+`status:in-progress` は fire 間の排他ロックだが、fire が異常終了したり、実装した PR を人間が**マージせずクローズ**したりすると、ロックだけが Issue に残る(=ゴミロック)。ゴミロックが付いた Issue は候補選定から除外され続けるため、放置すると `ready-to-implement` な Issue が全部ゴミロック済みになり、**Routine が毎 fire「候補なし」でスキップし続けてバックログが完全に止まる**(2026-07-23 に実際に発生)。
+
+これを防ぐため、2つの仕組みでロックを自動回収する:
+
+1. **即時回収(GitHub Actions)** — PR が**マージされずにクローズ**されたら、`.github/workflows/notify-needs-decision.yml` の `unlock-in-progress-on-pr-close` ジョブが、その PR が `Closes #N` で紐づけていた open Issue から `status:in-progress` を外す。人間がレビューで PR を却下(クローズ)したケースを即座に解除する。`ready-to-implement` はそのままなので、次の fire が再着手する(却下したまま止めたい場合は `ready-to-implement` も外す)。
+
+2. **preflight 自己回復(issue-work スキル)** — 各 fire は候補選定の前に、`status:in-progress` 付き open Issue のうち「**紐づく open PR が無い** かつ **ロックが2時間以上前**」のものからロックを外す(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。PR を作らずに死んだ fire(即時回収の対象外)を拾う保険。ロックが2時間以上前という条件で、実装中の生きた fire との競合(誤回収→二重着手)を避ける。
+
+いずれもロックを外すだけで、`ready-to-implement` などの他ラベルには触れない。
 
 ## パラメータ(チューニングポイント)
 
@@ -84,12 +97,13 @@ GitHub は**自分自身の操作を通知しない**。Routine はあなたの�
 | --- | --- | --- |
 | WIP 上限(open な PR 数) | 3 | SKILL.md 無人モード 手順0-1 |
 | 消化ペース | 毎時1件 | Routine のスケジュール |
+| ゴミロック回収の経過時間しきい値 | 約2時間 | SKILL.md 無人モード preflight(fire のセッション寿命より十分長く保つ) |
 
 WIP 上限はレビューが追いつく範囲に保つ。未マージの PR はすべて main 起点のため、溜まるほどマージのたびに他 PR がコンフリクトしやすくなる。
 
 ## 止め方・トラブル時
 
 - **一時停止**: Routine を無効化する(claude.ai の Routines 画面)。実行中の fire には影響しない
-- **着手したまま放置された Issue**(fire が異常終了した場合など): `status:in-progress` が付いているのに対応ブランチ/PR がなければ、ラベルを外せば次の fire が再度拾う
+- **着手したまま放置された Issue**(fire が異常終了した場合など): 下記「ゴミロックの自動回収」で自動的に解除されるため、通常は手動対応不要。急ぐ場合や自動回収の条件(ロックが2時間以上前)に満たない場合は、`status:in-progress` が付いているのに対応ブランチ/PR がないことを確認して手動でラベルを外せば、次の fire が再度拾う
 - **同じ Issue で撤退が繰り返される**: `needs-decision` の判断依頼コメントに回答し、`needs-decision` を外して `ready-to-implement` を付け直す。受け入れ条件そのものを `/issue-create` の基準(検証可能なチェックボックス)で書き直すのが根本対応
 - **PR をマージしたのにマージ判断 Issue が残っている**: 通知ワークフローの自動クローズはマーカー `<!-- merge-judgment-pr: N -->` で対応 PR を特定する。マーカーが本文にない場合は手動でクローズする
