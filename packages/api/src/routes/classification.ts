@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
+  BulkClassificationCompletedSchema,
   BulkClassificationSessionIdSchema,
   BulkClassificationSessionSchema,
   ClassifiedDetailsSchema,
@@ -8,6 +9,7 @@ import {
   InvariantViolationError,
   NotFoundError,
   PermissionDeniedError,
+  RetroactiveReclassificationAppliedSchema,
   TransactionIdSchema,
   abortBulkClassificationSession,
   classify,
@@ -19,6 +21,7 @@ import type {
   BulkClassificationSession,
   BulkClassificationSessionRepository,
   ClassifiedDetails,
+  EventBus,
   InProgressBulkClassificationSession,
   MerchantLearningRuleRepository,
   RetroactiveCandidateQuery,
@@ -27,6 +30,7 @@ import type {
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { domainEventBase } from '../event-handlers/index.js'
 
 const RetroactiveParamsSchema = z.object({
   merchantName: z.string().min(1),
@@ -51,6 +55,7 @@ export interface ClassificationRoutesDeps {
   amazonProductKeyLearningRuleRepository: AmazonProductKeyLearningRuleRepository
   bulkClassificationSessionRepository: BulkClassificationSessionRepository
   transactionRepository: TransactionRepository
+  eventBus: EventBus
 }
 
 /** 学習済みの 3 軸から分類詳細を構築する（未学習軸が残る場合は適用不可） */
@@ -143,6 +148,19 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
       }
       await deps.transactionRepository.save(classify(transaction, details))
       appliedCount++
+    }
+    // 08b §3 J-3: 実際に再分類された取引がある場合のみ「過去未分類が一括再分類された」
+    // イベントを発行する。1 件も適用されなければ再分類は成立していないため発行しない。
+    // 配信は at-least-once（apply 再実行で再発行されうる）ため購読側は冪等前提。
+    if (appliedCount > 0) {
+      await deps.eventBus.publish(
+        RetroactiveReclassificationAppliedSchema.parse({
+          ...domainEventBase(),
+          type: 'RetroactiveReclassificationApplied',
+          userId: viewerId,
+          targetCount: appliedCount,
+        }),
+      )
     }
     return c.json({ merchantName, appliedCount })
   })
@@ -238,6 +256,17 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
     }
     const completed = completeBulkClassificationSession(session, processedCount, new Date())
     await deps.bulkClassificationSessionRepository.save(completed)
+    // 08b §3 N-1: セッション完了を「一括分類完了」イベントとして発行する（処理件数に
+    // 依らず完了そのものがイベント）。完了後の再実行は assertInProgress で弾かれ再発行
+    // されない（apply と違い replay できないため、この経路は実質 at-most-once）。
+    await deps.eventBus.publish(
+      BulkClassificationCompletedSchema.parse({
+        ...domainEventBase(),
+        type: 'BulkClassificationCompleted',
+        bulkClassificationSessionId: completed.common.bulkClassificationSessionId,
+        processedCount,
+      }),
+    )
     return c.json(completed)
   })
 
