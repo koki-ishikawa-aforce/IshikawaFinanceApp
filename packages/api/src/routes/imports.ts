@@ -39,6 +39,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { parseStatementCsv } from '../parse-statement-csv.js'
+import { readJsonObjectBody } from '../read-json-object-body.js'
 import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const StatusParamsSchema = z.object({
@@ -74,8 +75,11 @@ const MailBatchBodySchema = z
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
   })
-  .refine(body => body.from === undefined || body.to === undefined || body.from <= body.to, {
-    message: 'from は to 以前でなければならない',
+  // 境界での早期入力検証（不正な期間を 400 で弾く）。一次情報は
+  // DailyMailImportBatch の from < to ガード（domain）であり、ここはそれに整合させた
+  // 意図的な二重化。ガードを変えるときは両者を揃えること。
+  .refine(body => body.from === undefined || body.to === undefined || body.from < body.to, {
+    message: 'from は to より前でなければならない',
     path: ['from'],
   })
 
@@ -344,7 +348,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
   app.put('/:batchId/confirm', async c => {
     const importJobId = ImportJobIdSchema.parse(c.req.param('batchId'))
     const rawBody = await c.req.text()
-    const body = ConfirmBodySchema.parse(rawBody.length > 0 ? JSON.parse(rawBody) : {})
+    const body = ConfirmBodySchema.parse(readJsonObjectBody(rawBody))
     const viewerId = c.get('viewerId')
     const job = await deps.statementImportJobRepository.findById(importJobId)
     if (job === null) throw new NotFoundError('StatementImportJob', importJobId)
@@ -398,7 +402,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
   /** メール取込バッチの手動トリガー（EventBridge 連携前の手動実行用） */
   app.post('/mail-batch', async c => {
     const rawBody = await c.req.text()
-    const body = MailBatchBodySchema.parse(rawBody.length > 0 ? JSON.parse(rawBody) : {})
+    const body = MailBatchBodySchema.parse(readJsonObjectBody(rawBody))
     const viewerId = c.get('viewerId')
     const inProgress = await deps.dailyMailImportBatchRepository.findInProgressByUser(viewerId)
     if (inProgress !== null) {

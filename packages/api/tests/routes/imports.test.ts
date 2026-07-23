@@ -298,4 +298,22 @@ describe('POST /api/imports/mail-batch', () => {
     })
     expect(res.status).toBe(400)
   })
+
+  it('from === to は 400（ドメイン不変条件 from < to と一致）', async () => {
+    const { app } = createTestApp()
+    const res = await request(app, 'POST', '/api/imports/mail-batch', {
+      body: { from: '2026-07-10T00:00:00Z', to: '2026-07-10T00:00:00Z' },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('不正な JSON ボディは 400（500 に落ちない）', async () => {
+    const { app } = createTestApp()
+    const res = await app.request('/api/imports/mail-batch', {
+      method: 'POST',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
+    })
+    expect(res.status).toBe(400)
+  })
 })

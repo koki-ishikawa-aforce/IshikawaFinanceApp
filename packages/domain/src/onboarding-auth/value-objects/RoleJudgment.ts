@@ -8,6 +8,7 @@
 import { z } from 'zod'
 import { UserIdSchema, type UserId } from '../../shared/ids'
 import { UserRoleSchema } from '../../shared/value-objects/UserRole'
+import { InvariantViolationError } from '../../shared/errors/DomainError'
 
 export const RoleJudgmentSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -53,4 +54,23 @@ export function judgeRole(
     })
   }
   return RoleJudgmentSchema.parse({ kind: 'accepted', lineUserId, role, judgedAt: at })
+}
+
+/**
+ * 閲覧者から配偶者のユーザーIDを導出する（許可リスト照合、08f §1）
+ *
+ * 2 人世帯の許可リストで閲覧者に一致しない側を配偶者とする。配偶者行が
+ * 未登録のとき（相手が未オンボーディング）に spouseUserId を補うために使う。
+ * 閲覧者が許可リストに含まれなければ不変条件違反（`judgeRole` の拒否と同じ根拠）。
+ *
+ * 許可リストはマスタ管理からのクロスコンテキスト借用（08f §1: ID のみ借用）のため、
+ * `judgeRole` と同じく構造的型で受ける。Query 実装（Neon / モック）が共有する。
+ */
+export function resolveSpouseUserId(
+  viewerId: UserId,
+  allowlist: { honeyLineUserId: UserId; darlingLineUserId: UserId },
+): UserId {
+  if (allowlist.honeyLineUserId === viewerId) return allowlist.darlingLineUserId
+  if (allowlist.darlingLineUserId === viewerId) return allowlist.honeyLineUserId
+  throw new InvariantViolationError(`viewer ${viewerId} は許可リストに含まれていない`)
 }

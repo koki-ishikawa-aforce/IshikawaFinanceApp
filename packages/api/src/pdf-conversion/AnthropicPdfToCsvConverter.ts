@@ -23,6 +23,7 @@ import {
   type PdfToCsvConversion,
   type PdfToCsvConverter,
 } from '@warimaru/domain'
+import { parseJstCalendarDate } from '../parse-jst-calendar-date.js'
 
 /** 構造化出力スキーマ（数値制約・日付形式の検証は API 側で未サポートのためローカルで行う） */
 const ConversionOutputSchema = z.object({
@@ -51,27 +52,6 @@ const PROMPT = [
   '- statedRowCount には PDF 上の明細行を rows とは独立に数え直した総数を設定してください',
   '- statedTotalAmount には PDF に記載されているご利用金額の合計（円）を設定してください',
 ].join('\n')
-
-const DATE_REGEX = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/
-
-/** JST 暦日文字列 → UTC 深夜 0 時の Date（parse-statement-csv と同じ規約）。不正は null */
-function parseCalendarDate(raw: string): Date | null {
-  const m = DATE_REGEX.exec(raw.trim())
-  if (m === null) return null
-  const [, y, mo, d] = m
-  const year = Number(y)
-  const month = Number(mo)
-  const day = Number(d)
-  const date = new Date(Date.UTC(year, month - 1, day))
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null
-  }
-  return date
-}
 
 /** テスト差し替え用の最小クライアント I/F（実クライアントと構造的に互換） */
 export interface StructuredOutputClient {
@@ -177,7 +157,7 @@ export class AnthropicPdfToCsvConverter implements PdfToCsvConverter {
 
     const converted: ConvertedStatementRow[] = []
     for (const [index, row] of rows.entries()) {
-      const occurredAt = parseCalendarDate(row.date)
+      const occurredAt = parseJstCalendarDate(row.date)
       if (occurredAt === null) {
         return failure(
           'invalid_response_structure',

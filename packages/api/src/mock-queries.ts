@@ -1,7 +1,7 @@
 import {
   AccountBalanceListViewSchema,
-  InvariantViolationError,
   detectSpouseCompletion,
+  resolveSpouseUserId,
   AssetTotalViewSchema,
   BalanceTimeSeriesViewSchema,
   ExpenseSettlementManagementViewSchema,
@@ -120,17 +120,7 @@ export function createMockSpouseCompletionQuery(
         await appUserRepository.findByRole('darling'),
       ].filter((u): u is AppUser => u !== null)
       return detectSpouseCompletion(viewerId, users, {
-        resolveSpouseUserId: () => {
-          if (allowlist.honeyLineUserId === viewerId) {
-            return Promise.resolve(allowlist.darlingLineUserId)
-          }
-          if (allowlist.darlingLineUserId === viewerId) {
-            return Promise.resolve(allowlist.honeyLineUserId)
-          }
-          return Promise.reject(
-            new InvariantViolationError(`viewer ${viewerId} は許可リストに含まれていない`),
-          )
-        },
+        resolveSpouseUserId: () => Promise.resolve(resolveSpouseUserId(viewerId, allowlist)),
         now: () => new Date(),
       })
     },
