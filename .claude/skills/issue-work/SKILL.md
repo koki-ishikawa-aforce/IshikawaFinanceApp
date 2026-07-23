@@ -105,6 +105,13 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
 
 ### 手順0の代替: 着手判定
 
+**preflight — ゴミロックの回収(self-heal)**: 候補選定の前に、fire の異常終了や PR のクローズで放置された着手中ロックを回収する。これを怠ると、`ready-to-implement` な Issue すべてに死んだ `status:in-progress` が残り、候補が 0 件になって**毎 fire スキップし続ける**(バックログが止まる)。`status:in-progress` が付いた open Issue を列挙し、次の**両方**を満たすものから `status:in-progress` だけを外す(他ラベルは触らない):
+
+- **紐づく open な PR が無い**: PR 本文の `Closes #<番号>`、または head ブランチ `feat/issue-<番号>-*` のいずれでも open な PR に紐づかない(= 実装中の生きた fire が存在しない)
+- **ロックが古い**: `status:in-progress` の付与がおおむね2時間以上前(1 fire のセッション寿命を大きく超える)。付与直後の Issue は並行 fire が実装中の可能性があるため回収しない(誤回収による二重着手を防ぐ)
+
+回収した Issue はそのまま下の候補選定で拾い直せる(`ready-to-implement` が残っていれば対象に戻る)。回収した Issue 番号は最終報告に含める。なお PR を**未マージでクローズ**したことによるロック残りは `.github/workflows/notify-needs-decision.yml` が即時に解除するため、この preflight はおもに「PR を作らずに死んだ fire」の取りこぼしを拾う保険となる。
+
 1. **WIP 上限チェック**: open な PR の件数を数える:
    ```bash
    gh pr list --state open --json number --jq 'length'
