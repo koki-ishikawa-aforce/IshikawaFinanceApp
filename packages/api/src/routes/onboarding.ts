@@ -43,6 +43,7 @@ import {
 } from '@warimaru/domain'
 import type {
   AccountId,
+  AccountKind,
   AccountRepository,
   AllowlistQuery,
   AppUser,
@@ -94,19 +95,38 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
 
   /**
    * SectionB の事前条件「初期残高が登録された」（08f §2）をコンテキスト越しに検証する。
-   * initialBalanceRef が指す 3 口座が残高・資産推移管理コンテキストに実在する（口座は
-   * 登録と同時に初期残高を持つため、実在 = 初期残高登録済み。08d §2）ことを application 層で
-   * 照合する。ドメイン不変条件の再実装ではなく、境界づけられたコンテキスト間の参照整合性チェック。
-   * 実在しない口座 ID は NotFoundError（404）に翻訳する。
+   * initialBalanceRef が指す 3 口座について、残高・資産推移管理コンテキストとの参照整合性を
+   * application 層で照合する（ドメイン不変条件の再実装ではなく、境界づけられたコンテキスト間の
+   * 参照整合性チェック）:
+   *
+   *  - 実在: 口座が実在する（口座は登録と同時に初期残高を持つため、実在 = 初期残高登録済み。08d §2）
+   *  - 種別一致: 口座種別がフィールドの期待種別（smbcAccountId → smbc_bank /
+   *    otherSavingsAccountId → other_savings / nisaAccountId → nisa）と一致する。
+   *    3 種別は互いに異なるため、同一 ID を複数フィールドに重複指定した場合も本チェックで弾かれる
+   *  - 所有者一致: 3 口座とも viewer 本人所有（`ownerUserId === viewerId`）である。夫婦はそれぞれ
+   *    自分名義の SMBC 銀行・別銀行貯蓄・NISA 口座を持つ（01-overview.md §3、
+   *    05-scenario-b §Section B「自分名義の SMBC 普通預金残高」）ため、配偶者名義の口座 ID を
+   *    自分の初期残高として参照することを防ぐ。とりわけ SMBC 残高は本人のみ可視で秘匿性が最も
+   *    高い（05-scenario-b P2-B5）ため、所有者照合は SMBC を含む 3 口座すべてに課す。
+   *
+   * いずれの不整合も NotFoundError（404）に翻訳する。#78 が確立した実在不在（404）と契約を揃え、
+   * かつ「不在」「種別違い」「配偶者口座」を呼び出し側から区別させないことで、他者口座の存在を
+   * 探る（プロービング）余地を残さない。
    */
-  async function assertReferencedAccountsExist(ref: InitialBalanceRegistrationRef): Promise<void> {
-    const accountIds: AccountId[] = [
-      ref.smbcAccountId,
-      ref.otherSavingsAccountId,
-      ref.nisaAccountId,
+  async function assertReferencedAccountsValid(
+    ref: InitialBalanceRegistrationRef,
+    viewerId: UserId,
+  ): Promise<void> {
+    const expectations: { accountId: AccountId; kind: AccountKind }[] = [
+      { accountId: ref.smbcAccountId, kind: 'smbc_bank' },
+      { accountId: ref.otherSavingsAccountId, kind: 'other_savings' },
+      { accountId: ref.nisaAccountId, kind: 'nisa' },
     ]
-    for (const accountId of accountIds) {
-      if ((await deps.accountRepository.findById(accountId)) === null) {
+    for (const { accountId, kind } of expectations) {
+      const account = await deps.accountRepository.findById(accountId)
+      if (account === null) throw new NotFoundError('Account', accountId)
+      if (account.kind !== kind) throw new NotFoundError('Account', accountId)
+      if (account.common.ownerUserId !== viewerId) {
         throw new NotFoundError('Account', accountId)
       }
     }
@@ -281,10 +301,10 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const viewerId = c.get('viewerId')
     const user = asPhase2InProgress(await getUserOr404(viewerId))
     const now = new Date()
-    // SectionA 完了（順序強制）をドメインで検証したうえで、参照先口座の実在を照合する。
+    // SectionA 完了（順序強制）をドメインで検証したうえで、参照先口座の参照整合性を照合する。
     // completeSectionB は純粋関数のため、404 の場合は永続化前に中断される。
     const updated = completeSectionB(user, body.initialBalanceRef, now)
-    await assertReferencedAccountsExist(body.initialBalanceRef)
+    await assertReferencedAccountsValid(body.initialBalanceRef, viewerId)
     await deps.appUserRepository.save(updated)
     await deps.eventBus.publish(
       SectionBCompletedSchema.parse({

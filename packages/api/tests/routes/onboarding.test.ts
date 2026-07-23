@@ -55,24 +55,39 @@ async function completeSectionAViaOAuth(t: TestApp, viewerId = VIEWER_ID): Promi
   )
 }
 
-const INITIAL_BALANCE_REF = {
-  smbcAccountId: '01HZZZZZZZZZZZZZZZZZZZZZ01',
-  otherSavingsAccountId: '01HZZZZZZZZZZZZZZZZZZZZZ02',
-  nisaAccountId: '01HZZZZZZZZZZZZZZZZZZZZZ03',
+// 夫婦はそれぞれ自分名義の SMBC 銀行・別銀行貯蓄・NISA を持つ（01-overview.md §3、
+// 05-scenario-b §Section B）。3 口座とも所有者照合の対象のため、所有者ごとに別 ID を割り当てる。
+const VIEWER_SMBC_ID = '01HZZZZZZZZZZZZZZZZZZZZZ01'
+const VIEWER_OTHER_SAVINGS_ID = '01HZZZZZZZZZZZZZZZZZZZZZ02'
+const VIEWER_NISA_ID = '01HZZZZZZZZZZZZZZZZZZZZZ03'
+const SPOUSE_SMBC_ID = '01HZZZZZZZZZZZZZZZZZZZZZ11'
+const SPOUSE_OTHER_SAVINGS_ID = '01HZZZZZZZZZZZZZZZZZZZZZ12'
+const SPOUSE_NISA_ID = '01HZZZZZZZZZZZZZZZZZZZZZ13'
+
+/** viewer 本人名義の 3 口座（SMBC 銀行・別銀行貯蓄・NISA）を指す初期残高登録参照を組み立てる */
+function initialBalanceRefFor(ownerId: UserId): {
+  smbcAccountId: string
+  otherSavingsAccountId: string
+  nisaAccountId: string
+} {
+  const isSpouse = ownerId === SPOUSE_ID
+  return {
+    smbcAccountId: isSpouse ? SPOUSE_SMBC_ID : VIEWER_SMBC_ID,
+    otherSavingsAccountId: isSpouse ? SPOUSE_OTHER_SAVINGS_ID : VIEWER_OTHER_SAVINGS_ID,
+    nisaAccountId: isSpouse ? SPOUSE_NISA_ID : VIEWER_NISA_ID,
+  }
 }
 
-/**
- * SectionB の事前条件「初期残高が登録された」を満たすため、INITIAL_BALANCE_REF が指す
- * 3 口座（SMBC 銀行・別銀行貯蓄・NISA）を残高・資産推移管理コンテキストに先に登録しておく。
- * 参照整合チェックは実在のみを見る（所有者は問わない）ため、同一 REF を夫婦双方が参照できる。
- */
-async function seedInitialBalanceAccounts(t: TestApp, ownerId: UserId = VIEWER_ID): Promise<void> {
+const INITIAL_BALANCE_REF = initialBalanceRefFor(VIEWER_ID)
+
+/** viewer 本人名義の SMBC 銀行口座を登録する（所有者照合の対象） */
+async function seedSmbcAccount(t: TestApp, accountId: string, ownerId: UserId): Promise<void> {
   const at = new Date('2026-01-01T00:00:00Z')
   await t.deps.accountRepository.save(
     AccountSchema.parse({
       kind: 'smbc_bank',
       common: {
-        accountId: INITIAL_BALANCE_REF.smbcAccountId,
+        accountId,
         ownerUserId: ownerId,
         registeredAt: at,
         activeness: { kind: 'active' },
@@ -85,9 +100,21 @@ async function seedInitialBalanceAccounts(t: TestApp, ownerId: UserId = VIEWER_I
       },
     }),
   )
+}
+
+/**
+ * SectionB の事前条件「初期残高が登録された」を満たすため、initialBalanceRefFor(ownerId) が指す
+ * 3 口座（ownerId 名義の SMBC 銀行・別銀行貯蓄・NISA）を残高・資産推移管理コンテキストに
+ * 先に登録しておく。3 口座とも所有者照合の対象のため、参照する viewer 本人を ownerUserId として
+ * 登録する。
+ */
+async function seedInitialBalanceAccounts(t: TestApp, ownerId: UserId = VIEWER_ID): Promise<void> {
+  const at = new Date('2026-01-01T00:00:00Z')
+  const ref = initialBalanceRefFor(ownerId)
+  await seedSmbcAccount(t, ref.smbcAccountId, ownerId)
   await t.deps.accountRepository.save(
     registerOtherSavingsAccount({
-      accountId: AccountIdSchema.parse(INITIAL_BALANCE_REF.otherSavingsAccountId),
+      accountId: AccountIdSchema.parse(ref.otherSavingsAccountId),
       ownerUserId: ownerId,
       bankName: BankNameSchema.parse('楽天銀行'),
       initialBalance: money(500000),
@@ -96,7 +123,7 @@ async function seedInitialBalanceAccounts(t: TestApp, ownerId: UserId = VIEWER_I
   )
   await t.deps.accountRepository.save(
     registerNisaAccount({
-      accountId: AccountIdSchema.parse(INITIAL_BALANCE_REF.nisaAccountId),
+      accountId: AccountIdSchema.parse(ref.nisaAccountId),
       ownerUserId: ownerId,
       brokerageName: BrokerageNameSchema.parse({ kind: 'sbi' }),
       initialAccumulated: money(200000),
@@ -285,6 +312,78 @@ describe('Phase2 進捗', () => {
     expect(res.status).toBe(404)
   })
 
+  it('参照先口座の種別が期待と異なる場合は SectionB は 404（種別不一致）', async () => {
+    const t = createTestApp()
+    await startPhase2(t)
+    await completeSectionAViaOAuth(t)
+    await seedInitialBalanceAccounts(t)
+    // smbcAccountId に NISA 口座 ID を割り当て、期待種別（smbc_bank）と食い違わせる
+    const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
+      body: {
+        initialBalanceRef: {
+          ...INITIAL_BALANCE_REF,
+          smbcAccountId: INITIAL_BALANCE_REF.nisaAccountId,
+        },
+      },
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('同一口座 ID を複数フィールドに重複指定した場合は SectionB は 404（種別不一致で弾く）', async () => {
+    const t = createTestApp()
+    await startPhase2(t)
+    await completeSectionAViaOAuth(t)
+    await seedInitialBalanceAccounts(t)
+    // SMBC 口座 ID を 3 フィールド全てに指定 → 別銀行貯蓄・NISA 枠で種別不一致になる
+    const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
+      body: {
+        initialBalanceRef: {
+          smbcAccountId: INITIAL_BALANCE_REF.smbcAccountId,
+          otherSavingsAccountId: INITIAL_BALANCE_REF.smbcAccountId,
+          nisaAccountId: INITIAL_BALANCE_REF.smbcAccountId,
+        },
+      },
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('配偶者名義の別銀行貯蓄・NISA を参照した場合は SectionB は 404（所有者不一致・存在プロービング防止）', async () => {
+    const t = createTestApp()
+    await startPhase2(t) // VIEWER
+    await completeSectionAViaOAuth(t)
+    // VIEWER 本人名義の 3 口座と、配偶者名義の 3 口座を両方登録する
+    await seedInitialBalanceAccounts(t, VIEWER_ID)
+    await seedInitialBalanceAccounts(t, SPOUSE_ID)
+    // SMBC は本人名義だが、別銀行貯蓄・NISA を配偶者名義の口座 ID に差し替える
+    const spouseRef = initialBalanceRefFor(SPOUSE_ID)
+    const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
+      viewerId: VIEWER_ID,
+      body: {
+        initialBalanceRef: {
+          smbcAccountId: INITIAL_BALANCE_REF.smbcAccountId,
+          otherSavingsAccountId: spouseRef.otherSavingsAccountId,
+          nisaAccountId: spouseRef.nisaAccountId,
+        },
+      },
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('配偶者名義の SMBC 銀行口座を参照した場合も SectionB は 404（SMBC も所有者照合の対象）', async () => {
+    const t = createTestApp()
+    await startPhase2(t) // VIEWER
+    await completeSectionAViaOAuth(t)
+    // VIEWER 本人名義の 3 口座と、配偶者名義の SMBC を登録する
+    await seedInitialBalanceAccounts(t, VIEWER_ID)
+    await seedSmbcAccount(t, SPOUSE_SMBC_ID, SPOUSE_ID)
+    // SMBC だけ配偶者名義の口座 ID に差し替える（残高は本人のみ可視で秘匿性が最も高い。P2-B5）
+    const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
+      viewerId: VIEWER_ID,
+      body: { initialBalanceRef: { ...INITIAL_BALANCE_REF, smbcAccountId: SPOUSE_SMBC_ID } },
+    })
+    expect(res.status).toBe(404)
+  })
+
   it('改竄された state のコールバックは 403 で SectionA は完了しない', async () => {
     const t = createTestApp()
     await startPhase2(t)
@@ -330,11 +429,13 @@ describe('Phase2 進捗', () => {
 describe('GET /api/onboarding/spouse-completion', () => {
   async function completePhase2For(t: TestApp, viewerId: string): Promise<void> {
     const id = UserIdSchema.parse(viewerId)
+    // 各 viewer 本人名義の 3 口座（SMBC・別銀行貯蓄・NISA）を先に登録しておく（所有者照合を満たすため）
+    await seedInitialBalanceAccounts(t, id)
     await startPhase2(t, id)
     await completeSectionAViaOAuth(t, id)
     await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
       viewerId: id,
-      body: { initialBalanceRef: INITIAL_BALANCE_REF },
+      body: { initialBalanceRef: initialBalanceRefFor(id) },
     })
     const res = await request(t.app, 'POST', '/api/onboarding/phase2/complete', { viewerId: id })
     expect(res.status).toBe(201)
@@ -342,7 +443,6 @@ describe('GET /api/onboarding/spouse-completion', () => {
 
   it('配偶者が未完了なら awaiting_spouse', async () => {
     const t = createTestApp()
-    await seedInitialBalanceAccounts(t)
     await completePhase2For(t, VIEWER_ID)
     const res = await request(t.app, 'GET', '/api/onboarding/spouse-completion')
     expect(res.status).toBe(200)
@@ -351,9 +451,8 @@ describe('GET /api/onboarding/spouse-completion', () => {
     expect(body.spouseUserId).toBe(SPOUSE_ID)
   })
 
-  it('両者完了なら both_completed', async () => {
+  it('両者完了なら both_completed（夫婦はそれぞれ自分名義の 3 口座を参照する）', async () => {
     const t = createTestApp()
-    await seedInitialBalanceAccounts(t)
     await completePhase2For(t, VIEWER_ID)
     await completePhase2For(t, SPOUSE_ID)
     const res = await request(t.app, 'GET', '/api/onboarding/spouse-completion')
