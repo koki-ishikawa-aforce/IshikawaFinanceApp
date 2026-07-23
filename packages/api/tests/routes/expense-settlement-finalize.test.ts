@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import type { ExpenseDepositMatched, MonthlyExpenseCycleFinalized } from '@warimaru/domain'
+import type {
+  ExpenseDepositMatched,
+  MonthlyExpenseCycle,
+  MonthlyExpenseCycleFinalized,
+} from '@warimaru/domain'
+import { MonthlyExpenseCycleSchema } from '@warimaru/domain'
+import { newUlid } from '@warimaru/adapters-neon'
 import { createApp } from '../../src/app.js'
 import { createDeps } from '../../src/composition-root.js'
 import type { TestApp } from '../helpers/test-app.js'
-import { createTestApp, request } from '../helpers/test-app.js'
+import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
 
 interface FinalizeEventLog {
   finalized: MonthlyExpenseCycleFinalized[]
@@ -37,13 +43,53 @@ async function seedCsvConfirmedCycle(t: TestApp): Promise<string> {
   return cycleId
 }
 
-async function seedDeposit(t: TestApp): Promise<string> {
+async function seedDeposit(t: TestApp, depositAmount = 5000): Promise<string> {
   const res = await request(t.app, 'POST', '/api/expense-settlement/deposits', {
-    body: { depositAmount: 5000 },
+    body: { depositAmount },
   })
   expect(res.status).toBe(201)
   return ((await res.json()) as { common: { expenseReimbursementId: string } }).common
     .expenseReimbursementId
+}
+
+/**
+ * 経費合計 total 円の CSV確定サイクルをリポジトリ直挿しで用意する。
+ * 経費マーキング（別スライス）を経ずに不認定分（入金 < 経費合計）を再現するための最小 fixture。
+ */
+async function seedCsvConfirmedCycleWithTotal(t: TestApp, total: number): Promise<string> {
+  const cycleId = newUlid()
+  const cycle: MonthlyExpenseCycle = MonthlyExpenseCycleSchema.parse({
+    kind: 'csv_confirmed',
+    common: {
+      monthlyExpenseCycleId: cycleId,
+      userId: VIEWER_ID,
+      targetYearMonth: '2026-07',
+      cycleStartedAt: new Date('2026-07-01T00:00:00Z'),
+      accumulations: [
+        {
+          kind: 'capped',
+          accumulationId: newUlid(),
+          expenseTypeId: newUlid(),
+          userId: VIEWER_ID,
+          monthlyCap: total + 100000,
+          currentTotal: total,
+          capReached: { kind: 'not_reached' },
+          transactionRefs: [
+            {
+              transactionId: newUlid(),
+              occurredAt: new Date('2026-07-10T00:00:00Z'),
+              amount: total,
+              allocation: { kind: 'full' },
+            },
+          ],
+        },
+      ],
+      childTransactionRefs: [],
+    },
+    csvConfirmedAt: new Date('2026-07-20T00:00:00Z'),
+  })
+  await t.deps.monthlyExpenseCycleRepository.save(cycle)
+  return cycleId
 }
 
 describe('PUT /api/expense-settlement/cycles/:id/finalize', () => {
@@ -229,5 +275,86 @@ describe('サイクル最終確定のイベント発行（#34 チェーン5）',
     expect(retry.status).toBe(200)
     expect(log.finalized).toHaveLength(1)
     expect(log.matched).toHaveLength(1)
+  })
+})
+
+describe('最終確定時の不認定分振替の検証（08e §1-§2）', () => {
+  it('不認定分振替の合計が突合差額と一致すれば確定でき、入金が不認定分確定済みになる', async () => {
+    const t = createTestApp()
+    const cycleId = await seedCsvConfirmedCycleWithTotal(t, 10000)
+    const depositId = await seedDeposit(t, 5000) // 経費 10000 に対し入金 5000 → 不認定分 5000
+    const res = await request(t.app, 'PUT', `/api/expense-settlement/cycles/${cycleId}/finalize`, {
+      body: {
+        expenseReimbursementId: depositId,
+        unapprovedTransfers: [
+          {
+            originalBusinessExpenseTransactionId: newUlid(),
+            transferTarget: 'personal_honey', // VIEWER_ID(honey) 本人の個人区分
+            transferAmount: 5000,
+          },
+        ],
+      },
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { cycle: { kind: string }; deposit: { kind: string } }
+    expect(body.cycle.kind).toBe('finalized')
+    expect(body.deposit.kind).toBe('unrecognized_confirmed')
+  })
+
+  it('振替先に配偶者の個人区分を指定すると 403', async () => {
+    const t = createTestApp()
+    const cycleId = await seedCsvConfirmedCycleWithTotal(t, 10000)
+    const depositId = await seedDeposit(t, 5000)
+    const res = await request(t.app, 'PUT', `/api/expense-settlement/cycles/${cycleId}/finalize`, {
+      body: {
+        expenseReimbursementId: depositId,
+        unapprovedTransfers: [
+          {
+            originalBusinessExpenseTransactionId: newUlid(),
+            transferTarget: 'personal_darling', // 配偶者の個人区分（本人は honey）
+            transferAmount: 5000,
+          },
+        ],
+      },
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('不認定分振替の合計が突合差額と一致しないと 409', async () => {
+    const t = createTestApp()
+    const cycleId = await seedCsvConfirmedCycleWithTotal(t, 10000)
+    const depositId = await seedDeposit(t, 5000) // 不認定分は 5000
+    const res = await request(t.app, 'PUT', `/api/expense-settlement/cycles/${cycleId}/finalize`, {
+      body: {
+        expenseReimbursementId: depositId,
+        unapprovedTransfers: [
+          {
+            originalBusinessExpenseTransactionId: newUlid(),
+            transferTarget: 'personal_honey',
+            transferAmount: 3000, // 5000 と一致しない
+          },
+        ],
+      },
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('不認定分がない（入金 ≥ 経費合計）のに振替を指定すると 409', async () => {
+    const t = createTestApp()
+    const cycleId = await seedCsvConfirmedCycleWithTotal(t, 3000)
+    const depositId = await seedDeposit(t, 5000) // 入金 5000 ＞ 経費 3000 → 認定済み超過
+    const res = await request(t.app, 'PUT', `/api/expense-settlement/cycles/${cycleId}/finalize`, {
+      body: {
+        expenseReimbursementId: depositId,
+        unapprovedTransfers: [
+          {
+            originalBusinessExpenseTransactionId: newUlid(),
+            transferTarget: 'personal_honey',
+            transferAmount: 100,
+          },
+        ],
+      },
+    })
+    expect(res.status).toBe(409)
   })
 })

@@ -24,6 +24,23 @@ describe('ExpenseReimbursementDeposit 集約', () => {
     ).not.toThrow()
   })
 
+  it('入金金額が正でない（0・負）と parse 失敗（VO の正値不変条件）', () => {
+    expect(() =>
+      ExpenseReimbursementDepositSchema.parse({
+        kind: 'awaiting_match',
+        common: { ...common, depositAmount: 0 as never },
+        receivedAt: new Date(),
+      }),
+    ).toThrow()
+    expect(() =>
+      ExpenseReimbursementDepositSchema.parse({
+        kind: 'awaiting_match',
+        common: { ...common, depositAmount: -100 as never },
+        receivedAt: new Date(),
+      }),
+    ).toThrow()
+  })
+
   it('突合済みは突合対象サイクルID が必須（欠落で parse 失敗）', () => {
     expect(() =>
       ExpenseReimbursementDepositSchema.parse({

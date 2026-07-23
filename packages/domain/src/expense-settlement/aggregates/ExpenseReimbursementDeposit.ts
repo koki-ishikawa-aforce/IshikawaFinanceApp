@@ -24,7 +24,9 @@ import { MoneySchema, type Money } from '../../shared/value-objects/Money'
 export const CommonExpenseReimbursementDepositAttrsSchema = z.object({
   expenseReimbursementId: ExpenseReimbursementIdSchema,
   userId: UserIdSchema,
-  depositAmount: MoneySchema,
+  // 入金金額は正（0 円・負の入金は経費精算入金として無意味、08e §1）。
+  // 正値制約は集約 VO 側で中央強制し、API 層で再実装しない。
+  depositAmount: MoneySchema.refine(v => v > 0, '入金金額は正である必要があります'),
   depositedAt: z.date(),
 })
 export type CommonExpenseReimbursementDepositAttrs = z.infer<

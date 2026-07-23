@@ -21,6 +21,7 @@ import {
   InitialBalanceRegisteredSchema,
   MoneySchema,
   NotFoundError,
+  PermissionDeniedError,
   asNisaAccount,
   asOtherSavingsAccount,
   changeBankName,
@@ -28,7 +29,7 @@ import {
   registerNisaAccount,
   registerOtherSavingsAccount,
 } from '@warimaru/domain'
-import type { Account, AccountId, AccountRepository, EventBus } from '@warimaru/domain'
+import type { Account, AccountId, AccountRepository, EventBus, UserId } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
@@ -60,6 +61,16 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
     const account = await deps.accountRepository.findById(id)
     if (account === null) throw new NotFoundError('Account', id)
     return account
+  }
+
+  /**
+   * 口座種別で絞り込む前に所有者を検証する。非所有者には種別の絞り込み結果
+   * （存在・口座種別）が漏れないよう、所有権チェックを先行させる（08d §2、本人のみ変更可）。
+   */
+  function assertOwnedByViewer(account: Account, viewerId: UserId): void {
+    if (account.common.ownerUserId !== viewerId) {
+      throw new PermissionDeniedError('他ユーザーの口座は操作できない')
+    }
   }
 
   /** 自分が所有する口座の一覧 */
@@ -121,10 +132,13 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
   app.put('/:accountId/bank-name', async c => {
     const body = BankNameBodySchema.parse(await c.req.json())
     const accountId = AccountIdSchema.parse(c.req.param('accountId'))
-    const account = asOtherSavingsAccount(await getAccountOr404(accountId))
+    const viewerId = c.get('viewerId')
+    const found = await getAccountOr404(accountId)
+    assertOwnedByViewer(found, viewerId)
+    const account = asOtherSavingsAccount(found)
     const now = new Date()
     const oldBankName = account.bankName
-    const updated = changeBankName(account, body.bankName, c.get('viewerId'))
+    const updated = changeBankName(account, body.bankName, viewerId)
     await deps.accountRepository.save(updated)
     await deps.eventBus.publish(
       BankNameChangedSchema.parse({
@@ -133,7 +147,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
         accountId,
         oldBankName,
         newBankName: body.bankName,
-        changedByUserId: c.get('viewerId'),
+        changedByUserId: viewerId,
         changedAt: now,
       }),
     )
@@ -144,10 +158,13 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
   app.put('/:accountId/brokerage-name', async c => {
     const body = BrokerageNameBodySchema.parse(await c.req.json())
     const accountId = AccountIdSchema.parse(c.req.param('accountId'))
-    const account = asNisaAccount(await getAccountOr404(accountId))
+    const viewerId = c.get('viewerId')
+    const found = await getAccountOr404(accountId)
+    assertOwnedByViewer(found, viewerId)
+    const account = asNisaAccount(found)
     const now = new Date()
     const oldBrokerageName = account.brokerageName
-    const updated = changeBrokerageName(account, body.brokerageName, c.get('viewerId'))
+    const updated = changeBrokerageName(account, body.brokerageName, viewerId)
     await deps.accountRepository.save(updated)
     await deps.eventBus.publish(
       BrokerageNameChangedSchema.parse({
@@ -156,7 +173,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
         accountId,
         oldBrokerageName,
         newBrokerageName: body.brokerageName,
-        changedByUserId: c.get('viewerId'),
+        changedByUserId: viewerId,
         changedAt: now,
       }),
     )

@@ -8,6 +8,7 @@ import {
   MonthlyExpenseCycleFinalizedSchema,
   MonthlyExpenseCycleIdSchema,
   MonthlyExpenseCycleSchema,
+  MoneySchema,
   NotFoundError,
   PermissionDeniedError,
   ProratedChildTransactionSchema,
@@ -15,6 +16,7 @@ import {
   YearMonthSchema,
   calculateSettlementMatchDifference,
   confirmCycleCsv,
+  confirmUnrecognizedDeposit,
   finalizeCycle,
   matchDeposit,
 } from '@warimaru/domain'
@@ -51,7 +53,9 @@ const FinalizeBodySchema = z.object({
 })
 
 const DepositBodySchema = z.object({
-  depositAmount: z.number().int().positive(),
+  // 金額制約（int/.safe()/正値）は Money 値オブジェクトと入金集約 VO に委ねる。
+  // 正値の最終強制は ExpenseReimbursementDepositSchema.parse（/deposits）で行う。
+  depositAmount: MoneySchema,
   depositedAt: z.coerce.date().optional(),
 })
 
@@ -213,9 +217,15 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
         // （unapprovedTransfers は確定済みサイクルの値が正のため body の値は使わない）
         const now = new Date()
         const matched = matchDeposit(deposit, cycle.common.monthlyExpenseCycleId, now)
-        await deps.expenseReimbursementDepositRepository.save(matched)
-        await publishCycleFinalized(cycle, matched, now)
-        return c.json({ cycle, deposit: matched })
+        const difference = calculateSettlementMatchDifference(cycle, deposit.common.depositAmount)
+        // 不認定分振替を伴う確定なら、入金も終端「不認定分確定済み」まで進める
+        const settledDeposit =
+          cycle.unapprovedTransfers.length > 0 && difference.kind === 'unapproved_shortfall'
+            ? confirmUnrecognizedDeposit(matched, difference.difference, now)
+            : matched
+        await deps.expenseReimbursementDepositRepository.save(settledDeposit)
+        await publishCycleFinalized(cycle, settledDeposit, now)
+        return c.json({ cycle, deposit: settledDeposit })
       }
       throw new InvariantViolationError(
         `入金は別サイクルと突合済みのため確定を完了できない（現状態: ${deposit.kind}）`,
@@ -241,12 +251,45 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
         transferredAt: now,
       }),
     )
+    const difference = calculateSettlementMatchDifference(cycle, deposit.common.depositAmount)
+    if (transfers.length > 0) {
+      // 振替先は操作者本人の個人費用区分のみ（不認定分は「個人(本人)」費用へ振り替える、08e §2）。
+      // 配偶者の個人区分を指定して不認定分を相手に誤帰属させることを防ぐ。
+      const ownExpenseClass = roleToPersonalExpenseClass(await deps.resolveViewerRole(viewerId))
+      for (const transfer of transfers) {
+        if (transfer.transferTarget !== ownExpenseClass) {
+          throw new PermissionDeniedError(
+            '不認定分の振替先は操作者本人の個人費用区分のみ指定できる',
+          )
+        }
+      }
+      // 不認定分（入金額 < 当月経費合計）がある場合のみ振替が成立し、その合計は差額と一致する（08e §2）
+      if (difference.kind !== 'unapproved_shortfall') {
+        throw new InvariantViolationError(
+          '不認定分（入金額が当月経費合計を下回る差額）がない突合結果では振替を指定できない',
+        )
+      }
+      const transferTotal = transfers.reduce(
+        (total, transfer) => total + transfer.transferAmount,
+        0,
+      )
+      if (transferTotal !== difference.difference) {
+        throw new InvariantViolationError(
+          `不認定分振替の合計（${transferTotal}）が突合差額（${difference.difference}）と一致しない`,
+        )
+      }
+    }
     const finalized = finalizeCycle(cycle, body.expenseReimbursementId, transfers, now)
     const matched = matchDeposit(deposit, cycle.common.monthlyExpenseCycleId, now)
+    // 不認定分振替を伴う確定なら、入金も終端「不認定分確定済み」まで進める（09-aggregates #13 の単方向遷移）
+    const settledDeposit =
+      transfers.length > 0 && difference.kind === 'unapproved_shortfall'
+        ? confirmUnrecognizedDeposit(matched, difference.difference, now)
+        : matched
     await deps.monthlyExpenseCycleRepository.save(finalized)
-    await deps.expenseReimbursementDepositRepository.save(matched)
-    await publishCycleFinalized(finalized, matched, now)
-    return c.json({ cycle: finalized, deposit: matched })
+    await deps.expenseReimbursementDepositRepository.save(settledDeposit)
+    await publishCycleFinalized(finalized, settledDeposit, now)
+    return c.json({ cycle: finalized, deposit: settledDeposit })
   })
 
   /** 精算入金の記録（突合待ちとして登録） */
