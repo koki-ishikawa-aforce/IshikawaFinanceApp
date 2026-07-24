@@ -9,6 +9,40 @@
 :root {
   --font-family: var(--font-zen-maru), 'Hiragino Maru Gothic ProN', system-ui, sans-serif;
 
+  /* Spacing scale (4px base) */
+  --space-0: 0px;
+  --space-0_5: 2px;
+  --space-1: 4px;
+  --space-1_5: 6px;
+  --space-2: 8px;
+  --space-2_5: 10px;
+  --space-3: 12px;
+  --space-3_5: 14px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-14: 56px;
+
+  /* Border radius (§2.4) */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-card: 14px;
+  --radius-panel: 20px;
+  --radius-full: 9999px;
+
+  /* Font sizes (§2.3) */
+  --text-xs: 9px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+
   /* Darling theme (default) */
   --bg-gradient: linear-gradient(180deg, #ffc8d8 0%, #ffd8e0 30%, #ffe0e8 60%, #fff0f5 100%);
   --kpi-1: linear-gradient(135deg, #ff8aa8, #ffb0c5);
@@ -54,5 +88,5 @@ body {
 
 /* 下部固定ナビゲーション（AppNav）と重ならない余白 */
 body {
-  padding-bottom: 56px;
+  padding-bottom: var(--space-14);
 }

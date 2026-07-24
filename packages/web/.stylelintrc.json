@@ -1,0 +1,55 @@
+{
+  "plugins": ["stylelint-declaration-strict-value"],
+  "rules": {
+    "scale-unlimited/declaration-strict-value": [
+      [
+        "color",
+        "background-color",
+        "border-color",
+        "border-top-color",
+        "border-right-color",
+        "border-bottom-color",
+        "border-left-color",
+        "outline-color",
+        "fill",
+        "stroke",
+        "border-radius",
+        "border-top-left-radius",
+        "border-top-right-radius",
+        "border-bottom-left-radius",
+        "border-bottom-right-radius",
+        "box-shadow",
+        "padding",
+        "padding-top",
+        "padding-right",
+        "padding-bottom",
+        "padding-left",
+        "margin",
+        "margin-top",
+        "margin-right",
+        "margin-bottom",
+        "margin-left",
+        "gap",
+        "row-gap",
+        "column-gap",
+        "font-size"
+      ],
+      {
+        "ignoreValues": [
+          "0",
+          "inherit",
+          "initial",
+          "unset",
+          "none",
+          "auto",
+          "transparent",
+          "currentColor"
+        ],
+        "ignoreFunctions": true,
+        "disableFix": true,
+        "expandShorthand": true,
+        "message": "Direct values are not allowed. Use a design token via var(--*) instead."
+      }
+    ]
+  }
+}
