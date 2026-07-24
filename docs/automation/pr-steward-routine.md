@@ -8,7 +8,7 @@ Routine が無人モードで作成した open PR を定期巡回し、CI 失敗
 Routine(定期 fire): /pr-steward を実行
   ├─ 対象 PR なし → 何もせず終了
   ├─ CI 失敗あり → 診断 → 修正 push → /verify → CI green 確認(最大3回リトライ)
-  ├─ コンフリクトあり → base ブランチをマージして解消 → /verify → push
+  ├─ コンフリクトあり(mergeable 状態で機械判定) → base ブランチをマージして解消 → /verify → push
   ├─ 重複 PR 検知 → needs-decision で人間に委ねる(自動クローズはしない)
   └─ 全 PR green → 報告して終了
   ↓
@@ -46,8 +46,10 @@ Routine(定期 fire): /pr-steward を実行
 
 | Routine | 役割 | 作るもの |
 | --- | --- | --- |
-| バックログ Routine (`/issue-work` 無人モード) | Issue → 実装 → PR 作成 → CI green 確認 | PR + マージ判断 Issue |
+| バックログ Routine (`/issue-work` 無人モード) | Issue → 実装 → PR 作成 → CI green 確認。preflight で Routine 起点 open PR のコンフリクトも先解消 | PR + マージ判断 Issue / コンフリクト解消 commit |
 | PR 執事 Routine (`/pr-steward`) | 既存 PR の保守(CI 修復・コンフリクト解消) | 修正 commit(PR は既存) |
+
+**コンフリクト解消は2か所が担う**。毎時のバックログ Routine が preflight で先解消するため放置時間の上限は最長でも fire 間隔(約20分)に収まり、PR 執事 Routine はより広い間隔で CI 修復とあわせて保守する。どちらもコンフリクト判定は mergeable 状態で機械的に行い(`mergeable == CONFLICTING` / `mergeable_state == dirty`)、`unknown`(計算中)は数秒待って再照会する。**マージは両者とも行わない**。
 
 バックログ Routine は PR 作成後に同一 fire 内で CI green を確認するが、以下のケースで CI が赤いまま残ることがある:
 

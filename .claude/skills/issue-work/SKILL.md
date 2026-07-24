@@ -172,6 +172,26 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
 
 回収した Issue はそのまま下の候補選定で拾い直せる(`ready-to-implement` が残っていれば対象に戻る)。PR を**未マージでクローズ**したことによるロック残りは `.github/workflows/notify-needs-decision.yml` が即時に解除するため、この preflight はおもに「PR を作らずに死んだ fire」の取りこぼしを拾う保険となる。
 
+#### コンフリクト修復 — Routine 起点 open PR の先解消
+
+ゴミロック回収に続けて、**新規着手の前に** Routine 起点の open PR がコンフリクト(base の `main` と PR の変更が衝突して自動マージできない状態)に陥っていないかを機械的に確認し、あれば**先に解消してから**候補選定へ進む。これを怠ると、コンフリクトした PR が次に人間が気づくまで放置され、その間に新しい PR を積み増して衝突を広げてしまう(2026-07-24 の PR #191)。修復役の `/pr-steward` は別スケジュールのため、確実に毎 fire 動くこの preflight で「壊れた PR を放置したまま新しい PR を増やさない」順序を担保する。
+
+1. open PR を mergeable 状態つきで列挙する。GitHub の mergeable は**照会されて初めて計算が始まり**、直後は `unknown`(計算中)が返るため、`unknown` の PR は数秒待って再照会する(2〜3秒間隔で最大3回程度):
+   - GitHub MCP: `list_pull_requests` で open PR を取得したうえで、PR ごとに `pull_request_read` method `get` を呼び `mergeable` / `mergeable_state` を確認する(一覧 API には mergeable が含まれない)
+   - `gh`: `gh pr list --state open --json number,mergeable,headRefName,body`
+2. Routine 起点の PR に絞る(判別基準は `/pr-steward` 手順1と同一: 本文に「無人モードの選定理由」節がある / head ブランチが `feat/issue-N-` または `claude/issue-N-` で始まる / マージ判断 Issue が紐づく)。人間が手動作成した PR には触れない
+3. `mergeable == CONFLICTING`(`gh` / GraphQL)または `mergeable_state == dirty`(REST / MCP)の PR があれば、候補選定より先に解消する。手順は `/pr-steward` 手順2c と同じ:
+   ```bash
+   git fetch origin <PRのheadブランチ> && git switch <PRのheadブランチ>
+   git fetch origin main && git merge origin/main
+   # コンフリクトを解消する。ドメインロジックの競合など判断が必要な場合は解消せず、
+   # その PR と対象 Issue に needs-decision を付けて人間に委ね、次へ進む
+   ```
+   解消したら `/verify` を全 green にしてから push する。**マージはしない**(この preflight もマージ判断は人間に残す)
+4. `unknown` のまま確定しない PR はコンフリクト判定を保留し、解消・needs-decision 化した PR とあわせて最終報告に含める。コンフリクトが無ければ何もしない
+
+この修復で fire の所要時間は延びうるが、放置時間の上限が最長で fire 間隔(約20分)に収まる。**WIP 上限超過で新規着手をスキップする場合でも、コンフリクト修復は実施する**(壊れた PR の放置を防ぐため、本 preflight は下の WIP 上限チェックより前に置く)。
+
 #### WIP 上限チェック
 
 open な PR の件数を数える:
