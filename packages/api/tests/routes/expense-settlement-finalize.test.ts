@@ -339,6 +339,19 @@ describe('最終確定時の不認定分振替の検証（08e §1-§2）', () =>
     expect(res.status).toBe(409)
   })
 
+  it('不認定分がある（入金 < 経費合計）のに振替が0件だと 409（振替必須）', async () => {
+    const t = createTestApp()
+    const cycleId = await seedCsvConfirmedCycleWithTotal(t, 10000)
+    const depositId = await seedDeposit(t, 5000) // 入金 5000 ＜ 経費 10000 → 不認定分 5000
+    const res = await request(t.app, 'PUT', `/api/expense-settlement/cycles/${cycleId}/finalize`, {
+      body: { expenseReimbursementId: depositId }, // unapprovedTransfers を指定しない
+    })
+    expect(res.status).toBe(409)
+    // 入金は中間状態（突合済み）に留まらず、突合待ちのまま
+    const deposit = await t.deps.expenseReimbursementDepositRepository.findById(depositId as never)
+    expect(deposit?.kind).toBe('awaiting_match')
+  })
+
   it('不認定分がない（入金 ≥ 経費合計）のに振替を指定すると 409', async () => {
     const t = createTestApp()
     const cycleId = await seedCsvConfirmedCycleWithTotal(t, 3000)
