@@ -1,0 +1,81 @@
+---
+name: pr-steward
+description: open な自動 PR(Routine 起点)の CI 失敗修復・コンフリクト解消・重複検知を行う。マージは絶対に行わない。
+---
+
+# PR 執事ワークフロー
+
+Routine が無人モードで作成した open PR を巡回し、CI 失敗の診断・修正 push、コンフリクトの解消、重複 PR の検知を行う。**マージは絶対に行わない**(マージ判断は人間の原則を維持)。
+
+> **実行環境の注意**: 本書の `gh` コマンドは操作の意図を示すリファレンス。`gh` CLI が使えない環境では GitHub MCP ツール(`mcp__github__*`)で同等の操作を行う。
+
+## 手順
+
+### 1. 対象 PR の列挙
+
+open な PR のうち、Routine 起点(無人モード)で作成されたものを列挙する:
+
+```bash
+gh pr list --state open --json number,title,headRefName,body,labels
+```
+
+Routine 起点の判別基準: PR 本文に「無人モードの選定理由」セクションが含まれている、head ブランチが `feat/issue-N-` または `claude/issue-N-` で始まる、またはマージ判断 Issue(`[マージ判断] PR #N` タイトル)が紐づいている。判別できないものは対象外とする。
+
+### 2. 各 PR の点検
+
+対象 PR それぞれについて以下の点検を行う。
+
+`subscribe_pr_activity` の購読は**修正 push 後に CI 結果を待つ PR に限って**行い、fire を終える前に `unsubscribe_pr_activity` で解除する(定期 fire の fresh session が毎回全 PR を購読すると、終了済みセッション宛ての購読が fire のたびに蓄積するため。点検だけで修正が不要だった PR は購読しない)。
+
+#### 2a. 重複 PR の検知
+
+PR 本文の close キーワード(`.claude/skills/issue-work/SKILL.md` 無人モード preflight の「close キーワード集合」に従う)から対象 Issue 番号 `N` を抽出し:
+
+- 同じ Issue 番号 `N` を close キーワードで参照する**別の open PR** が存在するか検索する
+- 対象 Issue `N` が既にクローズ済みかを確認する
+
+**いずれかに該当する場合**: 重複 PR は自動クローズせず、対象 PR と対象 Issue の両方に `needs-decision` ラベルを付与し、判断依頼コメントを残す(`.claude/skills/issue-work/templates/judgment-issue.md` のフォーマットに従う)。コメントには重複している PR 番号の一覧と、どの PR を残すべきかの判断を人間に委ねる旨を記載する。
+
+PR 本文に番号付きの close キーワードが**1つも無い**場合(例: `Closes #` のまま番号が欠落)も異常として扱い、その PR に `needs-decision` を付けて本文の修正を判断依頼する(番号が無いと重複ガードとロック自動解除がその PR を検知できないため)。
+
+#### 2b. CI 失敗の診断と修正
+
+PR の checks/statuses を確認し、失敗しているものがあれば:
+
+1. 失敗したジョブのログを取得する(GitHub MCP: `get_job_logs` または `gh run view <run-id> --log-failed`)
+2. 失敗原因を診断する
+3. PR の head ブランチをチェックアウトし、修正を実装する
+4. `/verify` で全 green を確認してから push する
+5. CI の再実行を待ち、green を確認する(この待機に `subscribe_pr_activity` を使ってよい。終了前に解除する)
+6. **同一エラーで3回**修正に失敗したら、マージ判断 Issue に状況を記録して次の PR へ進む(無限リトライの歯止め)
+
+#### 2c. コンフリクトの解消
+
+PR がマージコンフリクト状態の場合:
+
+1. PR の head ブランチをチェックアウトする
+2. base ブランチ(通常は `main`)を fetch してマージする:
+   ```bash
+   git fetch origin main
+   git merge origin/main
+   ```
+3. コンフリクトを解消する(ドメインロジックの競合など、判断が必要な場合は `needs-decision` で人間に委ねる)
+4. `/verify` で全 green を確認してから push する
+
+### 3. 完了報告
+
+全対象 PR の点検が終わったら、結果を報告する:
+
+- 修正 push した PR の一覧(何を修正したか1行ずつ)
+- `needs-decision` に回した PR の一覧(理由つき)
+- 全 PR が green の場合はその旨を報告する
+
+報告の前に、この fire で購読した PR の `subscribe_pr_activity` をすべて解除したことを確認する。
+
+## 制約
+
+- **マージは絶対に行わない** — マージ判断は人間が `/decide` または手動で行う
+- **自動クローズはしない** — 重複 PR の検知時も `needs-decision` で人間に委ねる
+- **対象は Routine 起点の PR のみ** — 人間が手動で作成した PR には触れない
+- 修正 push は `/verify` 全 green を経由してから行う
+- 購読(`subscribe_pr_activity`)は CI 待ちの間だけ。fire 終了前に必ず解除する
