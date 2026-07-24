@@ -8,10 +8,15 @@
 人間: Issue に ready-to-implement を付与(着手承認。依存が open でも付与可)
   ↓
 Routine(毎時 fire・fresh session): 無人モードで /issue-work
+  ├─ preflight: ゴミロックを機械的に回収(open PR なし + 2時間以上経過の両方をコマンドで確定)
   ├─ WIP 上限超過 or 候補なし → 何もせず終了
-  ├─ 判断が必要 → needs-decision を付けて撤退(→ 通知ワークフローがメール通知)
-  └─ 1件選定 → status:in-progress で排他ロック → 実装 → /verify(統合テスト含む) → /ddd-review
-      → PR + マージ判断 Issue(needs-decision → メール通知) → PR の CI が green になるまで確認
+  └─ 候補ループ(最大5件): 先頭から順に試行
+      ├─ CAS ロック失敗(並行 fire が先行) → 次候補へ
+      ├─ 重複 PR 検知(open/merged な PR が既存) → ロック解除 → 次候補へ
+      ├─ 判断が必要 → needs-decision を付けて撤退 → 次候補へ
+      └─ 着手成功 → 実装 → /verify(統合テスト含む) → /ddd-review
+          → push 前に重複 PR を再チェック(最終防衛線)
+          → PR + マージ判断 Issue(needs-decision → メール通知) → PR の CI が green になるまで確認
   ↓
 人間: needs-decision の一覧から判断し、PR をレビューしてマージ(これが実質のスロットル。/decide で対話消化できる)
 ```
@@ -20,7 +25,7 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 
 - **人間の判断タスクは needs-decision Issue に集約する** — 撤退時の確認・レビュー見送りの追認・マージ判断のすべてを `needs-decision` ラベル付き Issue にする。判断待ちの全量は [`is:issue is:open label:needs-decision`](https://github.com/koki-ishikawa-aforce/IshikawaFinanceApp/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision) で一覧でき、ラベル付与をトリガーに通知ワークフローがメールを発生させる(後述の「通知」節)。判断依頼の書き方は issue-work スキルのテンプレート(`.claude/skills/issue-work/templates/`)と執筆ルールに従う。消化する側の手順は `/decide` スキル(`.claude/skills/decide/SKILL.md`)に定める
 
-- **1 fire = 1 Issue = 1 fresh session** — セッションの長時間化によるコンテキスト劣化を避ける。複数件の消化は fire の回数で稼ぐ(毎時 fire なら1日最大〜24件)
+- **1 fire = 最大1 PR = 1 fresh session** — セッションの長時間化によるコンテキスト劣化を避ける。複数件の消化は fire の回数で稼ぐ(毎時 fire なら1日最大〜24件)。ただし撤退・スキップが発生した場合は候補ループで次の Issue へ進み、1件 PR 作成に到達するまで試行する(最大5候補)
 - **人間の承認は「着手前のラベル付け」に前倒し** — `ready-to-implement` を付ける行為が着手承認。無人モードは承認済みの Issue にしか触れない
 - **「完了」は PR の CI が green であること** — 1 fire は PR 作成では終わらない。作成した PR の CI(統合テストを含む)が green になるのを同一 fire 内で確認して初めて完了とする。`pnpm test` は adapters-neon の統合テストを含まないため「ローカル `/verify` 全 green」＝「CI green」ではない。CI が赤なら同一 fire 内で修正 → 再 push し、直せなければ(同一エラーで3回失敗)マージ判断 Issue に状況を記録して撤退する(赤い PR を「完了」として放置しない)。詳細は `.claude/skills/issue-work/SKILL.md` 無人モード手順6
 - **PR 作成で止める(自動マージはしない)** — PR は通常(non-Draft)で作成するが、マージ判断は必ず人間が行う(`/decide` セッション内の明示承認を含む)。Routine 自身による自動マージはしない
@@ -88,7 +93,7 @@ GitHub は**自分自身の操作を通知しない**。Routine はあなたの�
 
 1. **即時回収(GitHub Actions)** — PR が**マージされずにクローズ**されたら、`.github/workflows/notify-needs-decision.yml` の `unlock-in-progress-on-pr-close` ジョブが、その PR が `Closes #N` で紐づけていた open Issue から `status:in-progress` を外す。人間がレビューで PR を却下(クローズ)したケースを即座に解除する。`ready-to-implement` はそのままなので、次の fire が再着手する(却下したまま止めたい場合は `ready-to-implement` も外す)。
 
-2. **preflight 自己回復(issue-work スキル)** — 各 fire は候補選定の前に、`status:in-progress` 付き open Issue のうち「**紐づく open PR が無い** かつ **ロックが2時間以上前**」のものからロックを外す(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。PR を作らずに死んだ fire(即時回収の対象外)を拾う保険。ロックが2時間以上前という条件で、実装中の生きた fire との競合(誤回収→二重着手)を避ける。
+2. **preflight 自己回復(issue-work スキル)** — 各 fire は候補選定の前に、`status:in-progress` 付き open Issue のうち「**紐づく open PR が無い** かつ **ロックが2時間以上前**」のものからロックを外す(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。PR を作らずに死んだ fire(即時回収の対象外)を拾う保険。**2条件はコマンド出力で機械的に確定させ、自然言語の判断で条件を緩めない**（2026-07-24 の二重着手事故は条件違反が直接原因）。
 
 いずれもロックを外すだけで、`ready-to-implement` などの他ラベルには触れない。
 
@@ -103,7 +108,8 @@ CI は `.github/workflows/ci.yml` の専用ステップで adapters-neon の統�
 
 | パラメータ | 既定値 | 変える場所 |
 | --- | --- | --- |
-| WIP 上限(open な PR 数) | 5 | SKILL.md 無人モード 手順0-1 |
+| WIP 上限(open な PR 数) | 5 | SKILL.md 無人モード 手順0 |
+| 候補ループ上限(1 fire あたりの最大試行数) | 5 | SKILL.md 無人モード 手順0 |
 | 消化ペース | 毎時1件 | Routine のスケジュール |
 | ゴミロック回収の経過時間しきい値 | 約2時間 | SKILL.md 無人モード preflight(fire のセッション寿命より十分長く保つ) |
 
@@ -114,4 +120,5 @@ WIP 上限はレビューが追いつく範囲に保つ。未マージの PR は
 - **一時停止**: Routine を無効化する(claude.ai の Routines 画面)。実行中の fire には影響しない
 - **着手したまま放置された Issue**(fire が異常終了した場合など): 下記「ゴミロックの自動回収」で自動的に解除されるため、通常は手動対応不要。急ぐ場合や自動回収の条件(ロックが2時間以上前)に満たない場合は、`status:in-progress` が付いているのに対応ブランチ/PR がないことを確認して手動でラベルを外せば、次の fire が再度拾う
 - **同じ Issue で撤退が繰り返される**: `needs-decision` の判断依頼コメントに回答し、`needs-decision` を外して `ready-to-implement` を付け直す。受け入れ条件そのものを `/issue-create` の基準(検証可能なチェックボックス)で書き直すのが根本対応
+- **同じ Issue に複数の PR が作られた**: 重複 PR ガード（CAS ロック + push 前の重複チェック）で防止されるが、万一発生した場合は PR 執事（`/pr-steward`）が検知して `needs-decision` で通知する。残す PR を判断してクローズする
 - **PR をマージしたのにマージ判断 Issue が残っている**: 通知ワークフローの自動クローズはマーカー `<!-- merge-judgment-pr: N -->` で対応 PR を特定する。マーカーが本文にない場合は手動でクローズする

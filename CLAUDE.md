@@ -56,6 +56,8 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 
 バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ PR 化する(運用・セットアップ: `docs/automation/backlog-routine.md`)。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える。依存する先行 Issue が open でも ready は付与でき、着手は Routine の依存チェックが遅延する(マージすると次の fire が自動で後続に着手)。無人モードはユーザー確認の代わりに撤退を選び、マージ判断は必ず人間が行う(`/decide` セッション内の明示承認を含む)。溜まった `needs-decision` は `/decide` でまとめて消化する。
 
+PR の保守(CI 修復・コンフリクト解消・重複検知): `/pr-steward` が Routine 起点の open PR を巡回し、人間の仕事をマージ判断だけに絞る(運用: `docs/automation/pr-steward-routine.md`)。
+
 ## してはいけないこと
 
 - `packages/domain` に I/O・フレームワーク依存を追加しない(zod のみ)
