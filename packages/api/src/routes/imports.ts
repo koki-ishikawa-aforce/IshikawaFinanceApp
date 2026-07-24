@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
+  CsvImportCompletedSchema,
   DailyMailImportBatchSchema,
   ImportBatchIdSchema,
   ImportJobIdSchema,
@@ -29,6 +30,7 @@ import {
 import type {
   CsvImportStatusQuery,
   DailyMailImportBatchRepository,
+  EventBus,
   PdfToCsvConverter,
   StatementImportJob,
   StatementImportJobRepository,
@@ -40,6 +42,7 @@ import type {
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { domainEventBase } from '../event-handlers/index.js'
 import { parseStatementCsv } from '../parse-statement-csv.js'
 import { readJsonObjectBody } from '../read-json-object-body.js'
 
@@ -84,6 +87,7 @@ export interface ImportsRoutesDeps {
   transactionRepository: TransactionRepository
   pdfToCsvConverter: PdfToCsvConverter
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
+  eventBus: EventBus
 }
 
 function assertJobOwnedByViewer(job: StatementImportJob, viewerId: UserId): void {
@@ -401,6 +405,20 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
       )
       confirmedCount++
     }
+
+    if (confirmedCount > 0) {
+      await deps.eventBus.publish(
+        CsvImportCompletedSchema.parse({
+          ...domainEventBase(now),
+          type: 'CsvImportCompleted',
+          importJobId,
+          userId: viewerId,
+          summary: job.summary,
+          targetYearMonths: [job.common.targetMonth],
+        }),
+      )
+    }
+
     return c.json({ importJobId, confirmedCount, alreadyConfirmedCount, confirmedAt: now })
   })
 

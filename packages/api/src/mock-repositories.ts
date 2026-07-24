@@ -7,6 +7,9 @@ import type {
   Account,
   AccountId,
   AccountRepository,
+  MitsuiSumitomoUnpaid,
+  MitsuiSumitomoUnpaidId,
+  MitsuiSumitomoUnpaidRepository,
   AmazonProductKey,
   AppUser,
   AppUserRepository,
@@ -581,6 +584,21 @@ export function createMockConsecutiveFailureCounterRepository(): ConsecutiveFail
     },
     async save(counter: ConsecutiveFailureCounter) {
       store.set(keyOf(counter.counterRef), counter)
+    },
+  }
+}
+
+export function createMockMitsuiSumitomoUnpaidRepository(): MitsuiSumitomoUnpaidRepository {
+  const store = new Map<string, MitsuiSumitomoUnpaid>()
+  return {
+    async findById(id: MitsuiSumitomoUnpaidId) {
+      return store.get(id) ?? null
+    },
+    async findByCardAccountId(accountId: AccountId) {
+      return [...store.values()].find(u => u.accountId === accountId) ?? null
+    },
+    async save(unpaid: MitsuiSumitomoUnpaid) {
+      store.set(unpaid.unpaidAggregateId, unpaid)
     },
   }
 }

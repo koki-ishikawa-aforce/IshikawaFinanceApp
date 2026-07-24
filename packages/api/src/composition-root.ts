@@ -28,6 +28,7 @@ import type {
   MonthlyExpenseCycleRepository,
   MonthlyLimitRepository,
   MonthlyReportQuery,
+  MitsuiSumitomoUnpaidRepository,
   MonthlyReportRepository,
   PdfToCsvConverter,
   ProratedChildTransactionRepository,
@@ -63,6 +64,7 @@ import {
   NeonExpenseTypeDeletionRequestRepository,
   NeonExpenseTypeMasterRepository,
   NeonMerchantLearningRuleRepository,
+  NeonMitsuiSumitomoUnpaidRepository,
   NeonMonthlyExpenseCycleRepository,
   NeonMonthlyLimitRepository,
   NeonMonthlyReportRepository,
@@ -130,6 +132,7 @@ import {
   createMockDeliveryMessageRepository,
   createMockFailsafeEmailRepository,
   createMockLineDeliveryLogRepository,
+  createMockMitsuiSumitomoUnpaidRepository,
   createMockMonthlyExpenseCycleRepository,
   createMockMonthlyLimitRepository,
   createMockMonthlyReportRepository,
@@ -178,6 +181,8 @@ export interface AppDeps {
   expenseReimbursementDepositRepository: ExpenseReimbursementDepositRepository
   // 家計分析 (#43): サイクル確定 → 月次レポート最終確定ハンドラーが使用
   monthlyReportRepository: MonthlyReportRepository
+  // 残高資産推移 (#69): 未払金計上・消込ハンドラーが使用
+  mitsuiSumitomoUnpaidRepository: MitsuiSumitomoUnpaidRepository
   // オンボーディング・認証 (#41)
   appUserRepository: AppUserRepository
   gmailOAuthTokenRepository: GmailOAuthTokenRepository
@@ -292,6 +297,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
       proratedChildTransactionRepository: createMockProratedChildTransactionRepository(),
       expenseReimbursementDepositRepository: createMockExpenseReimbursementDepositRepository(),
       monthlyReportRepository: createMockMonthlyReportRepository(),
+      mitsuiSumitomoUnpaidRepository: createMockMitsuiSumitomoUnpaidRepository(),
       deliveryMessageRepository: createMockDeliveryMessageRepository(),
       lineDeliveryLogRepository: createMockLineDeliveryLogRepository(),
       failsafeEmailRepository: createMockFailsafeEmailRepository(),
@@ -397,6 +403,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
     proratedChildTransactionRepository: new NeonProratedChildTransactionRepository(db),
     expenseReimbursementDepositRepository: new NeonExpenseReimbursementDepositRepository(db),
     monthlyReportRepository: new NeonMonthlyReportRepository(db),
+    mitsuiSumitomoUnpaidRepository: new NeonMitsuiSumitomoUnpaidRepository(db),
     deliveryMessageRepository: new NeonDeliveryMessageRepository(db),
     lineDeliveryLogRepository: new NeonLineDeliveryLogRepository(db),
     failsafeEmailRepository: new NeonFailsafeEmailRepository(db),

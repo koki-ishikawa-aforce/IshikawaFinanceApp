@@ -14,9 +14,11 @@ import type { AppDeps } from '../composition-root.js'
 import { createNotificationDeliveryService } from '../notification/delivery-service.js'
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
 import { registerMasterDataRemapEventHandlers } from './master-data-remap.js'
+import { registerMonthlyReportCsvConfirmationEventHandlers } from './monthly-report-csv-confirmation.js'
 import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
 import { registerExpenseProrationRecalcEventHandlers } from './expense-proration-recalc.js'
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
+import { registerUnpaidBalanceUpdateEventHandlers } from './unpaid-balance-update.js'
 
 export { domainEventBase } from './event-base.js'
 
@@ -45,6 +47,17 @@ export function registerEventHandlers(deps: AppDeps): void {
   registerExpenseProrationRecalcEventHandlers(deps.eventBus, {
     monthlyLimitRepository: deps.monthlyLimitRepository,
     monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
+  })
+  // CSV取込確定 → 月次レポート更新 (#69)
+  registerMonthlyReportCsvConfirmationEventHandlers(deps.eventBus, {
+    appUserRepository: deps.appUserRepository,
+    transactionRepository: deps.transactionRepository,
+    monthlyReportRepository: deps.monthlyReportRepository,
+  })
+  // 未払金計上・消込 → 口座残高更新 (#69)
+  registerUnpaidBalanceUpdateEventHandlers(deps.eventBus, {
+    mitsuiSumitomoUnpaidRepository: deps.mitsuiSumitomoUnpaidRepository,
+    accountRepository: deps.accountRepository,
   })
   // 通知配信 (#36): AppDeps の Repository / Gateway から配信サービスを組み立てて購読する
   registerNotificationDeliveryEventHandlers(deps.eventBus, {
