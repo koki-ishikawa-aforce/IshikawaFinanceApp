@@ -80,7 +80,7 @@ PR が green になったら、PR の URL と受け入れ条件の充足状況�
 
 ## 無人モード(Routine からの自動起動)
 
-Routine のセットアップ手順とラベル運用は `docs/automation/backlog-routine.md` を参照。無人モードでは以下の差分を適用する。**1回の起動で作成する PR は最大1つ**。PR 作成に成功したらその fire は完了する。ただし、候補の撤退・スキップが発生した場合は次の候補へ進み、1件 PR 作成に到達するまで試行する（候補ループ。手順0「候補選定と排他ロック」参照）。
+Routine のセットアップ手順とラベル運用は `docs/automation/backlog-routine.md` を参照。無人モードでは以下の差分を適用する。**1回の起動で作成する PR は最大1つ**。PR 作成に成功したらその fire は完了する。ただし、候補の撤退・スキップが発生した場合は次の候補へ進み、1件 PR 作成に到達するまで試行する(候補ループ。手順0「候補選定と排他ロック」参照)。
 
 ### 原則: 人間の判断は Issue に集約する
 
@@ -119,16 +119,18 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
 2. 各 Issue について、次の2条件を**コマンド出力で**確定させる:
 
    **条件1 — 紐づく open な PR が無い**:
-   - Issue 番号 `N` に対し、`Closes #N` / `closes #N` / `Fix #N` / `Fixes #N` / `Resolve #N` / `Resolves #N` を含む open PR を検索する（GitHub MCP: `search_pull_requests` で `repo:<owner>/<repo> is:pr is:open "Closes #N"` 等、または `list_pull_requests` で open PR の body を確認）
-   - さらに head ブランチが `feat/issue-N-` で始まる open PR を検索する
-   - **いずれかの検索で open PR が1件でも見つかったら、その Issue のロックは回収しない**（実装中の生きた fire が存在する可能性がある）
+   - Issue 番号 `N` に対し、close キーワード集合(下記)+ `#N` を含む open PR を検索する(GitHub MCP: `search_pull_requests` で `repo:<owner>/<repo> is:pr is:open "Closes #N"` 等、または `list_pull_requests` で open PR の body を確認)
+   - さらに head ブランチが `feat/issue-N-` **または** `claude/issue-N-` で始まる open PR を検索する(リモートセッション起点の fire は `claude/issue-<番号>-<suffix>` 形式のブランチを作るため、`feat/` だけでは Routine 作成 PR を取りこぼす)
+   - **いずれかの検索で open PR が1件でも見つかったら、その Issue のロックは回収しない**(実装中の生きた fire が存在する可能性がある)
 
-   **条件2 — ロックが古い（付与から2時間以上経過）**:
-   - Issue のイベントタイムライン（GitHub MCP: `issue_read` method `get` で `updated_at` を確認、またはイベント API で `labeled` イベントの `created_at` を取得）から `status:in-progress` の付与時刻を特定する
-   - 付与時刻が現在から**2時間未満**なら、その Issue のロックは回収しない（並行 fire が実装中の可能性がある）
+   > **close キーワード集合(正規定義)**: `close` / `closes` / `closed` / `fix` / `fixes` / `fixed` / `resolve` / `resolves` / `resolved` + `#N`(大文字小文字を区別しない)。`.github/workflows/notify-needs-decision.yml` の抽出正規表現と同一の集合。本スキルおよび `/pr-steward` 内の重複 PR 検索は、すべてこの集合を使う(テンプレート `templates/pr-body.md` は `Closes #N` を規定しているが、手動 PR の表記ゆれも拾うため検索側は全集合で行う)
+
+   **条件2 — ロックが古い(付与から2時間以上経過)**:
+   - Issue のイベントタイムライン(GitHub MCP: `issue_read` method `get` で `updated_at` を確認、またはイベント API で `labeled` イベントの `created_at` を取得)から `status:in-progress` の付与時刻を特定する
+   - 付与時刻が現在から**2時間未満**なら、その Issue のロックは回収しない(並行 fire が実装中の可能性がある)
    - 付与時刻を特定できない場合は安全側に倒し、回収しない
 
-3. **両方の条件を満たす** Issue からのみ `status:in-progress` を外す（他ラベルは触らない）
+3. **両方の条件を満たす** Issue からのみ `status:in-progress` を外す(他ラベルは触らない)
 4. 回収した Issue 番号は最終報告に含める
 
 回収した Issue はそのまま下の候補選定で拾い直せる(`ready-to-implement` が残っていれば対象に戻る)。PR を**未マージでクローズ**したことによるロック残りは `.github/workflows/notify-needs-decision.yml` が即時に解除するため、この preflight はおもに「PR を作らずに死んだ fire」の取りこぼしを拾う保険となる。
@@ -141,24 +143,26 @@ open な PR の件数を数える:
 gh pr list --state open --json number --jq 'length'
 ```
 
-**5件以上**なら新規着手せず、「WIP 上限のためスキップ」と報告して終了する（レビュー待ち PR が溜まった状態で着手を重ねると、PR 同士のコンフリクトと依存切れを招くため）。
+**5件以上**なら新規着手せず、「WIP 上限のためスキップ」と報告して終了する(レビュー待ち PR が溜まった状態で着手を重ねると、PR 同士のコンフリクトと依存切れを招くため)。
 
-#### 候補選定と排他ロック（候補ループ）
+#### 候補選定と排他ロック(候補ループ)
 
 `gh issue list --state open --label "ready-to-implement" --json number,title,labels,assignees,body,createdAt` から候補リストを取得し、以下をすべて満たす Issue を優先順に並べる:
 
 - `status:in-progress` / `needs-decision` ラベルが付いていない
 - 誰にも assign されていない
-- 本文の「依存」「先行」「関連」に挙げられた先行 Issue がすべてクローズ済み（open のものに依存していない）。依存待ちの ready Issue は正常な状態であり、条件を満たすまでスキップして次候補を見る
+- 本文の「依存」「先行」「関連」に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)。依存待ちの ready Issue は正常な状態であり、条件を満たすまでスキップして次候補を見る
 
 優先順は `priority:high` → 作成が古い順。
 
-候補リストを先頭から順に試し、**1件 PR 作成に成功するか、候補を使い切るまで**ループする（最大試行数: **5件**。無限ループの歯止め）:
+候補リストを先頭から順に試し、**1件 PR 作成に成功するか、候補を使い切るまで**ループする(最大試行数: **5件**。無限ループの歯止め):
 
-1. **排他ロック（CAS）**: ロック付与の直前に Issue のラベル一覧を再取得し、`status:in-progress` が**既に付いていたら**その候補をスキップして次へ（並行 fire が先にロックした）。付いていなければ直ちに `status:in-progress` を付与する
-2. **重複 PR ガード**: ロック取得後、手順1（Issue 理解）に入る前に、その Issue 番号 `N` に対して `Closes #N` を含む **open または merged な PR** を検索する。**1件でも見つかったら**、`status:in-progress` を外してその候補をスキップし次へ（既に実装済みまたは実装中）。スキップ理由は最終報告に含める
+1. **排他ロック(CAS)**: ロック付与の直前に Issue のラベル一覧を再取得し、`status:in-progress` が**既に付いていたら**その候補をスキップして次へ(並行 fire が先にロックした)。付いていなければ直ちに `status:in-progress` を付与する
+2. **重複 PR ガード**: ロック取得後、手順1(Issue 理解)に入る前に、その Issue 番号 `N` に対して close キーワード集合(preflight 条件1参照)+ `#N` を含む **open または merged な PR** を検索し、結果で分岐する:
+   - **open PR が見つかった** → `status:in-progress` を外してその候補をスキップし次へ(並行 fire が実装中)。スキップ理由は最終報告に含める
+   - **merged PR が見つかった**(実装済みの PR がマージ済みなのに Issue が open のまま残っている異常状態) → `status:in-progress` と `ready-to-implement` を外し、元 Issue に `needs-decision` を付けて判断依頼コメント(`templates/judgment-issue.md` に従い、Issue をクローズしてよいか・残作業があるかの判断を依頼)を残して次候補へ。単にスキップするだけだと毎 fire 再検査・再スキップされて候補ループの枠を浪費し続けるため、人間に可視化して状態を解消する
 3. 両ガードを通過したら、手順1へ進む
-4. 手順1・5で撤退した場合も、ロックを解除して次候補へ進む（スコープ B）
+4. 手順1・5で撤退した場合も、ロックを解除して次候補へ進む(スコープ B)
 
 候補が1件もないか、全候補をスキップ/撤退して使い切った場合は「着手可能な Issue なし」と報告して終了する。選定理由はユーザーに確認せず、最終報告に含める
 
@@ -176,8 +180,9 @@ gh pr list --state open --json number --jq 'length'
 
 ### 手順6の差分: PR 作成・CI green の確認・マージ判断 Issue
 
-- **push / PR 作成直前の重複ガード**: `git push` の直前に、対象 Issue 番号 `N` に対して `Closes #N` を含む **open または merged な PR** を再検索する（手順0のガードと同じ検索だが、実装中に並行 fire が先に PR を作った場合を捕捉する最終防衛線）。**1件でも見つかったら push せず撤退する**。`status:in-progress` を外し、作成済みのローカルブランチは残して（次の手動対応に備える）、マージ判断 Issue に「並行 fire の PR が既に存在するため撤退した」旨を記録して終了する
+- **push / PR 作成直前の重複ガード**: `git push` の直前に、対象 Issue 番号 `N` に対して close キーワード集合(手順0 preflight 条件1参照)+ `#N` を含む **open または merged な PR** を再検索する(手順0のガードと同じ検索だが、実装中に並行 fire が先に PR を作った場合を捕捉する最終防衛線)。**1件でも見つかったら push せず撤退する**。`status:in-progress` を外し、作成済みのローカルブランチは残す(次の手動対応に備える)。この時点で自 fire のマージ判断 Issue はまだ存在しないため、撤退の記録は**元 Issue へのコメント**に残す(先行 PR の番号と「並行 fire の PR が既に存在するため撤退した」旨を執筆ルールに従って書く)。実装コストを二重に払わないため、候補ループには戻らず fire を終了する
 - PR 本文は `templates/pr-body.md` のフォーマットで書き、通常の PR(Draft ではない)として作成する。ただし**マージ判断は必ず人間が行う**(自動マージは禁止。マージは `/decide` セッション内の明示承認か、ユーザー自身の操作でのみ行われる)
+- PR 本文の `Closes #<番号>` は**必ず番号まで**書く(`Closes #` のまま残さない)。番号が無いと、重複 PR ガード・preflight 条件1・`notify-needs-decision.yml` のロック自動解除のすべてからその PR が不可視になり、二重着手防止が機能しない
 - PR 作成後、**マージ判断 Issue** を作成する:
   - タイトル: `[マージ判断] PR #<PR番号> <PRタイトル>`
   - 本文: `templates/judgment-issue.md` に従い、先頭にマーカー `<!-- merge-judgment-pr: <PR番号> -->` を含める(PR のマージ/クローズ時に通知ワークフローがこの Issue を自動クローズするための目印)
