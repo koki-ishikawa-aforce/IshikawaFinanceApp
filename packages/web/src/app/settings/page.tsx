@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { apiFetch, apiMutate } from '@/lib/api-client'
@@ -1003,8 +1004,15 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'limits', label: '月次上限' },
 ]
 
-export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>('profile')
+const VALID_TABS = new Set<string>(TABS.map(t => t.id))
+
+function parseSectionParam(value: string | null): Tab {
+  return value !== null && VALID_TABS.has(value) ? (value as Tab) : 'profile'
+}
+
+function SettingsPageContent() {
+  const searchParams = useSearchParams()
+  const [tab, setTab] = useState<Tab>(() => parseSectionParam(searchParams.get('section')))
 
   return (
     <main className={styles.main}>
@@ -1033,5 +1041,13 @@ export default function SettingsPage() {
         はじめての設定（オンボーディング）を開く
       </Link>
     </main>
+  )
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className={ui.loading}>読み込み中...</div>}>
+      <SettingsPageContent />
+    </Suspense>
   )
 }
