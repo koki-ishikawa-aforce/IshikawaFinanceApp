@@ -4,7 +4,7 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 
 > **値の唯一の真実は `packages/web/src/app/globals.css`**。色コード・px 値はここに定義されたトークンが正であり、本ドキュメントには複製しない。スケールの考え方・ルール・意図のみを記す。
 >
-> スナップショット（変更しない）: `docs/superpowers/specs/2026-05-01-phase3.5-ux-ui-design.md`
+> スナップショット（変更しない）: `docs/superpowers/specs/2026-05-01-phase3.5-ux-ui-design.md`。`docs/domain/wireframes/design-tokens.md` も Phase 3.5 以前のスナップショットであり、現行ルールは本文書が優先する。
 
 ## 1. デザイン原則
 
@@ -24,7 +24,7 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 **色適用ルール**:
 
 - 自分の画面 = 自分のテーマ
-- 自分の画面に出るパートナー要素（個人費合計など）は、自分のテーマの淡色 + パートナー識別アイコン
+- 自分の画面に出るパートナー（ドメイン用語では「配偶者」）要素（個人費合計など）は、自分のテーマの淡色 + パートナー識別アイコン
 
 値の定義は `globals.css` の `:root` / `[data-theme='honey']` を参照。
 
@@ -37,7 +37,7 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 - **間隔（`--space-*`）**: 4px 基準。`--space-1` = 4px を基本単位とし、0.5 刻みの中間値を含む等差スケール。上限は `--space-14`（56px）
 - **角丸（`--radius-*`）**: 用途別の 5 段階。`--radius-card`（カード）と `--radius-panel`（パネル全体）が主要な 2 値
 - **フォントサイズ（`--text-*`）**: KPI ラベルの極小（`--text-xs`）から hero 値の最大（`--text-3xl`）まで 8 段階
-- **色**: テーマ色（`--accent` / `--bg-gradient` / `--kpi-*` 等）、ロール識別色（`--role-darling` / `--role-honey`、テーマ非依存）、カテゴリ色（`--cat-*`）、意味対応色（`--success` / `--warning` 等）
+- **色**: テーマ色（`--accent` / `--bg-gradient` / `--kpi-*` 等）、ロール識別色（`--role-darling` / `--role-honey`、テーマ非依存）、カテゴリ色（`--cat-*`）、意味対応色（#137 で `--success` / `--warning` 等として新設予定）
 
 ### 使用ルール
 
