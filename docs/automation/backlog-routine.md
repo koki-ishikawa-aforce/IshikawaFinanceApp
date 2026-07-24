@@ -9,7 +9,8 @@
   ↓
 Routine(毎時 fire・fresh session): 無人モードで /issue-work
   ├─ preflight: ゴミロックを機械的に回収(open PR なし + 2時間以上経過の両方をコマンドで確定)
-  ├─ WIP 上限超過 or 候補なし → 何もせず終了
+  │            + Routine 起点 open PR のコンフリクトを先に解消(main をマージ → /verify → push)
+  ├─ WIP 上限超過 or 候補なし → 何もせず終了(コンフリクト修復は WIP 超過でも先に実施)
   └─ 候補ループ(最大5件): 先頭から順に試行
       ├─ CAS ロック失敗(並行 fire が先行) → 次候補へ
       ├─ 重複 open PR 検知(並行 fire が実装中) → ロック解除 → 次候補へ
@@ -97,6 +98,17 @@ GitHub は**自分自身の操作を通知しない**。Routine はあなたの�
 2. **preflight 自己回復(issue-work スキル)** — 各 fire は候補選定の前に、`status:in-progress` 付き open Issue のうち「**紐づく open PR が無い** かつ **ロックが2時間以上前**」のものからロックを外す(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。PR を作らずに死んだ fire(即時回収の対象外)を拾う保険。**2条件はコマンド出力で機械的に確定させ、自然言語の判断で条件を緩めない**(2026-07-24 の二重着手事故は条件違反が直接原因)。
 
 いずれもロックを外すだけで、`ready-to-implement` などの他ラベルには触れない。
+
+## コンフリクトの先解消(preflight)
+
+複数の PR が同じファイルを触っていると、1件マージした瞬間に残りの PR がコンフリクト(base の `main` と PR の変更が衝突して自動マージできない状態)になる。これを直す役は `/pr-steward` だが、PR 執事 Routine はバックログ Routine とは別スケジュールのため、コンフリクトが次の巡回まで放置されうる(2026-07-24 の PR #191 で実際に発生)。
+
+これを防ぐため、毎時確実に動くバックログ Routine の preflight に「コンフリクトの先解消」を組み込む(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。各 fire は候補選定の前に、Routine 起点の open PR の mergeable 状態を機械的に確認し、コンフリクトがあれば `main` をマージ → `/verify` → push で先に解消してから新規着手へ進む。これにより:
+
+- コンフリクトの放置時間の上限が、最長でも fire 間隔(約20分)に収まる
+- 「壊れた PR を放置したまま新しい PR を積み増して衝突を広げる」事態を避けられる(WIP 上限超過で新規着手をスキップする fire でも、コンフリクト修復だけは先に実施する)
+
+mergeable は GitHub が照会して初めて計算するため直後は `unknown`(計算中)が返りうる。preflight・`/pr-steward` とも `unknown` の PR は数秒待って再照会し、確定しないものはコンフリクト判定を保留して報告に残す(誤って「問題なし」と扱わない)。解消時のコンフリクトにドメインロジックの競合など判断が必要なものが含まれる場合は、解消せず `needs-decision` で人間に委ねる。**マージ自体は preflight・`/pr-steward` とも行わない**(マージ判断は人間の原則を維持)。
 
 ## 統合テストの実行(無人環境)
 

@@ -13,11 +13,15 @@ Routine が無人モードで作成した open PR を巡回し、CI 失敗の診
 
 ### 1. 対象 PR の列挙
 
-open な PR のうち、Routine 起点(無人モード)で作成されたものを列挙する:
+open な PR のうち、Routine 起点(無人モード)で作成されたものを、**マージ可能状態(mergeable)つきで**列挙する:
 
 ```bash
-gh pr list --state open --json number,title,headRefName,body,labels
+gh pr list --state open --json number,title,headRefName,body,labels,mergeable
 ```
+
+GitHub MCP の場合、一覧 API(`list_pull_requests`)には mergeable が含まれないため、open PR を取得したうえで PR ごとに `pull_request_read` method `get` を呼び、`mergeable` / `mergeable_state` を得る。
+
+> **mergeable は照会して初めて計算される**: GitHub は PR の mergeable 状態を要求されて初めて算出するため、直後の照会では `mergeable` が `null`(REST)/ `UNKNOWN`(`gh`・GraphQL)、`mergeable_state` が `unknown` を返すことがある。**`unknown` が返った PR は数秒待って再照会する**(例: 2〜3秒間隔で最大3回程度)。リトライしても `unknown` のまま確定しない PR は、手順 2c のコンフリクト判定を保留し、その旨を手順3の完了報告に記す(確定できないものを誤って「問題なし」と扱わない)。
 
 Routine 起点の判別基準: PR 本文に「無人モードの選定理由」セクションが含まれている、head ブランチが `feat/issue-N-` または `claude/issue-N-` で始まる、またはマージ判断 Issue(`[マージ判断] PR #N` タイトル)が紐づいている。判別できないものは対象外とする。
 
@@ -55,7 +59,9 @@ PR の checks/statuses を確認し、失敗しているものがあれば:
 
 #### 2c. コンフリクトの解消
 
-PR がマージコンフリクト状態の場合:
+**発動条件(機械的に判定)**: 手順1で得た mergeable が **`mergeable == CONFLICTING`(`gh` / GraphQL)または `mergeable_state == dirty`(REST / MCP)** の PR を対象とする。`mergeable == MERGEABLE` / `mergeable_state == clean` は対象外。`unknown`(計算中)は手順1のリトライで確定させてから判定し、確定しなければ解消を保留して報告に記す(発動条件を自然言語で緩めない)。
+
+発動条件に該当する PR について以下を行う:
 
 1. PR の head ブランチをチェックアウトする
 2. base ブランチ(通常は `main`)を fetch してマージする:
