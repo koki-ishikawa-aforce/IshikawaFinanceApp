@@ -43,3 +43,21 @@ pnpm --filter @warimaru/web test:e2e
 - ブラウザは実行環境にプリインストール済みの Chromium（`PLAYWRIGHT_BROWSERS_PATH`）を使う。
   ローカルで未インストールの場合のみ `pnpm --filter @warimaru/web exec playwright install chromium` を実行する。
 - ユニットテスト（Vitest）は `src/**/*.test.{ts,tsx}` のみを対象にしており、`e2e/*.spec.ts` とは分離されている。
+
+### ビジュアルリグレッションテスト
+
+`e2e/visual-regression.spec.ts` が 6画面（dashboard / transactions / balances / reports / settings / onboarding）× 2テーマ（darling / honey）のスクリーンショット比較テストを実行する。ベースライン画像は `e2e/__screenshots__/` に格納され、Git で管理する。
+
+#### ベースライン画像の更新手順
+
+UI の意図的な変更でスクリーンショットが変わった場合は、ベースライン画像を更新する。
+
+```bash
+pnpm --filter @warimaru/web exec playwright test e2e/visual-regression.spec.ts --update-snapshots
+```
+
+更新後の画像を目視確認し、意図した差分のみであることを確かめてからコミットする。
+
+#### CI での差分確認
+
+CI（`.github/workflows/ci.yml`）でスクリーンショット比較に失敗した場合、差分画像が `playwright-test-results` アーティファクトとしてアップロードされる。GitHub Actions の Artifacts セクションからダウンロードして差分を確認できる。

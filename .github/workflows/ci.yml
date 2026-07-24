@@ -50,6 +50,20 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/warimaru_test
 
+      - name: Install Playwright browsers
+        run: pnpm --filter @warimaru/web exec playwright install --with-deps chromium
+
+      - name: Visual regression tests (Playwright)
+        run: pnpm --filter @warimaru/web test:e2e
+
+      - name: Upload Playwright diff artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: packages/web/test-results/
+          retention-days: 30
+
       - name: Lint
         run: pnpm lint
 
