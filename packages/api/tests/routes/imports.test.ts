@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { YearMonthSchema, type PdfToCsvConversion } from '@warimaru/domain'
 import { createApp } from '../../src/app.js'
 import { createDeps } from '../../src/composition-root.js'
@@ -53,7 +53,9 @@ describe('POST /api/imports/csv', () => {
       { length: 12 },
       (_, i) => `2026/07/${String(i + 1).padStart(2, '0')},店舗${i},${(i + 1) * 100}`,
     )
-    const { app, deps } = createTestApp()
+    const deps = createDeps({})
+    const saveSpy = vi.spyOn(deps.statementImportJobRepository, 'save')
+    const app = createApp(deps)
     const res = await request(app, 'POST', '/api/imports/csv', {
       formData: csvFormData(rows.join('\n') + '\n'),
     })
@@ -61,6 +63,17 @@ describe('POST /api/imports/csv', () => {
     const body = (await res.json()) as { job: { kind: string; summary: { newCount: number } } }
     expect(body.job.kind).toBe('completed')
     expect(body.job.summary.newCount).toBe(12)
+
+    const importingSaves = saveSpy.mock.calls
+      .map(([job]) => job)
+      .filter(job => job.kind === 'importing')
+    const progressSaves = importingSaves.filter(
+      job => 'processedCount' in job && (job as { processedCount: number }).processedCount > 0,
+    )
+    expect(progressSaves.length).toBeGreaterThanOrEqual(1)
+    expect(
+      progressSaves.some(job => (job as { processedCount: number }).processedCount === 10),
+    ).toBe(true)
   })
 
   it('フォーマット不正は 422 でジョブが format_validation_failed になる', async () => {
