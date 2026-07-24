@@ -3,6 +3,7 @@
 > 親: [docs/domain/08-ubiquitous-language.md](./08-ubiquitous-language.md)
 > サブドメイン: Supporting（07-bounded-contexts.md §2.2）
 > Phase 3.5 反映: 役割を Honey/Darling 表記に変更、ユーザー集約に nickname 属性を追加（[2026-05-01-phase3.5-ux-ui-design.md §3, §14.1](../superpowers/specs/2026-05-01-phase3.5-ux-ui-design.md)）
+> 改訂（2026-07-24・判断セッション / #112④）: ニックネーム変更イベントの定義から「変更日時」を削除し、発生日時（occurredAt）に一本化。同期イベントで両者は常に同値のため冗長であり、専用日時を持たない他イベント（SectionFCompleted / RoleJudged 等）と整合させる。
 
 ## 責務
 
@@ -187,7 +188,8 @@ behavior ニックネームを変更する = ユーザーID AND 新ニックネ�
 // 事前: 操作者 = 本人（自分のニックネームのみ変更可、配偶者のは不可）
 // 事後: 新ニックネーム = null なら表示はロール名（Honey/Darling）にフォールバック
 // 事後: 配偶者のダッシュボード表示にも反映（世帯共通）
-data ニックネーム変更イベント = ユーザーID AND 旧ニックネーム? AND 新ニックネーム? AND 変更日時 AND 発生日時
+data ニックネーム変更イベント = ユーザーID AND 旧ニックネーム? AND 新ニックネーム? AND 発生日時
+// 変更日時は持たない（発生日時 occurredAt に一本化。同期イベントで両者は常に同値のため）
 
 // --- ACL 翻訳層: Gmail OAuth → 内部表現 ---
 
