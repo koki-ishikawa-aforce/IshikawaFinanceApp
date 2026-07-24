@@ -108,7 +108,9 @@ stale は末尾に「後始末」として載せる。AskUserQuestion で「こ�
 
 - **マージ承認**: `gh pr merge <PR番号> --squash --delete-branch`(マージ方式はリポジトリの既定に合わせる。PR が Draft のまま残っている場合のみ先に `gh pr ready <PR番号>`)。マージ後、通知ワークフローが判断 Issue を自動クローズしたことを確認する。閉じていなければ(マーカー欠落など)経緯をコメントして手動クローズする
 - **修正してから**: PR に具体的な修正依頼をコメントし、判断 Issue に「修正待ち」と記録する。`needs-decision` は残す(次回セッションで再判断)
-- **不採用**: 理由をコメントし `gh pr close <PR番号> --delete-branch`(判断 Issue は自動クローズされる)
+- **不採用**: 理由をコメントし `gh pr close <PR番号> --delete-branch`(判断 Issue は自動クローズされる)。**PR をクローズしただけで終えてはならない** — マージされずにクローズされた PR は `.github/workflows/notify-needs-decision.yml` の `unlock-in-progress-on-pr-close` ジョブが元タスク Issue(PR が `Closes #M` で紐づけていた Issue)の `status:in-progress` を自動解除する。`ready-to-implement` は残ったままなので、放置すると**次の毎時 fire が却下したばかりの Issue を再実装して PR を作り直すループ**になる。これを防ぐため、元タスク Issue の後始末をユーザーに確認して実施する(元 Issue 番号は `gh pr view <PR番号> --json closingIssuesReferences` で特定する):
+  - **(a) 実装自体をやめる**: `gh issue edit <元Issue番号> --remove-label "ready-to-implement"`(完全に取り下げるなら `gh issue close <元Issue番号> --reason "not planned"`)。次の fire は拾わなくなる
+  - **(b) 別のアプローチでやり直す**: 元 Issue の受け入れ条件を却下の理由を織り込んで修正したうえで `ready-to-implement` を維持する(`needs-decision` は付けない)。次の fire が修正後の条件で再実装する
 - **stale**(PR が既に merged / closed): 唯一の手動クローズ例外。経緯を1行コメントして判断 Issue をクローズする
 
 ### 4. docs 反映の判定

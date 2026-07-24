@@ -65,6 +65,22 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
 
 `sudo -u postgres` が使えない/バイナリのパスが違う場合は環境に合わせて読み替える。docker もローカルバイナリも使えず統合テストをどうしても実行できないときは、その事実を隠さず報告する(無人モードでは「CI で初めて検証される未確認の変更」として扱い、手順6 の CI 確認を必須とする)。
 
+## ビジュアルリグレッションテスト — VRT(条件付き)
+
+CI は Playwright によるビジュアルリグレッションテスト(`pnpm --filter @warimaru/web test:e2e`)を実行する。`packages/web` に変更がある場合はローカルでも実行し、green を確認する。
+
+### 実行判定(いつ走らせるか)
+
+`packages/web` 配下のファイル(`src/`・`e2e/` 等)に変更がある場合に実行する。迷ったら実行する。
+
+### 実行方法
+
+実行環境にプリインストール済みの Chromium を利用する(`PLAYWRIGHT_BROWSERS_PATH` が設定済みの環境では追加インストール不要)。Playwright ブラウザが未インストールの環境では先に `pnpm --filter @warimaru/web exec playwright install --with-deps chromium` を実行する。
+
+```bash
+pnpm --filter @warimaru/web test:e2e
+```
+
 ## ループの打ち切り
 
 同一のエラーに対する修正が3回連続で失敗したら、ループを止めてユーザーに報告する:
@@ -74,3 +90,5 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
 - 考えられる選択肢
 
 無限ループは禁止。行き詰まりを隠して作業を続けない。
+
+無人モード(`/issue-work` の Routine 起動)では、報告先の人間がいないため上記の報告だけでは silent failure になる。`/issue-work` SKILL.md の「手順4の差分: /verify 行き詰まり時の撤退」に定める撤退手順(元 Issue への判断依頼コメント + ラベル付け替え + fire 終了)に従う。

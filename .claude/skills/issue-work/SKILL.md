@@ -255,6 +255,19 @@ gh pr list --state open --json number --jq 'length'
   撤退してもその fire は終了せず、候補ループの次の Issue へ進む。これにより、1件の撤退で fire 全体が空振りする事態を防ぐ
 - `/ddd-review` の suggestion でユーザーの意思決定が必要なもの(見送り例外に該当)は、既存ルール通り Issue 化する。その Issue も `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする
 
+### 手順4の差分: /verify 行き詰まり時の撤退
+
+`/verify` のループ打ち切り(同一エラーで3回連続失敗)に達した場合、無人モードには報告先の人間がいない。ロックの解除も判断依頼の記録も無いまま fire が終わる silent failure を防ぐため、以下の撤退手順を適用する:
+
+1. 元 Issue に `templates/judgment-issue.md` のフォーマットで判断依頼コメントを残す(何のステップが・どんなエラーで失敗し・何を試したかを記す)
+2. ラベルを付け替える:
+   ```bash
+   gh label create "needs-decision" --color D93F0B --description "人間の判断待ち" 2>/dev/null || true
+   gh issue edit <番号> --add-label "needs-decision" --remove-label "ready-to-implement" --remove-label "status:in-progress"
+   ```
+3. 作成済みのローカルブランチは残す(push はしない)
+4. 実装コストを二重に払わないため、候補ループには戻らず fire を終了する(push 前重複ガードの撤退と同じ扱い)
+
 ### 手順6の差分: PR 作成・CI green の確認・マージ判断 Issue
 
 - **push / PR 作成直前の重複ガード**: `git push` の直前に、対象 Issue 番号 `N` に対して close キーワード集合(手順0 preflight 条件1参照)+ `#N` を含む **open または merged な PR** を再検索する(手順0のガードと同じ検索だが、実装中に並行 fire が先に PR を作った場合を捕捉する最終防衛線)。**1件でも見つかったら push せず撤退する**。`status:in-progress` を外し、作成済みのローカルブランチは残す(次の手動対応に備える)。この時点で自 fire のマージ判断 Issue はまだ存在しないため、撤退の記録は**元 Issue へのコメント**に残す(先行 PR の番号と「並行 fire の PR が既に存在するため撤退した」旨を執筆ルールに従って書く)。実装コストを二重に払わないため、候補ループには戻らず fire を終了する
