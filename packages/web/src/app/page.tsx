@@ -6,6 +6,7 @@ import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { ModeToggle } from '@/components/dashboard/ModeToggle'
 import { KpiGrid } from '@/components/dashboard/KpiGrid'
 import { CategoryBreakdown } from '@/components/dashboard/CategoryBreakdown'
+import { SpousePersonalNote } from '@/components/dashboard/SpousePersonalNote'
 import { useDashboardKpis } from '@/hooks/useDashboardKpis'
 import { useCategoryBreakdown } from '@/hooks/useCategoryBreakdown'
 import { useTheme } from '@/theme/ThemeProvider'
@@ -47,6 +48,10 @@ export default function DashboardPage() {
 
       {breakdown.data && (
         <CategoryBreakdown data={breakdown.data} categoryColors={categoryColors} />
+      )}
+
+      {mode === 'household' && kpis.data && (
+        <SpousePersonalNote amount={kpis.data.spousePersonalTotal} theme={theme} />
       )}
     </main>
   )
