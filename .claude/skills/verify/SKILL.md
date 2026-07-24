@@ -74,3 +74,5 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
 - 考えられる選択肢
 
 無限ループは禁止。行き詰まりを隠して作業を続けない。
+
+無人モード(`/issue-work` の Routine 起動)では、報告先の人間がいないため上記の報告だけでは silent failure になる。`/issue-work` SKILL.md の「手順4の差分: /verify 行き詰まり時の撤退」に定める撤退手順(元 Issue への判断依頼コメント + ラベル付け替え + fire 終了)に従う。
