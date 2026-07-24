@@ -233,7 +233,7 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
 
 - `status:in-progress` / `needs-decision` ラベルが付いていない
 - 誰にも assign されていない
-- 本文の「依存」「先行」節に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)。「関連」「参考資料」内の Issue 参照は着手ブロック条件にしない(単なる参照)。依存待ちの ready Issue は正常な状態であり、条件を満たすまでスキップして次候補を見る
+- 本文の「依存」「先行」節に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)。ただし `state_reason: not_planned` でクローズされた先行 Issue は「依存解決」とみなさない(後述の not_planned ガード参照)。「関連」「参考資料」内の Issue 参照は着手ブロック条件にしない(単なる参照)。依存待ちの ready Issue は正常な状態であり、条件を満たすまでスキップして次候補を見る
 
 優先順は `priority:high` → 作成が古い順。
 
@@ -243,8 +243,9 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
 2. **重複 PR ガード**: ロック取得後、手順1(Issue 理解)に入る前に、その Issue 番号 `N` に対して close キーワード集合(preflight 条件1参照)+ `#N` を含む **open または merged な PR** を検索し、結果で分岐する:
    - **open PR が見つかった** → `status:in-progress` を外してその候補をスキップし次へ(並行 fire が実装中)。スキップ理由は最終報告に含める
    - **merged PR が見つかった**(実装済みの PR がマージ済みなのに Issue が open のまま残っている異常状態) → `status:in-progress` と `ready-to-implement` を外し、元 Issue に `needs-decision` を付けて判断依頼コメント(`templates/judgment-issue.md` に従い、Issue をクローズしてよいか・残作業があるかの判断を依頼)を残して次候補へ。単にスキップするだけだと毎 fire 再検査・再スキップされて候補ループの枠を浪費し続けるため、人間に可視化して状態を解消する
-3. 両ガードを通過したら、手順1へ進む
-4. 手順1・5で撤退した場合も、ロックを解除して次候補へ進む(スコープ B)
+3. **not_planned ガード**: 候補の本文の「依存」「先行」節に挙げられた先行 Issue のうち、`state_reason: not_planned`(実装しないと判断された)でクローズされたものがあれば、前提機能が存在しないまま着手することになる。`status:in-progress` と `ready-to-implement` を外し、元 Issue に `needs-decision` を付けて判断依頼コメント(`templates/judgment-issue.md` に従い、前提の Issue が実装されないことになったがこの Issue を進めてよいか・受け入れ条件の見直しが必要かの判断を依頼)を残して次候補へ進む
+4. すべてのガードを通過したら、手順1へ進む
+5. 手順1・5で撤退した場合も、ロックを解除して次候補へ進む(スコープ B)
 
 候補が1件もないか、全候補をスキップ/撤退して使い切った場合は「着手可能な Issue なし」と報告して終了する。選定理由はユーザーに確認せず、最終報告に含める
 
