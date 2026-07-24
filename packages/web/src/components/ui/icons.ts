@@ -6,6 +6,8 @@ export {
   LuReceipt,
   LuDownload,
   LuSettings,
+  LuPiggyBank,
+  LuTrendingUp,
   LuTriangleAlert,
   LuCircleCheck,
   LuX,

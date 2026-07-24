@@ -12,6 +12,7 @@ import {
 import { formatMoney } from '@/lib/format'
 import { formatDateTime, getCurrentMonth, shiftMonth } from '@/lib/month'
 import { TimeSeriesChart, type ChartSeries } from '@/components/balances/TimeSeriesChart'
+import { LuLandmark, LuCreditCard, LuPiggyBank, LuTrendingUp } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -27,7 +28,7 @@ function BalanceItem({ item }: { item: AccountBalanceItemWire }) {
       return (
         <div className={styles.balanceItem}>
           <div className={styles.balanceHead}>
-            <span className={styles.balanceIcon}>🏦</span>
+            <LuLandmark className={styles.balanceIcon} aria-hidden="true" />
             <span className={styles.balanceName}>{item.displayName}</span>
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentBalance)}</span>
@@ -38,7 +39,7 @@ function BalanceItem({ item }: { item: AccountBalanceItemWire }) {
       return (
         <div className={styles.balanceItem}>
           <div className={styles.balanceHead}>
-            <span className={styles.balanceIcon}>💳</span>
+            <LuCreditCard className={styles.balanceIcon} aria-hidden="true" />
             <span className={styles.balanceName}>{item.displayName}</span>
           </div>
           <span className={`${styles.balanceValue} ${styles.negative}`}>
@@ -54,7 +55,7 @@ function BalanceItem({ item }: { item: AccountBalanceItemWire }) {
       return (
         <div className={styles.balanceItem}>
           <div className={styles.balanceHead}>
-            <span className={styles.balanceIcon}>🐖</span>
+            <LuPiggyBank className={styles.balanceIcon} aria-hidden="true" />
             <span className={styles.balanceName}>{item.displayName}</span>
             {item.daysSinceLastUpdate >= 30 && (
               <span className={styles.staleTag}>{item.daysSinceLastUpdate}日未更新</span>
@@ -68,7 +69,7 @@ function BalanceItem({ item }: { item: AccountBalanceItemWire }) {
       return (
         <div className={styles.balanceItem}>
           <div className={styles.balanceHead}>
-            <span className={styles.balanceIcon}>📈</span>
+            <LuTrendingUp className={styles.balanceIcon} aria-hidden="true" />
             <span className={styles.balanceName}>{item.displayName}</span>
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentAccumulated)}</span>
