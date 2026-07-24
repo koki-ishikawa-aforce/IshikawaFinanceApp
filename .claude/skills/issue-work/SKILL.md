@@ -70,9 +70,13 @@ gh issue edit <番号> --add-label "status:in-progress"
 
 1. 受け入れ条件のチェックボックスを満たしているか最終確認する
 2. `git push -u origin HEAD`
-3. `gh pr create` — PR テンプレートに従い、本文に `Closes #<番号>` を含める
-4. CI の結果を確認する: `gh pr checks --watch`
-5. CI が失敗したら `gh run view <run-id> --log-failed` で原因を取得し、修正 → `/verify` → push を CI が green になるまで繰り返す
+3. `gh pr create` — PR テンプレートに従い、本文に `Closes #<番号>` を含める。本文は必ず**ファイル経由**(`--body-file <ファイル>` または heredoc)で渡す。`--body "...\n..."` のようにエスケープ文字入りの1行文字列で渡すと、シェルは `\n` を改行に展開せずリテラルのまま本文に残す。GitHub MCP(`create_pull_request`)の場合も、`body` には実際の改行文字を含む文字列を渡す(`\n` の2文字を埋め込まない)
+4. **リンク検証**: PR 作成直後に、Issue との auto-close リンクが張られたことを確認する
+   - `gh pr view <PR番号> --json closingIssuesReferences` の結果に対象 Issue 番号が含まれること
+   - `gh` が使えない環境では、PR 本文を再取得(`pull_request_read`)し、本文にリテラル `\n` が含まれず、`Closes #<番号>` が行頭(または空白直後)にあることを確認する
+   - リンクが無ければ本文を修正して再確認する。**必ずマージ前に行う**(マージ前の本文修正ならリンクは張り直せるが、マージ後に修正しても auto-close は遡って発動しない。2026-07-24 の #136 はこの検証が無かったため、リテラル `\n` 入り本文の PR #182 がマージされても Issue が open のまま残った)
+5. CI の結果を確認する: `gh pr checks --watch`
+6. CI が失敗したら `gh run view <run-id> --log-failed` で原因を取得し、修正 → `/verify` → push を CI が green になるまで繰り返す
 
 PR が green になったら、PR の URL と受け入れ条件の充足状況をユーザーに報告して完了。
 
@@ -183,6 +187,7 @@ gh pr list --state open --json number --jq 'length'
 - **push / PR 作成直前の重複ガード**: `git push` の直前に、対象 Issue 番号 `N` に対して close キーワード集合(手順0 preflight 条件1参照)+ `#N` を含む **open または merged な PR** を再検索する(手順0のガードと同じ検索だが、実装中に並行 fire が先に PR を作った場合を捕捉する最終防衛線)。**1件でも見つかったら push せず撤退する**。`status:in-progress` を外し、作成済みのローカルブランチは残す(次の手動対応に備える)。この時点で自 fire のマージ判断 Issue はまだ存在しないため、撤退の記録は**元 Issue へのコメント**に残す(先行 PR の番号と「並行 fire の PR が既に存在するため撤退した」旨を執筆ルールに従って書く)。実装コストを二重に払わないため、候補ループには戻らず fire を終了する
 - PR 本文は `templates/pr-body.md` のフォーマットで書き、通常の PR(Draft ではない)として作成する。ただし**マージ判断は必ず人間が行う**(自動マージは禁止。マージは `/decide` セッション内の明示承認か、ユーザー自身の操作でのみ行われる)
 - PR 本文の `Closes #<番号>` は**必ず番号まで**書く(`Closes #` のまま残さない)。番号が無いと、重複 PR ガード・preflight 条件1・`notify-needs-decision.yml` のロック自動解除のすべてからその PR が不可視になり、二重着手防止が機能しない
+- PR 作成直後に、対話モード手順6の**リンク検証**を必ず行う(本文の渡し方の注意も同じ: ファイル経由または実際の改行を含む文字列で渡し、リテラル `\n` を埋め込まない)。無人モードではマージまで人間が本文を見直す機会が無いため、この検証が auto-close 不発(= マージ済みなのに Issue が open のまま残る異常状態)を防ぐ唯一の防衛線となる
 - PR 作成後、**マージ判断 Issue** を作成する:
   - タイトル: `[マージ判断] PR #<PR番号> <PRタイトル>`
   - 本文: `templates/judgment-issue.md` に従い、先頭にマーカー `<!-- merge-judgment-pr: <PR番号> -->` を含める(PR のマージ/クローズ時に通知ワークフローがこの Issue を自動クローズするための目印)
