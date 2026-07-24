@@ -1,15 +1,14 @@
+import type { UserRole } from '@warimaru/domain'
 import { LuFlower2, LuSailboat } from './icons'
-import type { IconType } from 'react-icons'
+import type { IconType } from './icons'
 
-type Role = 'darling' | 'honey'
-
-const ROLE_ICONS: Record<Role, { Icon: IconType; colorVar: string }> = {
+const ROLE_ICONS: Record<UserRole, { Icon: IconType; colorVar: string }> = {
   darling: { Icon: LuFlower2, colorVar: 'var(--role-darling)' },
   honey: { Icon: LuSailboat, colorVar: 'var(--role-honey)' },
 }
 
 interface RoleIconProps {
-  role: Role
+  role: UserRole
   size?: string | number
   className?: string
 }

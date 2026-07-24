@@ -4,15 +4,17 @@ import { SpousePersonalNote } from '../SpousePersonalNote'
 
 describe('SpousePersonalNote', () => {
   it('darling テーマではパートナー(Honey)のアイコン・ラベル・金額を表示する', () => {
-    render(<SpousePersonalNote amount={45000} theme="darling" />)
+    const { container } = render(<SpousePersonalNote amount={45000} theme="darling" />)
 
+    expect(container.querySelector('svg')).toBeInTheDocument()
     expect(screen.getByText(/Honeyの個人費/)).toBeInTheDocument()
     expect(screen.getByText('¥45,000')).toBeInTheDocument()
   })
 
   it('honey テーマではパートナー(Darling)のアイコン・ラベル・金額を表示する', () => {
-    render(<SpousePersonalNote amount={64000} theme="honey" />)
+    const { container } = render(<SpousePersonalNote amount={64000} theme="honey" />)
 
+    expect(container.querySelector('svg')).toBeInTheDocument()
     expect(screen.getByText(/Darlingの個人費/)).toBeInTheDocument()
     expect(screen.getByText('¥64,000')).toBeInTheDocument()
   })
