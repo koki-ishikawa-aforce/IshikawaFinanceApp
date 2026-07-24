@@ -31,6 +31,12 @@ assignees: ''
 - transaction-import
 - shared
 
+## 依存(ブロッカー)
+
+<!-- 着手をブロックする先行 Issue のみを #N で列挙する。無ければ「なし」と書く。単なる参照は下の「参考資料」へ -->
+
+なし
+
 ## 参考資料
 
-<!-- docs/domain/ の該当箇所、関連 Issue / PR など -->
+<!-- docs/domain/ の該当箇所、関連 Issue / PR など。ここに挙げた Issue は着手ブロック条件にならない -->
