@@ -145,6 +145,14 @@ export function startImporting(
   }) as ImportingJob
 }
 
+/** 取込中ジョブの processedCount を更新する（状態遷移を伴わない進捗更新） */
+export function updateProcessedCount(job: ImportingJob, processedCount: number): ImportingJob {
+  return StatementImportJobSchema.parse({
+    ...job,
+    processedCount,
+  }) as ImportingJob
+}
+
 /** 状態遷移: 取込中 → 完了（終端） */
 export function completeImportJob(
   job: ImportingJob,

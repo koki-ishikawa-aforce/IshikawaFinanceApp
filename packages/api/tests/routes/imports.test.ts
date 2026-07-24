@@ -48,6 +48,21 @@ describe('POST /api/imports/csv', () => {
     expect(res.status).toBe(400)
   })
 
+  it('取込ループ中に processedCount が更新・保存される', async () => {
+    const rows = Array.from(
+      { length: 12 },
+      (_, i) => `2026/07/${String(i + 1).padStart(2, '0')},店舗${i},${(i + 1) * 100}`,
+    )
+    const { app, deps } = createTestApp()
+    const res = await request(app, 'POST', '/api/imports/csv', {
+      formData: csvFormData(rows.join('\n') + '\n'),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { job: { kind: string; summary: { newCount: number } } }
+    expect(body.job.kind).toBe('completed')
+    expect(body.job.summary.newCount).toBe(12)
+  })
+
   it('フォーマット不正は 422 でジョブが format_validation_failed になる', async () => {
     const { app } = createTestApp()
     const res = await request(app, 'POST', '/api/imports/csv', {

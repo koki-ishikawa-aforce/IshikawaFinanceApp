@@ -24,6 +24,7 @@ import {
   startFormatValidation,
   startImporting,
   startPdfConversion,
+  updateProcessedCount,
 } from '@warimaru/domain'
 import type {
   CsvImportStatusQuery,
@@ -157,11 +158,12 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
     }
 
     // 候補生成の途中失敗でもジョブ記録が残るよう、importing 状態を先に永続化する
-    const importing = startImporting(validating, new Date())
+    let importing = startImporting(validating, new Date())
     await deps.statementImportJobRepository.save(importing)
 
     let importedCount = 0
     let duplicateExcludedCount = 0
+    const progressSaveInterval = 10
     try {
       for (const row of parsed.rows) {
         const duplicate = await deps.transactionCandidateRepository.findByTripleMatch(
@@ -172,21 +174,26 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
         )
         if (duplicate !== null) {
           duplicateExcludedCount++
-          continue
+        } else {
+          const candidate = TransactionCandidateSchema.parse({
+            kind: 'normal',
+            common: {
+              transactionCandidateId: TransactionCandidateIdSchema.parse(newUlid()),
+              userId: viewerId,
+              importSource: { kind: 'csv', csvFileId: fileRef, rowNumber: row.rowNumber },
+              merchantName: row.merchantName,
+              amount: row.amount,
+              occurredAt: row.occurredAt,
+            },
+          })
+          await deps.transactionCandidateRepository.save(candidate)
+          importedCount++
         }
-        const candidate = TransactionCandidateSchema.parse({
-          kind: 'normal',
-          common: {
-            transactionCandidateId: TransactionCandidateIdSchema.parse(newUlid()),
-            userId: viewerId,
-            importSource: { kind: 'csv', csvFileId: fileRef, rowNumber: row.rowNumber },
-            merchantName: row.merchantName,
-            amount: row.amount,
-            occurredAt: row.occurredAt,
-          },
-        })
-        await deps.transactionCandidateRepository.save(candidate)
-        importedCount++
+        const processedCount = importedCount + duplicateExcludedCount
+        if (processedCount % progressSaveInterval === 0) {
+          importing = updateProcessedCount(importing, processedCount)
+          await deps.statementImportJobRepository.save(importing)
+        }
       }
     } catch (e) {
       const failed = failImportJob(
@@ -269,11 +276,12 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
       return c.json({ job: failed, conversionFailureReason: conversion.reason }, 422)
     }
 
-    const importing = startImporting(converting, new Date())
+    let importing = startImporting(converting, new Date())
     await deps.statementImportJobRepository.save(importing)
 
     let importedCount = 0
     let duplicateExcludedCount = 0
+    const progressSaveInterval = 10
     try {
       for (const row of conversion.rows) {
         const duplicate = await deps.transactionCandidateRepository.findByTripleMatch(
@@ -284,26 +292,31 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
         )
         if (duplicate !== null) {
           duplicateExcludedCount++
-          continue
-        }
-        const candidate = TransactionCandidateSchema.parse({
-          kind: 'normal',
-          common: {
-            transactionCandidateId: TransactionCandidateIdSchema.parse(newUlid()),
-            userId: viewerId,
-            importSource: {
-              kind: 'pdf',
-              pdfFileId: fileRef,
-              pageNumber: row.pageNumber,
-              pdfConversionJobId,
+        } else {
+          const candidate = TransactionCandidateSchema.parse({
+            kind: 'normal',
+            common: {
+              transactionCandidateId: TransactionCandidateIdSchema.parse(newUlid()),
+              userId: viewerId,
+              importSource: {
+                kind: 'pdf',
+                pdfFileId: fileRef,
+                pageNumber: row.pageNumber,
+                pdfConversionJobId,
+              },
+              merchantName: row.merchantName,
+              amount: row.amount,
+              occurredAt: row.occurredAt,
             },
-            merchantName: row.merchantName,
-            amount: row.amount,
-            occurredAt: row.occurredAt,
-          },
-        })
-        await deps.transactionCandidateRepository.save(candidate)
-        importedCount++
+          })
+          await deps.transactionCandidateRepository.save(candidate)
+          importedCount++
+        }
+        const processedCount = importedCount + duplicateExcludedCount
+        if (processedCount % progressSaveInterval === 0) {
+          importing = updateProcessedCount(importing, processedCount)
+          await deps.statementImportJobRepository.save(importing)
+        }
       }
     } catch (e) {
       const failed = failImportJob(
