@@ -13,7 +13,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 - ID 型: `TransactionId`, `UserId`, `CategoryId`, `ExpenseTypeId`, `AccountId`, `MitsuiSumitomoUnpaidId`, `UnpaidEntryId`, `MonthlyReportId`, `ExpenseReimbursementId`, `SettlementNoticeId`, `GmailMessageId`,
   `TransactionCandidateId`, `ImportBatchId`, `ImportJobId`, `UploadFileId`, `PdfConversionJobId`, `AmazonOrderId`, `BulkClassificationSessionId`, `MonthlyExpenseCycleId`, `ChildTransactionId`, `ExpenseTypeAccumulationId`, `TalkRoomId`, `MonthlyLimitId`, `CategoryDeletionRequestId`, `ExpenseTypeDeletionRequestId`, `Phase0ConfigId`, `DeliveryMessageId`, `DeliveryLogId`, `FailsafeEmailId`, `LineMessageId`（および各 Schema）
-- 値オブジェクト: `Money`, `YearMonth`, `ExpenseClass`, `ParameterStorePath`, `AmazonProductKey`, `UserRole`, `PersonalExpenseClass`（別名 `DefaultExpenseClass`）
+- 値オブジェクト: `Money`, `YearMonth`, `ExpenseClass`, `ParameterStorePath`, `AmazonProductKey`, `UserRole`, `PersonalExpenseClass`（別名 `DefaultExpenseClass`。`roleToPersonalExpenseClass` / `assertPersonalExpenseClassMatchesRole` で所有者ロールとの整合を担保）
 - 共有カーネル語彙（Phase 5 M-A で household-analysis から移設）: `UnclassifiedReason`, `ClassificationBasis`, `ImportSource`（メンバー schema 個別 export あり）, `UnapprovedExpenseTransfer`
 - イベント基底: `DomainEventBase`
 - イベントバス: `EventBus` / `EventHandler`（同期・インプロセス配信、publish はハンドラー完了を await）+ 実装 `InMemoryEventBus`（#34）
@@ -39,8 +39,8 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### auto-classification（自動分類・学習、08b）
 
-- 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否。`reflectManualClassification` で手動修正を T-2 軸独立に即時反映）, `AmazonProductKeyLearningRule`, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`）
-- 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `RetroactiveClassificationProposal`, `ManualClassification`（UL「修正後分類」）+ `ReflectManualClassificationResult`
+- 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否。`reflectManualClassification` で手動修正を T-2 軸独立に即時反映。`applicableClassification` で学習済みルールから適用可能な分類を導出）, `AmazonProductKeyLearningRule`, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`）
+- 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `ManualClassification`（UL「修正後分類」）+ `ReflectManualClassificationResult`
 - Repository I/F: `MerchantLearningRuleRepository`, `AmazonProductKeyLearningRuleRepository`, `BulkClassificationSessionRepository`
 - Query I/F: `RetroactiveCandidateQuery`（J-3）+ `RetroactiveCandidateView`
 - ドメインイベント: `TransactionAutoClassified` ほか 9 種

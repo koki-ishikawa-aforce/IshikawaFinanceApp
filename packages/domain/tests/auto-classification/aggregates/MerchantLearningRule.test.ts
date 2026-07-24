@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
   MerchantLearningRuleSchema,
+  applicableClassification,
   disableMerchantLearning,
   reenableMerchantLearning,
   reflectManualClassification,
   type ActiveMerchantLearningRule,
   type DisabledMerchantLearningRule,
 } from '../../../src/auto-classification/aggregates/MerchantLearningRule'
+import { InvariantViolationError } from '../../../src/shared/errors'
 
 const activeRule = {
   kind: 'active',
@@ -214,5 +216,68 @@ describe('reflectManualClassification（手動修正を学習に反映する、0
       at,
     )
     expect(result).toEqual({ kind: 'skipped', reason: 'learning_disabled' })
+  })
+})
+
+describe('applicableClassification（学習済みルールから適用可能な分類を導出、C#6）', () => {
+  const userId = 'user_honey' as never
+  const merchantName = 'スターバックス'
+  const categoryA = '01CAT000000000000000000001' as never
+  const expenseTypeX = '01EXT000000000000000000001' as never
+
+  function activeRuleWith(
+    overrides: Partial<ActiveMerchantLearningRule>,
+  ): ActiveMerchantLearningRule {
+    return MerchantLearningRuleSchema.parse({
+      kind: 'active',
+      common: { userId, merchantName },
+      categoryRef: { kind: 'learned', categoryId: categoryA },
+      expenseClassRef: { kind: 'learned', expenseClass: 'household' },
+      expenseTypeRef: { kind: 'unlearned' },
+      lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
+      ...overrides,
+    }) as ActiveMerchantLearningRule
+  }
+
+  it('カテゴリ・費用区分が学習済み（非経費）なら分類を導出できる', () => {
+    const result = applicableClassification(activeRuleWith({}))
+    expect(result).toEqual({ categoryId: categoryA, expenseClass: 'household' })
+  })
+
+  it('経費（business_expense）は経費種別まで学習済みなら経費種別ID を含めて導出できる', () => {
+    const result = applicableClassification(
+      activeRuleWith({
+        expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+        expenseTypeRef: { kind: 'learned', expenseTypeId: expenseTypeX },
+      }),
+    )
+    expect(result).toEqual({
+      categoryId: categoryA,
+      expenseClass: 'business_expense',
+      expenseTypeId: expenseTypeX,
+    })
+  })
+
+  it('カテゴリ軸が未学習なら適用不可（InvariantViolationError）', () => {
+    expect(() =>
+      applicableClassification(activeRuleWith({ categoryRef: { kind: 'unlearned' } })),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('費用区分軸が未学習なら適用不可（InvariantViolationError）', () => {
+    expect(() =>
+      applicableClassification(activeRuleWith({ expenseClassRef: { kind: 'unlearned' } })),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('経費なのに経費種別が未学習なら適用不可（InvariantViolationError）', () => {
+    expect(() =>
+      applicableClassification(
+        activeRuleWith({
+          expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+          expenseTypeRef: { kind: 'unlearned' },
+        }),
+      ),
+    ).toThrow(InvariantViolationError)
   })
 })

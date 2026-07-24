@@ -12,10 +12,12 @@ import {
   TransactionSchema,
   YearMonthSchema,
   ExpenseClassSchema,
+  assertPersonalExpenseClassMatchesRole,
   classify,
   createTransaction,
   deleteTransaction,
   normalizeMerchantName,
+  roleToPersonalExpenseClass,
 } from '@warimaru/domain'
 import type {
   ClassifiedDetails,
@@ -32,7 +34,6 @@ import type {
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
-import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const ListParamsSchema = z.object({
   month: YearMonthSchema,
@@ -104,6 +105,19 @@ export function transactionsRoutes(
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
 
+  /**
+   * 個人費用区分（personal_honey/darling）が取引の所有者ロールと整合するか検証する（C#11）。
+   * 取引は所有者 = viewer（create は viewer 所有で生成、classify は assertOwnedByViewer 済み）
+   * のため、viewer のロールを所有者ロールとして扱う。相手の個人費用区分を付けると
+   * 個人合計が相手へ誤集計されるのを未然に防ぐ。
+   */
+  async function assertClassificationMatchesOwner(
+    input: ClassificationInput,
+    ownerUserId: UserId,
+  ): Promise<void> {
+    assertPersonalExpenseClassMatchesRole(input.expenseClass, await resolveViewerRole(ownerUserId))
+  }
+
   /** 手動分類の確定をイベントとして発行する（学習ルールへの反映は購読側 #34） */
   async function publishManuallyClassified(
     transactionId: TransactionId,
@@ -169,6 +183,9 @@ export function transactionsRoutes(
       amount: body.amount,
       occurredAt: body.occurredAt,
       importSource: { kind: 'manual', enteredAt: now, enteredByUserId: viewerId },
+    }
+    if (body.classification !== undefined) {
+      await assertClassificationMatchesOwner(body.classification, viewerId)
     }
     const transaction =
       body.classification !== undefined
@@ -246,6 +263,7 @@ export function transactionsRoutes(
     if (transaction.kind === 'deleted') {
       throw new InvariantViolationError('削除済みの取引は分類できない')
     }
+    await assertClassificationMatchesOwner(input, viewerId)
     const now = new Date()
     const details = buildManualDetails(input, viewerId, now)
     const isFirstConfirmation = transaction.kind === 'unclassified'

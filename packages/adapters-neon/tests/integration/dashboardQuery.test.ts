@@ -139,9 +139,21 @@ describe('NeonDashboardQuery.fetchKpis', () => {
     expect(darlingKpis.currentMonthSpending).toBe(700)
   })
 
+  it('C#10: 配偶者の個人合計を集計値として返す（08c L147 個人合計(配偶者)）', async () => {
+    await seedTransactions()
+    await seedAccounts()
+    // honey から見た配偶者(darling)の個人合計 = darling の個人支出 700
+    const honeyKpis = await query.fetchKpis(HONEY_USER_ID, JUL, 'personal')
+    expect(honeyKpis.spousePersonalTotal).toBe(700)
+    // darling から見た配偶者(honey)の個人合計 = honey の個人支出 2000
+    const darlingKpis = await query.fetchKpis(DARLING_USER_ID, JUL, 'personal')
+    expect(darlingKpis.spousePersonalTotal).toBe(2000)
+  })
+
   it('データ 0 件でも 0 円 KPI を返す', async () => {
     const kpis = await query.fetchKpis(HONEY_USER_ID, JUL, 'household')
     expect(kpis.currentMonthSpending).toBe(0)
+    expect(kpis.spousePersonalTotal).toBe(0)
     expect(kpis.savingsBalance).toBe(0)
     expect(kpis.totalAssets).toBe(0)
   })

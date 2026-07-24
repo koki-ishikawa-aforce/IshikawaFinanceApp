@@ -26,7 +26,7 @@ const query = new NeonTransactionListQuery(db, {
 const JUL = ym('2026-07')
 
 describe('NeonTransactionListQuery.fetch（プライバシー 3 段階）', () => {
-  it('配偶者の個人取引は合計のみ可視（merchantName / amount が null）、経費(会社)と未分類は除外', async () => {
+  it('配偶者の個人取引・経費(会社)・未分類・削除済みはリストから完全除外され、世帯取引のみ残る（A①）', async () => {
     const householdByDarling = classifiedTransaction({
       ownerUserId: DARLING_USER_ID,
       amount: 3000,
@@ -66,17 +66,16 @@ describe('NeonTransactionListQuery.fetch（プライバシー 3 段階）', () =
     }
 
     const items = await query.fetch(HONEY_USER_ID, { month: JUL })
-    // 経費(会社)・未分類（他人）・削除済みは除外され 2 件
-    expect(items.map(i => i.transactionId).sort()).toEqual(
-      [householdByDarling.common.transactionId, personalByDarling.common.transactionId].sort(),
-    )
+    // A①: 配偶者の個人・経費(会社)・未分類（他人）・削除済みはリストから完全除外され、
+    // 世帯取引のみが残る（伏せ字行は残さない）。個人合計は集計値（ダッシュボード等）で別途提供する。
+    expect(items.map(i => i.transactionId)).toEqual([householdByDarling.common.transactionId])
     const household = items.find(i => i.transactionId === householdByDarling.common.transactionId)
     expect(household?.merchantName).not.toBeNull()
     expect(household?.amount).toBe(3000)
-    const personal = items.find(i => i.transactionId === personalByDarling.common.transactionId)
-    expect(personal?.merchantName).toBeNull()
-    expect(personal?.amount).toBeNull()
-    expect(personal?.expenseClass).toBe('personal_darling')
+    // 配偶者の個人取引は明細行として一切現れない
+    expect(
+      items.find(i => i.transactionId === personalByDarling.common.transactionId),
+    ).toBeUndefined()
   })
 
   it('本人の取引は個人・経費(会社)・未分類すべて明細可視', async () => {
@@ -174,7 +173,7 @@ describe('NeonTransactionListQuery.fetch（プライバシー 3 段階）', () =
     expect(items.every(i => i.categoryId === CATEGORY_FOOD)).toBe(true)
   })
 
-  it('categoryId フィルタはプライバシー適用後に絞る（配偶者の個人はマスクのまま残り、経費(会社)は除外）', async () => {
+  it('categoryId フィルタはプライバシー適用後に絞る（配偶者の個人も経費(会社)もリストから完全除外、A①）', async () => {
     const personalByDarling = classifiedTransaction({
       ownerUserId: DARLING_USER_ID,
       expenseClass: 'personal_darling',
@@ -195,12 +194,9 @@ describe('NeonTransactionListQuery.fetch（プライバシー 3 段階）', () =
     }
 
     const items = await query.fetch(HONEY_USER_ID, { month: JUL, categoryId: CATEGORY_FOOD })
-    // 経費(会社)はカテゴリ一致でもリスト自体から除外（ルール 3）
-    expect(items.map(i => i.transactionId)).toEqual([personalByDarling.common.transactionId])
-    // 配偶者の個人取引は合計のみ可視（ルール 2）— カテゴリ明細でも明細フィールドはマスクのまま
-    expect(items[0]?.merchantName).toBeNull()
-    expect(items[0]?.amount).toBeNull()
-    expect(items[0]?.categoryId).toBe(CATEGORY_FOOD)
+    // A①: 配偶者の個人取引（伏せ字行を廃止）も経費(会社)もリスト自体から除外されるため、
+    // カテゴリ一致でも 0 件になる
+    expect(items).toHaveLength(0)
   })
 
   it('isUnclassifiedOnly は未分類のみ返す', async () => {

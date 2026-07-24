@@ -372,7 +372,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
       resolveCategoryNames,
       resolveViewerRole,
     }),
-    monthlyReportQuery: new NeonMonthlyReportQuery(db),
+    monthlyReportQuery: new NeonMonthlyReportQuery(db, { resolveViewerRole }),
     accountBalanceQuery: new NeonAccountBalanceQuery(db, { now }),
     balanceTimeSeriesQuery: new NeonBalanceTimeSeriesQuery(db),
     accountRepository: new NeonAccountRepository(db),

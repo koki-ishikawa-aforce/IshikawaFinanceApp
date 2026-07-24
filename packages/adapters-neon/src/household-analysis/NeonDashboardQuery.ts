@@ -50,6 +50,11 @@ function spendingClass(mode: DashboardMode, role: UserRole): ExpenseClass {
       : 'personal_darling'
 }
 
+/** 配偶者の個人費用区分（08c L147「個人合計(配偶者)」の集計対象） */
+function spousePersonalClass(role: UserRole): ExpenseClass {
+  return role === 'honey' ? 'personal_darling' : 'personal_honey'
+}
+
 export interface NeonDashboardQueryDeps {
   resolveCategoryNames: ResolveCategoryNames
   resolveViewerRole: ResolveViewerRole
@@ -69,18 +74,18 @@ export class NeonDashboardQuery implements DashboardQuery {
     const role = await this.deps.resolveViewerRole(viewerId)
     const { fromUtc, toUtc } = yearMonthToUtcRange(month)
 
-    const spendingRows = await this.db
-      .select({ total: sum(transactions.amount).mapWith(Number) })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.kind, 'classified'),
-          eq(transactions.expenseClass, spendingClass(mode, role)),
-          gte(transactions.occurredAt, fromUtc),
-          lt(transactions.occurredAt, toUtc),
-        ),
-      )
-    const currentMonthSpending = spendingRows[0]?.total ?? 0
+    const currentMonthSpending = await this.sumMonthlySpendingByClass(
+      spendingClass(mode, role),
+      fromUtc,
+      toUtc,
+    )
+    // 08c L147: 配偶者の個人合計。個人費用は「相手には合計のみ可視」（伏せ字明細ではなく
+    // 集計値）のため owner フィルタは不要で、費用区分で当月分を合算する。
+    const spousePersonalTotal = await this.sumMonthlySpendingByClass(
+      spousePersonalClass(role),
+      fromUtc,
+      toUtc,
+    )
 
     const { savingsBalance, nisaContributionAccumulated } = await this.sumViewerBalances(viewerId)
     const cardUnpaidTotal = await this.sumViewerCardUnpaid(viewerId)
@@ -88,6 +93,7 @@ export class NeonDashboardQuery implements DashboardQuery {
     return DashboardKpisViewSchema.parse({
       mode,
       currentMonthSpending,
+      spousePersonalTotal,
       savingsBalance,
       nisaContributionAccumulated,
       totalAssets: savingsBalance + nisaContributionAccumulated - cardUnpaidTotal,
@@ -145,6 +151,26 @@ export class NeonDashboardQuery implements DashboardQuery {
       totalAmount,
       items,
     })
+  }
+
+  /** 当月・指定費用区分の分類済み取引金額を合算する（昇格カラムのみ、payload 不読） */
+  private async sumMonthlySpendingByClass(
+    expenseClass: ExpenseClass,
+    fromUtc: Date,
+    toUtc: Date,
+  ): Promise<number> {
+    const rows = await this.db
+      .select({ total: sum(transactions.amount).mapWith(Number) })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.kind, 'classified'),
+          eq(transactions.expenseClass, expenseClass),
+          gte(transactions.occurredAt, fromUtc),
+          lt(transactions.occurredAt, toUtc),
+        ),
+      )
+    return rows[0]?.total ?? 0
   }
 
   /** viewer 所有の active 口座から貯蓄残高（SMBC + 別銀行）と NISA 積立原資を合算 */

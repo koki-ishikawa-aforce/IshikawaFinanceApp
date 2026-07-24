@@ -18,8 +18,7 @@ function buildView(month: string): MonthlyReportView {
       householdCategoryTotals: [],
       personalTotalHoney: 0,
       personalTotalDarling: 0,
-      businessExpenseTotalHoney: 0,
-      businessExpenseTotalDarling: 0,
+      businessExpenseTotalSelf: 0,
       nisaContributionAccumulated: 0,
       balanceTrend: {
         smbcBalanceTrend: [],

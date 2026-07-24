@@ -12,6 +12,8 @@ import {
   RetroactiveReclassificationAppliedSchema,
   TransactionIdSchema,
   abortBulkClassificationSession,
+  applicableClassification,
+  assertPersonalExpenseClassMatchesRole,
   classify,
   completeBulkClassificationSession,
 } from '@warimaru/domain'
@@ -27,6 +29,7 @@ import type {
   RetroactiveCandidateQuery,
   TransactionRepository,
   UserId,
+  UserRole,
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
@@ -55,28 +58,25 @@ export interface ClassificationRoutesDeps {
   amazonProductKeyLearningRuleRepository: AmazonProductKeyLearningRuleRepository
   bulkClassificationSessionRepository: BulkClassificationSessionRepository
   transactionRepository: TransactionRepository
+  resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
   eventBus: EventBus
 }
 
-/** 学習済みの 3 軸から分類詳細を構築する（未学習軸が残る場合は適用不可） */
+/**
+ * 学習済みの 3 軸から分類詳細を構築する。
+ * 「未学習軸が残るルールは適用不可」という不変条件は domain の
+ * `applicableClassification` に一元化し（CLAUDE.md: api で再実装しない）、
+ * ここは得られた分類を merchant_rule 由来の ClassifiedDetails へ組み立てるだけ。
+ */
 function detailsFromRule(rule: ActiveMerchantLearningRule): ClassifiedDetails {
-  if (rule.categoryRef.kind !== 'learned' || rule.expenseClassRef.kind !== 'learned') {
-    throw new InvariantViolationError(
-      `学習が完了していないルールは遡及適用できない: ${rule.common.merchantName}`,
-    )
-  }
-  const expenseClass = rule.expenseClassRef.expenseClass
-  if (expenseClass === 'business_expense' && rule.expenseTypeRef.kind !== 'learned') {
-    throw new InvariantViolationError(
-      `経費種別が未学習のため遡及適用できない: ${rule.common.merchantName}`,
-    )
-  }
+  const classification = applicableClassification(rule)
   return ClassifiedDetailsSchema.parse({
-    categoryId: rule.categoryRef.categoryId,
-    expenseClass,
+    categoryId: classification.categoryId,
+    expenseClass: classification.expenseClass,
     expenseTypeRef:
-      expenseClass === 'business_expense' && rule.expenseTypeRef.kind === 'learned'
-        ? { kind: 'business', expenseTypeId: rule.expenseTypeRef.expenseTypeId }
+      classification.expenseClass === 'business_expense' &&
+      classification.expenseTypeId !== undefined
+        ? { kind: 'business', expenseTypeId: classification.expenseTypeId }
         : { kind: 'non_business' },
     basis: {
       kind: 'merchant_rule',
@@ -128,6 +128,12 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
       throw new InvariantViolationError(`無効化された学習ルールは遡及適用できない: ${merchantName}`)
     }
     const details = detailsFromRule(rule)
+    // C#11 の防御的多重化: 遡及適用先は必ず viewer 所有（下のループでガード）なので、
+    // ルール由来の個人費用区分が viewer のロールと整合することをここでも強制する。
+    assertPersonalExpenseClassMatchesRole(
+      details.expenseClass,
+      await deps.resolveViewerRole(viewerId),
+    )
 
     const view = await deps.retroactiveCandidateQuery.fetchCandidates(viewerId, merchantName)
     const candidateIds = view.candidates.map(candidate => candidate.transactionId)

@@ -143,6 +143,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
       bulkClassificationSessionRepository: deps.bulkClassificationSessionRepository,
       transactionRepository: deps.transactionRepository,
+      resolveViewerRole: deps.resolveViewerRole,
       eventBus: deps.eventBus,
     }),
   )

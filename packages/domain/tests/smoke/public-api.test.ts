@@ -20,8 +20,6 @@ import {
   ClassificationBasisSchema,
   ViewerContextSchema,
   ViewerRoleSchema,
-  isVisibleAsDetail,
-  isVisibleAsAggregate,
   toListItems,
   // balance-asset-tracking
   AccountSchema,
@@ -43,6 +41,8 @@ import {
   UserRoleSchema,
   PersonalExpenseClassSchema,
   DefaultExpenseClassSchema,
+  roleToPersonalExpenseClass,
+  assertPersonalExpenseClassMatchesRole,
   UnclassifiedReasonSchema,
   UnapprovedExpenseTransferSchema,
   // auto-classification
@@ -123,9 +123,9 @@ describe('@warimaru/domain 公開 API', () => {
     expect(ClassificationBasisSchema).toBeDefined()
     expect(ViewerContextSchema).toBeDefined()
     expect(ViewerRoleSchema).toBeDefined()
-    // M-B spec §4.1: privacy ヘルパ 3 種（Query adapter 用に公開）
-    expect(isVisibleAsDetail).toBeDefined()
-    expect(isVisibleAsAggregate).toBeDefined()
+    // M-B spec §4.1: privacy ヘルパ（Query adapter 用に公開。プライバシー完全強制で
+    // 唯一の判定ポイント toListItems に集約。伏せ字判定 isVisibleAsDetail /
+    // isVisibleAsAggregate は #86 A① の完全除外化で不要になり削除）
     expect(toListItems).toBeDefined()
     expect(AccountSchema).toBeDefined()
     expect(MitsuiSumitomoUnpaidSchema).toBeDefined()
@@ -145,6 +145,8 @@ describe('@warimaru/domain 公開 API', () => {
     expect(UserRoleSchema).toBeDefined()
     expect(PersonalExpenseClassSchema).toBeDefined()
     expect(DefaultExpenseClassSchema).toBeDefined()
+    expect(roleToPersonalExpenseClass).toBeDefined()
+    expect(assertPersonalExpenseClassMatchesRole).toBeDefined()
     expect(UnclassifiedReasonSchema).toBeDefined()
     expect(UnapprovedExpenseTransferSchema).toBeDefined()
     // auto-classification
