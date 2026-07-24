@@ -4,6 +4,7 @@ import {
   startPdfConversion,
   startFormatValidation,
   startImporting,
+  updateProcessedCount,
   completeImportJob,
   failImportJob,
   type UploadAcceptedJob,
@@ -93,6 +94,32 @@ describe('StatementImportJob 集約', () => {
     )
     expect(completed.kind).toBe('completed')
     expect(completed.summary.newCount).toBe(10)
+  })
+
+  it('updateProcessedCount: 取込中ジョブの処理済み件数を更新できる', () => {
+    const validating = StatementImportJobSchema.parse({
+      kind: 'format_validating',
+      common: common('csv'),
+      validationStartedAt: new Date(),
+    }) as FormatValidatingJob
+    const importing = startImporting(validating, new Date())
+    expect(importing.processedCount).toBe(0)
+
+    const updated = updateProcessedCount(importing, 15)
+    expect(updated.kind).toBe('importing')
+    expect(updated.processedCount).toBe(15)
+    expect(updated.common).toEqual(importing.common)
+    expect(updated.importStartedAt).toEqual(importing.importStartedAt)
+  })
+
+  it('updateProcessedCount: 負数は parse 失敗（nonnegative 不変条件）', () => {
+    const validating = StatementImportJobSchema.parse({
+      kind: 'format_validating',
+      common: common('csv'),
+      validationStartedAt: new Date(),
+    }) as FormatValidatingJob
+    const importing = startImporting(validating, new Date())
+    expect(() => updateProcessedCount(importing, -1)).toThrow()
   })
 
   it('failImportJob: PDF変換失敗は構造化された reason を保持する（#61）', () => {
