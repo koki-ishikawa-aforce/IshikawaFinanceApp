@@ -334,8 +334,8 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
   })
 
   /** 取込候補の一覧取得 */
-  app.get('/:batchId/candidates', async c => {
-    const importJobId = ImportJobIdSchema.parse(c.req.param('batchId'))
+  app.get('/:importJobId/candidates', async c => {
+    const importJobId = ImportJobIdSchema.parse(c.req.param('importJobId'))
     const viewerId = c.get('viewerId')
     const job = await deps.statementImportJobRepository.findById(importJobId)
     if (job === null) throw new NotFoundError('StatementImportJob', importJobId)
@@ -345,8 +345,8 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
   })
 
   /** 取込候補の確定（候補から未分類取引を生成） */
-  app.put('/:batchId/confirm', async c => {
-    const importJobId = ImportJobIdSchema.parse(c.req.param('batchId'))
+  app.put('/:importJobId/confirm', async c => {
+    const importJobId = ImportJobIdSchema.parse(c.req.param('importJobId'))
     const rawBody = await c.req.text()
     const body = ConfirmBodySchema.parse(readJsonObjectBody(rawBody))
     const viewerId = c.get('viewerId')
