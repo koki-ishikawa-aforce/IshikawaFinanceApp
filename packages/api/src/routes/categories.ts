@@ -26,7 +26,6 @@ import type {
   CategoryMaster,
   CategoryMasterRepository,
   CustomCategory,
-  ExpenseTypeMaster,
   ExpenseTypeMasterRepository,
   MerchantLearningRuleRepository,
   PendingRemapCategoryDeletionRequest,
@@ -35,37 +34,19 @@ import type {
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { assertVisibleToViewer } from './master-data-visibility.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
 
-const DeletionRequestBodySchema = z
-  .object({
-    destinationCategoryId: CategoryIdSchema,
-    destinationExpenseClass: ExpenseClassSchema,
-    destinationExpenseTypeId: ExpenseTypeIdSchema.optional(),
-  })
-  .superRefine((body, ctx) => {
-    if (
-      body.destinationExpenseClass === 'business_expense' &&
-      body.destinationExpenseTypeId === undefined
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '移動先費用区分が経費(会社)の場合は destinationExpenseTypeId が必須',
-        path: ['destinationExpenseTypeId'],
-      })
-    }
-    if (
-      body.destinationExpenseClass !== 'business_expense' &&
-      body.destinationExpenseTypeId !== undefined
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '移動先費用区分が経費(会社)以外の場合は destinationExpenseTypeId を指定できない',
-        path: ['destinationExpenseTypeId'],
-      })
-    }
-  })
+// 移動先費用区分と経費種別ID の整合(経費(会社)なら経費種別ID 必須/それ以外は指定不可)は
+// ドメイン値オブジェクト CategoryDeletionRequestSchema の不変条件として強制されるため、
+// ここでは素の形状のみを検証し、ルール強制は下段のドメイン parse に委ねる
+// (CLAUDE.md: ドメイン不変条件を adapters/api 層で再実装しない)。
+const DeletionRequestBodySchema = z.object({
+  destinationCategoryId: CategoryIdSchema,
+  destinationExpenseClass: ExpenseClassSchema,
+  destinationExpenseTypeId: ExpenseTypeIdSchema.optional(),
+})
 
 /** 規定カテゴリは改名・削除不可、追加カテゴリは作成者本人のみ操作可 */
 function assertEditableCustomCategory(
@@ -77,17 +58,6 @@ function assertEditableCustomCategory(
   }
   if (category.scope.kind !== 'personal' || category.scope.userId !== viewerId) {
     throw new PermissionDeniedError('他ユーザーのカテゴリは操作できない')
-  }
-}
-
-/** 移動先マスタは世帯共有、または本人の個人別のみ許容する */
-function assertVisibleToViewer(
-  master: CategoryMaster | ExpenseTypeMaster,
-  viewerId: UserId,
-  label: string,
-): void {
-  if (master.scope.kind === 'personal' && master.scope.userId !== viewerId) {
-    throw new PermissionDeniedError(`他ユーザーの${label}は移動先にできない`)
   }
 }
 

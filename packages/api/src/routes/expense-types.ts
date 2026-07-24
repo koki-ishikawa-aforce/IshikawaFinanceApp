@@ -32,6 +32,7 @@ import type {
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { assertVisibleToViewer } from './master-data-visibility.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
 
@@ -130,9 +131,7 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
     if (destination === null) {
       throw new NotFoundError('ExpenseTypeMaster', body.destinationExpenseTypeId)
     }
-    if (destination.scope.kind === 'personal' && destination.scope.userId !== viewerId) {
-      throw new PermissionDeniedError('他ユーザーの経費種別は移動先にできない')
-    }
+    assertVisibleToViewer(destination, viewerId, '経費種別')
 
     const now = new Date()
     const pending = ExpenseTypeDeletionRequestSchema.parse({
