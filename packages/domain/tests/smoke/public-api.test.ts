@@ -85,6 +85,7 @@ import {
   NicknameChangedSchema,
   GmailOauthRevocationDetectedSchema,
   // master-data
+  assertVisibleTo,
   CategoryMasterSchema,
   ExpenseTypeMasterSchema,
   MonthlyLimitSchema,
@@ -189,6 +190,7 @@ describe('@warimaru/domain 公開 API', () => {
     expect(NicknameChangedSchema).toBeDefined()
     expect(GmailOauthRevocationDetectedSchema).toBeDefined()
     // master-data
+    expect(assertVisibleTo).toBeDefined()
     expect(CategoryMasterSchema).toBeDefined()
     expect(ExpenseTypeMasterSchema).toBeDefined()
     expect(MonthlyLimitSchema).toBeDefined()

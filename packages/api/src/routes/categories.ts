@@ -12,6 +12,7 @@ import {
   NotFoundError,
   PermissionDeniedError,
   assertCategoryNameAvailable,
+  assertVisibleTo,
   completeCategoryRemap,
   failCategoryRemap,
   renameCustomCategory,
@@ -31,7 +32,6 @@ import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 import type { RemapResults } from '../event-handlers/master-data-remap.js'
-import { assertVisibleToViewer } from './master-data-visibility.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
 
@@ -129,7 +129,7 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
     }
     const destination = await deps.categoryMasterRepository.findById(body.destinationCategoryId)
     if (destination === null) throw new NotFoundError('CategoryMaster', body.destinationCategoryId)
-    assertVisibleToViewer(destination, viewerId, 'カテゴリ')
+    assertVisibleTo(destination.scope, viewerId, 'カテゴリ')
 
     if (body.destinationExpenseTypeId !== undefined) {
       const destinationExpenseType = await deps.expenseTypeMasterRepository.findById(
@@ -138,7 +138,7 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
       if (destinationExpenseType === null) {
         throw new NotFoundError('ExpenseTypeMaster', body.destinationExpenseTypeId)
       }
-      assertVisibleToViewer(destinationExpenseType, viewerId, '経費種別')
+      assertVisibleTo(destinationExpenseType.scope, viewerId, '経費種別')
     }
 
     const now = new Date()

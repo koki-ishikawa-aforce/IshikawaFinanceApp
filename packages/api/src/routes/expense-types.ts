@@ -10,6 +10,7 @@ import {
   NotFoundError,
   PermissionDeniedError,
   assertExpenseTypeNameAvailable,
+  assertVisibleTo,
   completeExpenseTypeRemap,
   failExpenseTypeRemap,
   renameCustomExpenseType,
@@ -29,7 +30,6 @@ import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 import type { RemapResults } from '../event-handlers/master-data-remap.js'
-import { assertVisibleToViewer } from './master-data-visibility.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
 
@@ -126,7 +126,7 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
     if (destination === null) {
       throw new NotFoundError('ExpenseTypeMaster', body.destinationExpenseTypeId)
     }
-    assertVisibleToViewer(destination, viewerId, '経費種別')
+    assertVisibleTo(destination.scope, viewerId, '経費種別')
 
     const now = new Date()
     const pending = ExpenseTypeDeletionRequestSchema.parse({
