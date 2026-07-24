@@ -31,7 +31,7 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 - **人間の承認は「着手前のラベル付け」に前倒し** — `ready-to-implement` を付ける行為が着手承認。無人モードは承認済みの Issue にしか触れない
 - **「完了」は PR の CI が green であること** — 1 fire は PR 作成では終わらない。作成した PR の CI(統合テストを含む)が green になるのを同一 fire 内で確認して初めて完了とする。`pnpm test` は adapters-neon の統合テストを含まないため「ローカル `/verify` 全 green」＝「CI green」ではない。CI が赤なら同一 fire 内で修正 → 再 push し、直せなければ(同一エラーで3回失敗)マージ判断 Issue に状況を記録して撤退する(赤い PR を「完了」として放置しない)。詳細は `.claude/skills/issue-work/SKILL.md` 無人モード手順6
 - **PR 作成で止める(自動マージはしない)** — PR は通常(non-Draft)で作成するが、マージ判断は必ず人間が行う(`/decide` セッション内の明示承認を含む)。Routine 自身による自動マージはしない
-- **ready 化と実装は分離する** — 無人消化 Routine 自身は `/backlog-ready` を実行しない(候補が尽きても自分でラベルを付けて補充しない)。ready 化は人間が起点のセッション(`/issue-create` の手順4、または `/backlog-ready` の明示的な実行)でのみ行う。これを崩すと承認ゲートが消える
+- **ready 化と実装は分離する** — 無人消化 Routine 自身は `/backlog-ready` を実行しない(候補が尽きても自分でラベルを付けて補充しない)。ready 化は人間が起点のセッション(`/issue-create` の手順4、または `/backlog-ready` の明示的な実行)でのみ行う。これを崩すと承認ゲートが消える。**例外: `/docs-drift`** — 無人・週次 Routine の `/docs-drift` は、docs とコードのどちらが正かが自明で修正が機械的な乖離に限り、起票した Issue へ自分で `ready-to-implement` を付ける(出典: `.claude/skills/docs-drift/SKILL.md` 手順5-3)。無人 Routine の起票 → 別 fire の `/issue-work` による実装まで人間が介在しないパスになるが、判断が必要な乖離には `needs-decision` を付けて承認ゲートに乗せるため、この例外に乗るのは自明・機械的な修正だけに限られる。かつマージ判断のゲート(`needs-decision` の追認)は残るため実害は小さい
 
 ## ラベル運用
 
