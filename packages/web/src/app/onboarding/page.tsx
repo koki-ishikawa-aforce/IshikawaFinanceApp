@@ -16,6 +16,17 @@ import {
 } from '@/lib/api-schemas'
 import { getTalkRoomContextId, openExternal } from '@/lib/liff'
 import { getCurrentMonth } from '@/lib/month'
+import { RoleIcon } from '@/components/ui/RoleIcon'
+import {
+  LuMessageCircle,
+  LuUsers,
+  LuBell,
+  LuRocket,
+  LuPartyPopper,
+  LuCheck,
+  LuTriangleAlert,
+  LuHourglass,
+} from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -96,7 +107,11 @@ function errorNote(error: unknown): string | null {
 function ErrorNote({ error }: { error: unknown }) {
   const message = errorNote(error)
   if (message === null) return null
-  return <p className={styles.note}>⚠ {message}</p>
+  return (
+    <p className={styles.note}>
+      <LuTriangleAlert aria-hidden="true" style={{ verticalAlign: 'middle' }} /> {message}
+    </p>
+  )
 }
 
 export default function OnboardingPage() {
@@ -257,7 +272,7 @@ export default function OnboardingPage() {
   const step = currentStep(user, notificationsDeferred)
   const stepIndex = step === 'done' ? STEPS.length : STEPS.findIndex(s => s.id === step)
   const role = user?.common.role ?? me?.role
-  const avatar = role === 'honey' ? '⛵' : '🌸'
+  const avatarRole = role === 'honey' ? 'honey' : ('darling' as const)
   const nickname = user?.common.nickname ?? ''
   const spouse = spouseQuery.data
   const talkRoomId = getTalkRoomContextId() ?? CONFIGURED_TALK_ROOM_ID
@@ -278,7 +293,9 @@ export default function OnboardingPage() {
                   : styles.stepDot
             }
           >
-            <span className={styles.stepIndex}>{i < stepIndex ? '✓' : i + 1}</span>
+            <span className={styles.stepIndex}>
+              {i < stepIndex ? <LuCheck aria-label="完了" /> : i + 1}
+            </span>
             <span className={styles.stepLabel}>{s.label}</span>
           </div>
         ))}
@@ -286,7 +303,9 @@ export default function OnboardingPage() {
 
       {step === 'nickname' && (
         <div className={ui.card}>
-          <div className={styles.stepAvatar}>{avatar}</div>
+          <div className={styles.stepAvatar}>
+            <RoleIcon role={avatarRole} size="1.5em" />
+          </div>
           <span className={ui.sectionTitle}>ニックネームを設定</span>
           <p className={styles.note}>アプリ内で表示される呼び名を決めましょう（10文字まで）。</p>
           <input
@@ -309,7 +328,9 @@ export default function OnboardingPage() {
 
       {step === 'line_friend' && (
         <div className={ui.card}>
-          <div className={styles.stepAvatar}>💬</div>
+          <div className={styles.stepAvatar}>
+            <LuMessageCircle aria-hidden="true" size="1.5em" />
+          </div>
           <span className={ui.sectionTitle}>LINE 公式アカウントを友だち追加</span>
           <p className={styles.note}>
             通知の受け取りに使う「わりまる」公式アカウントを LINE で友だち追加してください。
@@ -327,14 +348,16 @@ export default function OnboardingPage() {
 
       {step === 'talk_room' && (
         <div className={ui.card}>
-          <div className={styles.stepAvatar}>👥</div>
+          <div className={styles.stepAvatar}>
+            <LuUsers aria-hidden="true" size="1.5em" />
+          </div>
           <span className={ui.sectionTitle}>トークルームへ参加</span>
           <p className={styles.note}>
             ふたりの家計通知が届く共有トークルームに参加してください。招待リンクは配偶者または公式アカウントのメッセージから開けます。
           </p>
           {talkRoomId === null && (
             <p className={styles.note}>
-              ⚠
+              <LuTriangleAlert aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
               参加を記録するトークルームを特定できません。共有トークルーム内からこの画面を開き直してください。
             </p>
           )}
@@ -353,7 +376,9 @@ export default function OnboardingPage() {
 
       {step === 'notifications' && (
         <div className={ui.card}>
-          <div className={styles.stepAvatar}>🔔</div>
+          <div className={styles.stepAvatar}>
+            <LuBell aria-hidden="true" size="1.5em" />
+          </div>
           <span className={ui.sectionTitle}>通知の設定</span>
           <p className={styles.note}>
             リマインダーやレポート完成の通知を LINE
@@ -375,7 +400,9 @@ export default function OnboardingPage() {
 
       {step === 'phase2' && user?.kind === 'phase1_completed' && (
         <div className={ui.card}>
-          <div className={styles.stepAvatar}>🚀</div>
+          <div className={styles.stepAvatar}>
+            <LuRocket aria-hidden="true" size="1.5em" />
+          </div>
           <span className={ui.sectionTitle}>Phase 2 をはじめる</span>
           <p className={styles.note}>
             データ連携と初期設定に進みます。Gmail 連携（A）→
@@ -530,7 +557,9 @@ export default function OnboardingPage() {
         <div className={ui.card}>
           {spouse?.kind === 'both_completed' ? (
             <>
-              <div className={styles.stepAvatar}>🎉</div>
+              <div className={styles.stepAvatar}>
+                <LuPartyPopper aria-hidden="true" size="1.5em" />
+              </div>
               <span className={ui.sectionTitle}>ふたりの設定が完了しました！</span>
               <p className={styles.note}>
                 {nickname !== '' ? `${nickname}さん、` : ''}
@@ -542,7 +571,9 @@ export default function OnboardingPage() {
             </>
           ) : (
             <>
-              <div className={styles.stepAvatar}>⏳</div>
+              <div className={styles.stepAvatar}>
+                <LuHourglass aria-hidden="true" size="1.5em" />
+              </div>
               <span className={ui.sectionTitle}>配偶者の設定完了を待っています</span>
               <p className={styles.note}>
                 あなたの設定は完了しています。ふたりとも Phase 2
@@ -563,7 +594,9 @@ export default function OnboardingPage() {
 
       {step === 'done' && (
         <div className={ui.card}>
-          <div className={styles.stepAvatar}>🎉</div>
+          <div className={styles.stepAvatar}>
+            <LuPartyPopper aria-hidden="true" size="1.5em" />
+          </div>
           <span className={ui.sectionTitle}>運用開始済みです</span>
           <p className={styles.note}>
             {nickname !== '' ? `${nickname}さん、` : ''}

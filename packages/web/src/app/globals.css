@@ -9,6 +9,10 @@
 :root {
   --font-family: var(--font-zen-maru), 'Hiragino Maru Gothic ProN', system-ui, sans-serif;
 
+  /* Role identification colors (theme-independent) */
+  --role-darling: #ff7095;
+  --role-honey: #5090d8;
+
   /* Spacing scale (4px base) */
   --space-0: 0px;
   --space-0_5: 2px;

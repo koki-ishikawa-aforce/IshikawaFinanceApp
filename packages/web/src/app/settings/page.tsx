@@ -21,14 +21,14 @@ import {
 } from '@/lib/api-schemas'
 import { ACCOUNT_KIND_LABELS, EXPENSE_CLASS_LABELS, brokerageNameLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
+import { RoleIcon } from '@/components/ui/RoleIcon'
+import { LuRocket } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
 type Tab = 'profile' | 'accounts' | 'categories' | 'expense-types' | 'limits'
 
 // ---------- プロフィール（#48） ----------
-
-const ROLE_LABELS = { honey: '⛵ Honey', darling: '🌸 Darling' } as const
 
 function ProfileForm({
   role,
@@ -56,7 +56,9 @@ function ProfileForm({
     <>
       <div className={ui.field}>
         <label className={ui.fieldLabel}>役割（変更不可）</label>
-        <span className={styles.roleValue}>{ROLE_LABELS[role]}</span>
+        <span className={styles.roleValue}>
+          <RoleIcon role={role} size="1em" /> {role === 'honey' ? 'Honey' : 'Darling'}
+        </span>
       </div>
       <div className={ui.field}>
         <label className={ui.fieldLabel}>ニックネーム（10 文字まで）</label>
@@ -1027,7 +1029,8 @@ export default function SettingsPage() {
       {tab === 'limits' && <LimitsTab />}
 
       <Link href="/onboarding" className={styles.onboardingLink}>
-        🚀 はじめての設定（オンボーディング）を開く
+        <LuRocket aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
+        はじめての設定（オンボーディング）を開く
       </Link>
     </main>
   )
