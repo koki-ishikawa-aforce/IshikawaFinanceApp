@@ -1,17 +1,17 @@
 .container {
   display: flex;
   background: rgba(255, 255, 255, 0.5);
-  border-radius: 12px;
-  padding: 3px;
-  gap: 2px;
+  border-radius: var(--radius-card);
+  padding: var(--space-1);
+  gap: var(--space-0_5);
 }
 
 .segment {
   flex: 1;
-  padding: 6px 0;
+  padding: var(--space-1_5) 0;
   border: none;
-  border-radius: 10px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -21,6 +21,6 @@
 
 .segment.active {
   background: var(--accent);
-  color: #ffffff;
-  box-shadow: 0 2px 6px var(--shadow-color);
+  color: var(--white);
+  box-shadow: var(--shadow-sm);
 }

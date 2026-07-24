@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-3_5);
 }
 
 .legend {
@@ -10,18 +10,18 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1_5);
 }
 
 .legendItem {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
   text-decoration: none;
-  border-radius: 8px;
-  padding: 4px 6px;
-  margin: -4px -6px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1_5);
+  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-1_5));
 }
 
 .legendItem:active {
@@ -37,7 +37,7 @@
 .dot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
 }
 
@@ -53,7 +53,7 @@
 }
 
 .percentage {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   opacity: 0.85;
   min-width: 36px;

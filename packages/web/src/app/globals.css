@@ -47,6 +47,17 @@
   --text-2xl: 24px;
   --text-3xl: 30px;
 
+  /* Semantic status colors (theme-independent) */
+  --success: #3aab5c;
+  --warning: #ffb84d;
+  --warning-text: #6a4000;
+  --warning-muted: #a05028;
+  --warning-strong: #e08030;
+  --error: #c04050;
+  --error-text: #a02828;
+  --white: #ffffff;
+  --line-brand: #06c755;
+
   /* Darling theme (default) */
   --bg-gradient: linear-gradient(180deg, #ffc8d8 0%, #ffd8e0 30%, #ffe0e8 60%, #fff0f5 100%);
   --kpi-1: linear-gradient(135deg, #ff8aa8, #ffb0c5);
@@ -59,6 +70,14 @@
   --shadow-strong: #ff709550;
   --deco-opacity: 0.2;
   --deco-highlight: rgba(255, 255, 255, 0.3);
+
+  /* Shadow composites */
+  --shadow-sm: 0 2px 6px var(--shadow-color);
+  --shadow-md: 0 2px 8px var(--shadow-color);
+  --shadow-lg: 0 4px 12px var(--shadow-strong);
+  --shadow-hero: 0 4px 14px var(--shadow-strong);
+  --shadow-nav: 0 -2px 10px var(--shadow-color);
+  --shadow-modal: 0 8px 30px rgba(0, 0, 0, 0.25);
 
   --cat-housing: #d8407a;
   --cat-food: #ff6f90;

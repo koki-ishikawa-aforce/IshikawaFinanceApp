@@ -1,25 +1,2 @@
 # Token definitions (source of truth — direct values are intentional)
 src/app/globals.css
-
-# Existing module.css files — temporarily ignored until #137 migrates them to tokens.
-# Do NOT add new files here. New module.css must use var(--*) tokens from the start.
-src/app/balances/page.module.css
-src/app/expense-settlement/page.module.css
-src/app/imports/page.module.css
-src/app/onboarding/page.module.css
-src/app/page.module.css
-src/app/reports/page.module.css
-src/app/settings/page.module.css
-src/app/transactions/page.module.css
-src/auth/LoginScreen.module.css
-src/components/balances/TimeSeriesChart.module.css
-src/components/dashboard/CategoryBreakdown.module.css
-src/components/dashboard/DonutChart.module.css
-src/components/dashboard/KpiCard.module.css
-src/components/dashboard/KpiGrid.module.css
-src/components/dashboard/ModeToggle.module.css
-src/components/dashboard/MonthNavigator.module.css
-src/components/dashboard/SpousePersonalNote.module.css
-src/components/ui/AppNav.module.css
-src/components/ui/Modal.module.css
-src/components/ui/common.module.css
