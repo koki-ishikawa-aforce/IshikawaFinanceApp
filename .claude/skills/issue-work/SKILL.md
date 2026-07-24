@@ -69,18 +69,49 @@ gh issue edit <番号> --add-label "status:in-progress"
 ## 6. PR 作成と CI ループ(外側ループ)
 
 1. 受け入れ条件のチェックボックスを満たしているか最終確認する
-2. `git push -u origin HEAD`
-3. `gh pr create` — PR テンプレートに従い、本文に `Closes #<番号>` を含める。本文は必ず**ファイル経由**(`--body-file <ファイル>` または heredoc)で渡す。`--body "...\n..."` のようにエスケープ文字入りの1行文字列で渡すと、シェルは `\n` を改行に展開せずリテラルのまま本文に残す。GitHub MCP(`create_pull_request`)の場合も、`body` には実際の改行文字を含む文字列を渡す(`\n` の2文字を埋め込まない)
-4. **リンク検証**: PR 作成直後に、Issue との auto-close リンクが張られたことを確認する
+2. **`packages/web` に変更がある場合**、変更に関係する画面を darling / honey 両テーマで撮影し、PR 本文に含める(下記「UI 変更時のスクリーンショット添付」)。撮影の失敗は PR 作成を止める理由にしない
+3. `git push -u origin HEAD`
+4. `gh pr create` — PR テンプレートに従い、本文に `Closes #<番号>` を含める。本文は必ず**ファイル経由**(`--body-file <ファイル>` または heredoc)で渡す。`--body "...\n..."` のようにエスケープ文字入りの1行文字列で渡すと、シェルは `\n` を改行に展開せずリテラルのまま本文に残す。GitHub MCP(`create_pull_request`)の場合も、`body` には実際の改行文字を含む文字列を渡す(`\n` の2文字を埋め込まない)
+5. **リンク検証**: PR 作成直後に、Issue との auto-close リンクが張られたことを確認する
    - `gh pr view <PR番号> --json closingIssuesReferences` の結果に対象 Issue 番号が含まれること
    - `gh` が使えない環境では、PR 本文を再取得(`pull_request_read`)し、本文にリテラル `\n` が含まれず、`Closes #<番号>` が行頭(または空白直後)にあることを確認する
    - リンクが無ければ本文を修正して再確認する。**必ずマージ前に行う**(マージ前の本文修正ならリンクは張り直せるが、マージ後に修正しても auto-close は遡って発動しない。2026-07-24 の #136 はこの検証が無かったため、リテラル `\n` 入り本文の PR #182 がマージされても Issue が open のまま残った)
-5. CI の結果を確認する: `gh pr checks --watch`
-6. CI が失敗したら `gh run view <run-id> --log-failed` で原因を取得し、修正 → `/verify` → push を CI が green になるまで繰り返す
+6. CI の結果を確認する: `gh pr checks --watch`
+7. CI が失敗したら `gh run view <run-id> --log-failed` で原因を取得し、修正 → `/verify` → push を CI が green になるまで繰り返す
 
 PR が green になったら、PR の URL と受け入れ条件の充足状況をユーザーに報告して完了。
 
 補足: PR マージで Issue は自動クローズされる(`Closes #<番号>`)。マージまで見届ける場合は `gh issue edit <番号> --remove-label "status:in-progress"` でラベルを外す。クローズ済み Issue にラベルが残っていても実害はない。
+
+### UI 変更時のスクリーンショット添付(`packages/web` に変更がある場合)
+
+`packages/web` 配下に変更がある PR は、コード diff だけでは見た目を判断できない。マージ判断者がコードを読まずに見た目を確認できるよう、変更に関係する画面を darling / honey 両テーマで撮影し、PR 本文に添付する(モック起動基盤 #141 を利用)。対話モード・無人モードとも実施する。
+
+**撮影の失敗は撤退・PR 見送りの理由にしない**(後述)。
+
+1. **web 変更の有無を判定する**。空なら本節をスキップする:
+
+   ```bash
+   git diff --name-only origin/main...HEAD -- packages/web/
+   ```
+
+2. **撮影対象の画面を特定する**。変更したルート(`src/app/<route>/`)に対応する画面を選ぶ(例: `src/app/transactions/` を触ったら `/transactions`)。判別がつかなければダッシュボード `/` を撮る。
+
+   > モック fixture が用意された画面のみ実データで描画される(現状はダッシュボード関連のみ。`src/mocks/` を参照)。fixture 未整備の画面はエラー状態で描画される。撮影対象の fixture が無ければ、その旨を PR 本文のスクリーンショット節に1行記す(fixture の追加は本節の責務ではない)。
+
+3. **両テーマで撮影する**。テーマは URL クエリで切り替わる(既定 darling): `?mockRole=darling` / `?mockRole=honey`。撮影スクリプトはスクラッチディレクトリに置き、リポジトリにはコミットしない。実行環境にプリインストール済みの Chromium を使う Playwright で撮る:
+   - モックサーバを起動(バックグラウンド、ポート 3000): `pnpm --filter @warimaru/web dev:mock`
+   - サーバ応答を待ってから、対象画面 × 両テーマの URL(例: `http://localhost:3000/transactions?mockRole=honey`)を開き、`page.screenshot()` で PNG に保存する
+   - 撮り終えたらモックサーバを停止する
+
+4. **PR 本文から参照できる形にして添付する**。GitHub の PR 本文はテキストのみで、画像は**リポジトリにコミット済みのファイルの URL 参照**でしか埋め込めない(MCP からのバイナリアップロードは不可)。次の方法で添付する:
+   - 撮影した PNG を PR ブランチにコミットする。置き場: `docs/pr-screenshots/issue-<番号>/<screen>-<theme>.png`
+   - PR 本文からは絶対 URL `https://github.com/<owner>/<repo>/blob/<headブランチ>/docs/pr-screenshots/issue-<番号>/<screen>-<theme>.png?raw=true` で参照する(認証済みのマージ判断者の画面でレンダリングされる。PR 本文中の相対パス画像はレンダリングされない)
+   - `templates/pr-body.md` の「画面(スクリーンショット)」節のフォーマットに従って並べる。既存画面の見た目を変える変更では、可能なら変更前(`origin/main` を撮影)も併記する
+
+   > これらの PNG はマージ判断のための添付物であり、マージすると `docs/pr-screenshots/` に残る。不要になれば人手で削除してよい(削除しても機能に影響しない)。
+
+5. **撮影に失敗した場合**(モックサーバ起動不可・ブラウザ不可・fixture 不足など): 添付なしで PR 作成を続行し、PR 本文のスクリーンショット節に「撮影できなかった(理由: …)」と1行記す。無人モードでも同じ扱いで、撮影失敗を撤退・スキップの理由にしない。
 
 ## 無人モード(Routine からの自動起動)
 
@@ -186,6 +217,7 @@ gh pr list --state open --json number --jq 'length'
 
 - **push / PR 作成直前の重複ガード**: `git push` の直前に、対象 Issue 番号 `N` に対して close キーワード集合(手順0 preflight 条件1参照)+ `#N` を含む **open または merged な PR** を再検索する(手順0のガードと同じ検索だが、実装中に並行 fire が先に PR を作った場合を捕捉する最終防衛線)。**1件でも見つかったら push せず撤退する**。`status:in-progress` を外し、作成済みのローカルブランチは残す(次の手動対応に備える)。この時点で自 fire のマージ判断 Issue はまだ存在しないため、撤退の記録は**元 Issue へのコメント**に残す(先行 PR の番号と「並行 fire の PR が既に存在するため撤退した」旨を執筆ルールに従って書く)。実装コストを二重に払わないため、候補ループには戻らず fire を終了する
 - PR 本文は `templates/pr-body.md` のフォーマットで書き、通常の PR(Draft ではない)として作成する。ただし**マージ判断は必ず人間が行う**(自動マージは禁止。マージは `/decide` セッション内の明示承認か、ユーザー自身の操作でのみ行われる)
+- **`packages/web` に変更がある場合**、push 前に手順6「UI 変更時のスクリーンショット添付」を実施し、darling / honey 両テーマの画面を PR 本文に添付する。無人モードではコード diff だけがマージ判断材料になりやすいため、見た目を可視化するこの添付が特に重要になる。ただし**撮影失敗は撤退・スキップの理由にしない**(添付なしで PR 作成を続行し、その旨を PR 本文に記す)
 - PR 本文の `Closes #<番号>` は**必ず番号まで**書く(`Closes #` のまま残さない)。番号が無いと、重複 PR ガード・preflight 条件1・`notify-needs-decision.yml` のロック自動解除のすべてからその PR が不可視になり、二重着手防止が機能しない
 - PR 作成直後に、対話モード手順6の**リンク検証**を必ず行う(本文の渡し方の注意も同じ: ファイル経由または実際の改行を含む文字列で渡し、リテラル `\n` を埋め込まない)。無人モードではマージまで人間が本文を見直す機会が無いため、この検証が auto-close 不発(= マージ済みなのに Issue が open のまま残る異常状態)を防ぐ唯一の防衛線となる
 - PR 作成後、**マージ判断 Issue** を作成する:

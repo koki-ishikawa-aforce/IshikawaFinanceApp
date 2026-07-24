@@ -22,6 +22,16 @@ Closes #<Issue番号>
 <!-- 技術的な変更点を「何を・なぜ」のセットで書く。パッケージごと(domain / adapters-neon / api / web)に分けると読みやすい。
      専門用語・略語には初出時に括弧で平易な説明を添える。判断に影響しない詳細は書かない。 -->
 
+## 画面(スクリーンショット)
+
+<!-- `packages/web` に変更がある場合のみ書く(変更が無ければこの節ごと削除する)。
+     SKILL.md「UI 変更時のスクリーンショット添付」に従い、変更に関係する画面を darling / honey 両テーマで載せる。
+     既存画面の見た目を変える変更なら、可能な範囲で変更前後を並べる。
+     画像はコミット済み PNG を絶対 URL で参照する:
+       ![変更後 darling](https://github.com/<owner>/<repo>/blob/<headブランチ>/docs/pr-screenshots/issue-<番号>/<screen>-darling.png?raw=true)
+       ![変更後 honey](https://github.com/<owner>/<repo>/blob/<headブランチ>/docs/pr-screenshots/issue-<番号>/<screen>-honey.png?raw=true)
+     撮影できなかった場合は、その旨と理由を1行記す(撮影失敗は PR 作成を止める理由にしない)。 -->
+
 ## 検証
 
 - [ ] `pnpm build && pnpm typecheck && pnpm test && pnpm lint && pnpm format:check` が全て green
