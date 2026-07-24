@@ -1,8 +1,9 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { Suspense, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { YearMonth } from '@warimaru/domain'
+import { YearMonthSchema, type YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
 import {
@@ -171,9 +172,15 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
   )
 }
 
-export default function ImportsPage() {
+function parseMonthParam(value: string | null): YearMonth {
+  const parsed = YearMonthSchema.safeParse(value)
+  return parsed.success ? parsed.data : getCurrentMonth()
+}
+
+function ImportsPageContent() {
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
-  const [month, setMonth] = useState<YearMonth>(getCurrentMonth)
+  const [month, setMonth] = useState<YearMonth>(() => parseMonthParam(searchParams.get('month')))
   const [fileKind, setFileKind] = useState<FileKind>('card_statement')
   const [job, setJob] = useState<ImportJobWire | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -300,5 +307,13 @@ export default function ImportsPage() {
         <CandidatesPanel importJobId={job.common.importJobId} onDone={() => setJob(null)} />
       )}
     </main>
+  )
+}
+
+export default function ImportsPage() {
+  return (
+    <Suspense fallback={<div className={ui.loading}>読み込み中...</div>}>
+      <ImportsPageContent />
+    </Suspense>
   )
 }

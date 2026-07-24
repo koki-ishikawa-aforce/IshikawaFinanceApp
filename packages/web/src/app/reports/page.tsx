@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import type { YearMonth } from '@warimaru/domain'
+import { YearMonthSchema, type YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { apiFetch, ApiError } from '@/lib/api-client'
 import {
@@ -158,8 +159,14 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
   )
 }
 
-export default function ReportsPage() {
-  const [month, setMonth] = useState<YearMonth>(getCurrentMonth)
+function parseMonthParam(value: string | null): YearMonth {
+  const parsed = YearMonthSchema.safeParse(value)
+  return parsed.success ? parsed.data : getCurrentMonth()
+}
+
+function ReportsPageContent() {
+  const searchParams = useSearchParams()
+  const [month, setMonth] = useState<YearMonth>(() => parseMonthParam(searchParams.get('month')))
 
   const reportQuery = useQuery({
     queryKey: ['monthly-reports', month],
@@ -184,5 +191,13 @@ export default function ReportsPage() {
       )}
       {reportQuery.data != null && <ReportDetail report={reportQuery.data} />}
     </main>
+  )
+}
+
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={<div className={ui.loading}>読み込み中...</div>}>
+      <ReportsPageContent />
+    </Suspense>
   )
 }
