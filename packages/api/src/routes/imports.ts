@@ -70,18 +70,10 @@ const ConfirmBodySchema = z.object({
   transactionCandidateIds: z.array(TransactionCandidateIdSchema).min(1).optional(),
 })
 
-const MailBatchBodySchema = z
-  .object({
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
-  })
-  // 境界での早期入力検証（不正な期間を 400 で弾く）。一次情報は
-  // DailyMailImportBatch の from < to ガード（domain）であり、ここはそれに整合させた
-  // 意図的な二重化。ガードを変えるときは両者を揃えること。
-  .refine(body => body.from === undefined || body.to === undefined || body.from < body.to, {
-    message: 'from は to より前でなければならない',
-    path: ['from'],
-  })
+const MailBatchBodySchema = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+})
 
 export interface ImportsRoutesDeps {
   csvImportStatusQuery: CsvImportStatusQuery
@@ -404,15 +396,12 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
     const rawBody = await c.req.text()
     const body = MailBatchBodySchema.parse(readJsonObjectBody(rawBody))
     const viewerId = c.get('viewerId')
-    const inProgress = await deps.dailyMailImportBatchRepository.findInProgressByUser(viewerId)
-    if (inProgress !== null) {
-      throw new InvariantViolationError(
-        `進行中のメール取込バッチが既に存在する: ${inProgress.common.importBatchId}`,
-      )
-    }
     const now = new Date()
     const to = body.to ?? now
     const from = body.from ?? new Date(to.getTime() - 24 * 60 * 60 * 1000)
+    // 取込対象期間の from < to ガードは domain の DailyMailImportBatchSchema が単一ソース。
+    // 境界でも同スキーマで parse することで、進行中バッチの照会（DB 参照）より前に不正な
+    // 期間を 400 で早期に弾く。ガードを API 側で再実装しない（CLAUDE.md 不変条件の一元化）。
     const batch = DailyMailImportBatchSchema.parse({
       kind: 'started',
       common: {
@@ -422,6 +411,12 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
         targetPeriod: { from, to },
       },
     })
+    const inProgress = await deps.dailyMailImportBatchRepository.findInProgressByUser(viewerId)
+    if (inProgress !== null) {
+      throw new InvariantViolationError(
+        `進行中のメール取込バッチが既に存在する: ${inProgress.common.importBatchId}`,
+      )
+    }
     await deps.dailyMailImportBatchRepository.save(batch)
     // 実際のメール取得・候補生成はバッチワーカー側の責務（本 API は起動記録のみ）
     return c.json({ batch }, 202)
