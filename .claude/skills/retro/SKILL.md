@@ -30,9 +30,15 @@ description: 無人運用(Routine による /issue-work・/pr-steward)の失敗�
 
 1. **マージ済み / クローズされた PR**(Routine 起点):
 
+   収集期間内に**作成された** PR に加え、起点より前に作られて**期間内にマージ / クローズされた** PR(長く滞留した PR ほど失敗データとして重要)も拾う。`created` だけで絞ると後者を取りこぼすため、`created` / `merged` / `closed` の 3 つの検索を実行し、PR 番号で重複を除いて 1 つの集合にまとめる:
+
    ```bash
    gh pr list --state all --json number,title,state,mergedAt,closedAt,headRefName,body,labels --search "created:>=<起点>"
+   gh pr list --state all --json number,title,state,mergedAt,closedAt,headRefName,body,labels --search "merged:>=<起点>"
+   gh pr list --state all --json number,title,state,mergedAt,closedAt,headRefName,body,labels --search "closed:>=<起点>"
    ```
+
+   (GitHub MCP の場合は `search_pull_requests` に `repo:<owner>/<repo> created:>=<起点>` / `merged:>=<起点>` / `closed:>=<起点>` の 3 クエリを投げ、`number` で重複排除する。)
 
    Routine 起点の判別基準は `/pr-steward` と同じ(本文に「無人モードの選定理由」セクションがある / head ブランチが `feat/issue-N-` または `claude/issue-N-` で始まる / マージ判断 Issue が紐づく)。各 PR について次を読み取る:
    - **マージまでの往復回数**: コミット数・force-push 回数・「コンフリクト解消」「CI 修復」を示す本文/コミットの記述
