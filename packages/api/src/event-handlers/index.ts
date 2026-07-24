@@ -12,6 +12,7 @@ import type { EventBus } from '@warimaru/domain'
 import type { AppDeps } from '../composition-root.js'
 import { createNotificationDeliveryService } from '../notification/delivery-service.js'
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
+import { registerMasterDataRemapHandlers } from './master-data-remap-handlers.js'
 import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
 
@@ -25,6 +26,13 @@ export function registerEventHandlers(deps: AppDeps): void {
   registeredBuses.add(deps.eventBus)
   registerAutoClassificationEventHandlers(deps.eventBus, {
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
+  })
+  registerMasterDataRemapHandlers(deps.eventBus, {
+    transactionRepository: deps.transactionRepository,
+    merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
+    amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
+    categoryDeletionRequestRepository: deps.categoryDeletionRequestRepository,
+    expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
   })
   registerMonthlyReportFinalizationEventHandlers(deps.eventBus, {
     monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,

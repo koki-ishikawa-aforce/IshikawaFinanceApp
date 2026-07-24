@@ -1,17 +1,14 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
-  AmazonProductKeyLearningRuleSchema,
-  ClassifiedDetailsSchema,
+  ExpenseTypeDeletionRemapRequestedSchema,
   ExpenseTypeDeletionRequestIdSchema,
   ExpenseTypeDeletionRequestSchema,
   ExpenseTypeIdSchema,
   ExpenseTypeMasterSchema,
   InvariantViolationError,
-  MerchantLearningRuleSchema,
   NotFoundError,
   PermissionDeniedError,
-  TransactionSchema,
   assertExpenseTypeNameAvailable,
   completeExpenseTypeRemap,
   failExpenseTypeRemap,
@@ -19,19 +16,19 @@ import {
   requestExpenseTypeRemap,
 } from '@warimaru/domain'
 import type {
-  AmazonProductKeyLearningRuleRepository,
   CustomExpenseType,
+  EventBus,
   ExpenseTypeDeletionRequestRepository,
   ExpenseTypeMaster,
   ExpenseTypeMasterRepository,
-  MerchantLearningRuleRepository,
   MonthlyLimitRepository,
   PendingRemapExpenseTypeDeletionRequest,
-  TransactionRepository,
   UserId,
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { domainEventBase } from '../event-handlers/index.js'
+import type { RemapResults } from '../event-handlers/master-data-remap-handlers.js'
 import { assertVisibleToViewer } from './master-data-visibility.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
@@ -56,10 +53,8 @@ function assertEditableCustomExpenseType(
 export interface ExpenseTypesRoutesDeps {
   expenseTypeMasterRepository: ExpenseTypeMasterRepository
   expenseTypeDeletionRequestRepository: ExpenseTypeDeletionRequestRepository
-  transactionRepository: TransactionRepository
-  merchantLearningRuleRepository: MerchantLearningRuleRepository
-  amazonProductKeyLearningRuleRepository: AmazonProductKeyLearningRuleRepository
   monthlyLimitRepository: MonthlyLimitRepository
+  eventBus: EventBus
 }
 
 export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
@@ -152,64 +147,25 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
     await deps.expenseTypeDeletionRequestRepository.save(requested)
 
     try {
-      // 経費精算: 経費(会社)取引の経費種別のみ移動先へ付け替える（費用区分・basis は保持）
-      const transactions = await deps.transactionRepository.findClassifiedByExpenseType(
-        target.expenseTypeId,
-      )
-      for (const transaction of transactions) {
-        const details = ClassifiedDetailsSchema.parse({
-          ...transaction.details,
-          expenseTypeRef: { kind: 'business', expenseTypeId: body.destinationExpenseTypeId },
-        })
-        await deps.transactionRepository.save(TransactionSchema.parse({ ...transaction, details }))
+      const remapResults: RemapResults = {
+        affectedTransactionCount: 0,
+        affectedLearningRuleCount: 0,
       }
+      const event = {
+        ...ExpenseTypeDeletionRemapRequestedSchema.parse({
+          ...domainEventBase(now),
+          type: 'ExpenseTypeDeletionRemapRequested' as const,
+          expenseTypeDeletionRequestId: pending.expenseTypeDeletionRequestId,
+          targetExpenseTypeId: target.expenseTypeId,
+          destinationExpenseTypeId: body.destinationExpenseTypeId,
+        }),
+        _remapResults: remapResults,
+      }
+      await deps.eventBus.publish(event)
 
-      // 自動分類・学習: 学習ルールは経費種別軸のみリマップする（T-2 軸独立）
-      let affectedLearningRuleCount = 0
-      const merchantRules = await deps.merchantLearningRuleRepository.findAllByUser(viewerId)
-      for (const rule of merchantRules) {
-        if (
-          rule.kind !== 'active' ||
-          rule.expenseTypeRef.kind !== 'learned' ||
-          rule.expenseTypeRef.expenseTypeId !== target.expenseTypeId
-        ) {
-          continue
-        }
-        await deps.merchantLearningRuleRepository.save(
-          MerchantLearningRuleSchema.parse({
-            ...rule,
-            expenseTypeRef: { kind: 'learned', expenseTypeId: body.destinationExpenseTypeId },
-            lastUpdatedAt: now,
-          }),
-        )
-        affectedLearningRuleCount++
-      }
-      const amazonRules = await deps.amazonProductKeyLearningRuleRepository.findAllByUser(viewerId)
-      for (const rule of amazonRules) {
-        if (
-          rule.expenseTypeRef.kind !== 'learned' ||
-          rule.expenseTypeRef.expenseTypeId !== target.expenseTypeId
-        ) {
-          continue
-        }
-        await deps.amazonProductKeyLearningRuleRepository.save(
-          AmazonProductKeyLearningRuleSchema.parse({
-            ...rule,
-            expenseTypeRef: { kind: 'learned', expenseTypeId: body.destinationExpenseTypeId },
-            lastUpdatedAt: now,
-          }),
-        )
-        affectedLearningRuleCount++
-      }
-
-      // 削除対象経費種別の月次上限は残すと宙に浮くため物理削除する
       await deps.monthlyLimitRepository.deleteByExpenseType(target.expenseTypeId)
 
-      const completed = completeExpenseTypeRemap(
-        requested,
-        { affectedTransactionCount: transactions.length, affectedLearningRuleCount },
-        new Date(),
-      )
+      const completed = completeExpenseTypeRemap(requested, remapResults, new Date())
       await deps.expenseTypeDeletionRequestRepository.save(completed)
       await deps.expenseTypeMasterRepository.deleteById(target.expenseTypeId)
       return c.json({ request: completed }, 201)
