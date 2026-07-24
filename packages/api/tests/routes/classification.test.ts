@@ -8,13 +8,15 @@ import {
 } from '@warimaru/domain'
 import type {
   BulkClassificationCompleted,
+  MerchantLearningDisabled,
+  MerchantLearningReenabled,
   RetroactiveCandidateItem,
   RetroactiveCandidateQuery,
   RetroactiveReclassificationApplied,
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { TestApp } from '../helpers/test-app.js'
-import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
+import { createTestApp, request, SPOUSE_ID, VIEWER_ID } from '../helpers/test-app.js'
 
 async function seedUnclassified(t: TestApp, merchantName = '未分類ストア'): Promise<string> {
   const transactionId = TransactionIdSchema.parse(newUlid())
@@ -165,6 +167,32 @@ describe('POST /api/classification/retroactive-candidates/apply', () => {
     expect(events[0]?.targetCount).toBe(2)
   })
 
+  it('無効化された加盟店ルールは遡及適用できない（409）', async () => {
+    const merchantName = '無効化ストア'
+    const retroactiveCandidateQuery: RetroactiveCandidateQuery = {
+      async fetchCandidates(userId, name) {
+        return { userId, merchantName: name, candidates: [], proposedAt: new Date() }
+      },
+    }
+    const t = createTestApp({ retroactiveCandidateQuery })
+    await seedLearnedRule(t, merchantName)
+
+    const disableRes = await request(t.app, 'POST', '/api/classification/merchant-rules/disable', {
+      body: { merchantName },
+    })
+    expect(disableRes.status).toBe(200)
+
+    const applyRes = await request(
+      t.app,
+      'POST',
+      '/api/classification/retroactive-candidates/apply',
+      {
+        body: { merchantName },
+      },
+    )
+    expect(applyRes.status).toBe(409)
+  })
+
   it('適用対象が 0 件のときはイベントを発火しない', async () => {
     const merchantName = '遡及ゼロストア'
     const retroactiveCandidateQuery: RetroactiveCandidateQuery = {
@@ -187,6 +215,169 @@ describe('POST /api/classification/retroactive-candidates/apply', () => {
       body: { merchantName },
     })
     expect(res.status).toBe(200)
+    expect(events).toHaveLength(0)
+  })
+})
+
+interface MerchantRulesResponse {
+  items: { kind: string; common: { merchantName: string } }[]
+}
+
+async function fetchRule(t: TestApp, merchantName: string): Promise<{ kind: string } | undefined> {
+  const res = await request(t.app, 'GET', '/api/classification/merchant-rules')
+  const { items } = (await res.json()) as MerchantRulesResponse
+  return items.find(item => item.common.merchantName === merchantName)
+}
+
+describe('POST /api/classification/merchant-rules/disable', () => {
+  it('有効な加盟店ルールを学習無効化へ遷移させ、MerchantLearningDisabled を発火する（M-1、08b §2/§3）', async () => {
+    const merchantName = '学習停止ストア'
+    const t = createTestApp()
+    await seedLearnedRule(t, merchantName)
+
+    const events: MerchantLearningDisabled[] = []
+    t.deps.eventBus.subscribe<MerchantLearningDisabled>('MerchantLearningDisabled', e => {
+      events.push(e)
+    })
+
+    const res = await request(t.app, 'POST', '/api/classification/merchant-rules/disable', {
+      body: { merchantName },
+    })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { kind: string }).kind).toBe('disabled')
+    expect((await fetchRule(t, merchantName))?.kind).toBe('disabled')
+    expect(events).toHaveLength(1)
+    expect(events[0]?.userId).toBe(VIEWER_ID)
+    expect(events[0]?.merchantName).toBe(merchantName)
+  })
+
+  it('無効化後は手動修正が学習に反映されず、加盟店は未分類のまま（学習が復活しない）', async () => {
+    const merchantName = '据え置きストア'
+    const t = createTestApp()
+    await seedLearnedRule(t, merchantName)
+    await request(t.app, 'POST', '/api/classification/merchant-rules/disable', {
+      body: { merchantName },
+    })
+
+    // 無効化中の加盟店の取引を手動分類しても、学習ルールは disabled のまま復活しない
+    const txId = await seedUnclassified(t, merchantName)
+    const classifyRes = await request(t.app, 'PUT', `/api/transactions/${txId}/classify`, {
+      body: { categoryId: newUlid(), expenseClass: 'household' },
+    })
+    expect(classifyRes.status).toBe(200)
+
+    expect((await fetchRule(t, merchantName))?.kind).toBe('disabled')
+  })
+
+  it('学習ルールが存在しない加盟店の無効化は 404', async () => {
+    const t = createTestApp()
+    const res = await request(t.app, 'POST', '/api/classification/merchant-rules/disable', {
+      body: { merchantName: '未学習ストア' },
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('F-1: 他ユーザーの学習ルールには触れられない（自分のスコープに無ければ 404）', async () => {
+    const merchantName = '相手ストア'
+    const t = createTestApp()
+    await seedLearnedRule(t, merchantName) // VIEWER_ID のルール
+
+    // SPOUSE_ID の視点では自分の学習ルールが無いため 404
+    const res = await request(t.app, 'POST', '/api/classification/merchant-rules/disable', {
+      body: { merchantName },
+      viewerId: SPOUSE_ID,
+    })
+    expect(res.status).toBe(404)
+    // VIEWER_ID のルールは無効化されず有効なまま
+    expect((await fetchRule(t, merchantName))?.kind).toBe('active')
+  })
+
+  it('無効化は冪等（無効化済みでは 200 で disabled を返し、イベントは再発火しない）', async () => {
+    const merchantName = '二重無効化ストア'
+    const t = createTestApp()
+    await seedLearnedRule(t, merchantName)
+    await request(t.app, 'POST', '/api/classification/merchant-rules/disable', {
+      body: { merchantName },
+    })
+
+    // 2 回目以降のみを観測する（状態遷移が無いのでイベントは発火しない）
+    const events: MerchantLearningDisabled[] = []
+    t.deps.eventBus.subscribe<MerchantLearningDisabled>('MerchantLearningDisabled', e => {
+      events.push(e)
+    })
+
+    const res = await request(t.app, 'POST', '/api/classification/merchant-rules/disable', {
+      body: { merchantName },
+    })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { kind: string }).kind).toBe('disabled')
+    expect(events).toHaveLength(0)
+  })
+})
+
+describe('POST /api/classification/merchant-rules/reenable', () => {
+  it('無効化された加盟店ルールを再有効化し、全軸未学習に戻す', async () => {
+    const merchantName = '再開ストア'
+    const t = createTestApp()
+    await seedLearnedRule(t, merchantName)
+    await request(t.app, 'POST', '/api/classification/merchant-rules/disable', {
+      body: { merchantName },
+    })
+
+    const events: MerchantLearningReenabled[] = []
+    t.deps.eventBus.subscribe<MerchantLearningReenabled>('MerchantLearningReenabled', e => {
+      events.push(e)
+    })
+
+    const res = await request(t.app, 'POST', '/api/classification/merchant-rules/reenable', {
+      body: { merchantName },
+    })
+    expect(res.status).toBe(200)
+    const rule = (await res.json()) as {
+      kind: string
+      categoryRef: { kind: string }
+      expenseClassRef: { kind: string }
+      expenseTypeRef: { kind: string }
+    }
+    expect(rule.kind).toBe('active')
+    expect(rule.categoryRef.kind).toBe('unlearned')
+    expect(rule.expenseClassRef.kind).toBe('unlearned')
+    expect(rule.expenseTypeRef.kind).toBe('unlearned')
+    expect(events).toHaveLength(1)
+    expect(events[0]?.userId).toBe(VIEWER_ID)
+    expect(events[0]?.merchantName).toBe(merchantName)
+  })
+
+  it('学習ルールが存在しない加盟店の再有効化は 404', async () => {
+    const t = createTestApp()
+    const res = await request(t.app, 'POST', '/api/classification/merchant-rules/reenable', {
+      body: { merchantName: '未学習ストア' },
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('再有効化は冪等（有効なルールは学習済み軸を消さず 200 で返し、イベントも発火しない）', async () => {
+    const merchantName = '有効据え置きストア'
+    const t = createTestApp()
+    await seedLearnedRule(t, merchantName) // category と expenseClass は学習済み
+
+    const events: MerchantLearningReenabled[] = []
+    t.deps.eventBus.subscribe<MerchantLearningReenabled>('MerchantLearningReenabled', e => {
+      events.push(e)
+    })
+
+    const res = await request(t.app, 'POST', '/api/classification/merchant-rules/reenable', {
+      body: { merchantName },
+    })
+    expect(res.status).toBe(200)
+    const rule = (await res.json()) as {
+      kind: string
+      categoryRef: { kind: string }
+    }
+    expect(rule.kind).toBe('active')
+    // 学習済みカテゴリ軸が消えていない（active への再有効化は破壊的にしない）
+    expect(rule.categoryRef.kind).toBe('learned')
+    // 状態遷移が無いためイベントは発火しない
     expect(events).toHaveLength(0)
   })
 })

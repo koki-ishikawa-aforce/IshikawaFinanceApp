@@ -16,6 +16,10 @@ import {
   assertPersonalExpenseClassMatchesRole,
   classify,
   completeBulkClassificationSession,
+  disableMerchantLearning,
+  MerchantLearningDisabledSchema,
+  MerchantLearningReenabledSchema,
+  reenableMerchantLearning,
 } from '@warimaru/domain'
 import type {
   ActiveMerchantLearningRule,
@@ -42,6 +46,10 @@ const RetroactiveParamsSchema = z.object({
 const RetroactiveApplyBodySchema = z.object({
   merchantName: z.string().min(1),
   transactionIds: z.array(TransactionIdSchema).min(1).optional(),
+})
+
+const MerchantRuleActionBodySchema = z.object({
+  merchantName: z.string().min(1),
 })
 
 const BulkSessionCreateBodySchema = z.object({
@@ -176,6 +184,69 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
     const viewerId = c.get('viewerId')
     const items = await deps.merchantLearningRuleRepository.findAllByUser(viewerId)
     return c.json({ items })
+  })
+
+  /**
+   * 加盟店学習の無効化（M-1「この加盟店は学習しない」、08b §1 / 論点38）
+   *
+   * 有効ルール → 学習無効化へ遷移させる。無効化後は当該加盟店の手動修正が
+   * 学習に反映されず（`reflectManualClassification` が learning_disabled で skip）、
+   * 有効ルールが二度と生成されないため、以後この加盟店は常に未分類で取り込まれる。
+   * F-1: `findByMerchant` が viewerId 必須のため、他者の学習データには触れない。
+   */
+  app.post('/merchant-rules/disable', async c => {
+    const body = MerchantRuleActionBodySchema.parse(await c.req.json())
+    const viewerId = c.get('viewerId')
+    const merchantName = body.merchantName.normalize('NFKC').trim()
+
+    const rule = await deps.merchantLearningRuleRepository.findByMerchant(viewerId, merchantName)
+    if (rule === null) throw new NotFoundError('MerchantLearningRule', merchantName)
+    // 既に無効化済みなら冪等に現状を返す（状態遷移が無いためイベントも発火しない）
+    if (rule.kind === 'disabled') return c.json(rule)
+
+    const disabled = disableMerchantLearning(rule, new Date())
+    await deps.merchantLearningRuleRepository.save(disabled)
+    // 08b §2/§3 M-1: 実際に有効→無効化の遷移が起きた場合のみイベントを発火する
+    await deps.eventBus.publish(
+      MerchantLearningDisabledSchema.parse({
+        ...domainEventBase(),
+        type: 'MerchantLearningDisabled',
+        userId: viewerId,
+        merchantName,
+      }),
+    )
+    return c.json(disabled)
+  })
+
+  /**
+   * 加盟店学習の再有効化（08b §1）
+   *
+   * 学習無効化 → 有効へ遷移させる。再有効化直後は全軸未学習に戻り、以後の手動修正から
+   * 改めて学習し直す。F-1: `findByMerchant` が viewerId 必須のため他者に触れない。
+   */
+  app.post('/merchant-rules/reenable', async c => {
+    const body = MerchantRuleActionBodySchema.parse(await c.req.json())
+    const viewerId = c.get('viewerId')
+    const merchantName = body.merchantName.normalize('NFKC').trim()
+
+    const rule = await deps.merchantLearningRuleRepository.findByMerchant(viewerId, merchantName)
+    if (rule === null) throw new NotFoundError('MerchantLearningRule', merchantName)
+    // 既に有効なら冪等に現状を返す（active への再有効化は学習済み軸を消してしまうため行わない。
+    // 状態遷移が無いためイベントも発火しない）
+    if (rule.kind === 'active') return c.json(rule)
+
+    const reenabled = reenableMerchantLearning(rule, new Date())
+    await deps.merchantLearningRuleRepository.save(reenabled)
+    // 08b §2/§3: 実際に無効化→有効の遷移が起きた場合のみイベントを発火する
+    await deps.eventBus.publish(
+      MerchantLearningReenabledSchema.parse({
+        ...domainEventBase(),
+        type: 'MerchantLearningReenabled',
+        userId: viewerId,
+        merchantName,
+      }),
+    )
+    return c.json(reenabled)
   })
 
   /** Amazon 商品キー学習ルール一覧 */
