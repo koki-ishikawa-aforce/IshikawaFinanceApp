@@ -14,7 +14,7 @@
  *    （振替0件のまま確定して入金が中間状態「突合済み」に留まる不整合を原理的に防ぐ、OQ-49 ①）
  *  - 不認定分がない突合結果では振替を指定できない
  */
-import { InvariantViolationError, PermissionDeniedError } from '../../shared/errors/DomainError'
+import { InvariantViolationError } from '../../shared/errors/DomainError'
 import type { PersonalExpenseClass } from '../../shared/value-objects/PersonalExpenseClass'
 import type { UnapprovedExpenseTransfer } from '../../shared/value-objects/UnapprovedExpenseTransfer'
 import {
@@ -68,11 +68,12 @@ export function finalizeExpenseSettlement(
   at: Date,
 ): FinalizeExpenseSettlementResult {
   // 振替先は操作者本人の個人費用区分のみ（不認定分を相手の個人合計へ誤帰属させない、08e §2）。
-  // エラー型は従来挙動（403）を踏襲。誤帰属を「取り違え＝整合性違反」とみなし 409 へ寄せるかは
-  // OQ-48 と併せた判断待ち（別途 needs-decision Issue で追跡）。
+  // 相手の区分を指定するのは「他人の集約への越権」ではなく「本人が区分を取り違えた＝配偶者の
+  // 個人支出合計がズレる整合性違反」であるため、不変条件違反（409）で弾く。OQ-48（区分の取り違えは
+  // 不変条件としてドメイン層で弾く）と用語をそろえる（OQ-51、2026-07-24 判断セッション / #127）。
   for (const transfer of transfers) {
     if (transfer.transferTarget !== ownExpenseClass) {
-      throw new PermissionDeniedError('不認定分の振替先は操作者本人の個人費用区分のみ指定できる')
+      throw new InvariantViolationError('不認定分の振替先は操作者本人の個人費用区分のみ指定できる')
     }
   }
 

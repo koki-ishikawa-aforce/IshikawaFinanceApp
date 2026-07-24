@@ -14,10 +14,7 @@ import {
   type AwaitingMatchDeposit,
 } from '../../../src/expense-settlement/aggregates/ExpenseReimbursementDeposit'
 import type { UnapprovedExpenseTransfer } from '../../../src/shared/value-objects/UnapprovedExpenseTransfer'
-import {
-  InvariantViolationError,
-  PermissionDeniedError,
-} from '../../../src/shared/errors/DomainError'
+import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 import { testUlid } from '../../helpers/ids'
 
 const AT = new Date('2026-07-31T00:00:00Z')
@@ -148,7 +145,7 @@ describe('finalizeExpenseSettlement（最終確定の不変条件）', () => {
     ).toThrow(InvariantViolationError)
   })
 
-  it('振替先が本人の個人費用区分でない: PermissionDenied で弾く', () => {
+  it('振替先が本人の個人費用区分でない: 区分の取り違え＝整合性違反として弾く（OQ-51: 409）', () => {
     expect(() =>
       finalizeExpenseSettlement(
         csvConfirmedCycle(10000),
@@ -157,7 +154,7 @@ describe('finalizeExpenseSettlement（最終確定の不変条件）', () => {
         'personal_honey',
         AT,
       ),
-    ).toThrow(PermissionDeniedError)
+    ).toThrow(InvariantViolationError)
   })
 
   it('不認定分なしなのに振替を指定: 弾く', () => {
@@ -166,6 +163,20 @@ describe('finalizeExpenseSettlement（最終確定の不変条件）', () => {
         csvConfirmedCycle(3000),
         awaitingDeposit(5000),
         [transfer(100, 'personal_honey')],
+        'personal_honey',
+        AT,
+      ),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('差額なし + 配偶者区分の振替: 振替先違反も整合性違反(409)で弾く（OQ-51 の順序依存解消）', () => {
+    // 以前は振替先=本人チェックが 403 を先に返し、不認定分なしの 409 判定より先行していた。
+    // 両者を 409 にそろえたことで、どちらの経路でも同じ不変条件違反として弾かれる。
+    expect(() =>
+      finalizeExpenseSettlement(
+        csvConfirmedCycle(3000),
+        awaitingDeposit(5000),
+        [transfer(100, 'personal_darling')],
         'personal_honey',
         AT,
       ),
