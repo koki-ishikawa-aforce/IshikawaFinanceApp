@@ -228,7 +228,7 @@ gh pr list --state open --json number --jq 'length'
 
 - `status:in-progress` / `needs-decision` ラベルが付いていない
 - 誰にも assign されていない
-- 本文の「依存」「先行」「関連」に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)。依存待ちの ready Issue は正常な状態であり、条件を満たすまでスキップして次候補を見る
+- 本文の「依存(ブロッカー)」「先行」節に挙げられた先行 Issue がすべてクローズ済み(open のものに依存していない)。「関連」および「参考資料」節に挙げられた Issue 参照は着手ブロック条件にしない(単なる参照であり、open でも着手してよい)。依存待ちの ready Issue は正常な状態であり、条件を満たすまでスキップして次候補を見る
 
 優先順は `priority:high` → 作成が古い順。
 
