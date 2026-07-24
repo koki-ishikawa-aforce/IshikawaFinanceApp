@@ -8,31 +8,31 @@
 
 .card {
   text-align: center;
-  padding: 40px 32px;
+  padding: var(--space-10) var(--space-8);
 }
 
 .title {
-  font-size: 28px;
+  font-size: var(--text-3xl);
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .subtitle {
-  font-size: 14px;
+  font-size: var(--text-base);
   color: var(--text-secondary);
-  margin-bottom: 32px;
+  margin-bottom: var(--space-8);
 }
 
 .loginButton {
   display: inline-block;
-  padding: 12px 32px;
-  font-size: 16px;
+  padding: var(--space-3) var(--space-8);
+  font-size: var(--text-lg);
   font-weight: 500;
-  color: #ffffff;
-  background-color: #06c755;
+  color: var(--white);
+  background-color: var(--line-brand);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-family: var(--font-family);
   transition: opacity 0.2s;

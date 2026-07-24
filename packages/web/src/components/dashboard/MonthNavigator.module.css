@@ -2,12 +2,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 8px 0;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
 }
 
 .label {
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--text-primary);
   min-width: 100px;
@@ -17,11 +17,11 @@
 .button {
   background: none;
   border: none;
-  font-size: 14px;
+  font-size: var(--text-base);
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 8px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   transition: opacity 0.15s;
 }
 

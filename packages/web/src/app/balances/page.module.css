@@ -1,33 +1,33 @@
 .main {
   max-width: 300px;
   margin: 0 auto;
-  padding: 14px;
+  padding: var(--space-3_5);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2_5);
   min-height: 100dvh;
 }
 
 .heroCard {
   background: var(--kpi-hero);
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 14px;
-  padding: 12px;
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  box-shadow: 0 4px 14px var(--shadow-strong);
+  gap: var(--space-1);
+  box-shadow: var(--shadow-hero);
 }
 
 .heroLabel {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--text-on-kpi);
   opacity: 0.95;
 }
 
 .heroValue {
-  font-size: 26px;
+  font-size: var(--text-2xl);
   font-weight: 800;
   color: var(--text-on-kpi);
 }
@@ -35,8 +35,8 @@
 .heroBreakdown {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 10px;
-  font-size: 9px;
+  gap: var(--space-0_5) var(--space-2_5);
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-on-kpi);
   opacity: 0.9;
@@ -45,15 +45,15 @@
 .balanceList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .balanceItem {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0_5);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  padding-bottom: 8px;
+  padding-bottom: var(--space-2);
 }
 
 .balanceItem:last-child {
@@ -64,7 +64,7 @@
 .balanceHead {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
 }
 
 .balanceIcon {
@@ -75,56 +75,56 @@
 }
 
 .balanceName {
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text-primary);
 }
 
 .balanceValue {
-  font-size: 15px;
+  font-size: var(--text-md);
   font-weight: 800;
   color: var(--text-primary);
 }
 
 .negative {
-  color: #a02828;
+  color: var(--error-text);
 }
 
 .balanceMeta {
-  font-size: 9px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 
 .staleTag {
-  border-radius: 8px;
-  padding: 1px 6px;
-  font-size: 8px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-0_5) var(--space-1_5);
+  font-size: var(--text-xs);
   font-weight: 700;
-  background: #ffb84d;
-  color: #6a4000;
+  background: var(--warning);
+  color: var(--warning-text);
 }
 
 .rangeToggle {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0_5);
   background: rgba(255, 255, 255, 0.5);
-  border-radius: 10px;
-  padding: 2px;
+  border-radius: var(--radius-md);
+  padding: var(--space-0_5);
 }
 
 .rangeButton {
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 9px;
+  font-size: var(--text-xs);
   font-weight: 700;
   font-family: var(--font-family);
-  padding: 3px 7px;
+  padding: var(--space-1) var(--space-2);
   cursor: pointer;
 }
 
 .rangeActive {
   background: var(--accent);
-  color: #ffffff;
+  color: var(--white);
 }

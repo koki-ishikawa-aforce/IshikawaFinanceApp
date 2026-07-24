@@ -1,7 +1,7 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1_5);
 }
 
 .svg {
@@ -30,14 +30,14 @@
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: var(--space-1_5) var(--space-2_5);
 }
 
 .legendItem {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 9px;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--text-secondary);
 }
@@ -45,12 +45,12 @@
 .legendSwatch {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
 }
 
 .empty {
   text-align: center;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
-  padding: 16px 0;
+  padding: var(--space-4) 0;
 }
