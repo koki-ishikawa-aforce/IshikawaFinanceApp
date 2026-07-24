@@ -68,7 +68,7 @@ description: docs/domain とコードの乖離検知。読み取り専用で、�
    - git log で最終更新が新しい方が正である可能性が高い
    - コードが実際にテストされて動いているなら、コード側が正である可能性が高い
    - 判断できない場合は「どちらが正か不明」と明記する
-3. **`ready-to-implement` 判定**: docs とコードのどちらが正かが自明で、修正が機械的に行える場合(例: README への export 名追記)は `ready-to-implement` を付与する。判断が必要な場合は `needs-decision` を付与する
+3. **`ready-to-implement` 判定**: docs とコードのどちらが正かが自明で、修正が機械的に行える場合(例: README への export 名追記)は `ready-to-implement` を付与する。判断が必要な場合は `needs-decision` を付与する。これは「ready 化は人間起点のみ」(`docs/automation/backlog-routine.md` 設計原則「ready 化と実装は分離する」)の明文化された例外であり、自明で機械的な乖離修正に限る(マージ判断のゲートは残るため実害は小さい)
 4. **Issue 起票**:
 
    タイトル: `[docs-drift] <乖離の要約>`
