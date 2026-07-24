@@ -37,7 +37,8 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 - **間隔（`--space-*`）**: 4px 基準。`--space-1` = 4px を基本単位とし、0.5 刻みの中間値を含む等差スケール。上限は `--space-14`（56px）
 - **角丸（`--radius-*`）**: 用途別の 5 段階。`--radius-card`（カード）と `--radius-panel`（パネル全体）が主要な 2 値
 - **フォントサイズ（`--text-*`）**: KPI ラベルの極小（`--text-xs`）から hero 値の最大（`--text-3xl`）まで 8 段階
-- **色**: テーマ色（`--accent` / `--bg-gradient` / `--kpi-*` 等）、ロール識別色（`--role-darling` / `--role-honey`、テーマ非依存）、カテゴリ色（`--cat-*`）、意味対応色（#137 で `--success` / `--warning` 等として新設予定）
+- **色**: テーマ色（`--accent` / `--bg-gradient` / `--kpi-*` 等）、ロール識別色（`--role-darling` / `--role-honey`、テーマ非依存）、カテゴリ色（`--cat-*`）、意味対応色（`--success` / `--warning` / `--error` 等）
+- **影（`--shadow-*`）**: 用途別の合成トークン（`--shadow-sm` 〜 `--shadow-modal`）。テーマ依存の `--shadow-color` / `--shadow-strong` を遅延解決する
 
 ### 使用ルール
 
