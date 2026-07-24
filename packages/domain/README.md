@@ -21,7 +21,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### household-analysis（家計分析）
 
-- 集約: `Transaction`（`unclassified` / `classified` / `deleted`）, `MonthlyReport`（`csv_confirmed` / `finalized`。CSV確定昇格 `confirmCsv` / 再集計 `refreshCsvConfirmed` / 最終確定昇格 `finalize` / 取引集計 `aggregateMonthlyReportTotals`（`MonthlyReportTotals`）を含む）
+- 集約: `Transaction`（`unclassified` / `classified` / `deleted`。未分類→分類 `classify` / 分類済み生成 `createClassifiedTransaction` / 削除 `deleteTransaction` を含む）, `MonthlyReport`（`csv_confirmed` / `finalized`。CSV確定昇格 `confirmCsv` / 再集計 `refreshCsvConfirmed` / 最終確定昇格 `finalize` / 取引集計 `aggregateMonthlyReportTotals`（`MonthlyReportTotals`）を含む）
 - Repository I/F: `TransactionRepository`, `MonthlyReportRepository`
 - Query I/F: `DashboardQuery`, `MonthlyReportQuery`, `TransactionListQuery`
 - View 型: `DashboardKpisView`, `CategoryBreakdownView`, `MonthlyReportView`, `TransactionListItem`
