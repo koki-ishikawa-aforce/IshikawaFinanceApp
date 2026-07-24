@@ -4,6 +4,7 @@ import {
   startPdfConversion,
   startFormatValidation,
   startImporting,
+  updateProcessedCount,
   completeImportJob,
   failImportJob,
   type UploadAcceptedJob,
@@ -93,6 +94,32 @@ describe('StatementImportJob 集約', () => {
     )
     expect(completed.kind).toBe('completed')
     expect(completed.summary.newCount).toBe(10)
+  })
+
+  it('updateProcessedCount: 取込中の処理済み件数が更新される', () => {
+    const validating = StatementImportJobSchema.parse({
+      kind: 'format_validating',
+      common: common('csv'),
+      validationStartedAt: new Date(),
+    }) as FormatValidatingJob
+    const importing = startImporting(validating, new Date())
+    expect(importing.processedCount).toBe(0)
+    const updated = updateProcessedCount(importing, 42)
+    expect(updated.kind).toBe('importing')
+    expect(updated.processedCount).toBe(42)
+    expect(updated.common).toEqual(importing.common)
+    expect(updated.importStartedAt).toEqual(importing.importStartedAt)
+  })
+
+  it('updateProcessedCount: 後退は拒否される（単調増加ガード）', () => {
+    const validating = StatementImportJobSchema.parse({
+      kind: 'format_validating',
+      common: common('csv'),
+      validationStartedAt: new Date(),
+    }) as FormatValidatingJob
+    const importing = startImporting(validating, new Date())
+    const updated = updateProcessedCount(importing, 10)
+    expect(() => updateProcessedCount(updated, 5)).toThrow('単調増加')
   })
 
   it('failImportJob: PDF変換失敗は構造化された reason を保持する（#61）', () => {

@@ -145,6 +145,19 @@ export function startImporting(
   }) as ImportingJob
 }
 
+/** 取込中の処理済み件数を更新する（進捗保存用、単調増加のみ許可） */
+export function updateProcessedCount(job: ImportingJob, processedCount: number): ImportingJob {
+  if (processedCount < job.processedCount) {
+    throw new Error(
+      `processedCount は単調増加でなければならない（現在: ${job.processedCount}, 指定: ${processedCount}）`,
+    )
+  }
+  return StatementImportJobSchema.parse({
+    ...job,
+    processedCount,
+  }) as ImportingJob
+}
+
 /** 状態遷移: 取込中 → 完了（終端） */
 export function completeImportJob(
   job: ImportingJob,

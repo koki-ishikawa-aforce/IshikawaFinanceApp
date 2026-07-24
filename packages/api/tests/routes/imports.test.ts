@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { YearMonthSchema, type PdfToCsvConversion } from '@warimaru/domain'
+import { describe, it, expect, vi } from 'vitest'
+import { YearMonthSchema, type StatementImportJob, type PdfToCsvConversion } from '@warimaru/domain'
 import { createApp } from '../../src/app.js'
 import { createDeps } from '../../src/composition-root.js'
 import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
@@ -239,6 +239,37 @@ describe('POST /api/imports/pdf', () => {
       formData: pdfFormData(new Uint8Array(10_000_001)),
     })
     expect(res.status).toBe(400)
+  })
+})
+
+describe('processedCount の途中保存', () => {
+  it('10件の CSV 取込で processedCount=10 の importing ジョブが途中保存される', async () => {
+    const rows = Array.from(
+      { length: 12 },
+      (_, i) => `2026/07/${String(i + 1).padStart(2, '0')},店舗${i},${(i + 1) * 100}\n`,
+    ).join('')
+    const deps = createDeps({})
+    const saveSpy = vi.spyOn(deps.statementImportJobRepository, 'save')
+    const app = createApp(deps)
+    const form = new FormData()
+    form.append('file', new File([rows], 'many.csv', { type: 'text/csv' }))
+    form.append('targetMonth', '2026-07')
+    const res = await request(app, 'POST', '/api/imports/csv', { formData: form })
+    expect(res.status).toBe(201)
+
+    const savedJobs = saveSpy.mock.calls.map(c => c[0] as StatementImportJob)
+    const progressSaves = savedJobs.filter(
+      (j): j is Extract<StatementImportJob, { kind: 'importing' }> =>
+        j.kind === 'importing' && j.processedCount > 0,
+    )
+    expect(progressSaves.length).toBeGreaterThanOrEqual(1)
+    expect(progressSaves[0]!.processedCount).toBe(10)
+
+    const completed = savedJobs.find(
+      (j): j is Extract<StatementImportJob, { kind: 'completed' }> => j.kind === 'completed',
+    )
+    expect(completed).toBeDefined()
+    expect(completed!.summary.newCount).toBe(12)
   })
 })
 
