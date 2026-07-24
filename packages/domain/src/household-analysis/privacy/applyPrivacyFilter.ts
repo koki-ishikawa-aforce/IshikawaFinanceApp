@@ -2,31 +2,41 @@
  * プライバシー 3 段階を取引リストに適用するヘルパ。
  * Query レイヤから呼ばれる唯一のプライバシー判定ポイント。
  *
- * @see docs/superpowers/specs/2026-05-01-phase4-tactical-design.md §5.5
+ * @see docs/domain/01-overview.md L152-155（プライバシー3段階）
+ * @see docs/domain/08c-ul-家計分析.md §6.3
+ *
+ * プライバシーは Query/API 層で完全強制する。Static Export / LIFF 構成では
+ * UI 層マスキングがセキュリティ境界にならないため、配偶者に見せてはいけない
+ * 取引はリスト自体から除外する（伏せ字行として残さない）。個人・経費の
+ * 「相手には合計のみ」はダッシュボード / 月次レポートの集計値が別途担う。
  *
  * ルール:
- *  1. 世帯（household）: 両者に明細・合計とも可視
- *  2. 個人(本人)（personal_honey/darling）: 本人には明細・合計、配偶者には合計のみ可視
- *  3. 経費(会社)（business_expense）: 本人のみ明細・合計可視、配偶者には一切不可視
- *  4. 未分類: 08c F-1 個人別、所有者本人のみリスト可視
+ *  1. 世帯（household）: 両者に明細可視
+ *  2. 個人(本人)（personal_honey/darling）: 所有者本人のみリスト掲載（配偶者は明細不可視、合計は集計値で可視）
+ *  3. 経費(会社)（business_expense）: 所有者本人のみリスト掲載（配偶者は合計も不可視）
+ *  4. 未分類: 08c F-1 個人別、所有者本人のみリスト掲載
  *  5. 削除済み: リストから常に除外
  */
-import type { Transaction, ClassifiedTransaction } from '../aggregates/Transaction'
+import type {
+  Transaction,
+  UnclassifiedTransaction,
+  ClassifiedTransaction,
+} from '../aggregates/Transaction'
 import type { ViewerContext } from './ViewerContext'
 import type { TransactionListItem } from '../queries/views/TransactionListItem'
 
-export function isVisibleAsDetail(tx: ClassifiedTransaction, viewer: ViewerContext): boolean {
-  const ec = tx.details.expenseClass
-  if (ec === 'household') return true
-  if (ec === 'business_expense') return tx.common.ownerUserId === viewer.viewerId
+/**
+ * 取引一覧に載せてよいか（プライバシー完全強制）。
+ * 世帯取引のみ両者可視、それ以外（個人・経費・未分類）は所有者本人のみ。
+ * 削除済みは常に不可視。ここを通過した行は明細（加盟店名・金額）を必ず出してよい。
+ */
+function isListVisible(
+  tx: Transaction,
+  viewer: ViewerContext,
+): tx is UnclassifiedTransaction | ClassifiedTransaction {
+  if (tx.kind === 'deleted') return false
+  if (tx.kind === 'classified' && tx.details.expenseClass === 'household') return true
   return tx.common.ownerUserId === viewer.viewerId
-}
-
-export function isVisibleAsAggregate(tx: ClassifiedTransaction, viewer: ViewerContext): boolean {
-  const ec = tx.details.expenseClass
-  if (ec === 'household') return true
-  if (ec === 'business_expense') return tx.common.ownerUserId === viewer.viewerId
-  return true
 }
 
 export function toListItems(
@@ -35,16 +45,7 @@ export function toListItems(
   categoryNames: Map<string, string>,
 ): TransactionListItem[] {
   return txs
-    .filter(tx => tx.kind !== 'deleted')
-    .filter(tx => {
-      if (tx.kind === 'unclassified') {
-        return tx.common.ownerUserId === viewer.viewerId
-      }
-      if (tx.kind === 'classified' && tx.details.expenseClass === 'business_expense') {
-        return tx.common.ownerUserId === viewer.viewerId
-      }
-      return true
-    })
+    .filter(tx => isListVisible(tx, viewer))
     .map(tx => {
       if (tx.kind === 'unclassified') {
         return {
@@ -58,16 +59,16 @@ export function toListItems(
           isUnclassified: true,
         }
       }
-      // classified（filter で deleted は除外済み、unclassified は上の if で return 済み）
-      const detailVisible = isVisibleAsDetail(tx, viewer)
+      // classified（deleted は isListVisible で除外済み、unclassified は上で return 済み）。
+      // 到達する行は世帯取引か本人所有の取引のみなので、明細は常に可視。
       return {
         transactionId: tx.common.transactionId,
         occurredAt: tx.common.occurredAt,
         expenseClass: tx.details.expenseClass,
         categoryId: tx.details.categoryId,
         categoryName: categoryNames.get(tx.details.categoryId) ?? null,
-        merchantName: detailVisible ? tx.common.merchantName : null,
-        amount: detailVisible ? tx.common.amount : null,
+        merchantName: tx.common.merchantName,
+        amount: tx.common.amount,
         isUnclassified: false,
       }
     })

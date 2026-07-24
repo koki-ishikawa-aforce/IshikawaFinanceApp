@@ -105,15 +105,9 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
             </span>
           </li>
           <li className={ui.rowBetween}>
-            <span className={styles.totalsLabel}>経費(Honey)</span>
+            <span className={styles.totalsLabel}>経費(会社)</span>
             <span className={styles.totalsValue}>
-              {formatMoney(report.common.businessExpenseTotalHoney)}
-            </span>
-          </li>
-          <li className={ui.rowBetween}>
-            <span className={styles.totalsLabel}>経費(Darling)</span>
-            <span className={styles.totalsValue}>
-              {formatMoney(report.common.businessExpenseTotalDarling)}
+              {formatMoney(report.common.businessExpenseTotalSelf)}
             </span>
           </li>
           <li className={ui.rowBetween}>

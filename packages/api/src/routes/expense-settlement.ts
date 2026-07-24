@@ -19,6 +19,7 @@ import {
   confirmUnrecognizedDeposit,
   finalizeCycle,
   matchDeposit,
+  roleToPersonalExpenseClass,
 } from '@warimaru/domain'
 import type {
   EventBus,
@@ -35,7 +36,6 @@ import type {
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
-import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const QueryParamsSchema = z.object({
   month: YearMonthSchema.optional(),

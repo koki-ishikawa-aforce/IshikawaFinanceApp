@@ -6,6 +6,7 @@ import { KpiGrid } from '../KpiGrid'
 const kpis = DashboardKpisViewSchema.parse({
   mode: 'household',
   currentMonthSpending: 123456,
+  spousePersonalTotal: 45000,
   savingsBalance: 2000000,
   nisaContributionAccumulated: 500000,
   totalAssets: 2450000,

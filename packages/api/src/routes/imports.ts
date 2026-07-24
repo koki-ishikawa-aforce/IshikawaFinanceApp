@@ -20,6 +20,7 @@ import {
   createTransaction,
   failImportJob,
   money,
+  roleToPersonalExpenseClass,
   startFormatValidation,
   startImporting,
   startPdfConversion,
@@ -40,7 +41,6 @@ import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { parseStatementCsv } from '../parse-statement-csv.js'
 import { readJsonObjectBody } from '../read-json-object-body.js'
-import { roleToPersonalExpenseClass } from '../role-mapping.js'
 
 const StatusParamsSchema = z.object({
   month: YearMonthSchema,

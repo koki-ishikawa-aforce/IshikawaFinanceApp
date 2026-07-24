@@ -254,14 +254,23 @@ describe('PUT /api/transactions/:id/classify', () => {
     })
     const newCategoryId = newUlid()
     const res = await request(t.app, 'PUT', `/api/transactions/${id}/classify`, {
-      body: { categoryId: newCategoryId, expenseClass: 'personal_darling' },
+      body: { categoryId: newCategoryId, expenseClass: 'personal_honey' },
     })
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       details: { categoryId: string; expenseClass: string }
     }
     expect(body.details.categoryId).toBe(newCategoryId)
-    expect(body.details.expenseClass).toBe('personal_darling')
+    expect(body.details.expenseClass).toBe('personal_honey')
+  })
+
+  it('C#11: 所有者ロールと相反する個人費用区分での分類は 409（honey が personal_darling）', async () => {
+    const t = createTestApp()
+    const id = await createUnclassified(t)
+    const res = await request(t.app, 'PUT', `/api/transactions/${id}/classify`, {
+      body: { categoryId: newUlid(), expenseClass: 'personal_darling' },
+    })
+    expect(res.status).toBe(409)
   })
 
   it('削除済み取引の分類は 409', async () => {
