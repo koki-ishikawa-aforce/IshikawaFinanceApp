@@ -71,6 +71,7 @@ PR の checks/statuses を確認し、失敗しているものがあれば:
    ```
 3. コンフリクトを解消する(ドメインロジックの競合など、判断が必要な場合は `needs-decision` で人間に委ねる)
 4. `/verify` で全 green を確認してから push する
+5. **push が non-fast-forward で拒否された場合**(バックログ Routine の preflight など別セッションが同じ PR ブランチをほぼ同時に修復した競合。コンフリクト解消はこの手順と `/issue-work` 無人モードの preflight の2か所が担うため起こりうる): `git fetch origin <PRのheadブランチ>` でリモートを取り直し、mergeable を再確認する。**既に解消済み**(`mergeable == MERGEABLE` / `mergeable_state == clean`。別セッションが先に修復した)なら何もせず次の PR へ進む。**まだコンフリクトが残る**場合のみ、取り直した head に base を再度マージして解消し **1回だけ** push をやり直す。それでも拒否されたら、その PR の解消を保留して手順3の完了報告に記し、次の PR へ進む(同じ競合で押し合いを続けない)
 
 ### 3. 完了報告
 

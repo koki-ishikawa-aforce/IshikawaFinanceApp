@@ -208,7 +208,8 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
    # その PR と対象 Issue に needs-decision を付けて人間に委ね、次へ進む
    ```
    解消したら `/verify` を全 green にしてから push する。**マージはしない**(この preflight もマージ判断は人間に残す)
-4. `unknown` のまま確定しない PR はコンフリクト判定を保留し、解消・needs-decision 化した PR とあわせて最終報告に含める。コンフリクトが無ければ何もしない
+4. **push が non-fast-forward で拒否された場合**(別セッション — `/pr-steward` など — が同じ PR ブランチをほぼ同時に修復した競合。コンフリクト解消はこの preflight と `/pr-steward` の2か所が担うため起こりうる): `git fetch origin <PRのheadブランチ>` でリモートを取り直し、mergeable を再確認する。**既に解消済み**(`mergeable == MERGEABLE` / `mergeable_state == clean`。別セッションが先に修復した)なら自分の解消は不要なので、何もせず次へ進む。**まだコンフリクトが残る**場合のみ、取り直した head に base を再度マージして解消し **1回だけ** push をやり直す。それでも拒否されたら、その PR の解消は保留して最終報告に記し、次へ進む(同じ競合で押し合いを続けない)
+5. `unknown` のまま確定しない PR はコンフリクト判定を保留し、解消・needs-decision 化した PR とあわせて最終報告に含める。コンフリクトが無ければ何もしない
 
 この修復で fire の所要時間は延びうるが、放置時間の上限が最長で fire 間隔（Routine の登録数とスケジュールに依存）に収まる。**WIP 上限超過で新規着手をスキップする場合でも、コンフリクト修復は実施する**(壊れた PR の放置を防ぐため、本 preflight は下の WIP 上限チェックより前に置く)。
 
