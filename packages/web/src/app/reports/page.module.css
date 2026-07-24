@@ -17,8 +17,15 @@
 }
 
 .incomplete {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
   color: #a05028;
   font-weight: 700;
+}
+
+.incompleteIcon {
+  flex-shrink: 0;
 }
 
 .totalsList {

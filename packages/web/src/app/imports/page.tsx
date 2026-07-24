@@ -15,6 +15,7 @@ import {
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatDateTime, getCurrentMonth } from '@/lib/month'
+import { LuCircleCheck } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -236,7 +237,8 @@ export default function ImportsPage() {
         {statusQuery.data &&
           (completion !== null ? (
             <div className={styles.statusDone}>
-              ✅ 取込完了（{formatDateTime(completion.completedAt)}）
+              <LuCircleCheck aria-hidden="true" className={styles.statusDoneIcon} />
+              取込完了（{formatDateTime(completion.completedAt)}）
             </div>
           ) : (
             <div className={ui.empty}>この月の CSV 取込はまだ完了していません</div>

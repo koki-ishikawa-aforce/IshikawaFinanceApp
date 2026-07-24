@@ -19,6 +19,7 @@ import {
 import { EXPENSE_CLASS_LABELS, expenseClassLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatMonthLabel, getCurrentMonth } from '@/lib/month'
+import { LuTriangleAlert } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -444,7 +445,8 @@ function TransactionsPageContent() {
 
       {summaryQuery.data && summaryQuery.data.count > 0 && (
         <button className={styles.unclassifiedBanner} onClick={() => setUnclassifiedOnly(true)}>
-          ⚠️ 未分類の取引が {summaryQuery.data.count} 件あります
+          <LuTriangleAlert aria-hidden="true" className={styles.unclassifiedIcon} />
+          未分類の取引が {summaryQuery.data.count} 件あります
         </button>
       )}
 

@@ -13,6 +13,7 @@ import {
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
 import { formatDateTime, getCurrentMonth } from '@/lib/month'
+import { LuTriangleAlert } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -62,7 +63,10 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
           <span>CSV確認: {formatDateTime(report.csvConfirmedAt)}</span>
           {report.finalizedAt !== null && <span>確定: {formatDateTime(report.finalizedAt)}</span>}
           {report.common.isIncompleteMonth === true && (
-            <span className={styles.incomplete}>⚠️ データが不完全な月です</span>
+            <span className={styles.incomplete}>
+              <LuTriangleAlert aria-hidden="true" className={styles.incompleteIcon} />
+              データが不完全な月です
+            </span>
           )}
         </div>
       </div>

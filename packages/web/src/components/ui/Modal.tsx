@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, type ReactNode } from 'react'
+import { LuX } from './icons'
 import styles from './Modal.module.css'
 
 interface ModalProps {
@@ -35,7 +36,7 @@ export function Modal({ title, onClose, children }: ModalProps) {
         <div className={styles.header}>
           <span className={styles.title}>{title}</span>
           <button className={styles.close} onClick={onClose} aria-label="閉じる">
-            ✕
+            <LuX aria-hidden="true" />
           </button>
         </div>
         <div className={styles.body}>{children}</div>
