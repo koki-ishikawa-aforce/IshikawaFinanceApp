@@ -10,16 +10,18 @@ describe('KpiCard', () => {
     expect(screen.getByText('¥123,456')).toBeInTheDocument()
   })
 
-  it('通常カードには装飾絵文字を表示しない', () => {
+  it('通常カードに装飾絵文字がない', () => {
     render(<KpiCard label="貯蓄残高" value={0} />)
 
     expect(screen.queryByText('✨')).not.toBeInTheDocument()
+    expect(screen.queryByText('⭐')).not.toBeInTheDocument()
   })
 
-  it('ヒーローカードにはテーマの装飾絵文字を表示する(既定テーマは darling)', () => {
+  it('ヒーローカードは装飾を CSS で表現し、絵文字を使わない', () => {
     render(<KpiCard label="総資産" value={9999999} isHero />)
 
-    expect(screen.getByText('✨')).toBeInTheDocument()
+    expect(screen.queryByText('✨')).not.toBeInTheDocument()
+    expect(screen.queryByText('⭐')).not.toBeInTheDocument()
     expect(screen.getByText('¥9,999,999')).toBeInTheDocument()
   })
 })
