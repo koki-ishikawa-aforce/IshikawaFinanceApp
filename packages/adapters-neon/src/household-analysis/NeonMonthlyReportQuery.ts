@@ -2,10 +2,10 @@
  * MonthlyReportQuery の Neon 実装
  * @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §4.2
  *
- * プライバシー完全強制（#86 A②）: 月次レポート View は閲覧者本人の経費(会社)
- * 合計のみを `businessExpenseTotalSelf` として返し、配偶者の経費(会社)合計は
- * レスポンスに一切含めない（01-overview.md L155「相手は合計すら見えない」）。
- * viewer の役割を解決して本人分を射影する（旧: 画面層マスキング委譲を廃止）。
+ * プライバシー完全強制（#86 A② / #108）:
+ * - 経費(会社)合計: 閲覧者本人分のみ `businessExpenseTotalSelf` として返す
+ * - 不認定分振替: 閲覧者本人分のみ返す（経費由来データのため配偶者には非公開）
+ * viewer の役割を解決して本人分を射影する。
  */
 import { eq } from 'drizzle-orm'
 import type {
@@ -17,7 +17,11 @@ import type {
   UserRole,
   YearMonth,
 } from '@warimaru/domain'
-import { MonthlyReportSchema, MonthlyReportViewSchema } from '@warimaru/domain'
+import {
+  MonthlyReportSchema,
+  MonthlyReportViewSchema,
+  roleToPersonalExpenseClass,
+} from '@warimaru/domain'
 import type { Db } from '../client'
 import { monthlyReports } from '../schema'
 import { parsePayload } from '../serialize'
@@ -38,7 +42,12 @@ function toView(report: MonthlyReport, viewerRole: UserRole): MonthlyReportView 
     },
     csvConfirmedAt: report.csvConfirmedAt,
     finalizedAt: report.kind === 'finalized' ? report.finalizedAt : null,
-    unapprovedTransfers: report.kind === 'finalized' ? report.unapprovedTransfers : null,
+    unapprovedTransfers:
+      report.kind === 'finalized'
+        ? report.unapprovedTransfers.filter(
+            t => t.transferTarget === roleToPersonalExpenseClass(viewerRole),
+          )
+        : null,
   })
 }
 
