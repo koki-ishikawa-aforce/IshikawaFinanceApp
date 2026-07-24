@@ -68,7 +68,10 @@
 }
 
 .balanceIcon {
-  font-size: 12px;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
 }
 
 .balanceName {
