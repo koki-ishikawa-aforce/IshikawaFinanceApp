@@ -62,9 +62,11 @@ gh issue edit <番号> --add-label "status:in-progress"
 
 `/verify` の実行判定に該当する変更(`packages/domain` の振る舞い、または `packages/adapters-neon`)がある場合は、**統合テストまで green にする**(`pnpm test` は統合テストを含まないため、これを省くと CI で初めて赤が判明する)。実行方法とフォールバックは `/verify` の「統合テスト」節に従う。
 
-## 5. DDD レビュー
+## 5. DDD レビュー・UI レビュー
 
 `/ddd-review` を実行し(ddd-reviewer サブエージェントが main との diff をレビュー)、must-fix と suggestion を修正したら再度 `/verify` を回す。suggestion は原則この場で対応し、見送るのは `/ddd-review` の例外基準に該当する場合のみ(その際は Issue 化して追跡する)。
+
+`packages/web` 配下に変更がある場合は、`/ddd-review` に加えて `/ui-review` も実施する(ui-reviewer サブエージェントが `DESIGN.md` とプレゼンテーション層の観点でレビュー)。指摘の扱いは `/ddd-review` と同じ(must-fix は必須修正、suggestion も原則その場で対応、見送りは例外基準に該当する場合のみ Issue 化)。
 
 ## 6. PR 作成と CI ループ(外側ループ)
 
