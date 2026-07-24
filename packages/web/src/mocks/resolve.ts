@@ -53,7 +53,7 @@ export function resolveMock(method: string, path: string): unknown {
       case '/api/dashboard/category-breakdown':
         return categoryBreakdownFixture(parseMode(params), params.get('month') ?? '2026-07')
       case '/api/transactions':
-        return transactionListFixture()
+        return transactionListFixture(getMockRole())
       case '/api/transactions/unclassified-summary':
         return unclassifiedSummaryFixture()
       case '/api/categories':

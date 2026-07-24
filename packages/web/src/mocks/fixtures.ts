@@ -109,7 +109,8 @@ export function categoryBreakdownFixture(mode: DashboardMode, yearMonth: string)
 }
 
 /** GET /api/transactions */
-export function transactionListFixture(): unknown {
+export function transactionListFixture(role: UserRole): unknown {
+  const isHoney = role === 'honey'
   return [
     {
       transactionId: 'TXN_MOCK_001',
@@ -137,9 +138,9 @@ export function transactionListFixture(): unknown {
       expenseClass: 'personal_darling',
       categoryId: null,
       categoryName: null,
-      merchantName: 'Amazon',
-      amount: 3980,
-      isUnclassified: true,
+      merchantName: isHoney ? null : 'Amazon',
+      amount: isHoney ? null : 3980,
+      isUnclassified: !isHoney,
     },
   ]
 }
@@ -211,7 +212,7 @@ export function accountBalanceListFixture(): unknown {
       {
         kind: 'smbc_bank',
         accountId: 'ACC_MOCK_001',
-        displayName: '三井住友銀行 普通',
+        displayName: '三井住友銀行',
         currentBalance: 1500000,
         lastUpdatedAt: '2026-07-23T00:00:00.000Z',
       },
@@ -298,10 +299,10 @@ export function monthlyReportFixture(yearMonth: string): unknown {
       businessExpenseTotalSelf: 15000,
       nisaContributionAccumulated: 1200000,
       balanceTrend: {
-        smbcBalanceTrend: [{ date: '2026-07-01T00:00:00.000Z' }],
-        otherSavingsBalanceTrend: [{ date: '2026-07-01T00:00:00.000Z' }],
-        nisaContributionTrend: [{ date: '2026-07-01T00:00:00.000Z' }],
-        cardUnpaidTrend: [{ date: '2026-07-01T00:00:00.000Z' }],
+        smbcBalanceTrend: [{ date: '2026-07-01T00:00:00.000Z', balance: 1500000 }],
+        otherSavingsBalanceTrend: [{ date: '2026-07-01T00:00:00.000Z', balance: 1740000 }],
+        nisaContributionTrend: [{ date: '2026-07-01T00:00:00.000Z', accumulated: 1200000 }],
+        cardUnpaidTrend: [{ date: '2026-07-01T00:00:00.000Z', unpaidTotal: 120000 }],
       },
       isIncompleteMonth: true,
     },
