@@ -5,10 +5,21 @@
  */
 import { z } from 'zod'
 
-export const ImportResultSummarySchema = z.object({
-  newCount: z.number().int().nonnegative(),
-  autoClassifiedEstimateCount: z.number().int().nonnegative(),
-  unclassifiedEstimateCount: z.number().int().nonnegative(),
-  duplicateExcludedCount: z.number().int().nonnegative(),
-})
+export const ImportResultSummarySchema = z
+  .object({
+    newCount: z.number().int().nonnegative(),
+    autoClassifiedEstimateCount: z.number().int().nonnegative(),
+    unclassifiedEstimateCount: z.number().int().nonnegative(),
+    duplicateExcludedCount: z.number().int().nonnegative(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.newCount !== data.autoClassifiedEstimateCount + data.unclassifiedEstimateCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'newCount は autoClassifiedEstimateCount + unclassifiedEstimateCount と一致しなければならない',
+        path: ['newCount'],
+      })
+    }
+  })
 export type ImportResultSummary = z.infer<typeof ImportResultSummarySchema>

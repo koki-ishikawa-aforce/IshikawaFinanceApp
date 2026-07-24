@@ -15,6 +15,8 @@ export const AmazonProductInfoSchema = z.object({
 })
 export type AmazonProductInfo = z.infer<typeof AmazonProductInfoSchema>
 
+// 将来の Amazon 突合機能（注文確認メールとカード明細の自動照合）の足場として残している。
+// AmazonProductInfoSchema は TransactionCandidate から参照済み。
 export const AmazonOrderInfoSchema = z.object({
   amazonOrderId: AmazonOrderIdSchema,
   userId: UserIdSchema,

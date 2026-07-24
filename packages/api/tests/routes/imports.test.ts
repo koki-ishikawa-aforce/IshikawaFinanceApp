@@ -242,7 +242,7 @@ describe('POST /api/imports/pdf', () => {
   })
 })
 
-describe('PUT /api/imports/:batchId/confirm', () => {
+describe('PUT /api/imports/:importJobId/confirm', () => {
   it('確定で未分類取引が生成され、再確定しても重複しない（冪等）', async () => {
     const { app, deps } = createTestApp()
     const importJobId = await uploadCsv(app)
