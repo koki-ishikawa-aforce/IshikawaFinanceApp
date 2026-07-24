@@ -260,7 +260,7 @@ describe('NeonTransactionListQuery プライバシー否定形テスト', () => 
     ).toBeUndefined()
   })
 
-  it('配偶者の経費(会社)は expenseClass フィルタでも取得できない', async () => {
+  it('配偶者の経費(会社)は expenseClass フィルタでも取得できない（両方向）', async () => {
     await repo.save(
       classifiedTransaction({
         ownerUserId: DARLING_USER_ID,
@@ -269,11 +269,26 @@ describe('NeonTransactionListQuery プライバシー否定形テスト', () => 
         occurredAt: new Date('2026-07-05T03:00:00.000Z'),
       }),
     )
-    const items = await query.fetch(HONEY_USER_ID, {
+    await repo.save(
+      classifiedTransaction({
+        ownerUserId: HONEY_USER_ID,
+        expenseClass: 'business_expense',
+        amount: 88000,
+        occurredAt: new Date('2026-07-06T03:00:00.000Z'),
+      }),
+    )
+    const honeyItems = await query.fetch(HONEY_USER_ID, {
       month: JUL,
       expenseClass: 'business_expense' as ExpenseClass,
     })
-    expect(items).toHaveLength(0)
+    expect(honeyItems).toHaveLength(1)
+    expect(honeyItems[0]?.amount).toBe(88000)
+    const darlingItems = await query.fetch(DARLING_USER_ID, {
+      month: JUL,
+      expenseClass: 'business_expense' as ExpenseClass,
+    })
+    expect(darlingItems).toHaveLength(1)
+    expect(darlingItems[0]?.amount).toBe(99000)
   })
 })
 

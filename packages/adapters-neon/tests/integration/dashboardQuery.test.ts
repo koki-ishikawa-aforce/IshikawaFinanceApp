@@ -290,11 +290,12 @@ describe('NeonDashboardQuery プライバシー否定形テスト', () => {
     )
   }
 
-  it('fetchKpis 世帯モード: 経費(会社)は currentMonthSpending に含まれない', async () => {
+  it('fetchKpis 世帯モード: 経費(会社)は currentMonthSpending に含まれない（両視点）', async () => {
     await seedAllClasses()
-    const kpis = await query.fetchKpis(HONEY_USER_ID, JUL, 'household')
-    expect(kpis.currentMonthSpending).toBe(1000 + 2000)
-    expect(kpis.currentMonthSpending).not.toBe(1000 + 2000 + 50000 + 60000)
+    const honeyKpis = await query.fetchKpis(HONEY_USER_ID, JUL, 'household')
+    expect(honeyKpis.currentMonthSpending).toBe(1000 + 2000)
+    const darlingKpis = await query.fetchKpis(DARLING_USER_ID, JUL, 'household')
+    expect(darlingKpis.currentMonthSpending).toBe(1000 + 2000)
   })
 
   it('fetchKpis 個人モード: 配偶者の個人支出は currentMonthSpending に含まれない', async () => {
@@ -320,10 +321,10 @@ describe('NeonDashboardQuery プライバシー否定形テスト', () => {
     const view = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'household')
     expect(view.totalAmount).toBe(1000 + 2000)
     expect(view.items).toHaveLength(2)
-    for (const item of view.items) {
-      expect(item.total).not.toBe(50000)
-      expect(item.total).not.toBe(60000)
-    }
+    const foodItem = view.items.find(i => i.categoryId === CATEGORY_FOOD)
+    const dailyItem = view.items.find(i => i.categoryId === CATEGORY_DAILY)
+    expect(foodItem?.total).toBe(1000)
+    expect(dailyItem?.total).toBe(2000)
   })
 
   it('fetchCategoryBreakdown 個人モード: 配偶者の個人カテゴリは含まれず本人分のみ', async () => {
