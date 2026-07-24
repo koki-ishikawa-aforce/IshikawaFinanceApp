@@ -115,9 +115,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       categoryMasterRepository: deps.categoryMasterRepository,
       expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
       categoryDeletionRequestRepository: deps.categoryDeletionRequestRepository,
-      transactionRepository: deps.transactionRepository,
-      merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
-      amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
+      eventBus: deps.eventBus,
     }),
   )
   app.route(
@@ -125,10 +123,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     expenseTypesRoutes({
       expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
       expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
-      transactionRepository: deps.transactionRepository,
-      merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
-      amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
       monthlyLimitRepository: deps.monthlyLimitRepository,
+      eventBus: deps.eventBus,
     }),
   )
   app.route(

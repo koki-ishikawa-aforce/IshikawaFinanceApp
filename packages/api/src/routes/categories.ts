@@ -1,19 +1,16 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
+  CategoryDeletionRemapRequestedSchema,
   CategoryDeletionRequestIdSchema,
   CategoryDeletionRequestSchema,
   CategoryIdSchema,
   CategoryMasterSchema,
-  ClassifiedDetailsSchema,
   ExpenseClassSchema,
   ExpenseTypeIdSchema,
   InvariantViolationError,
-  MerchantLearningRuleSchema,
-  AmazonProductKeyLearningRuleSchema,
   NotFoundError,
   PermissionDeniedError,
-  TransactionSchema,
   assertCategoryNameAvailable,
   completeCategoryRemap,
   failCategoryRemap,
@@ -21,19 +18,19 @@ import {
   requestCategoryRemap,
 } from '@warimaru/domain'
 import type {
-  AmazonProductKeyLearningRuleRepository,
   CategoryDeletionRequestRepository,
   CategoryMaster,
   CategoryMasterRepository,
   CustomCategory,
+  EventBus,
   ExpenseTypeMasterRepository,
-  MerchantLearningRuleRepository,
   PendingRemapCategoryDeletionRequest,
-  TransactionRepository,
   UserId,
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { domainEventBase } from '../event-handlers/index.js'
+import type { RemapResults } from '../event-handlers/master-data-remap.js'
 import { assertVisibleToViewer } from './master-data-visibility.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
@@ -65,9 +62,7 @@ export interface CategoriesRoutesDeps {
   categoryMasterRepository: CategoryMasterRepository
   expenseTypeMasterRepository: ExpenseTypeMasterRepository
   categoryDeletionRequestRepository: CategoryDeletionRequestRepository
-  transactionRepository: TransactionRepository
-  merchantLearningRuleRepository: MerchantLearningRuleRepository
-  amazonProductKeyLearningRuleRepository: AmazonProductKeyLearningRuleRepository
+  eventBus: EventBus
 }
 
 export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
@@ -118,7 +113,7 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
 
   /**
    * 追加カテゴリの削除リクエスト（08h §2: 受付 → リマップ依頼 → リマップ実行 → 完了 → 物理削除）。
-   * リマップは同期実行し、途中失敗時は remap_failed を記録して中断する（マスタは残る）。
+   * リマップはイベント駆動で実行し、途中失敗時は remap_failed を記録して中断する（マスタは残る）。
    */
   app.post('/:id/deletion-requests', async c => {
     const id = CategoryIdSchema.parse(c.req.param('id'))
@@ -169,67 +164,24 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
     await deps.categoryDeletionRequestRepository.save(requested)
 
     try {
-      // 家計分析: 分類済み取引のカテゴリ・費用区分を移動先へ付け替える（basis は監査情報として保持）
-      const transactions = await deps.transactionRepository.findClassifiedByCategory(
-        target.categoryId,
-      )
-      for (const transaction of transactions) {
-        const details = ClassifiedDetailsSchema.parse({
-          categoryId: body.destinationCategoryId,
-          expenseClass: body.destinationExpenseClass,
-          expenseTypeRef:
-            body.destinationExpenseClass === 'business_expense' &&
-            body.destinationExpenseTypeId !== undefined
-              ? { kind: 'business', expenseTypeId: body.destinationExpenseTypeId }
-              : { kind: 'non_business' },
-          basis: transaction.details.basis,
-        })
-        await deps.transactionRepository.save(TransactionSchema.parse({ ...transaction, details }))
+      const remapResults: RemapResults = {
+        affectedTransactionCount: 0,
+        affectedLearningRuleCount: 0,
       }
+      const event = {
+        ...CategoryDeletionRemapRequestedSchema.parse({
+          ...domainEventBase(now),
+          type: 'CategoryDeletionRemapRequested' as const,
+          categoryDeletionRequestId: pending.categoryDeletionRequestId,
+          targetCategoryId: target.categoryId,
+          destinationCategoryId: body.destinationCategoryId,
+          destinationExpenseClass: body.destinationExpenseClass,
+        }),
+        _remapResults: remapResults,
+      }
+      await deps.eventBus.publish(event)
 
-      // 自動分類・学習: 学習ルールはカテゴリ軸のみリマップする（T-2 軸独立）
-      let affectedLearningRuleCount = 0
-      const merchantRules = await deps.merchantLearningRuleRepository.findAllByUser(viewerId)
-      for (const rule of merchantRules) {
-        if (
-          rule.kind !== 'active' ||
-          rule.categoryRef.kind !== 'learned' ||
-          rule.categoryRef.categoryId !== target.categoryId
-        ) {
-          continue
-        }
-        await deps.merchantLearningRuleRepository.save(
-          MerchantLearningRuleSchema.parse({
-            ...rule,
-            categoryRef: { kind: 'learned', categoryId: body.destinationCategoryId },
-            lastUpdatedAt: now,
-          }),
-        )
-        affectedLearningRuleCount++
-      }
-      const amazonRules = await deps.amazonProductKeyLearningRuleRepository.findAllByUser(viewerId)
-      for (const rule of amazonRules) {
-        if (
-          rule.categoryRef.kind !== 'learned' ||
-          rule.categoryRef.categoryId !== target.categoryId
-        ) {
-          continue
-        }
-        await deps.amazonProductKeyLearningRuleRepository.save(
-          AmazonProductKeyLearningRuleSchema.parse({
-            ...rule,
-            categoryRef: { kind: 'learned', categoryId: body.destinationCategoryId },
-            lastUpdatedAt: now,
-          }),
-        )
-        affectedLearningRuleCount++
-      }
-
-      const completed = completeCategoryRemap(
-        requested,
-        { affectedTransactionCount: transactions.length, affectedLearningRuleCount },
-        new Date(),
-      )
+      const completed = completeCategoryRemap(requested, remapResults, new Date())
       await deps.categoryDeletionRequestRepository.save(completed)
       await deps.categoryMasterRepository.deleteById(target.categoryId)
       return c.json({ request: completed }, 201)

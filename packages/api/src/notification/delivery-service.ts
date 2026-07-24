@@ -138,10 +138,6 @@ export function createNotificationDeliveryService(
     const [primary, ...rest] = deps.failsafeEmailRecipients
     if (primary === undefined) return
     const failsafeEmailId = FailsafeEmailIdSchema.parse(newUlid())
-    // 発火は 1 回だけ（OQ-14）: メール生成と同時にカウンタへ発火済みを記録する
-    await deps.consecutiveFailureCounterRepository.save(
-      markFailsafeFired(counter, failsafeEmailId, at),
-    )
 
     const subject = '【割まる】LINE通知の連続送信失敗を検知しました'
     const body = [
@@ -150,6 +146,7 @@ export function createNotificationDeliveryService(
       `最終失敗日時: ${counter.lastFailedAt?.toISOString() ?? '不明'}`,
     ].join('\n')
 
+    let anySucceeded = false
     for (const [index, toEmailAddress] of [primary, ...rest].entries()) {
       const emailId = index === 0 ? failsafeEmailId : FailsafeEmailIdSchema.parse(newUlid())
       const reserved = reserveFailsafeEmail(
@@ -159,6 +156,7 @@ export function createNotificationDeliveryService(
       const sending = startSendingFailsafeEmail(reserved, now())
       const result = await deps.failsafeEmailGateway.send(sending)
       if (result.kind === 'success') {
+        anySucceeded = true
         const sent = markFailsafeEmailSent(sending, result.providerRef, now())
         await deps.failsafeEmailRepository.save(sent)
         await deps.eventBus.publish(
@@ -182,6 +180,13 @@ export function createNotificationDeliveryService(
           }),
         )
       }
+    }
+
+    // 発火済みは送信成功後に記録する（OQ-14）: 全宛先失敗なら次回 LINE 連続失敗時に再送される
+    if (anySucceeded) {
+      await deps.consecutiveFailureCounterRepository.save(
+        markFailsafeFired(counter, failsafeEmailId, at),
+      )
     }
   }
 
