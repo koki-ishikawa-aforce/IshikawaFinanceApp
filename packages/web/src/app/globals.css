@@ -53,6 +53,7 @@
   --text-on-kpi: #ffffff;
   --shadow-color: #ff709520;
   --shadow-strong: #ff709550;
+  --deco-opacity: 0.2;
 
   --cat-housing: #d8407a;
   --cat-food: #ff6f90;
@@ -70,6 +71,7 @@
   --text-on-kpi: #ffffff;
   --shadow-color: #5090d820;
   --shadow-strong: #5090d850;
+  --deco-opacity: 0.1;
 
   --cat-housing: #1a4080;
   --cat-food: #3878c8;

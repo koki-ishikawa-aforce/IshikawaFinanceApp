@@ -10,34 +10,16 @@
   overflow: hidden;
 }
 
-.decorativeEmoji {
+.decorations {
   position: absolute;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
-}
-
-.emoji1,
-.emoji2,
-.emoji3 {
-  position: absolute;
-  opacity: 0.4;
-  font-size: 24px;
-}
-
-.emoji1 {
-  top: 60px;
-  right: 10px;
-}
-
-.emoji2 {
-  top: 200px;
-  left: 5px;
-}
-
-.emoji3 {
-  bottom: 100px;
-  right: 20px;
+  background:
+    radial-gradient(circle at 88% 8%, var(--accent) 0, transparent 80px),
+    radial-gradient(circle at 3% 30%, var(--accent) 0, transparent 60px),
+    radial-gradient(circle at 85% 75%, var(--accent) 0, transparent 70px);
+  opacity: var(--deco-opacity);
 }
 
 .loading {

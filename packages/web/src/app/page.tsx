@@ -10,7 +10,7 @@ import { SpousePersonalNote } from '@/components/dashboard/SpousePersonalNote'
 import { useDashboardKpis } from '@/hooks/useDashboardKpis'
 import { useCategoryBreakdown } from '@/hooks/useCategoryBreakdown'
 import { useTheme } from '@/theme/ThemeProvider'
-import { getCategoryColors, getDecorativeEmoji } from '@/theme/tokens'
+import { getCategoryColors } from '@/theme/tokens'
 import styles from './page.module.css'
 
 function getCurrentMonth(): YearMonth {
@@ -28,16 +28,11 @@ export default function DashboardPage() {
   const kpis = useDashboardKpis(month, mode)
   const breakdown = useCategoryBreakdown(month, mode)
 
-  const emoji = getDecorativeEmoji(theme)
   const categoryColors = getCategoryColors(theme)
 
   return (
     <main className={styles.main}>
-      <div className={styles.decorativeEmoji}>
-        <span className={styles.emoji1}>{emoji[0]}</span>
-        <span className={styles.emoji2}>{emoji[1]}</span>
-        <span className={styles.emoji3}>{emoji[2]}</span>
-      </div>
+      <div className={styles.decorations} aria-hidden="true" />
 
       <MonthNavigator month={month} onMonthChange={setMonth} />
       <ModeToggle mode={mode} onModeChange={setMode} />
