@@ -13,8 +13,13 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   forbidOnly: Boolean(process.env['CI']),
+  timeout: 60_000,
   retries: process.env['CI'] ? 1 : 0,
   reporter: 'list',
+  snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.01 },
+  },
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'on-first-retry',

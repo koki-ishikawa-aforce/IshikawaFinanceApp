@@ -7,7 +7,24 @@
  */
 import type { DashboardMode } from '@warimaru/domain'
 import { getMockRole } from './role'
-import { categoryBreakdownFixture, dashboardKpisFixture, meFixture } from './fixtures'
+import {
+  accountBalanceListFixture,
+  assetTotalFixture,
+  balanceTimeSeriesFixture,
+  categoryBreakdownFixture,
+  categoryListFixture,
+  dashboardKpisFixture,
+  expenseTypeListFixture,
+  importStatusFixture,
+  meFixture,
+  monthlyLimitListFixture,
+  monthlyReportFixture,
+  onboardingMeFixture,
+  ownAccountListFixture,
+  settingsProfileFixture,
+  transactionListFixture,
+  unclassifiedSummaryFixture,
+} from './fixtures'
 
 /** モックに fixture を用意していないパスへのアクセス（実 API の 404 相当） */
 export class MockNotFoundError extends Error {
@@ -35,6 +52,32 @@ export function resolveMock(method: string, path: string): unknown {
         return dashboardKpisFixture(parseMode(params))
       case '/api/dashboard/category-breakdown':
         return categoryBreakdownFixture(parseMode(params), params.get('month') ?? '2026-07')
+      case '/api/transactions':
+        return transactionListFixture()
+      case '/api/transactions/unclassified-summary':
+        return unclassifiedSummaryFixture()
+      case '/api/categories':
+        return categoryListFixture()
+      case '/api/expense-types':
+        return expenseTypeListFixture()
+      case '/api/balances':
+        return accountBalanceListFixture()
+      case '/api/balances/total':
+        return assetTotalFixture()
+      case '/api/balances/time-series':
+        return balanceTimeSeriesFixture()
+      case '/api/monthly-reports':
+        return monthlyReportFixture(params.get('month') ?? '2026-07')
+      case '/api/settings/profile':
+        return settingsProfileFixture(getMockRole())
+      case '/api/accounts':
+        return ownAccountListFixture()
+      case '/api/monthly-limits':
+        return monthlyLimitListFixture()
+      case '/api/onboarding/me':
+        return onboardingMeFixture()
+      case '/api/imports/status':
+        return importStatusFixture()
     }
   }
 

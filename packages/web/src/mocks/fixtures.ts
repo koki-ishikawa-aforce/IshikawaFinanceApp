@@ -107,3 +107,316 @@ export function categoryBreakdownFixture(mode: DashboardMode, yearMonth: string)
     items,
   }
 }
+
+/** GET /api/transactions */
+export function transactionListFixture(): unknown {
+  return [
+    {
+      transactionId: 'TXN_MOCK_001',
+      occurredAt: '2026-07-20T10:00:00.000Z',
+      expenseClass: 'household',
+      categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWX',
+      categoryName: '住居費',
+      merchantName: '東京電力',
+      amount: 8500,
+      isUnclassified: false,
+    },
+    {
+      transactionId: 'TXN_MOCK_002',
+      occurredAt: '2026-07-18T12:30:00.000Z',
+      expenseClass: 'household',
+      categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWY',
+      categoryName: '食費',
+      merchantName: 'イオン',
+      amount: 4200,
+      isUnclassified: false,
+    },
+    {
+      transactionId: 'TXN_MOCK_003',
+      occurredAt: '2026-07-15T09:00:00.000Z',
+      expenseClass: 'personal_darling',
+      categoryId: null,
+      categoryName: null,
+      merchantName: 'Amazon',
+      amount: 3980,
+      isUnclassified: true,
+    },
+  ]
+}
+
+/** GET /api/transactions/unclassified-summary */
+export function unclassifiedSummaryFixture(): unknown {
+  return {
+    count: 1,
+    recentIds: ['TXN_MOCK_003'],
+  }
+}
+
+/** GET /api/categories */
+export function categoryListFixture(): unknown {
+  return {
+    items: [
+      {
+        kind: 'default',
+        categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWX',
+        name: '住居費',
+        scope: { kind: 'household_shared' },
+      },
+      {
+        kind: 'default',
+        categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWY',
+        name: '食費',
+        scope: { kind: 'household_shared' },
+      },
+      {
+        kind: 'default',
+        categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWZ',
+        name: '娯楽費',
+        scope: { kind: 'household_shared' },
+      },
+      {
+        kind: 'custom',
+        categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VW0',
+        name: 'その他',
+        scope: { kind: 'household_shared' },
+      },
+    ],
+  }
+}
+
+/** GET /api/expense-types */
+export function expenseTypeListFixture(): unknown {
+  return {
+    items: [
+      {
+        kind: 'default',
+        expenseTypeId: 'ET_MOCK_001',
+        name: '交通費',
+        scope: { kind: 'household_shared' },
+      },
+      {
+        kind: 'default',
+        expenseTypeId: 'ET_MOCK_002',
+        name: '書籍代',
+        scope: { kind: 'personal', userId: 'U_DARLING_MOCK' },
+      },
+    ],
+  }
+}
+
+/** GET /api/balances */
+export function accountBalanceListFixture(): unknown {
+  return {
+    items: [
+      {
+        kind: 'smbc_bank',
+        accountId: 'ACC_MOCK_001',
+        displayName: '三井住友銀行 普通',
+        currentBalance: 1500000,
+        lastUpdatedAt: '2026-07-23T00:00:00.000Z',
+      },
+      {
+        kind: 'mitsui_sumitomo_card',
+        accountId: 'ACC_MOCK_002',
+        displayName: '三井住友カード',
+        currentMonthUnpaidTotal: 120000,
+        lastSettledAt: '2026-07-10T00:00:00.000Z',
+      },
+      {
+        kind: 'other_savings',
+        accountId: 'ACC_MOCK_003',
+        displayName: '楽天銀行',
+        currentBalance: 1740000,
+        lastUpdatedAt: '2026-07-20T00:00:00.000Z',
+        daysSinceLastUpdate: 4,
+      },
+      {
+        kind: 'nisa',
+        accountId: 'ACC_MOCK_004',
+        displayName: 'SBI証券 NISA',
+        currentAccumulated: 1200000,
+        lastUpdatedAt: '2026-07-01T00:00:00.000Z',
+      },
+    ],
+  }
+}
+
+/** GET /api/balances/total */
+export function assetTotalFixture(): unknown {
+  return {
+    asOf: '2026-07-24T00:00:00.000Z',
+    smbcBalance: 1500000,
+    otherSavingsBalance: 1740000,
+    nisaContributionAccumulated: 1200000,
+    cardUnpaidTotal: 120000,
+    total: 4320000,
+  }
+}
+
+/** GET /api/balances/time-series */
+export function balanceTimeSeriesFixture(): unknown {
+  return {
+    yearMonthRange: { from: '2026-01', to: '2026-07' },
+    smbc: [
+      { date: '2026-01-31T00:00:00.000Z', amount: 1200000 },
+      { date: '2026-04-30T00:00:00.000Z', amount: 1350000 },
+      { date: '2026-07-23T00:00:00.000Z', amount: 1500000 },
+    ],
+    otherSavings: [
+      { date: '2026-01-31T00:00:00.000Z', amount: 1600000 },
+      { date: '2026-04-30T00:00:00.000Z', amount: 1680000 },
+      { date: '2026-07-20T00:00:00.000Z', amount: 1740000 },
+    ],
+    nisaContribution: [
+      { date: '2026-01-31T00:00:00.000Z', amount: 900000 },
+      { date: '2026-04-30T00:00:00.000Z', amount: 1050000 },
+      { date: '2026-07-01T00:00:00.000Z', amount: 1200000 },
+    ],
+    cardUnpaid: [
+      { date: '2026-01-31T00:00:00.000Z', amount: 95000 },
+      { date: '2026-04-30T00:00:00.000Z', amount: 110000 },
+      { date: '2026-07-10T00:00:00.000Z', amount: 120000 },
+    ],
+  }
+}
+
+/** GET /api/monthly-reports */
+export function monthlyReportFixture(yearMonth: string): unknown {
+  return {
+    status: 'csv_confirmed',
+    common: {
+      monthlyReportId: 'MR_MOCK_001',
+      targetYearMonth: yearMonth,
+      householdCategoryTotals: [
+        { categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWX', total: 98000 },
+        { categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWY', total: 72000 },
+        { categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWZ', total: 48000 },
+        { categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VW0', total: 30000 },
+      ],
+      personalTotalHoney: 72000,
+      personalTotalDarling: 86000,
+      businessExpenseTotalSelf: 15000,
+      nisaContributionAccumulated: 1200000,
+      balanceTrend: {
+        smbcBalanceTrend: [{ date: '2026-07-01T00:00:00.000Z' }],
+        otherSavingsBalanceTrend: [{ date: '2026-07-01T00:00:00.000Z' }],
+        nisaContributionTrend: [{ date: '2026-07-01T00:00:00.000Z' }],
+        cardUnpaidTrend: [{ date: '2026-07-01T00:00:00.000Z' }],
+      },
+      isIncompleteMonth: true,
+    },
+    csvConfirmedAt: '2026-07-15T10:00:00.000Z',
+    finalizedAt: null,
+    unapprovedTransfers: null,
+  }
+}
+
+/** GET /api/settings/profile */
+export function settingsProfileFixture(role: UserRole): unknown {
+  return {
+    profile: {
+      userId: role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK',
+      role,
+      nickname: role === 'honey' ? 'はにー' : 'だーりん',
+    },
+  }
+}
+
+/** GET /api/accounts */
+export function ownAccountListFixture(): unknown {
+  return {
+    items: [
+      {
+        kind: 'smbc_bank',
+        common: {
+          accountId: 'ACC_MOCK_001',
+          ownerUserId: 'U_DARLING_MOCK',
+          activeness: { kind: 'active' },
+        },
+        balance: { currentBalance: 1500000 },
+      },
+      {
+        kind: 'mitsui_sumitomo_card',
+        common: {
+          accountId: 'ACC_MOCK_002',
+          ownerUserId: 'U_DARLING_MOCK',
+          activeness: { kind: 'active' },
+        },
+      },
+      {
+        kind: 'other_savings',
+        common: {
+          accountId: 'ACC_MOCK_003',
+          ownerUserId: 'U_DARLING_MOCK',
+          activeness: { kind: 'active' },
+        },
+        bankName: '楽天銀行',
+        balance: { currentBalance: 1740000 },
+      },
+      {
+        kind: 'nisa',
+        common: {
+          accountId: 'ACC_MOCK_004',
+          ownerUserId: 'U_DARLING_MOCK',
+          activeness: { kind: 'active' },
+        },
+        brokerageName: { kind: 'sbi' },
+        contribution: { currentAccumulated: 1200000 },
+      },
+    ],
+  }
+}
+
+/** GET /api/monthly-limits */
+export function monthlyLimitListFixture(): unknown {
+  return {
+    items: [
+      {
+        kind: 'capped',
+        monthlyLimitId: 'ML_MOCK_001',
+        userId: 'U_DARLING_MOCK',
+        expenseTypeId: 'ET_MOCK_001',
+        effectiveFrom: '2026-01-01T00:00:00.000Z',
+        capAmount: 30000,
+        changeHistory: [],
+      },
+      {
+        kind: 'unlimited',
+        monthlyLimitId: 'ML_MOCK_002',
+        userId: 'U_DARLING_MOCK',
+        expenseTypeId: 'ET_MOCK_002',
+        effectiveFrom: '2026-01-01T00:00:00.000Z',
+      },
+    ],
+  }
+}
+
+/** GET /api/onboarding/me */
+export function onboardingMeFixture(): unknown {
+  return {
+    user: {
+      kind: 'operation_started',
+      common: {
+        userId: 'U_DARLING_MOCK',
+        role: 'darling',
+        nickname: 'だーりん',
+        firstRegisteredAt: '2026-01-01T00:00:00.000Z',
+        lineOperationSettings: {
+          friendAdd: { kind: 'added' },
+          talkRoomJoin: { kind: 'joined' },
+          notificationActivation: { kind: 'activated' },
+        },
+      },
+      lineOperationSettings: {
+        friendAdd: { kind: 'added' },
+        talkRoomJoin: { kind: 'joined' },
+        notificationActivation: { kind: 'activated' },
+      },
+    },
+  }
+}
+
+/** GET /api/imports/status */
+export function importStatusFixture(): unknown {
+  return { completion: null }
+}
