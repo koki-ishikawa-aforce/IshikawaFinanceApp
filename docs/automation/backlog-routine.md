@@ -133,5 +133,6 @@ WIP 上限はレビューが追いつく範囲に保つ。未マージの PR は
 - **一時停止**: Routine を無効化する(claude.ai の Routines 画面)。実行中の fire には影響しない
 - **着手したまま放置された Issue**(fire が異常終了した場合など): 下記「ゴミロックの自動回収」で自動的に解除されるため、通常は手動対応不要。急ぐ場合や自動回収の条件(ロックが2時間以上前)に満たない場合は、`status:in-progress` が付いているのに対応ブランチ/PR がないことを確認して手動でラベルを外せば、次の fire が再度拾う
 - **同じ Issue で撤退が繰り返される**: `needs-decision` の判断依頼コメントに回答し、`needs-decision` を外して `ready-to-implement` を付け直す。受け入れ条件そのものを `/issue-create` の基準(検証可能なチェックボックス)で書き直すのが根本対応
+- **却下した Issue が再実装され続ける**: PR をマージせずクローズすると `unlock-in-progress-on-pr-close` が元 Issue の `status:in-progress` を外し、`ready-to-implement` が残っていれば次の fire がその Issue を再実装して PR を作り直す。却下時は `/decide` 手順3c の「不採用」プレイブックに従い、元 Issue の後始末(実装をやめるなら `ready-to-implement` を外す/別アプローチでやり直すなら受け入れ条件を直して ready を維持)まで必ず行う
 - **同じ Issue に複数の PR が作られた**: 重複 PR ガード(CAS ロック + push 前の重複チェック)で防止されるが、万一発生した場合は PR 執事(`/pr-steward`)が検知して `needs-decision` で通知する。残す PR を判断してクローズする
 - **PR をマージしたのにマージ判断 Issue が残っている**: 通知ワークフローの自動クローズはマーカー `<!-- merge-judgment-pr: N -->` で対応 PR を特定する。マーカーが本文にない場合は手動でクローズする
