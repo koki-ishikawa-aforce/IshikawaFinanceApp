@@ -4,6 +4,7 @@ import type {
   DeliveryTarget,
   DomainEvent,
   FailsafeEmailGateway,
+  FailsafeEmailSendResult,
   LineMessagingGateway,
   LinePushResult,
 } from '@warimaru/domain'
@@ -62,6 +63,31 @@ function stubEmailGateway(): FailsafeEmailGateway & { sentTo: string[] } {
     },
   }
   return gateway
+}
+
+/** 応答列を順に返すスタブメールゲートウェイ（列を使い切ったら最後の応答を繰り返す） */
+function stubEmailGatewayWithResults(
+  results: FailsafeEmailSendResult[],
+): FailsafeEmailGateway & { calls: number; sentTo: string[] } {
+  const gateway = {
+    calls: 0,
+    sentTo: [] as string[],
+    send(email: Parameters<FailsafeEmailGateway['send']>[0]) {
+      const result = results[Math.min(gateway.calls, results.length - 1)]
+      gateway.calls += 1
+      gateway.sentTo.push(email.common.toEmailAddress)
+      if (result === undefined) throw new Error('スタブ応答が未定義')
+      return Promise.resolve(result)
+    },
+  }
+  return gateway
+}
+
+const emailSuccess: FailsafeEmailSendResult = { kind: 'success', providerRef: 'stub-provider-ref' }
+const emailFailure: FailsafeEmailSendResult = {
+  kind: 'failure',
+  failureReason: 'smtp_failure',
+  detail: 'stub email failure',
 }
 
 const success: LinePushResult = {
@@ -248,5 +274,104 @@ describe('NotificationDeliveryService', () => {
     )
     expect(counter?.thresholdState.kind).toBe('reached')
     expect(events.filter(e => e.type === 'FailsafeEmailSent')).toHaveLength(0)
+  })
+
+  it('送信基盤の失敗時は発火済みにせず、次回の連続失敗で再送を試みる（OQ-50）', async () => {
+    const ref = FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' })
+    // 宛先 2 件。1 回目の発火（2 通）は基盤失敗、以降は成功する応答列。
+    const emailGateway = stubEmailGatewayWithResults([emailFailure, emailFailure, emailSuccess])
+    const service = build(stubLineGateway([failure]), {
+      failsafeFailureThreshold: 1,
+      failsafeEmailRecipients: ['honey@example.com', 'darling@example.com'],
+      failsafeEmailGateway: emailGateway,
+    })
+
+    // 1 回目の連続失敗でしきい値到達 → メール送信を試みるが基盤失敗 → 発火済みにしない
+    await service.deliver({
+      target: talkRoomTarget,
+      content: textContent,
+      purpose: 'csv_import_reminder',
+      idempotencyKey: 'key-e1',
+    })
+    expect(emailGateway.calls).toBe(2)
+    expect(events.filter(e => e.type === 'FailsafeEmailSendFailed')).toHaveLength(2)
+    expect(events.filter(e => e.type === 'FailsafeEmailSent')).toHaveLength(0)
+    let counter = await deps.consecutiveFailureCounterRepository.findByRef(ref)
+    expect(counter?.thresholdState.kind).toBe('reached')
+    if (counter?.thresholdState.kind === 'reached') {
+      // 送信基盤の失敗では発火済みにしない（次回に再送できる状態を保つ）
+      expect(counter.thresholdState.failsafeState.kind).toBe('not_fired')
+    }
+
+    // 2 回目の連続失敗 → 未発火なので再送を試みる → 今度は成功 → 発火済みになる
+    await service.deliver({
+      target: talkRoomTarget,
+      content: textContent,
+      purpose: 'csv_import_reminder',
+      idempotencyKey: 'key-e2',
+    })
+    expect(emailGateway.calls).toBe(4) // 宛先 2 件へ再送された
+    expect(events.filter(e => e.type === 'FailsafeEmailSent')).toHaveLength(2)
+    // 再送成功で新たな送信失敗イベントは増えない
+    expect(events.filter(e => e.type === 'FailsafeEmailSendFailed')).toHaveLength(2)
+    counter = await deps.consecutiveFailureCounterRepository.findByRef(ref)
+    expect(counter?.thresholdState.kind).toBe('reached')
+    if (counter?.thresholdState.kind === 'reached') {
+      expect(counter.thresholdState.failsafeState.kind).toBe('fired')
+    }
+
+    // 3 回目の連続失敗 → 発火済みなので二重送信しない
+    await service.deliver({
+      target: talkRoomTarget,
+      content: textContent,
+      purpose: 'csv_import_reminder',
+      idempotencyKey: 'key-e3',
+    })
+    expect(emailGateway.calls).toBe(4)
+    expect(events.filter(e => e.type === 'FailsafeEmailSent')).toHaveLength(2)
+  })
+
+  it('宛先が空のときは発火済みにせず、宛先設定後の連続失敗で改めて送信する（OQ-50）', async () => {
+    const counterRepo = createMockConsecutiveFailureCounterRepository()
+    const ref = FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' })
+
+    // 宛先未設定で連続失敗しきい値に到達 → 発火は保留（発火済みにしない）
+    const emptyService = build(stubLineGateway([failure]), {
+      failsafeFailureThreshold: 1,
+      failsafeEmailRecipients: [],
+      consecutiveFailureCounterRepository: counterRepo,
+    })
+    await emptyService.deliver({
+      target: talkRoomTarget,
+      content: textContent,
+      purpose: 'csv_import_reminder',
+      idempotencyKey: 'key-empty-1',
+    })
+    let counter = await counterRepo.findByRef(ref)
+    expect(counter?.thresholdState.kind).toBe('reached')
+    if (counter?.thresholdState.kind === 'reached') {
+      expect(counter.thresholdState.failsafeState.kind).toBe('not_fired')
+    }
+
+    // 宛先を設定して次の連続失敗 → 保留していた発火が改めて送信される
+    const emailGateway = stubEmailGatewayWithResults([emailSuccess])
+    const configuredService = build(stubLineGateway([failure]), {
+      failsafeFailureThreshold: 1,
+      failsafeEmailRecipients: ['honey@example.com'],
+      consecutiveFailureCounterRepository: counterRepo,
+      failsafeEmailGateway: emailGateway,
+    })
+    await configuredService.deliver({
+      target: talkRoomTarget,
+      content: textContent,
+      purpose: 'csv_import_reminder',
+      idempotencyKey: 'key-empty-2',
+    })
+    expect(emailGateway.sentTo).toEqual(['honey@example.com'])
+    counter = await counterRepo.findByRef(ref)
+    expect(counter?.thresholdState.kind).toBe('reached')
+    if (counter?.thresholdState.kind === 'reached') {
+      expect(counter.thresholdState.failsafeState.kind).toBe('fired')
+    }
   })
 })
