@@ -118,7 +118,7 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
    ```bash
    gh pr list --state open --json number --jq 'length'
    ```
-   **3件以上**なら新規着手せず、「WIP 上限のためスキップ」と報告して終了する(レビュー待ち PR が溜まった状態で着手を重ねると、PR 同士のコンフリクトと依存切れを招くため)
+   **5件以上**なら新規着手せず、「WIP 上限のためスキップ」と報告して終了する(レビュー待ち PR が溜まった状態で着手を重ねると、PR 同士のコンフリクトと依存切れを招くため)
 2. **候補選定**: `gh issue list --state open --label "ready-to-implement" --json number,title,labels,assignees,body,createdAt` から、以下をすべて満たす Issue を1件選ぶ:
    - `status:in-progress` / `needs-decision` ラベルが付いていない
    - 誰にも assign されていない

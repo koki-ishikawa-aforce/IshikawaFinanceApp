@@ -103,7 +103,7 @@ CI は `.github/workflows/ci.yml` の専用ステップで adapters-neon の統�
 
 | パラメータ | 既定値 | 変える場所 |
 | --- | --- | --- |
-| WIP 上限(open な PR 数) | 3 | SKILL.md 無人モード 手順0-1 |
+| WIP 上限(open な PR 数) | 5 | SKILL.md 無人モード 手順0-1 |
 | 消化ペース | 毎時1件 | Routine のスケジュール |
 | ゴミロック回収の経過時間しきい値 | 約2時間 | SKILL.md 無人モード preflight(fire のセッション寿命より十分長く保つ) |
 
