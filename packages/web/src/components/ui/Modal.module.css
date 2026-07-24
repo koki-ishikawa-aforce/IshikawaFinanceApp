@@ -33,6 +33,9 @@
 }
 
 .close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: none;
   font-size: 14px;

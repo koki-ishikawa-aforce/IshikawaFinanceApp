@@ -25,6 +25,9 @@
 }
 
 .unclassifiedBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
   border: none;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.75);
@@ -36,6 +39,10 @@
   text-align: left;
   cursor: pointer;
   box-shadow: 0 2px 6px var(--shadow-color);
+}
+
+.unclassifiedIcon {
+  flex-shrink: 0;
 }
 
 .totalRow {
