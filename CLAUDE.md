@@ -40,6 +40,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 - 境界づけられたコンテキスト: `docs/domain/07-bounded-contexts.md`
 - ユビキタス言語: `docs/domain/08-ubiquitous-language.md`(BC 別: 08a〜08h)
 - 集約定義: `docs/domain/09-aggregates.md`
+- デザインガイド: `DESIGN.md` — web の見た目に関わる変更はこれに従う(トークン・アイコン・装飾・テーマ・アクセシビリティ)
 
 ## 開発フロー
 
