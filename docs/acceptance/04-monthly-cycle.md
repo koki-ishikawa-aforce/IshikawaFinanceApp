@@ -130,7 +130,7 @@ CSV 取込 → 一括分類 → CSV 確定 → 経費按分 → 精算入金突�
 | 4 | **過剰ケース**: 経費合計より多い入金を登録 | 超過分が「経費精算とは別の入金」として記録される | ☐ |
 
 - 事後処理: テストで登録した入金・遡及計上された個人費用取引を削除または訂正する。3 ケースを同一月で試す場合はサイクルのやり直し可否を確認し、できなければケースごとに別のテスト月を使う
-- 備考: 依存 API `POST /api/expense-settlement/deposits`, `GET /api/expense-settlement/deposits/awaiting`。銀行入金メールの自動判別(25万円閾値)は未稼働のため入金は手動登録(AT-902 参照)
+- 備考: 依存 API `POST /api/expense-settlement/deposits`, `GET /api/expense-settlement/deposits/awaiting`。銀行入金メールの自動判別(入金日 21日以降/前 と 25万円以上/未満 の 2 シグナル判定)は未稼働のため入金は手動登録(AT-902 参照)
 
 ### 実施記録
 

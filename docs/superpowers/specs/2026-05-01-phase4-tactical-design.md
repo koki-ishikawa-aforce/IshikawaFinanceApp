@@ -1451,7 +1451,7 @@ async function buildMonthlyReport(month: YearMonth): Promise<CsvConfirmedReport>
 
 ### §7.4 鮮度評価の借用
 
-家計分析の Query 内で「別銀行貯蓄口座が N 日以上更新がない」を判定するため、`BalanceFreshnessSource.lastUpdatedAt` を借用する。Phase 4 では型として `freshnessSource` フィールドを `Account.kind = 'other_savings'` に持たせるのみで、評価しきい値（鮮度アラート発火日数）は Phase 5 で確定させる（OQ-7 関連、現時点では「30 日」を仮置き）。
+家計分析の Query 内で「別銀行貯蓄口座が N 日以上更新がない」を判定するため、`BalanceFreshnessSource.lastUpdatedAt` を借用する。Phase 4 では型として `freshnessSource` フィールドを `Account.kind = 'other_savings'` に持たせるのみで、~~評価しきい値（鮮度アラート発火日数）は Phase 5 で確定させる（OQ-7 関連、現時点では「30 日」を仮置き）~~ → **確定済み: 35 日**（OQ-44、2026-07-24）。通知先は月次レポート画面の表示色切替のみで LINE 配信は行わない。
 
 ---
 
@@ -1799,7 +1799,7 @@ Phase 4 の I/F が成立するために Phase 5 で確定が必要なもの:
 
 - ~~永続化バックエンド（DynamoDB vs RDS）~~ → **確定済み: Neon (PostgreSQL)**（OQ-27 / OQ-46、2026-07-06）。残るは DB スキーマ設計とマイグレーション方式
 - ID 生成方式（ULID 推奨）— `idSchema` の正規表現を強化する余地
-- 鮮度アラート閾値（OQ-7 関連、現状 30 日仮置き）— Query 側で参照
+- ~~鮮度アラート閾値（OQ-7 関連、現状 30 日仮置き）— Query 側で参照~~ → **確定済み: 35 日 / 通知先は画面表示のみ**（OQ-44、2026-07-24）
 - イベントの永続化要否 — Phase 4 では型のみで永続化責務は決めていない
 
 ---
@@ -1810,8 +1810,8 @@ Phase 4 の I/F が成立するために Phase 5 で確定が必要なもの:
 
 [03-open-questions.md §B](../../domain/03-open-questions.md):
 - OQ-37 アプリ名確定（Phase 4 で決定推奨、コード内のパッケージ名は `@household/domain` で進める）
-- OQ-38 三井住友銀行（SMBC ダイレクト）の月別明細 URL パターン実調査（取引取込スコープ、Phase 5）
-- OQ-39 LINE Flex Message のサイズ制限内に Honey/Darling 別リンクが収まるか検証（通知配信スコープ、Phase 5）
+- OQ-38 ✅ 三井住友銀行（SMBC ダイレクト）の月別明細 URL パターン実調査（取引取込スコープ）→ **2 段階で解決**。① 2026-07-22: 03-open-questions.md の OQ-38 は「SMBC 通知**メール**のフォーマット実調査」に読み替えられ、通知メール 3 種のフォーマットが確定（メール取込の対象はカード利用通知のみ）。② 2026-07-24（#52）: 本項が元々問うていた**明細ページの URL パターン**を実調査で確定。SP サイト `https://direct3.smbc.co.jp/sp/web/`、明細は `/sp/web/top/TPALT…` で、**月をクエリ指定する手段はない**ため月パラメータ埋込は不成立（Phase 3.5 spec §10.2 を改訂し手順表示に切替）
+- OQ-39 ✅ LINE Flex Message のサイズ制限内に Honey/Darling 別リンクが収まるか検証（通知配信スコープ）→ **収まる**（2026-07-24）。4 リンク同梱の CSV取込リマインダーで 2,023 B（50KB 上限の 4.0%）
 - OQ-40 テーマカラー切替の有無判断（UI 実装フェーズ、Phase 5）
 
 ### §14.2 Phase 4 で新たに発生した論点
@@ -1819,7 +1819,7 @@ Phase 4 の I/F が成立するために Phase 5 で確定が必要なもの:
 - **OQ-41**: ID 生成方式（ULID か UUID v7 か）。Phase 5 の adapter 実装時に確定する。Phase 4 の `idSchema` は `z.string().min(1)` で受け入れているため、後から正規表現を強化できる
 - **OQ-42**: ドメインイベントの永続化要否。監査・リプレイ要件があるなら永続化する設計が必要だが、家計内ツール規模では in-process pub/sub で十分の可能性
 - **OQ-43**: Repository.save() 内でのトランザクション境界。集約をまたぐ更新（例: 取引修正に伴う未払金更新）はアプリケーション層で 2 集約を順次保存する設計だが、整合性は最終的に結果整合性で吸収するか、Saga パターンを導入するか
-- **OQ-44**: 鮮度アラート閾値（OQ-7 続）— 30 日仮置きを Phase 5 で実値確定
+- **OQ-44** ✅: 鮮度アラート閾値（OQ-7 続）— ~~30 日仮置きを Phase 5 で実値確定~~ → **35 日で確定**（2026-07-24）。通知先は月次レポート画面の表示色切替のみ
 - **OQ-45**: パッケージ名のスコープ。`@household/domain` は仮置き、OQ-37 のアプリ名確定後に renaming する可能性
 
 ---

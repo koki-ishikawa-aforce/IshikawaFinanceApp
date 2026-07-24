@@ -83,7 +83,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 ### notification-delivery（通知配信、08g）
 
 - 集約: `DeliveryMessage`（配信用途 × 配信先マトリクスを superRefine で強制。予約 `reserveDeliveryMessage` / 送信ライフサイクル遷移を含む）, `LineDeliveryLog`（不変監査レコード + 冪等性キー、OQ-34。終端状態からの組立 `createLineDeliveryLog`）, `FailsafeEmail`（予約 `reserveFailsafeEmail` / 送信ライフサイクル遷移を含む）
-- 値オブジェクト: `DeliveryTarget`, `DeliveryContent`（OQ-39 サイズ検証は adapter 層）, `DeliveryPurpose`, `ConsecutiveFailureCounter`（失敗記録 `recordSendFailure` / 成功リセット `resetFailureCounter` / 発火判定 `shouldFireFailsafe` / 発火記録 `markFailsafeFired`。しきい値既定 3 = OQ-14）, `ReminderStopReason`
+- 値オブジェクト: `DeliveryTarget`, `DeliveryContent`（OQ-39 サイズ検証は解決済み: 最大 2.6KB で上限に余裕あり）, `DeliveryPurpose`, `ConsecutiveFailureCounter`（失敗記録 `recordSendFailure` / 成功リセット `resetFailureCounter` / 発火判定 `shouldFireFailsafe` / 発火記録 `markFailsafeFired`。しきい値既定 3 = OQ-14）, `ReminderStopReason`
 - Repository I/F: `DeliveryMessageRepository`, `LineDeliveryLogRepository`（append-only）, `FailsafeEmailRepository`, `ConsecutiveFailureCounterRepository`
 - Service I/F（ACL 翻訳層の driven port、実装は api 層）: `LineMessagingGateway`（LINE push、トークン実体は Parameter Store 解決でドメインに持ち込まない）, `FailsafeEmailGateway`（SMTP / SES 等の標準送信プロバイダ、OQ-14）
 - Query I/F: なし（CSV 取込完了状態の読取りは transaction-import 側の `CsvImportStatusQuery`）
@@ -145,5 +145,5 @@ pnpm lint        # 全 workspace lint
 - adapter 層の実装（`packages/adapters-neon/`、Neon PostgreSQL。OQ-41: ID 生成方式の確定と `idSchema` 強化を含む）
 - LIFF アプリ（`packages/web`）と Hono on Lambda（`packages/api`）の追加
 - ドメインイベントバスの実装（OQ-42）→ #34 で同期・インプロセス配信（`InMemoryEventBus`）と API 層でのハンドラー登録を実装。EventBridge 等での非同期配信は #35 以降で検討
-- OQ-38（SMBC URL 実調査）/ OQ-39（Flex Message サイズ検証）のクローズ
+- ~~OQ-38（SMBC URL 実調査）/ OQ-39（Flex Message サイズ検証）のクローズ~~ → **完了**（#52、2026-07-24）。OQ-44（鮮度アラート閾値 = 35 日）も併せてクローズ済み
 - 詳細: [Phase 4 spec §13](../../docs/superpowers/specs/2026-05-01-phase4-tactical-design.md) / [ロードマップ §2](../../docs/superpowers/plans/2026-07-06-forward-roadmap.md)
