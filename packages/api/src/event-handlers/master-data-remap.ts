@@ -42,7 +42,7 @@ type ExpenseTypeRemapEvent = ExpenseTypeDeletionRemapRequested & {
  * safeSubscribe を使わない: リマップ失敗は API ルートで remap_failed
  * 状態遷移に使うため、例外を呼び出し元に伝播させる必要がある。
  */
-export function registerMasterDataRemapHandlers(
+export function registerMasterDataRemapEventHandlers(
   eventBus: EventBus,
   deps: MasterDataRemapHandlerDeps,
 ): void {

@@ -5,6 +5,7 @@
  * - 配信は同期・インプロセス（InMemoryEventBus）。ルートが集約を保存した後に
  *   publish し、ハンドラーの完了を await する
  * - ハンドラー例外は safeSubscribe で隔離し、API リクエストを失敗させない
+ *   （リマップハンドラーは例外伝播が必要なため safeSubscribe を使わない — #89）
  * - 配信は at-least-once（リクエスト再実行で再発行されうる）ため、
  *   ハンドラーは冪等に実装する
  */
@@ -12,7 +13,7 @@ import type { EventBus } from '@warimaru/domain'
 import type { AppDeps } from '../composition-root.js'
 import { createNotificationDeliveryService } from '../notification/delivery-service.js'
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
-import { registerMasterDataRemapHandlers } from './master-data-remap-handlers.js'
+import { registerMasterDataRemapEventHandlers } from './master-data-remap.js'
 import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
 
@@ -27,7 +28,7 @@ export function registerEventHandlers(deps: AppDeps): void {
   registerAutoClassificationEventHandlers(deps.eventBus, {
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
   })
-  registerMasterDataRemapHandlers(deps.eventBus, {
+  registerMasterDataRemapEventHandlers(deps.eventBus, {
     transactionRepository: deps.transactionRepository,
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
     amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,

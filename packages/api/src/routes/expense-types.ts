@@ -28,7 +28,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
-import type { RemapResults } from '../event-handlers/master-data-remap-handlers.js'
+import type { RemapResults } from '../event-handlers/master-data-remap.js'
 import { assertVisibleToViewer } from './master-data-visibility.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
@@ -163,6 +163,7 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
       }
       await deps.eventBus.publish(event)
 
+      // 削除対象経費種別の月次上限は残すと宙に浮くため物理削除する
       await deps.monthlyLimitRepository.deleteByExpenseType(target.expenseTypeId)
 
       const completed = completeExpenseTypeRemap(requested, remapResults, new Date())
