@@ -58,6 +58,37 @@ describe('POST /api/imports/csv', () => {
     expect(body.job.kind).toBe('failed')
   })
 
+  it('10件ごとに processedCount が途中保存される', async () => {
+    const rows = Array.from(
+      { length: 15 },
+      (_, i) => `2026/07/${String(i + 1).padStart(2, '0')},店舗${i},${(i + 1) * 100}`,
+    )
+    const deps = createDeps({})
+    const original = deps.statementImportJobRepository
+    const saveCalls: { kind: string; processedCount: number | undefined }[] = []
+    deps.statementImportJobRepository = {
+      ...original,
+      async save(job) {
+        saveCalls.push({
+          kind: job.kind,
+          processedCount: job.kind === 'importing' ? job.processedCount : undefined,
+        })
+        return original.save(job)
+      },
+    }
+    const app = createApp(deps)
+    const res = await request(app, 'POST', '/api/imports/csv', {
+      formData: csvFormData(rows.join('\n') + '\n'),
+    })
+    expect(res.status).toBe(201)
+    const importingSaves = saveCalls.filter(c => c.kind === 'importing')
+    expect(importingSaves.length).toBe(2)
+    expect(importingSaves[0]!.processedCount).toBe(0)
+    expect(importingSaves[1]!.processedCount).toBe(10)
+    const completedSaves = saveCalls.filter(c => c.kind === 'completed')
+    expect(completedSaves).toHaveLength(1)
+  })
+
   it('候補保存の途中失敗でもジョブが failed(import_error) として記録される', async () => {
     const deps = createTestAppDepsWithFailingCandidateSave(2)
     const res = await request(deps.app, 'POST', '/api/imports/csv', { formData: csvFormData() })
