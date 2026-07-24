@@ -5,6 +5,7 @@
  * パスに対応する fixture を返し、未定義のパスは実 API の 404 相当として
  * {@link MockNotFoundError} を投げる（呼び出し側で ApiError に変換される）。
  */
+import type { DashboardMode } from '@warimaru/domain'
 import { getMockRole } from './role'
 import { categoryBreakdownFixture, dashboardKpisFixture, meFixture } from './fixtures'
 
@@ -18,7 +19,7 @@ export class MockNotFoundError extends Error {
   }
 }
 
-function parseMode(params: URLSearchParams): 'household' | 'personal' {
+function parseMode(params: URLSearchParams): DashboardMode {
   return params.get('mode') === 'personal' ? 'personal' : 'household'
 }
 

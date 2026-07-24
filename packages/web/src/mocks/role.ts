@@ -3,8 +3,11 @@
  *
  * ロールはテーマ（darling / honey）に直結するため、URL クエリ `?mockRole=honey`
  * で切り替えられるようにする。指定が無ければ darling を既定とする。
+ * ロールの値はドメインの {@link UserRole} を参照し、独自の同義リテラルは作らない。
  */
-export type MockRole = 'honey' | 'darling'
+import type { UserRole } from '@warimaru/domain'
+
+export type MockRole = UserRole
 
 export function getMockRole(): MockRole {
   if (typeof window === 'undefined') return 'darling'
