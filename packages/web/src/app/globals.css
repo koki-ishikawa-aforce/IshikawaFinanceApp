@@ -54,6 +54,7 @@
   --shadow-color: #ff709520;
   --shadow-strong: #ff709550;
   --deco-opacity: 0.2;
+  --deco-highlight: rgba(255, 255, 255, 0.3);
 
   --cat-housing: #d8407a;
   --cat-food: #ff6f90;
