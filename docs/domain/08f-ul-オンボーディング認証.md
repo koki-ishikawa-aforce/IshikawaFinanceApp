@@ -4,6 +4,7 @@
 > サブドメイン: Supporting（07-bounded-contexts.md §2.2）
 > Phase 3.5 反映: 役割を Honey/Darling 表記に変更、ユーザー集約に nickname 属性を追加（[2026-05-01-phase3.5-ux-ui-design.md §3, §14.1](../superpowers/specs/2026-05-01-phase3.5-ux-ui-design.md)）
 > 改訂（2026-07-24・判断セッション / #112④）: ニックネーム変更イベントの定義から「変更日時」を削除し、発生日時（occurredAt）に一本化。同期イベントで両者は常に同値のため冗長であり、専用日時を持たない他イベント（SectionFCompleted / RoleJudged 等）と整合させる。
+> 改訂（2026-07-24・判断セッション / #73、OQ-55）: 共通トークルーム参加状態を per-user の LINE_運用設定 から**世帯レベルの置き場**へ分離（§1「LINE 運用設定」参照）。join Webhook が userId を含まず、参加は世帯にひとつの事実のため。あわせて Phase 1 の自己申告 API（line-friend / talk-room）は廃止し、follow / join Webhook を唯一の正とする（登録前 follow の取りこぼしは登録完了時の LINE 友だち状態照会でカバー）。
 
 ## 責務
 
@@ -119,17 +120,20 @@ data 失効理由 = API呼出失敗起因 OR 期限切れ起因
 
 // --- LINE 運用設定（Phase 4） ---
 
-data LINE_運用設定 = LINE_友達追加状態 AND 共通トークルーム参加状態 AND 通知機能有効化状態
-// 実装ノート（#41）: 友達追加・トークルーム参加・通知有効化は運用開始前
-// （Web オンボーディングの完了記録や follow/join Webhook）から発生するため、
+data LINE_運用設定 = LINE_友達追加状態 AND 通知機能有効化状態
+// 実装ノート（#41）: 友達追加・通知有効化は運用開始前
+// （follow Webhook 等）から発生するため、
 // 実装ではアプリユーザー共通属性に optional で事前蓄積し、運用開始発火時に
 // 運用開始済みユーザー の属性へ昇格する（昇格後は共通属性から除去し、置き場所を一本化）。
+// 改訂（2026-07-24・判断セッション / #73、OQ-55）: 共通トークルーム参加状態は per-user の
+// LINE_運用設定 から分離し、世帯レベルの置き場（下記）で一本化した。
 
 data LINE_友達追加状態 = 未追加 OR 友達追加済み
 data 友達追加済み = ユーザーID AND follow_Webhook受信日時
 
-data 共通トークルーム参加状態 = 未参加 OR 参加済み
+data 共通トークルーム参加状態 = 未参加 OR 参加済み  // 世帯レベル（アプリユーザー集約の外に置く。世帯にひとつの事実）
 data 参加済み = 共通トークルームID AND join_Webhook受信日時
+// 通知配信（DeliveryTarget.shared_talk_room）・通知機能有効化が参照する「正」はこの世帯レベルの記録
 
 data 通知機能有効化状態 = 未有効化 OR 有効化済み
 data 有効化済み = 共通トークルームID AND 有効化日時
