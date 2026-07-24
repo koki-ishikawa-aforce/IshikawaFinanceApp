@@ -15,7 +15,7 @@ Routine(週次 fire・fresh session): /docs-drift を実行
 人間: /decide で修正方針を判断
   ├─ docs を直す → ready-to-implement を付ける → 次の /issue-work fire が修正
   ├─ コードを直す → ready-to-implement を付ける → 次の /issue-work fire が修正
-  └─ 乖離ではない(意図的な差異) → Issue を閉じる
+  └─ 乖離ではない(意図的な差異) → Issue を not planned で閉じる → 次回以降の重複チェックで再起票されない
 ```
 
 設計原則:
@@ -84,4 +84,4 @@ GitHub は**自分自身の操作を通知しない**。docs-drift Routine も�
 - **一時停止**: Routine を無効化する(claude.ai の Routines 画面)。実行中の fire には影響しない
 - **乖離報告が過剰 / 的外れ**: `ready-to-implement` が付いた乖離は自動で実装されるため、不要な乖離報告が `ready-to-implement` で起票されていないか確認する。的外れな報告が続く場合は SKILL.md の突合ロジック(手順 2〜4)を見直す
 - **乖離報告 Issue が溜まる**: `needs-decision` の分は `/decide` で方針を判断する。`ready-to-implement` の分はバックログ Routine が順次消化する
-- **同じ乖離が毎週起票される**: SKILL.md 手順 5 の重複チェックで防止されるが、既存 Issue のタイトルが異なる場合は重複を検出できないことがある。手動で重複 Issue を閉じれば次回以降は検出されない
+- **同じ乖離が毎週起票される**: SKILL.md 手順 5 の重複チェックは open と closed の両方を検索し、not planned でクローズされた Issue は「意図的な差異」として再起票しない。それでも重複が起きる場合は、既存 Issue のタイトルやキーワードが異なるために重複を検出できていない可能性がある。意図的な差異として再起票を止めたい場合は、対象の乖離報告 Issue を not planned で閉じる
