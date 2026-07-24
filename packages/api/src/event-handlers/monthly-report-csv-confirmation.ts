@@ -1,4 +1,5 @@
 import {
+  MonthlyReportCsvConfirmedSchema,
   MonthlyReportIdSchema,
   aggregateMonthlyReportTotals,
   confirmCsv,
@@ -14,6 +15,7 @@ import type {
   UserRole,
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
+import { domainEventBase } from './event-base.js'
 import { safeSubscribe } from './safe-subscribe.js'
 
 export interface MonthlyReportCsvConfirmationHandlerDeps {
@@ -61,6 +63,14 @@ export function registerMonthlyReportCsvConfirmationEventHandlers(
         if (existing.kind === 'finalized') continue
         const refreshed = refreshCsvConfirmed(existing, totals, transactionIds)
         await deps.monthlyReportRepository.save(refreshed)
+        await eventBus.publish(
+          MonthlyReportCsvConfirmedSchema.parse({
+            ...domainEventBase(),
+            type: 'MonthlyReportCsvConfirmed',
+            monthlyReportId: refreshed.common.monthlyReportId,
+            csvConfirmedAt: refreshed.csvConfirmedAt,
+          }),
+        )
       } else {
         const report = confirmCsv(
           {
@@ -79,6 +89,14 @@ export function registerMonthlyReportCsvConfirmationEventHandlers(
           event.occurredAt,
         )
         await deps.monthlyReportRepository.save(report)
+        await eventBus.publish(
+          MonthlyReportCsvConfirmedSchema.parse({
+            ...domainEventBase(),
+            type: 'MonthlyReportCsvConfirmed',
+            monthlyReportId: report.common.monthlyReportId,
+            csvConfirmedAt: report.csvConfirmedAt,
+          }),
+        )
       }
     }
   })

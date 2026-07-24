@@ -13,7 +13,12 @@ import {
   money,
   registerAppUser,
 } from '@warimaru/domain'
-import type { CsvImportCompleted, ClassifiedTransaction, YearMonth } from '@warimaru/domain'
+import type {
+  CsvImportCompleted,
+  ClassifiedTransaction,
+  MonthlyReportCsvConfirmed,
+  YearMonth,
+} from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import { createTestApp } from '../helpers/test-app.js'
 import { domainEventBase } from '../../src/event-handlers/event-base.js'
@@ -87,9 +92,14 @@ async function seedUsers(t: ReturnType<typeof createTestApp>) {
 }
 
 describe('CSV取込完了 → 月次レポートCSV確定（イベントチェーン2 #69）', () => {
-  it('正常系: CsvImportCompleted で新規の CSV確定レポートが作成される', async () => {
+  it('正常系: CsvImportCompleted で新規の CSV確定レポートが作成され MonthlyReportCsvConfirmed が発火する', async () => {
     const t = createTestApp()
     await seedUsers(t)
+
+    const csvConfirmedLog: MonthlyReportCsvConfirmed[] = []
+    t.deps.eventBus.subscribe<MonthlyReportCsvConfirmed>('MonthlyReportCsvConfirmed', e => {
+      csvConfirmedLog.push(e)
+    })
 
     const tx1 = makeClassifiedTransaction(HONEY_USER_ID, '2026-07', 'honey', {
       expenseClass: 'personal_honey',
@@ -110,6 +120,9 @@ describe('CSV取込完了 → 月次レポートCSV確定（イベントチェ�
     expect(report!.kind).toBe('csv_confirmed')
     expect(report!.common.personalTotalHoney).toBe(3000)
     expect(report!.common.personalTotalDarling).toBe(2000)
+
+    expect(csvConfirmedLog).toHaveLength(1)
+    expect(csvConfirmedLog[0]!.monthlyReportId).toBe(report!.common.monthlyReportId)
   })
 
   it('冪等: 再配信で既存の CSV確定レポートが再集計（上書き）される', async () => {
@@ -139,9 +152,14 @@ describe('CSV取込完了 → 月次レポートCSV確定（イベントチェ�
     expect(refreshed!.common.monthlyReportId).toBe(first!.common.monthlyReportId)
   })
 
-  it('finalized レポートは上書きしない（単方向遷移の維持）', async () => {
+  it('finalized レポートは上書きしない（単方向遷移の維持）— イベントも発火しない', async () => {
     const t = createTestApp()
     await seedUsers(t)
+
+    const csvConfirmedLog: MonthlyReportCsvConfirmed[] = []
+    t.deps.eventBus.subscribe<MonthlyReportCsvConfirmed>('MonthlyReportCsvConfirmed', e => {
+      csvConfirmedLog.push(e)
+    })
 
     const csvReport = confirmCsv(
       {
@@ -182,6 +200,7 @@ describe('CSV取込完了 → 月次レポートCSV確定（イベントチェ�
     const saved = await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH)
     expect(saved!.kind).toBe('finalized')
     expect(saved!.common.personalTotalHoney).toBe(1000)
+    expect(csvConfirmedLog).toHaveLength(0)
   })
 
   it('両メンバーの取引が集計される', async () => {

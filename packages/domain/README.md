@@ -61,7 +61,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - Repository I/F: `TransactionCandidateRepository`（GmailID / 三項一致検索）, `DailyMailImportBatchRepository`, `StatementImportJobRepository`
 - Service I/F（ACL 翻訳層の driven port、実装は adapter 層）: `PdfToCsvConverter`（OQ-23、`ConvertedStatementRow` / `PdfToCsvConversion` を含む）
 - Query I/F: `CsvImportStatusQuery` + `CsvImportCompletionView`
-- ドメインイベント: `MailImportBatchLaunched` ほか 14 種
+- ドメインイベント: `MailImportBatchLaunched` / `CardUsageTransactionImported` / `SettlementNoticeReceived` ほか 13 種
 
 ### onboarding-auth（オンボーディング・認証、08f）
 
