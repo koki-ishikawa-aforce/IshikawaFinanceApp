@@ -6,6 +6,11 @@ export {
   LuReceipt,
   LuDownload,
   LuSettings,
+  LuPiggyBank,
+  LuTrendingUp,
+  LuTriangleAlert,
+  LuCircleCheck,
+  LuX,
   LuFlower2,
   LuSailboat,
   LuMessageCircle,
@@ -14,7 +19,6 @@ export {
   LuRocket,
   LuPartyPopper,
   LuCheck,
-  LuTriangleAlert,
   LuHourglass,
 } from 'react-icons/lu'
 

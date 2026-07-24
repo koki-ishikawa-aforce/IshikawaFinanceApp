@@ -19,9 +19,17 @@
 }
 
 .statusDone {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
   font-size: 12px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.statusDoneIcon {
+  flex-shrink: 0;
+  color: var(--accent);
 }
 
 .failedBadge {
