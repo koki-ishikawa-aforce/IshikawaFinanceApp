@@ -18,7 +18,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 
 - 検証一式(CI と同一順): `pnpm build && pnpm typecheck && pnpm test && pnpm lint && pnpm format:check`
 - 自動整形: `pnpm format`
-- 統合テスト(adapters-neon 変更時のみ、要 PostgreSQL):
+- 統合テスト(adapters-neon の変更、または domain の振る舞い変更がある場合。要 PostgreSQL):
   ```bash
   docker compose up -d db
   DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
