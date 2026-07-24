@@ -19,6 +19,7 @@ import {
   confirmCandidate,
   createTransaction,
   failImportJob,
+  importTargetPeriodIsValid,
   money,
   roleToPersonalExpenseClass,
   startFormatValidation,
@@ -75,13 +76,18 @@ const MailBatchBodySchema = z
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
   })
-  // 境界での早期入力検証（不正な期間を 400 で弾く）。一次情報は
-  // DailyMailImportBatch の from < to ガード（domain）であり、ここはそれに整合させた
-  // 意図的な二重化。ガードを変えるときは両者を揃えること。
-  .refine(body => body.from === undefined || body.to === undefined || body.from < body.to, {
-    message: 'from は to より前でなければならない',
-    path: ['from'],
-  })
+  // 境界での早期入力検証（不正な期間を 400 で弾く）。from < to ルールの単一の情報源は
+  // ドメインの importTargetPeriodIsValid であり、ここは再実装せずそれを参照するだけ。
+  .refine(
+    body =>
+      body.from === undefined ||
+      body.to === undefined ||
+      importTargetPeriodIsValid(body.from, body.to),
+    {
+      message: 'from は to より前でなければならない',
+      path: ['from'],
+    },
+  )
 
 export interface ImportsRoutesDeps {
   csvImportStatusQuery: CsvImportStatusQuery

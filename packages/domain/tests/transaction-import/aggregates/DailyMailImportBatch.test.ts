@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   DailyMailImportBatchSchema,
+  ImportTargetPeriodSchema,
+  importTargetPeriodIsValid,
   startBatchImporting,
   completeBatch,
   failBatch,
@@ -61,5 +63,22 @@ describe('DailyMailImportBatch 集約', () => {
     const failed = failBatch(started, 'Gmail API エラー', new Date())
     expect(failed.kind).toBe('failed')
     expect(failed.failureDetail).toBe('Gmail API エラー')
+  })
+})
+
+describe('取込対象期間の from < to 不変条件（単一ソース）', () => {
+  const earlier = new Date('2026-07-01T00:00:00Z')
+  const later = new Date('2026-07-06T00:00:00Z')
+
+  it('importTargetPeriodIsValid は from < to のときのみ true', () => {
+    expect(importTargetPeriodIsValid(earlier, later)).toBe(true)
+    expect(importTargetPeriodIsValid(later, earlier)).toBe(false)
+    expect(importTargetPeriodIsValid(earlier, earlier)).toBe(false)
+  })
+
+  it('ImportTargetPeriodSchema は述語に従って parse 成否が決まる', () => {
+    expect(() => ImportTargetPeriodSchema.parse({ from: earlier, to: later })).not.toThrow()
+    expect(() => ImportTargetPeriodSchema.parse({ from: later, to: earlier })).toThrow()
+    expect(() => ImportTargetPeriodSchema.parse({ from: earlier, to: earlier })).toThrow()
   })
 })

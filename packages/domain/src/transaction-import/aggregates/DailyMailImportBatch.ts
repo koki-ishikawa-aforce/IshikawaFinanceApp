@@ -15,11 +15,26 @@
 import { z } from 'zod'
 import { ImportBatchIdSchema, UserIdSchema } from '../../shared/ids'
 
+/**
+ * 取込対象期間の不変条件: from は to より前でなければならない
+ * （過去 5 日再走査, OQ-31）。この述語が from < to ルールの単一の情報源であり、
+ * 集約スキーマ（{@link ImportTargetPeriodSchema}）と API 境界の双方がこれを参照する。
+ * adapters / api 層で `from < to` を再実装しないこと。
+ */
+export function importTargetPeriodIsValid(from: Date, to: Date): boolean {
+  return from < to
+}
+
 /** 取込対象期間 */
-export const ImportTargetPeriodSchema = z.object({
-  from: z.date(),
-  to: z.date(),
-})
+export const ImportTargetPeriodSchema = z
+  .object({
+    from: z.date(),
+    to: z.date(),
+  })
+  .refine(period => importTargetPeriodIsValid(period.from, period.to), {
+    message: '取込対象期間は from < to でなければならない',
+    path: ['to'],
+  })
 export type ImportTargetPeriod = z.infer<typeof ImportTargetPeriodSchema>
 
 /** 共通属性 */
@@ -31,42 +46,34 @@ export const CommonImportBatchAttrsSchema = z.object({
 })
 export type CommonImportBatchAttrs = z.infer<typeof CommonImportBatchAttrsSchema>
 
-export const DailyMailImportBatchSchema = z
-  .discriminatedUnion('kind', [
-    z.object({
-      kind: z.literal('started'),
-      common: CommonImportBatchAttrsSchema,
-    }),
-    z.object({
-      kind: z.literal('importing'),
-      common: CommonImportBatchAttrsSchema,
-      importStartedAt: z.date(),
-      importedCount: z.number().int().nonnegative(),
-    }),
-    z.object({
-      kind: z.literal('completed'),
-      common: CommonImportBatchAttrsSchema,
-      completedAt: z.date(),
-      importedCount: z.number().int().nonnegative(),
-      duplicateExcludedCount: z.number().int().nonnegative(),
-      failedCount: z.number().int().nonnegative(),
-    }),
-    z.object({
-      kind: z.literal('failed'),
-      common: CommonImportBatchAttrsSchema,
-      failedAt: z.date(),
-      failureDetail: z.string().min(1),
-    }),
-  ])
-  .superRefine((batch, ctx) => {
-    if (batch.common.targetPeriod.from >= batch.common.targetPeriod.to) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '取込対象期間は from < to でなければならない',
-        path: ['common', 'targetPeriod'],
-      })
-    }
-  })
+export const DailyMailImportBatchSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('started'),
+    common: CommonImportBatchAttrsSchema,
+  }),
+  z.object({
+    kind: z.literal('importing'),
+    common: CommonImportBatchAttrsSchema,
+    importStartedAt: z.date(),
+    importedCount: z.number().int().nonnegative(),
+  }),
+  z.object({
+    kind: z.literal('completed'),
+    common: CommonImportBatchAttrsSchema,
+    completedAt: z.date(),
+    importedCount: z.number().int().nonnegative(),
+    duplicateExcludedCount: z.number().int().nonnegative(),
+    failedCount: z.number().int().nonnegative(),
+  }),
+  z.object({
+    kind: z.literal('failed'),
+    common: CommonImportBatchAttrsSchema,
+    failedAt: z.date(),
+    failureDetail: z.string().min(1),
+  }),
+])
+// from < to の不変条件は ImportTargetPeriodSchema（値オブジェクト）が担保する。
+// common.targetPeriod が同スキーマを参照するため、集約 parse 時にネストして検証される。
 export type DailyMailImportBatch = z.infer<typeof DailyMailImportBatchSchema>
 
 export type StartedImportBatch = Extract<DailyMailImportBatch, { kind: 'started' }>

@@ -307,6 +307,14 @@ describe('POST /api/imports/mail-batch', () => {
     expect(res.status).toBe(400)
   })
 
+  it('from < to（正常な期間）はバッチを起動して 202', async () => {
+    const { app } = createTestApp()
+    const res = await request(app, 'POST', '/api/imports/mail-batch', {
+      body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
+    })
+    expect(res.status).toBe(202)
+  })
+
   it('不正な JSON ボディは 400（500 に落ちない）', async () => {
     const { app } = createTestApp()
     const res = await app.request('/api/imports/mail-batch', {
