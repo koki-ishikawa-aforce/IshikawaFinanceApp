@@ -51,7 +51,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - 値オブジェクト: `ExpenseTypeAccumulation`（`capped` / `unlimited`、論点15 構造分離）, `ExpenseJudgment`, `SettlementMatchDifference`
 - Repository I/F: `MonthlyExpenseCycleRepository`, `ProratedChildTransactionRepository`, `ExpenseReimbursementDepositRepository`
 - Query I/F: `ExpenseSettlementManagementQuery`（本人のみ可視・論点11）+ `ExpenseSettlementManagementView`
-- ドメインサービス（複数集約を協調させる純粋関数。driven port と異なり実装もドメイン内）: `finalizeExpenseSettlement` / `settleDepositForFinalizedCycle`（`MonthlyExpenseCycle` × `ExpenseReimbursementDeposit` 2集約横断の最終確定検証・終端遷移、OQ-49 / #100）
+- ドメインサービス（複数集約を協調させる純粋関数。driven port と異なり実装もドメイン内）: `finalizeExpenseSettlement` / `settleDepositForFinalizedCycle`（`MonthlyExpenseCycle` × `ExpenseReimbursementDeposit` 2集約横断の最終確定検証・終端遷移、OQ-49 / #100）, `recalculateAccumulationForCapChange`（月次上限変更時の `ExpenseTypeAccumulation` FIFO 按分再計算、#140）
 - ドメインイベント: `MonthlyExpenseCycleStarted` ほか 11 種
 
 ### transaction-import（取引取込、08a）

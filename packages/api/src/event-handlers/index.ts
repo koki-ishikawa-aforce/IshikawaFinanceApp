@@ -15,6 +15,7 @@ import { createNotificationDeliveryService } from '../notification/delivery-serv
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
 import { registerMasterDataRemapEventHandlers } from './master-data-remap.js'
 import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
+import { registerExpenseProrationRecalcEventHandlers } from './expense-proration-recalc.js'
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
 
 export { domainEventBase } from './event-base.js'
@@ -39,6 +40,11 @@ export function registerEventHandlers(deps: AppDeps): void {
     monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
     expenseReimbursementDepositRepository: deps.expenseReimbursementDepositRepository,
     monthlyReportRepository: deps.monthlyReportRepository,
+  })
+  // 月次上限変更 → 当月按分再計算 (#140)
+  registerExpenseProrationRecalcEventHandlers(deps.eventBus, {
+    monthlyLimitRepository: deps.monthlyLimitRepository,
+    monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
   })
   // 通知配信 (#36): AppDeps の Repository / Gateway から配信サービスを組み立てて購読する
   registerNotificationDeliveryEventHandlers(deps.eventBus, {

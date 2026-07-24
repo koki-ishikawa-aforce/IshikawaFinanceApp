@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import {
   ExpenseTypeIdSchema,
+  MonthlyLimitChangedSchema,
+  MonthlyLimitCreatedSchema,
   MonthlyLimitIdSchema,
   MonthlyLimitSchema,
   NotFoundError,
@@ -9,6 +11,7 @@ import {
   YearMonthSchema,
 } from '@warimaru/domain'
 import type {
+  EventBus,
   ExpenseTypeMasterRepository,
   MonthlyLimit,
   MonthlyLimitRepository,
@@ -16,6 +19,7 @@ import type {
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
+import { domainEventBase } from '../event-handlers/index.js'
 
 const ListParamsSchema = z.object({
   month: YearMonthSchema.optional(),
@@ -59,6 +63,7 @@ function reconstructForMonth(limit: MonthlyLimit, endOfTargetMonth: Date): Month
 export function monthlyLimitsRoutes(
   monthlyLimitRepository: MonthlyLimitRepository,
   expenseTypeMasterRepository: ExpenseTypeMasterRepository,
+  eventBus: EventBus,
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
 
@@ -133,7 +138,49 @@ export function monthlyLimitsRoutes(
                 : [],
           },
     )
+    const domainEvent = (() => {
+      if (existing !== null) {
+        const oldSeedLimit =
+          existing.kind === 'capped'
+            ? { kind: 'capped' as const, capAmount: existing.capAmount }
+            : { kind: 'unlimited' as const }
+        const newSeedLimit =
+          limit.kind === 'capped'
+            ? { kind: 'capped' as const, capAmount: limit.capAmount }
+            : { kind: 'unlimited' as const }
+        if (
+          oldSeedLimit.kind === newSeedLimit.kind &&
+          oldSeedLimit.capAmount === newSeedLimit.capAmount
+        ) {
+          return null
+        }
+        return MonthlyLimitChangedSchema.parse({
+          ...domainEventBase(now),
+          type: 'MonthlyLimitChanged',
+          monthlyLimitId,
+          oldLimit: oldSeedLimit,
+          newLimit: newSeedLimit,
+          changedByUserId: viewerId,
+        })
+      }
+      return MonthlyLimitCreatedSchema.parse({
+        ...domainEventBase(now),
+        type: 'MonthlyLimitCreated',
+        monthlyLimitId,
+        userId: viewerId,
+        expenseTypeId: body.expenseTypeId,
+        seedLimit:
+          limit.kind === 'capped'
+            ? { kind: 'capped' as const, capAmount: limit.capAmount }
+            : { kind: 'unlimited' as const },
+      })
+    })()
+
     await monthlyLimitRepository.save(limit)
+    if (domainEvent !== null) {
+      await eventBus.publish(domainEvent)
+    }
+
     return c.json(limit)
   })
 
