@@ -88,5 +88,5 @@ body {
 
 /* 下部固定ナビゲーション（AppNav）と重ならない余白 */
 body {
-  padding-bottom: 56px;
+  padding-bottom: var(--space-14);
 }
