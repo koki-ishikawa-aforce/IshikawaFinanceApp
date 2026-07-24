@@ -1,11 +1,11 @@
 ---
 name: pr-steward
-description: open な自動 PR(Routine 起点)の CI 失敗修復・コンフリクト解消・重複検知を行う。マージは絶対に行わない。
+description: open な自動 PR(Routine 起点)の CI 失敗修復・コンフリクト解消・重複検知・スクリーンショット残骸の掃除を行う。マージは絶対に行わない。
 ---
 
 # PR 執事ワークフロー
 
-Routine が無人モードで作成した open PR を巡回し、CI 失敗の診断・修正 push、コンフリクトの解消、重複 PR の検知を行う。**マージは絶対に行わない**(マージ判断は人間の原則を維持)。
+Routine が無人モードで作成した open PR を巡回し、CI 失敗の診断・修正 push、コンフリクトの解消、重複 PR の検知、スクリーンショット残骸の掃除を行う。**マージは絶対に行わない**(マージ判断は人間の原則を維持)。
 
 > **実行環境の注意**: 本書の `gh` コマンドは操作の意図を示すリファレンス。`gh` CLI が使えない環境では GitHub MCP ツール(`mcp__github__*`)で同等の操作を行う。
 
@@ -21,7 +21,7 @@ gh pr list --state open --json number,title,headRefName,body,labels,mergeable
 
 GitHub MCP の場合、一覧 API(`list_pull_requests`)には mergeable が含まれないため、open PR を取得したうえで PR ごとに `pull_request_read` method `get` を呼び、`mergeable` / `mergeable_state` を得る。
 
-> **mergeable は照会して初めて計算される**: GitHub は PR の mergeable 状態を要求されて初めて算出するため、直後の照会では `mergeable` が `null`(REST)/ `UNKNOWN`(`gh`・GraphQL)、`mergeable_state` が `unknown` を返すことがある。**`unknown` が返った PR は数秒待って再照会する**(例: 2〜3秒間隔で最大3回程度)。リトライしても `unknown` のまま確定しない PR は、手順 2c のコンフリクト判定を保留し、その旨を手順3の完了報告に記す(確定できないものを誤って「問題なし」と扱わない)。
+> **mergeable は照会して初めて計算される**: GitHub は PR の mergeable 状態を要求されて初めて算出するため、直後の照会では `mergeable` が `null`(REST)/ `UNKNOWN`(`gh`・GraphQL)、`mergeable_state` が `unknown` を返すことがある。**`unknown` が返った PR は数秒待って再照会する**(例: 2〜3秒間隔で最大3回程度)。リトライしても `unknown` のまま確定しない PR は、手順 2c のコンフリクト判定を保留し、その旨を手順4の完了報告に記す(確定できないものを誤って「問題なし」と扱わない)。
 
 Routine 起点の判別基準: PR 本文に「無人モードの選定理由」セクションが含まれている、head ブランチが `feat/issue-N-` または `claude/issue-N-` で始まる、またはマージ判断 Issue(`[マージ判断] PR #N` タイトル)が紐づいている。判別できないものは対象外とする。
 
@@ -71,22 +71,57 @@ PR の checks/statuses を確認し、失敗しているものがあれば:
    ```
 3. コンフリクトを解消する(ドメインロジックの競合など、判断が必要な場合は `needs-decision` で人間に委ねる)
 4. `/verify` で全 green を確認してから push する
-5. **push が non-fast-forward で拒否された場合**(バックログ Routine の preflight など別セッションが同じ PR ブランチをほぼ同時に修復した競合。コンフリクト解消はこの手順と `/issue-work` 無人モードの preflight の2か所が担うため起こりうる): `git fetch origin <PRのheadブランチ>` でリモートを取り直し、mergeable を再確認する。**既に解消済み**(`mergeable == MERGEABLE` / `mergeable_state == clean`。別セッションが先に修復した)なら何もせず次の PR へ進む。**まだコンフリクトが残る**場合のみ、取り直した head に base を再度マージして解消し **1回だけ** push をやり直す。それでも拒否されたら、その PR の解消を保留して手順3の完了報告に記し、次の PR へ進む(同じ競合で押し合いを続けない)
+5. **push が non-fast-forward で拒否された場合**(バックログ Routine の preflight など別セッションが同じ PR ブランチをほぼ同時に修復した競合。コンフリクト解消はこの手順と `/issue-work` 無人モードの preflight の2か所が担うため起こりうる): `git fetch origin <PRのheadブランチ>` でリモートを取り直し、mergeable を再確認する。**既に解消済み**(`mergeable == MERGEABLE` / `mergeable_state == clean`。別セッションが先に修復した)なら何もせず次の PR へ進む。**まだコンフリクトが残る**場合のみ、取り直した head に base を再度マージして解消し **1回だけ** push をやり直す。それでも拒否されたら、その PR の解消を保留して手順4の完了報告に記し、次の PR へ進む(同じ競合で押し合いを続けない)
 
-### 3. 完了報告
+### 3. スクリーンショット残骸の掃除
 
-全対象 PR の点検が終わったら、結果を報告する:
+UI 変更 PR のスクリーンショット PNG は `docs/pr-screenshots/issue-<N>/` にコミットされ、マージ後も main に残り続ける。この手順で不要になったディレクトリを削除する PR を作成し、リポジトリの肥大を防ぐ。
+
+#### 3a. 削除対象の特定
+
+`docs/pr-screenshots/` 配下のディレクトリを列挙する:
+
+```bash
+ls -d docs/pr-screenshots/issue-*/ 2>/dev/null
+```
+
+ディレクトリが1つも無ければ本手順をスキップする。
+
+各ディレクトリ名から Issue 番号 `N` を抽出し、Issue `N` を close キーワード(`.claude/skills/issue-work/SKILL.md` 無人モード preflight の「close キーワード集合」に従う)で参照する PR を検索する。**open な PR が1件でも参照している**ディレクトリは削除対象にしない(レビュー中のスクリーンショットを消さない)。参照する PR が**すべてマージまたはクローズ済み**(open が0件)のディレクトリのみ削除対象とする。
+
+#### 3b. 削除 PR の作成
+
+削除対象ディレクトリが1件以上あれば、まとめて1本の PR で削除する。
+
+**重複防止**: 作成前に、同内容のスクリーンショット削除 PR が既に open でないか確認する。`docs/pr-screenshots` を削除する旨の open PR(タイトルに `docs/pr-screenshots` または `スクリーンショット残骸` を含む)が既にあれば、新たに作らず手順4の完了報告にその旨を記す。
+
+```bash
+git switch -c chore/cleanup-pr-screenshots origin/main
+git rm -r docs/pr-screenshots/issue-<N>/ ...  # 削除対象すべて
+git commit -m "chore: マージ/クローズ済み PR のスクリーンショット残骸を削除"
+git push -u origin HEAD
+# PR を作成する(本文に削除した Issue 番号の一覧を記載)
+```
+
+GitHub MCP の場合は `create_pull_request` で作成する。PR 本文には削除した `issue-<N>` ディレクトリの一覧と「対応する PR がすべてマージ/クローズ済みのため不要」の旨を記す。
+
+**この削除 PR も「マージは絶対に行わない」原則の対象である**。マージ判断は人間が行う。
+
+### 4. 完了報告
+
+全対象 PR の点検・スクリーンショット掃除が終わったら、結果を報告する:
 
 - 修正 push した PR の一覧(何を修正したか1行ずつ)
 - `needs-decision` に回した PR の一覧(理由つき)
+- スクリーンショット残骸の削除 PR を作成した場合はその PR 番号と削除対象(既に open の削除 PR があってスキップした場合もその旨)
 - 全 PR が green の場合はその旨を報告する
 
 報告の前に、この fire で購読した PR の `subscribe_pr_activity` をすべて解除したことを確認する。
 
 ## 制約
 
-- **マージは絶対に行わない** — マージ判断は人間が `/decide` または手動で行う
+- **マージは絶対に行わない** — マージ判断は人間が `/decide` または手動で行う。スクリーンショット残骸の削除 PR も同じ
 - **自動クローズはしない** — 重複 PR の検知時も `needs-decision` で人間に委ねる
-- **対象は Routine 起点の PR のみ** — 人間が手動で作成した PR には触れない
+- **対象は Routine 起点の PR のみ** — 人間が手動で作成した PR には触れない(スクリーンショット掃除は対象 PR の有無にかかわらず毎回実施する)
 - 修正 push は `/verify` 全 green を経由してから行う
 - 購読(`subscribe_pr_activity`)は CI 待ちの間だけ。fire 終了前に必ず解除する
