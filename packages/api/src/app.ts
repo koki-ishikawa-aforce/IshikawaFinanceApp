@@ -129,7 +129,11 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   )
   app.route(
     '/api/monthly-limits',
-    monthlyLimitsRoutes(deps.monthlyLimitRepository, deps.expenseTypeMasterRepository),
+    monthlyLimitsRoutes(
+      deps.monthlyLimitRepository,
+      deps.expenseTypeMasterRepository,
+      deps.eventBus,
+    ),
   )
   app.route(
     '/api/classification',
