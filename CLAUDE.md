@@ -62,3 +62,4 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 - ドメイン不変条件を adapters / api 層で再実装しない(superRefine に置く)
 - migration SQL を手書きしない(`db:generate` を使う)
 - main へ直接 push しない(必ず PR 経由)
+- `*.module.css` に色・余白・角丸・フォントサイズの直値を書かない(デザイントークン `var(--*)` を参照する。定義元は `packages/web/src/app/globals.css`)

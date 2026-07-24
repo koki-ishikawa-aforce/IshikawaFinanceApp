@@ -7,7 +7,7 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
+    "lint": "next lint && stylelint --allow-empty-input 'src/**/*.css'",
     "test": "vitest run"
   },
   "dependencies": {
@@ -29,6 +29,8 @@
     "@vitejs/plugin-react": "^4.3.0",
     "eslint-config-next": "^15.3.0",
     "jsdom": "^24.1.0",
+    "stylelint": "^17.14.1",
+    "stylelint-declaration-strict-value": "^1.11.1",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
   },
