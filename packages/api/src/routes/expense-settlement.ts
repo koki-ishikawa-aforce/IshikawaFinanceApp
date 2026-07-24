@@ -16,10 +16,9 @@ import {
   YearMonthSchema,
   calculateSettlementMatchDifference,
   confirmCycleCsv,
-  confirmUnrecognizedDeposit,
-  finalizeCycle,
-  matchDeposit,
+  finalizeExpenseSettlement,
   roleToPersonalExpenseClass,
+  settleDepositForFinalizedCycle,
 } from '@warimaru/domain'
 import type {
   EventBus,
@@ -216,13 +215,7 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
         // 復旧パス: サイクル保存後・入金保存前に失敗したケース。突合のみ完了させる
         // （unapprovedTransfers は確定済みサイクルの値が正のため body の値は使わない）
         const now = new Date()
-        const matched = matchDeposit(deposit, cycle.common.monthlyExpenseCycleId, now)
-        const difference = calculateSettlementMatchDifference(cycle, deposit.common.depositAmount)
-        // 不認定分振替を伴う確定なら、入金も終端「不認定分確定済み」まで進める
-        const settledDeposit =
-          cycle.unapprovedTransfers.length > 0 && difference.kind === 'unapproved_shortfall'
-            ? confirmUnrecognizedDeposit(matched, difference.difference, now)
-            : matched
+        const settledDeposit = settleDepositForFinalizedCycle(cycle, deposit, now)
         await deps.expenseReimbursementDepositRepository.save(settledDeposit)
         await publishCycleFinalized(cycle, settledDeposit, now)
         return c.json({ cycle, deposit: settledDeposit })
@@ -251,41 +244,17 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
         transferredAt: now,
       }),
     )
-    const difference = calculateSettlementMatchDifference(cycle, deposit.common.depositAmount)
-    if (transfers.length > 0) {
-      // 振替先は操作者本人の個人費用区分のみ（不認定分は「個人(本人)」費用へ振り替える、08e §2）。
-      // 配偶者の個人区分を指定して不認定分を相手に誤帰属させることを防ぐ。
-      const ownExpenseClass = roleToPersonalExpenseClass(await deps.resolveViewerRole(viewerId))
-      for (const transfer of transfers) {
-        if (transfer.transferTarget !== ownExpenseClass) {
-          throw new PermissionDeniedError(
-            '不認定分の振替先は操作者本人の個人費用区分のみ指定できる',
-          )
-        }
-      }
-      // 不認定分（入金額 < 当月経費合計）がある場合のみ振替が成立し、その合計は差額と一致する（08e §2）
-      if (difference.kind !== 'unapproved_shortfall') {
-        throw new InvariantViolationError(
-          '不認定分（入金額が当月経費合計を下回る差額）がない突合結果では振替を指定できない',
-        )
-      }
-      const transferTotal = transfers.reduce(
-        (total, transfer) => total + transfer.transferAmount,
-        0,
-      )
-      if (transferTotal !== difference.difference) {
-        throw new InvariantViolationError(
-          `不認定分振替の合計（${transferTotal}）が突合差額（${difference.difference}）と一致しない`,
-        )
-      }
-    }
-    const finalized = finalizeCycle(cycle, body.expenseReimbursementId, transfers, now)
-    const matched = matchDeposit(deposit, cycle.common.monthlyExpenseCycleId, now)
-    // 不認定分振替を伴う確定なら、入金も終端「不認定分確定済み」まで進める（09-aggregates #13 の単方向遷移）
-    const settledDeposit =
-      transfers.length > 0 && difference.kind === 'unapproved_shortfall'
-        ? confirmUnrecognizedDeposit(matched, difference.difference, now)
-        : matched
+    // 振替先=本人か / 振替合計=差額か / 不認定分ありなら振替必須、といった2集約にまたがる
+    // 最終確定の不変条件はドメインサービスに集約する（api で再実装しない）。
+    // api は viewer 役割の解決（本人の個人費用区分の特定）と永続化のみを担う。
+    const ownExpenseClass = roleToPersonalExpenseClass(await deps.resolveViewerRole(viewerId))
+    const { cycle: finalized, deposit: settledDeposit } = finalizeExpenseSettlement(
+      cycle,
+      deposit,
+      transfers,
+      ownExpenseClass,
+      now,
+    )
     await deps.monthlyExpenseCycleRepository.save(finalized)
     await deps.expenseReimbursementDepositRepository.save(settledDeposit)
     await publishCycleFinalized(finalized, settledDeposit, now)
