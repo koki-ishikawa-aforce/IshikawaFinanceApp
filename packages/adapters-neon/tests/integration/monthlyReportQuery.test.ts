@@ -49,14 +49,41 @@ describe('NeonMonthlyReportQuery', () => {
     expect(darlingView?.common.personalTotalHoney).toBe(report.common.personalTotalHoney)
   })
 
-  it('finalized は finalizedAt / unapprovedTransfers を持つ View になる', async () => {
+  it('finalized は finalizedAt を持ち、本人の不認定分振替のみ返す', async () => {
     const report = finalizedReport({ targetYearMonth: ym('2026-06') })
     await repo.save(report)
     if (report.kind !== 'finalized') throw new Error('unreachable')
     const view = await query.fetchById(HONEY_USER_ID, report.common.monthlyReportId)
     expect(view?.status).toBe('finalized')
     expect(view?.finalizedAt).toEqual(report.finalizedAt)
+    // fixture の transferTarget は personal_honey → honey 本人には見える
     expect(view?.unapprovedTransfers).toEqual(report.unapprovedTransfers)
+  })
+
+  it('#108: 配偶者の不認定分振替は返さない（経費由来データのプライバシー強制）', async () => {
+    const report = finalizedReport({ targetYearMonth: ym('2026-04') })
+    await repo.save(report)
+    if (report.kind !== 'finalized') throw new Error('unreachable')
+    // fixture の transferTarget は personal_honey → darling には見えない
+    const darlingView = await query.fetchByMonth(DARLING_USER_ID, ym('2026-04'))
+    expect(darlingView?.unapprovedTransfers).toEqual([])
+  })
+
+  it('#108: 両ロールの不認定分振替が混在する場合、本人分のみフィルタされる', async () => {
+    const base = finalizedReport({ targetYearMonth: ym('2026-03') })
+    if (base.kind !== 'finalized') throw new Error('unreachable')
+    const honeyTransfer = base.unapprovedTransfers[0]
+    if (honeyTransfer === undefined) throw new Error('unreachable')
+    const darlingTransfer = {
+      ...honeyTransfer,
+      transferTarget: 'personal_darling' as const,
+    }
+    const mixed = { ...base, unapprovedTransfers: [honeyTransfer, darlingTransfer] }
+    await repo.save(mixed)
+    const honeyView = await query.fetchByMonth(HONEY_USER_ID, ym('2026-03'))
+    expect(honeyView?.unapprovedTransfers).toEqual([honeyTransfer])
+    const darlingView = await query.fetchByMonth(DARLING_USER_ID, ym('2026-03'))
+    expect(darlingView?.unapprovedTransfers).toEqual([darlingTransfer])
   })
 
   it('存在しない月 / ID は null', async () => {
