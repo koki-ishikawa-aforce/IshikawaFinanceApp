@@ -31,12 +31,11 @@ import {
   type UnrecognizedConfirmedDeposit,
 } from '../aggregates/ExpenseReimbursementDeposit'
 
-/** 最終確定で終端状態まで進めた入金（不認定分の有無で終端が分岐する） */
-export type SettledDeposit = MatchedDeposit | UnrecognizedConfirmedDeposit
-
 export interface FinalizeExpenseSettlementResult {
   cycle: FinalizedCycle
-  deposit: SettledDeposit
+  // 最終確定で終端状態まで進めた入金。不認定分の有無で終端が
+  // 突合済み（matched）／不認定分確定済み（unrecognized_confirmed）に分岐する。
+  deposit: MatchedDeposit | UnrecognizedConfirmedDeposit
 }
 
 /**
@@ -48,7 +47,7 @@ export function settleDepositForFinalizedCycle(
   cycle: FinalizedCycle,
   deposit: AwaitingMatchDeposit,
   at: Date,
-): SettledDeposit {
+): MatchedDeposit | UnrecognizedConfirmedDeposit {
   const matched = matchDeposit(deposit, cycle.common.monthlyExpenseCycleId, at)
   const difference = calculateSettlementMatchDifference(cycle, deposit.common.depositAmount)
   if (cycle.unapprovedTransfers.length > 0 && difference.kind === 'unapproved_shortfall') {
@@ -68,7 +67,9 @@ export function finalizeExpenseSettlement(
   ownExpenseClass: PersonalExpenseClass,
   at: Date,
 ): FinalizeExpenseSettlementResult {
-  // 振替先は操作者本人の個人費用区分のみ（不認定分を相手の個人合計へ誤帰属させない、08e §2）
+  // 振替先は操作者本人の個人費用区分のみ（不認定分を相手の個人合計へ誤帰属させない、08e §2）。
+  // エラー型は従来挙動（403）を踏襲。誤帰属を「取り違え＝整合性違反」とみなし 409 へ寄せるかは
+  // OQ-48 と併せた判断待ち（別途 needs-decision Issue で追跡）。
   for (const transfer of transfers) {
     if (transfer.transferTarget !== ownExpenseClass) {
       throw new PermissionDeniedError('不認定分の振替先は操作者本人の個人費用区分のみ指定できる')
