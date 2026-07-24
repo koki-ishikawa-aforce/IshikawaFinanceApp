@@ -30,13 +30,15 @@ Closes #<Issue番号>
      画像はコミット済み PNG を絶対 URL で参照する:
        ![変更後 darling](https://github.com/<owner>/<repo>/blob/<headブランチ>/docs/pr-screenshots/issue-<番号>/<screen>-darling.png?raw=true)
        ![変更後 honey](https://github.com/<owner>/<repo>/blob/<headブランチ>/docs/pr-screenshots/issue-<番号>/<screen>-honey.png?raw=true)
-     撮影できなかった場合は、その旨と理由を1行記す(撮影失敗は PR 作成を止める理由にしない)。 -->
+     撮影できなかった場合は、その旨と理由を1行記す(撮影失敗は PR 作成を止める理由にしない)。
+     VRT スナップショットを更新した場合は、更新した画面名と理由(「受け入れ条件に基づく意図した UI 変更」等)をこの節に記す。 -->
 
 ## 検証
 
 - [ ] `pnpm build && pnpm typecheck && pnpm test && pnpm lint && pnpm format:check` が全て green
 - [ ] adapters-neon の変更、または domain の振る舞い変更あり → 統合テスト(`test:integration`)も green / いずれも該当なし → 不要
 - [ ] web の変更あり → VRT(`pnpm --filter @warimaru/web test:e2e`)も green / 変更なし → 不要
+- [ ] VRT スナップショットを更新した → 更新理由を「画面」節に記載済み・スクリーンショット添付済み / 更新なし → 不要
 - [ ] DDD レビュー(/ddd-review)を実施し、must-fix を解消済み
 - [ ] web の変更あり → UI レビュー(/ui-review)を実施し、must-fix を解消済み / 変更なし → 不要
 
