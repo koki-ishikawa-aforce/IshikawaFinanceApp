@@ -214,13 +214,17 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
 
 #### WIP 上限チェック
 
-open な PR の件数を数える:
+open な PR のうち **Routine 起点(無人モード)で作成されたもの**だけを数える。人間の手動 PR や `/decide` の docs PR はカウントしない:
 
 ```bash
-gh pr list --state open --json number --jq 'length'
+gh pr list --state open --json number,headRefName,body
 ```
 
-**5件以上**なら新規着手せず、「WIP 上限のためスキップ」と報告して終了する(レビュー待ち PR が溜まった状態で着手を重ねると、PR 同士のコンフリクトと依存切れを招くため)。
+Routine 起点の判別基準(`/pr-steward` 手順1と同一): PR 本文に「無人モードの選定理由」セクションが含まれている、head ブランチが `feat/issue-N-` または `claude/issue-N-` で始まる、またはマージ判断 Issue(`[マージ判断] PR #N` タイトル)が紐づいている。判別できないものは対象外(カウントしない)。
+
+GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR の `headRefName` と `body` で判別する。
+
+**Routine 起点の PR が5件以上**なら新規着手せず、「WIP 上限のためスキップ」と報告して終了する(レビュー待ち PR が溜まった状態で着手を重ねると、PR 同士のコンフリクトと依存切れを招くため)。
 
 #### 候補選定と排他ロック(候補ループ)
 
