@@ -2,12 +2,13 @@
 
 import { useState, useCallback, useRef } from 'react'
 import type { Theme } from '@/theme/tokens'
+import { RoleIcon } from '@/components/ui/RoleIcon'
 import { formatMoney } from '@/lib/format'
 import styles from './SpousePersonalNote.module.css'
 
-const PARTNER_LABEL: Record<Theme, { emoji: string; name: string }> = {
-  darling: { emoji: '⛵', name: 'Honey' },
-  honey: { emoji: '🌸', name: 'Darling' },
+const PARTNER_LABEL: Record<Theme, { role: 'honey' | 'darling'; name: string }> = {
+  darling: { role: 'honey', name: 'Honey' },
+  honey: { role: 'darling', name: 'Darling' },
 }
 
 const LONG_PRESS_MS = 500
@@ -48,8 +49,8 @@ export function SpousePersonalNote({ amount, theme }: SpousePersonalNoteProps) {
       aria-label={`${partner.name}の個人費 合計 ${formatMoney(amount)}`}
     >
       <span className={styles.label}>
-        <span className={styles.emoji} aria-hidden="true">
-          {partner.emoji}
+        <span className={styles.emoji}>
+          <RoleIcon role={partner.role} size="1em" />
         </span>
         {partner.name}の個人費（合計のみ）
       </span>
