@@ -105,7 +105,7 @@ GitHub は**自分自身の操作を通知しない**。Routine はあなたの�
 
 これを防ぐため、毎時確実に動くバックログ Routine の preflight に「コンフリクトの先解消」を組み込む(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。各 fire は候補選定の前に、Routine 起点の open PR の mergeable 状態を機械的に確認し、コンフリクトがあれば `main` をマージ → `/verify` → push で先に解消してから新規着手へ進む。これにより:
 
-- コンフリクトの放置時間の上限が、最長でも fire 間隔(毎時運用なら約1時間)に収まる
+- コンフリクトの放置時間の上限が、最長でも fire 間隔（Routine の登録数とスケジュールに依存）に収まる
 - 「壊れた PR を放置したまま新しい PR を積み増して衝突を広げる」事態を避けられる(WIP 上限超過で新規着手をスキップする fire でも、コンフリクト修復だけは先に実施する)
 
 mergeable は GitHub が照会して初めて計算するため直後は `unknown`(計算中)が返りうる。preflight・`/pr-steward` とも `unknown` の PR は数秒待って再照会し、確定しないものはコンフリクト判定を保留して報告に残す(誤って「問題なし」と扱わない)。解消時のコンフリクトにドメインロジックの競合など判断が必要なものが含まれる場合は、解消せず `needs-decision` で人間に委ねる。**マージ自体は preflight・`/pr-steward` とも行わない**(マージ判断は人間の原則を維持)。
@@ -123,7 +123,7 @@ CI は `.github/workflows/ci.yml` の専用ステップで adapters-neon の統�
 | --- | --- | --- |
 | WIP 上限(open な PR 数) | 5 | SKILL.md 無人モード 手順0 |
 | 候補ループ上限(1 fire あたりの最大試行数) | 5 | SKILL.md 無人モード 手順0 |
-| 消化ペース | 毎時1件 | Routine のスケジュール。変更時は本書・SKILL.md・pr-steward-routine.md の fire 間隔記述も追従させる |
+| 消化ペース | 1 fire あたり最大1件 | Routine の登録数とスケジュールで実効ペースが決まる |
 | ゴミロック回収の経過時間しきい値 | 約2時間 | SKILL.md 無人モード preflight(fire のセッション寿命より十分長く保つ) |
 
 WIP 上限はレビューが追いつく範囲に保つ。未マージの PR はすべて main 起点のため、溜まるほどマージのたびに他 PR がコンフリクトしやすくなる。
