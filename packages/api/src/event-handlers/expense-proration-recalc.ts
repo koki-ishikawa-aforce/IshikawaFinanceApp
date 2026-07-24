@@ -8,6 +8,7 @@
  * サイクルが存在しない・集積中でない場合は no-op。
  */
 import {
+  ChildTransactionIdSchema,
   MonthlyExpenseCycleSchema,
   recalculateAccumulationForCapChange,
   yearMonth,
@@ -38,7 +39,7 @@ function toYearMonth(date: Date): YearMonth {
 }
 
 function generateChildId(): ChildTransactionId {
-  return newUlid() as unknown as ChildTransactionId
+  return ChildTransactionIdSchema.parse(newUlid())
 }
 
 async function recalculateCycle(

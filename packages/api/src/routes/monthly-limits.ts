@@ -138,41 +138,47 @@ export function monthlyLimitsRoutes(
                 : [],
           },
     )
-    await monthlyLimitRepository.save(limit)
-
-    if (existing !== null) {
-      const oldSeedLimit =
-        existing.kind === 'capped'
-          ? { kind: 'capped' as const, capAmount: existing.capAmount }
-          : { kind: 'unlimited' as const }
-      const newSeedLimit =
-        limit.kind === 'capped'
-          ? { kind: 'capped' as const, capAmount: limit.capAmount }
-          : { kind: 'unlimited' as const }
-      await eventBus.publish(
-        MonthlyLimitChangedSchema.parse({
+    const domainEvent = (() => {
+      if (existing !== null) {
+        const oldSeedLimit =
+          existing.kind === 'capped'
+            ? { kind: 'capped' as const, capAmount: existing.capAmount }
+            : { kind: 'unlimited' as const }
+        const newSeedLimit =
+          limit.kind === 'capped'
+            ? { kind: 'capped' as const, capAmount: limit.capAmount }
+            : { kind: 'unlimited' as const }
+        if (
+          oldSeedLimit.kind === newSeedLimit.kind &&
+          oldSeedLimit.capAmount === newSeedLimit.capAmount
+        ) {
+          return null
+        }
+        return MonthlyLimitChangedSchema.parse({
           ...domainEventBase(now),
           type: 'MonthlyLimitChanged',
           monthlyLimitId,
           oldLimit: oldSeedLimit,
           newLimit: newSeedLimit,
           changedByUserId: viewerId,
-        }),
-      )
-    } else {
-      await eventBus.publish(
-        MonthlyLimitCreatedSchema.parse({
-          ...domainEventBase(now),
-          type: 'MonthlyLimitCreated',
-          monthlyLimitId,
-          userId: viewerId,
-          expenseTypeId: body.expenseTypeId,
-          seedLimit:
-            limit.kind === 'capped'
-              ? { kind: 'capped' as const, capAmount: limit.capAmount }
-              : { kind: 'unlimited' as const },
-        }),
-      )
+        })
+      }
+      return MonthlyLimitCreatedSchema.parse({
+        ...domainEventBase(now),
+        type: 'MonthlyLimitCreated',
+        monthlyLimitId,
+        userId: viewerId,
+        expenseTypeId: body.expenseTypeId,
+        seedLimit:
+          limit.kind === 'capped'
+            ? { kind: 'capped' as const, capAmount: limit.capAmount }
+            : { kind: 'unlimited' as const },
+      })
+    })()
+
+    await monthlyLimitRepository.save(limit)
+    if (domainEvent !== null) {
+      await eventBus.publish(domainEvent)
     }
 
     return c.json(limit)
