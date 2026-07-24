@@ -338,6 +338,30 @@ describe('POST /api/imports/mail-batch', () => {
     expect(res.status).toBe(400)
   })
 
+  it('from < to は 202 でバッチが起動する', async () => {
+    const { app } = createTestApp()
+    const res = await request(app, 'POST', '/api/imports/mail-batch', {
+      body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
+    })
+    expect(res.status).toBe(202)
+    const json = (await res.json()) as { batch: { kind: string } }
+    expect(json.batch.kind).toBe('started')
+  })
+
+  it('期間逆転ガードは進行中バッチの照会より先に効く（400 が 409 に化けない）', async () => {
+    // 単一ソース化後も、from < to は domain スキーマの parse（境界）で早期に弾かれる。
+    // 進行中バッチが存在しても期間逆転は 409(進行中) ではなく 400 を返す。
+    const { app } = createTestApp()
+    const started = await request(app, 'POST', '/api/imports/mail-batch', {
+      body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
+    })
+    expect(started.status).toBe(202)
+    const res = await request(app, 'POST', '/api/imports/mail-batch', {
+      body: { from: '2026-07-10T00:00:00Z', to: '2026-07-09T00:00:00Z' },
+    })
+    expect(res.status).toBe(400)
+  })
+
   it('不正な JSON ボディは 400（500 に落ちない）', async () => {
     const { app } = createTestApp()
     const res = await app.request('/api/imports/mail-batch', {
