@@ -18,6 +18,7 @@ function stubDashboardQuery(calls: QueryCall[]): DashboardQuery {
       return DashboardKpisViewSchema.parse({
         mode,
         currentMonthSpending: 187500,
+        spousePersonalTotal: 64000,
         savingsBalance: 2450000,
         nisaContributionAccumulated: 360000,
         totalAssets: 2760000,

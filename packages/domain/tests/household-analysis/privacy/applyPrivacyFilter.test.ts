@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  toListItems,
-  isVisibleAsDetail,
-  isVisibleAsAggregate,
-} from '../../../src/household-analysis/privacy/applyPrivacyFilter'
+import { toListItems } from '../../../src/household-analysis/privacy/applyPrivacyFilter'
 import type { ViewerContext } from '../../../src/household-analysis/privacy/ViewerContext'
 import type {
   Transaction,
@@ -56,56 +52,15 @@ function makeClassified(
 }
 
 describe('applyPrivacyFilter', () => {
-  describe('isVisibleAsDetail マトリクス', () => {
-    it('世帯費用は両者に明細可視', () => {
-      const tx = makeClassified(HONEY_ID, 'household')
-      expect(isVisibleAsDetail(tx, honeyViewer)).toBe(true)
-      expect(isVisibleAsDetail(tx, darlingViewer)).toBe(true)
-    })
+  const categoryNames = new Map<string, string>([['01CAT000000000000000000001', '食費']])
 
-    it('個人(本人) は本人のみ明細可視', () => {
-      const tx = makeClassified(HONEY_ID, 'personal_honey')
-      expect(isVisibleAsDetail(tx, honeyViewer)).toBe(true)
-      expect(isVisibleAsDetail(tx, darlingViewer)).toBe(false)
-    })
-
-    it('経費(会社) は本人のみ明細可視', () => {
-      const tx = makeClassified(HONEY_ID, 'business_expense')
-      expect(isVisibleAsDetail(tx, honeyViewer)).toBe(true)
-      expect(isVisibleAsDetail(tx, darlingViewer)).toBe(false)
-    })
-  })
-
-  describe('isVisibleAsAggregate マトリクス', () => {
-    it('世帯費用は両者の合計に含まれる', () => {
-      const tx = makeClassified(HONEY_ID, 'household')
-      expect(isVisibleAsAggregate(tx, honeyViewer)).toBe(true)
-      expect(isVisibleAsAggregate(tx, darlingViewer)).toBe(true)
-    })
-
-    it('個人(本人) は両者の合計に含まれる（合計のみ可視）', () => {
-      const tx = makeClassified(HONEY_ID, 'personal_honey')
-      expect(isVisibleAsAggregate(tx, honeyViewer)).toBe(true)
-      expect(isVisibleAsAggregate(tx, darlingViewer)).toBe(true)
-    })
-
-    it('経費(会社) は本人の合計のみ含まれる', () => {
-      const tx = makeClassified(HONEY_ID, 'business_expense')
-      expect(isVisibleAsAggregate(tx, honeyViewer)).toBe(true)
-      expect(isVisibleAsAggregate(tx, darlingViewer)).toBe(false)
-    })
-  })
-
-  describe('toListItems', () => {
-    const categoryNames = new Map<string, string>([['01CAT000000000000000000001', '食費']])
-
+  describe('toListItems（プライバシー完全強制 A①）', () => {
     it('経費(会社) で他人の取引はリストから除外', () => {
       const txs: Transaction[] = [makeClassified(HONEY_ID, 'business_expense')]
-      const items = toListItems(txs, darlingViewer, categoryNames)
-      expect(items).toHaveLength(0)
+      expect(toListItems(txs, darlingViewer, categoryNames)).toHaveLength(0)
     })
 
-    it('経費(会社) で本人の取引はリストに含まれる', () => {
+    it('経費(会社) で本人の取引はリストに明細付きで含まれる', () => {
       const txs: Transaction[] = [makeClassified(HONEY_ID, 'business_expense')]
       const items = toListItems(txs, honeyViewer, categoryNames)
       expect(items).toHaveLength(1)
@@ -113,12 +68,18 @@ describe('applyPrivacyFilter', () => {
       expect(items[0]?.amount).toBe(1000)
     })
 
-    it('個人(本人) の取引は配偶者には merchantName / amount が null', () => {
+    it('個人(本人) の取引は配偶者のリストから完全除外（伏せ字行を残さない）', () => {
       const txs: Transaction[] = [makeClassified(HONEY_ID, 'personal_honey')]
       const items = toListItems(txs, darlingViewer, categoryNames)
+      expect(items).toHaveLength(0)
+    })
+
+    it('個人(本人) の取引は本人には明細付きで可視', () => {
+      const txs: Transaction[] = [makeClassified(HONEY_ID, 'personal_honey')]
+      const items = toListItems(txs, honeyViewer, categoryNames)
       expect(items).toHaveLength(1)
-      expect(items[0]?.merchantName).toBeNull()
-      expect(items[0]?.amount).toBeNull()
+      expect(items[0]?.merchantName).toBe('スーパーA')
+      expect(items[0]?.amount).toBe(1000)
     })
 
     it('世帯費用は両者に明細可視', () => {
@@ -167,6 +128,22 @@ describe('applyPrivacyFilter', () => {
       ]
       expect(toListItems(txs, honeyViewer, categoryNames)).toHaveLength(0)
       expect(toListItems(txs, darlingViewer, categoryNames)).toHaveLength(0)
+    })
+
+    it('返される明細に金額 null / 加盟店名 null の伏せ字行が存在しない', () => {
+      const txs: Transaction[] = [
+        makeClassified(HONEY_ID, 'household'),
+        makeClassified(HONEY_ID, 'personal_honey'),
+        makeClassified(DARLING_ID, 'personal_darling'),
+        makeClassified(HONEY_ID, 'business_expense'),
+      ]
+      for (const viewer of [honeyViewer, darlingViewer]) {
+        const items = toListItems(txs, viewer, categoryNames)
+        for (const item of items) {
+          expect(item.merchantName).not.toBeNull()
+          expect(item.amount).not.toBeNull()
+        }
+      }
     })
   })
 })

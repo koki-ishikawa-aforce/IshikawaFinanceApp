@@ -17,6 +17,7 @@
 import { z } from 'zod'
 import { CategoryIdSchema, ExpenseTypeIdSchema, UserIdSchema, type UserId } from '../../shared/ids'
 import { ExpenseClassSchema } from '../../shared/value-objects/ExpenseClass'
+import { InvariantViolationError } from '../../shared/errors'
 import {
   CategoryLearningRefSchema,
   ExpenseClassLearningRefSchema,
@@ -86,8 +87,19 @@ function isAmazonMerchant(merchantName: string): boolean {
 }
 
 /**
- * 修正後分類（08b §2「手動修正を学習に反映する」の入力）
+ * 修正後分類（自動分類・学習コンテキストの分類値）
+ *
+ * 用途は2つ:
+ *  - `reflectManualClassification` の入力（08b §2「手動修正を学習に反映する」）
+ *  - `applicableClassification` の出力（学習済みルールから導く適用可能な分類）
+ *
  * 経費種別ID は費用区分が経費（business_expense）のときのみ意味を持つ。
+ * 家計分析の `ConfirmedClassificationSchema`（取引確定入力）とは意図的に
+ * 別スキーマにしている: あちらは「経費なら経費種別ID 必須」を superRefine で
+ * 課すが、本スキーマは経費でも経費種別ID を任意にする。学習反映（T-2 軸独立）
+ * では経費種別が未提供でも既存の学習済み経費種別軸を保持するため、必須化
+ * すると軸独立の不変条件と衝突する。BC 境界を跨いだ共有を避けるため
+ * 自動分類・学習コンテキスト内に閉じて定義する。
  */
 export const ManualClassificationSchema = z.object({
   categoryId: CategoryIdSchema,
@@ -95,6 +107,36 @@ export const ManualClassificationSchema = z.object({
   expenseTypeId: ExpenseTypeIdSchema.optional(),
 })
 export type ManualClassification = z.infer<typeof ManualClassificationSchema>
+
+/**
+ * 学習済みの3軸（カテゴリ・費用区分・経費種別）から適用可能な分類を導出する。
+ *
+ * 遡及適用・自動分類でルールを取引へ適用する際の唯一の判定ポイント。
+ * 未学習軸が残るルールは適用できない不変条件（08b §2 T-2）を domain 側に
+ * 一元化し、api / adapters 層で再実装しない（CLAUDE.md）。
+ *  - カテゴリ・費用区分のいずれかが未学習 → 適用不可
+ *  - 経費(会社) かつ経費種別が未学習 → 適用不可（経費は経費種別まで学習が必要）
+ */
+export function applicableClassification(rule: ActiveMerchantLearningRule): ManualClassification {
+  if (rule.categoryRef.kind !== 'learned' || rule.expenseClassRef.kind !== 'learned') {
+    throw new InvariantViolationError(
+      `学習が完了していないルールは適用できない: ${rule.common.merchantName}`,
+    )
+  }
+  const expenseClass = rule.expenseClassRef.expenseClass
+  if (expenseClass === 'business_expense' && rule.expenseTypeRef.kind !== 'learned') {
+    throw new InvariantViolationError(
+      `経費種別が未学習のため適用できない: ${rule.common.merchantName}`,
+    )
+  }
+  return ManualClassificationSchema.parse({
+    categoryId: rule.categoryRef.categoryId,
+    expenseClass,
+    ...(expenseClass === 'business_expense' && rule.expenseTypeRef.kind === 'learned'
+      ? { expenseTypeId: rule.expenseTypeRef.expenseTypeId }
+      : {}),
+  })
+}
 
 export type ReflectManualClassificationResult =
   | { kind: 'updated'; rule: ActiveMerchantLearningRule; updatedAxes: LearningAxis[] }
