@@ -41,7 +41,7 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 | `status:in-progress` | 無人モード | 着手中(fire 間の排他ロック)。対話モードの着手宣言と共通 |
 | `needs-decision` | 無人モード | 人間の判断待ち(撤退時の確認・見送り追認・マージ判断)。付与をトリガーに通知ワークフローがメール通知を発生させる。元 Issue に付いた場合は、人間が回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外。消化は `/decide` で行える |
 
-旧 `needs-clarification` ラベルは `needs-decision` に統合した(残っている Issue があれば付け替える)。
+旧 `needs-clarification` ラベルは `needs-decision` に統合した。残存する旧ラベル付き Issue は `/decide` 手順1の取り込みスイープが自動で `needs-decision` へ付け替える(`.claude/skills/decide/SKILL.md` 手順1a)。
 
 ready 化は手動のほか、`/backlog-ready` スキル(`.claude/skills/backlog-ready/SKILL.md`)でまとめて行える。open Issue を「リポジトリ内で完結・受け入れ条件が検証可能・依存解決済み・設計判断なし・1 PR 粒度」の基準で判定し、該当分にラベルを付けて ready/見送りの一覧を報告する。判定は保守的(迷ったら付けない)。
 

@@ -20,11 +20,43 @@ description: needs-decision ラベル付きの判断待ち Issue を1件ずつ�
 
 ### 1. 判断待ちの取得と分類
 
+#### 1a. 取り込みスイープ(旧ラベル回収 + stale 後始末)
+
+`needs-decision` のアジェンダを取得する前に、導線から漏れた判断待ちを機械的に回収する。
+
+**旧ラベル回収** — `needs-clarification` 付きの open Issue を列挙する:
+
+```bash
+gh issue list --state open --label "needs-clarification" --json number,title,body,createdAt,url
+```
+
+1件以上あれば、各 Issue に対して:
+
+1. ラベルを付け替える:
+   ```bash
+   gh label create "needs-decision" --color D93F0B --description "人間の判断待ち" 2>/dev/null || true
+   gh issue edit <番号> --add-label "needs-decision" --remove-label "needs-clarification"
+   ```
+2. 最新コメント(`gh issue view <番号> --comments`)を確認し、`templates/judgment-issue.md` の形式(「🙋 判断してほしいこと」で始まる選択肢形式)になっていなければ、撤退コメントの内容を元に `templates/judgment-issue.md` 形式の判断依頼コメントを投稿する。既にフォーマット済みなら何もしない
+
+**stale 後始末** — `needs-decision` 付きの **closed** Issue を列挙する:
+
+```bash
+gh issue list --state closed --label "needs-decision" --json number,title,body,createdAt,url
+```
+
+1件以上あれば、アジェンダ末尾に「stale 後始末」として載せる(手順2のアジェンダ提示で末尾に配置)。消化ループ(手順3)での扱い:
+
+- 決定記録コメント(`templates/decision-comment.md` 形式)が既にある → `needs-decision` ラベルを除去するだけ(再オープン不要)
+- 未回答の判断依頼が残っている → ユーザーに確認してから決定を記録し、ラベルを除去する
+
+#### 1b. アジェンダの取得
+
 ```bash
 gh issue list --state open --label "needs-decision" --json number,title,body,labels,assignees,createdAt,url
 ```
 
-0件なら「判断待ちなし」と報告して終了する。その際、保険としてマージ判断 Issue が作られていない open PR がないかを確認し(`gh pr list --state open --json number,title`)、あれば列挙する。
+0件(かつ stale 後始末も0件)なら「判断待ちなし」と報告して終了する。その際、保険としてマージ判断 Issue が作られていない open PR がないかを確認し(`gh pr list --state open --json number,title`)、あれば列挙する。
 
 各 Issue を3種に分類する:
 
