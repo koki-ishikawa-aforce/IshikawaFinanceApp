@@ -1,5 +1,7 @@
 # ユビキタス言語: 取引取込
 
+> 2026-07-24 改訂: §3 に `カード利用取引取込イベント`（`CardUsageTransactionImported`）と `引落確定通知受信イベント`（`SettlementNoticeReceived`）を追記（#69 で実装済みのトリガーイベントの記載漏れ。#286）。
+
 > 親: [docs/domain/08-ubiquitous-language.md](./08-ubiquitous-language.md)
 > サブドメイン: Supporting（07-bounded-contexts.md §2.2）
 
@@ -291,6 +293,8 @@ behavior 明細CSV/PDFをアップロードする = アップロード者ユー�
 data 日次メール取込バッチ起動イベント = バッチID AND ユーザーID AND 起動日時 AND 発生日時
 data メール取得イベント = バッチID AND 取得件数 AND 発生日時
 data 取引候補抽出済みイベント = 取引候補ID AND ユーザーID AND 取込ソース AND 発生日時
+data カード利用取引取込イベント = 三井住友カード未払金集約ID AND 口座ID AND 取引ID AND 利用金額 AND 発生日時  // 残高・資産推移管理へのトリガー（未払金計上）
+data 引落確定通知受信イベント = 三井住友カード未払金集約ID AND 口座ID AND 引落確定通知ID AND 発生日時  // 残高・資産推移管理へのトリガー（未払金消込）
 data Amazon商品情報抽出イベント = Amazon注文ID AND ユーザーID AND 商品キーリスト AND 発生日時
 data Amazon注文SMBC突合イベント = Amazon注文ID AND SMBC_Gmail_message_ID AND 発生日時
 data メールパース失敗イベント = Gmail_message_ID AND 失敗理由 AND 発生日時
