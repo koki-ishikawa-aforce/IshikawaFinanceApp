@@ -13,6 +13,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // ユニットテストは src 配下の *.test.* のみ。Playwright の e2e/*.spec.ts は対象外
+    include: ['src/**/*.test.{ts,tsx}'],
     css: false,
     coverage: {
       provider: 'v8',

@@ -27,6 +27,18 @@ export async function apiFetch<T>(
   path: string,
   schema: { parse: (input: unknown) => T },
 ): Promise<T> {
+  // モック起動モード（NEXT_PUBLIC_MOCK=1）。条件を直接 if に書くことで、
+  // 通常ビルドでは process.env の畳み込みにより if(false) となり、
+  // この分岐と動的 import される src/mocks/* チャンクがデッドコード除去される。
+  if (process.env.NEXT_PUBLIC_MOCK === '1') {
+    const { resolveMock, MockNotFoundError } = await import('@/mocks/resolve')
+    try {
+      return schema.parse(resolveMock('GET', path))
+    } catch (err) {
+      if (err instanceof MockNotFoundError) throw new ApiError(err.status, err.message)
+      throw err
+    }
+  }
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: buildHeaders(),
   })
@@ -60,6 +72,15 @@ export async function apiMutate<T>(
   options: MutateOptions,
   schema: { parse: (input: unknown) => T },
 ): Promise<T> {
+  if (process.env.NEXT_PUBLIC_MOCK === '1') {
+    const { resolveMock, MockNotFoundError } = await import('@/mocks/resolve')
+    try {
+      return schema.parse(resolveMock(options.method, path))
+    } catch (err) {
+      if (err instanceof MockNotFoundError) throw new ApiError(err.status, err.message)
+      throw err
+    }
+  }
   const headers = buildHeaders()
   let requestBody: BodyInit | undefined
   if (options.body instanceof FormData) {
