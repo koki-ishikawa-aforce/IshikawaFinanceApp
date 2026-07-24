@@ -92,3 +92,43 @@ describe('NeonMonthlyReportQuery', () => {
     expect(await query.fetchById(HONEY_USER_ID, report.common.monthlyReportId)).toBeNull()
   })
 })
+
+describe('NeonMonthlyReportQuery プライバシー否定形テスト', () => {
+  it('fetchByMonth: honey の経費(会社)合計が darling に漏れない', async () => {
+    const report = csvConfirmedReport({ targetYearMonth: ym('2026-02') })
+    await repo.save(report)
+    const darlingView = await query.fetchByMonth(DARLING_USER_ID, ym('2026-02'))
+    expect(darlingView?.common.businessExpenseTotalSelf).toBe(
+      report.common.businessExpenseTotalDarling,
+    )
+    expect(darlingView?.common.businessExpenseTotalSelf).not.toBe(
+      report.common.businessExpenseTotalHoney,
+    )
+    expect(darlingView?.common).not.toHaveProperty('businessExpenseTotalHoney')
+    expect(darlingView?.common).not.toHaveProperty('businessExpenseTotalDarling')
+  })
+
+  it('fetchById: 配偶者の不認定分振替は返さない（fetchByMonth と同じプライバシーを適用）', async () => {
+    const report = finalizedReport({ targetYearMonth: ym('2026-01') })
+    await repo.save(report)
+    if (report.kind !== 'finalized') throw new Error('unreachable')
+    const darlingView = await query.fetchById(DARLING_USER_ID, report.common.monthlyReportId)
+    expect(darlingView?.unapprovedTransfers).toEqual([])
+    const honeyView = await query.fetchById(HONEY_USER_ID, report.common.monthlyReportId)
+    expect(honeyView?.unapprovedTransfers).toEqual(report.unapprovedTransfers)
+  })
+
+  it('fetchById: 配偶者の businessExpenseTotalSelf は本人の値が入り相手の値は漏れない', async () => {
+    const report = csvConfirmedReport({ targetYearMonth: ym('2026-01') })
+    await repo.save(report)
+    const honeyView = await query.fetchById(HONEY_USER_ID, report.common.monthlyReportId)
+    expect(honeyView?.common.businessExpenseTotalSelf).toBe(report.common.businessExpenseTotalHoney)
+    const darlingView = await query.fetchById(DARLING_USER_ID, report.common.monthlyReportId)
+    expect(darlingView?.common.businessExpenseTotalSelf).toBe(
+      report.common.businessExpenseTotalDarling,
+    )
+    expect(darlingView?.common.businessExpenseTotalSelf).not.toBe(
+      report.common.businessExpenseTotalHoney,
+    )
+  })
+})

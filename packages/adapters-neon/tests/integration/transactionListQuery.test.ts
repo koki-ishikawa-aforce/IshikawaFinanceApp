@@ -217,6 +217,81 @@ describe('NeonTransactionListQuery.fetch（プライバシー 3 段階）', () =
   })
 })
 
+describe('NeonTransactionListQuery プライバシー否定形テスト', () => {
+  it('darling から honey の個人取引・経費(会社)・未分類はリストから完全除外される（対称性）', async () => {
+    const personalByHoney = classifiedTransaction({
+      ownerUserId: HONEY_USER_ID,
+      expenseClass: 'personal_honey',
+      merchantName: 'ハニーの店',
+      amount: 2000,
+      occurredAt: new Date('2026-07-05T03:00:00.000Z'),
+    })
+    const businessByHoney = classifiedTransaction({
+      ownerUserId: HONEY_USER_ID,
+      expenseClass: 'business_expense',
+      amount: 80000,
+      occurredAt: new Date('2026-07-06T03:00:00.000Z'),
+    })
+    const unclassifiedByHoney = unclassifiedTransaction({
+      ownerUserId: HONEY_USER_ID,
+      defaultExpenseClass: 'personal_honey',
+      occurredAt: new Date('2026-07-07T03:00:00.000Z'),
+    })
+    const householdByHoney = classifiedTransaction({
+      ownerUserId: HONEY_USER_ID,
+      amount: 1500,
+      categoryId: CATEGORY_FOOD,
+      occurredAt: new Date('2026-07-08T03:00:00.000Z'),
+    })
+    for (const tx of [personalByHoney, businessByHoney, unclassifiedByHoney, householdByHoney]) {
+      await repo.save(tx)
+    }
+
+    const items = await query.fetch(DARLING_USER_ID, { month: JUL })
+    expect(items.map(i => i.transactionId)).toEqual([householdByHoney.common.transactionId])
+    expect(
+      items.find(i => i.transactionId === personalByHoney.common.transactionId),
+    ).toBeUndefined()
+    expect(
+      items.find(i => i.transactionId === businessByHoney.common.transactionId),
+    ).toBeUndefined()
+    expect(
+      items.find(i => i.transactionId === unclassifiedByHoney.common.transactionId),
+    ).toBeUndefined()
+  })
+
+  it('配偶者の経費(会社)は expenseClass フィルタでも取得できない（両方向）', async () => {
+    await repo.save(
+      classifiedTransaction({
+        ownerUserId: DARLING_USER_ID,
+        expenseClass: 'business_expense',
+        amount: 99000,
+        occurredAt: new Date('2026-07-05T03:00:00.000Z'),
+      }),
+    )
+    await repo.save(
+      classifiedTransaction({
+        ownerUserId: HONEY_USER_ID,
+        expenseClass: 'business_expense',
+        amount: 88000,
+        occurredAt: new Date('2026-07-06T03:00:00.000Z'),
+      }),
+    )
+    const honeyItems = await query.fetch(HONEY_USER_ID, {
+      month: JUL,
+      expenseClass: 'business_expense' as ExpenseClass,
+    })
+    expect(honeyItems).toHaveLength(1)
+    expect(honeyItems[0]?.amount).toBe(88000)
+    const darlingItems = await query.fetch(DARLING_USER_ID, {
+      month: JUL,
+      expenseClass: 'business_expense' as ExpenseClass,
+    })
+    expect(darlingItems).toHaveLength(1)
+    expect(darlingItems[0]?.amount).toBe(99000)
+  })
+})
+
 describe('NeonTransactionListQuery.fetchUnclassifiedSummary', () => {
   it('本人の未分類のみ数え、recentIds は直近 5 件（occurredAt 降順）', async () => {
     const own = await Promise.all(
@@ -244,5 +319,23 @@ describe('NeonTransactionListQuery.fetchUnclassifiedSummary', () => {
       .slice(0, 5)
       .map(tx => tx.common.transactionId)
     expect(summary.recentIds).toEqual(expectedRecent)
+  })
+
+  it('配偶者の未分類は件数にも recentIds にも含まれない', async () => {
+    const spouseTx = unclassifiedTransaction({
+      ownerUserId: DARLING_USER_ID,
+      occurredAt: new Date('2026-07-05T03:00:00.000Z'),
+    })
+    await repo.save(spouseTx)
+    const ownTx = unclassifiedTransaction({
+      ownerUserId: HONEY_USER_ID,
+      occurredAt: new Date('2026-07-06T03:00:00.000Z'),
+    })
+    await repo.save(ownTx)
+
+    const summary = await query.fetchUnclassifiedSummary(HONEY_USER_ID, JUL)
+    expect(summary.count).toBe(1)
+    expect(summary.recentIds).toEqual([ownTx.common.transactionId])
+    expect(summary.recentIds).not.toContain(spouseTx.common.transactionId)
   })
 })

@@ -233,3 +233,119 @@ describe('NeonDashboardQuery.fetchCategoryBreakdown', () => {
     expect(view.items[0]?.categoryName).toBe(unknownCategory)
   })
 })
+
+describe('NeonDashboardQuery プライバシー否定形テスト', () => {
+  async function seedAllClasses(): Promise<void> {
+    await txRepo.save(
+      classifiedTransaction({
+        ownerUserId: HONEY_USER_ID,
+        amount: 1000,
+        categoryId: CATEGORY_FOOD,
+        occurredAt: new Date('2026-07-05T03:00:00.000Z'),
+      }),
+    )
+    await txRepo.save(
+      classifiedTransaction({
+        ownerUserId: DARLING_USER_ID,
+        amount: 2000,
+        categoryId: CATEGORY_DAILY,
+        occurredAt: new Date('2026-07-06T03:00:00.000Z'),
+      }),
+    )
+    await txRepo.save(
+      classifiedTransaction({
+        ownerUserId: HONEY_USER_ID,
+        expenseClass: 'personal_honey',
+        amount: 3000,
+        categoryId: CATEGORY_FOOD,
+        occurredAt: new Date('2026-07-07T03:00:00.000Z'),
+      }),
+    )
+    await txRepo.save(
+      classifiedTransaction({
+        ownerUserId: DARLING_USER_ID,
+        expenseClass: 'personal_darling',
+        amount: 4000,
+        categoryId: CATEGORY_DAILY,
+        occurredAt: new Date('2026-07-08T03:00:00.000Z'),
+      }),
+    )
+    await txRepo.save(
+      classifiedTransaction({
+        ownerUserId: HONEY_USER_ID,
+        expenseClass: 'business_expense',
+        amount: 50000,
+        categoryId: CATEGORY_FOOD,
+        occurredAt: new Date('2026-07-09T03:00:00.000Z'),
+      }),
+    )
+    await txRepo.save(
+      classifiedTransaction({
+        ownerUserId: DARLING_USER_ID,
+        expenseClass: 'business_expense',
+        amount: 60000,
+        categoryId: CATEGORY_DAILY,
+        occurredAt: new Date('2026-07-10T03:00:00.000Z'),
+      }),
+    )
+  }
+
+  it('fetchKpis 世帯モード: 経費(会社)は currentMonthSpending に含まれない（両視点）', async () => {
+    await seedAllClasses()
+    const honeyKpis = await query.fetchKpis(HONEY_USER_ID, JUL, 'household')
+    expect(honeyKpis.currentMonthSpending).toBe(1000 + 2000)
+    const darlingKpis = await query.fetchKpis(DARLING_USER_ID, JUL, 'household')
+    expect(darlingKpis.currentMonthSpending).toBe(1000 + 2000)
+  })
+
+  it('fetchKpis 個人モード: 配偶者の個人支出は currentMonthSpending に含まれない', async () => {
+    await seedAllClasses()
+    const honeyKpis = await query.fetchKpis(HONEY_USER_ID, JUL, 'personal')
+    expect(honeyKpis.currentMonthSpending).toBe(3000)
+    expect(honeyKpis.currentMonthSpending).not.toBe(3000 + 4000)
+    const darlingKpis = await query.fetchKpis(DARLING_USER_ID, JUL, 'personal')
+    expect(darlingKpis.currentMonthSpending).toBe(4000)
+    expect(darlingKpis.currentMonthSpending).not.toBe(3000 + 4000)
+  })
+
+  it('fetchKpis 個人モード: 経費(会社)は currentMonthSpending に含まれない', async () => {
+    await seedAllClasses()
+    const honeyKpis = await query.fetchKpis(HONEY_USER_ID, JUL, 'personal')
+    expect(honeyKpis.currentMonthSpending).toBe(3000)
+    const darlingKpis = await query.fetchKpis(DARLING_USER_ID, JUL, 'personal')
+    expect(darlingKpis.currentMonthSpending).toBe(4000)
+  })
+
+  it('fetchCategoryBreakdown 世帯モード: 経費(会社)カテゴリは内訳に現れない', async () => {
+    await seedAllClasses()
+    const view = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'household')
+    expect(view.totalAmount).toBe(1000 + 2000)
+    expect(view.items).toHaveLength(2)
+    const foodItem = view.items.find(i => i.categoryId === CATEGORY_FOOD)
+    const dailyItem = view.items.find(i => i.categoryId === CATEGORY_DAILY)
+    expect(foodItem?.total).toBe(1000)
+    expect(dailyItem?.total).toBe(2000)
+  })
+
+  it('fetchCategoryBreakdown 個人モード: 配偶者の個人カテゴリは含まれず本人分のみ', async () => {
+    await seedAllClasses()
+    const honeyView = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'personal')
+    expect(honeyView.totalAmount).toBe(3000)
+    expect(honeyView.items).toHaveLength(1)
+    expect(honeyView.items[0]?.categoryId).toBe(CATEGORY_FOOD)
+    const darlingView = await query.fetchCategoryBreakdown(DARLING_USER_ID, JUL, 'personal')
+    expect(darlingView.totalAmount).toBe(4000)
+    expect(darlingView.items).toHaveLength(1)
+    expect(darlingView.items[0]?.categoryId).toBe(CATEGORY_DAILY)
+  })
+
+  it('fetchCategoryBreakdown 個人モード: 経費(会社)は内訳に現れない', async () => {
+    await seedAllClasses()
+    const honeyView = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'personal')
+    expect(honeyView.totalAmount).toBe(3000)
+    expect(honeyView.items.every(i => i.total !== 50000)).toBe(true)
+    const darlingView = await query.fetchCategoryBreakdown(DARLING_USER_ID, JUL, 'personal')
+    expect(darlingView.totalAmount).toBe(4000)
+    expect(darlingView.items.every(i => i.total !== 60000)).toBe(true)
+  })
+})

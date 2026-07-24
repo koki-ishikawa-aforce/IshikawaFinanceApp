@@ -128,3 +128,65 @@ describe('NeonExpenseSettlementManagementQuery', () => {
     expect(canViewExpenseSettlement(foreignView, DARLING_USER_ID)).toBe(true)
   })
 })
+
+describe('NeonExpenseSettlementManagementQuery プライバシー否定形テスト', () => {
+  it('両ユーザーにデータがある場合、配偶者のサイクル・累計・按分子取引は混入しない', async () => {
+    const honeyChildId = newUlid()
+    const darlingChildId = newUlid()
+    const honeyChild = proratedChild({ userId: HONEY_USER_ID, childTransactionId: honeyChildId })
+    const darlingChild = proratedChild({
+      userId: DARLING_USER_ID,
+      childTransactionId: darlingChildId,
+    })
+    await childRepo.save(honeyChild)
+    await childRepo.save(darlingChild)
+
+    const honeyCycle = accumulatingCycle({
+      userId: HONEY_USER_ID,
+      targetYearMonth: ym('2026-07'),
+      accumulations: [
+        capReachedAccumulation({ userId: HONEY_USER_ID, childTransactionId: honeyChildId }),
+      ],
+      childTransactionIds: [honeyChildId],
+    })
+    const darlingCycle = accumulatingCycle({
+      userId: DARLING_USER_ID,
+      targetYearMonth: ym('2026-07'),
+      accumulations: [
+        capReachedAccumulation({ userId: DARLING_USER_ID, childTransactionId: darlingChildId }),
+      ],
+      childTransactionIds: [darlingChildId],
+    })
+    await cycleRepo.save(honeyCycle)
+    await cycleRepo.save(darlingCycle)
+
+    const honeyFinalized = finalizedCycle({
+      userId: HONEY_USER_ID,
+      targetYearMonth: ym('2026-06'),
+      transferAmounts: [1500],
+    })
+    const darlingFinalized = finalizedCycle({
+      userId: DARLING_USER_ID,
+      targetYearMonth: ym('2026-06'),
+      transferAmounts: [9999],
+    })
+    await cycleRepo.save(honeyFinalized)
+    await cycleRepo.save(darlingFinalized)
+
+    const honeyView = await query.fetch(HONEY_USER_ID)
+    expect(honeyView.userId).toBe(HONEY_USER_ID)
+    expect(honeyView.currentAccumulations).toEqual(honeyCycle.common.accumulations)
+    expect(honeyView.currentChildTransactions).toEqual([honeyChild])
+    expect(honeyView.currentChildTransactions).not.toContainEqual(darlingChild)
+    expect(honeyView.latestFinalizedCycle?.unapprovedTotal).toBe(1500)
+    expect(honeyView.latestFinalizedCycle?.unapprovedTotal).not.toBe(9999)
+
+    const darlingView = await query.fetch(DARLING_USER_ID)
+    expect(darlingView.userId).toBe(DARLING_USER_ID)
+    expect(darlingView.currentAccumulations).toEqual(darlingCycle.common.accumulations)
+    expect(darlingView.currentChildTransactions).toEqual([darlingChild])
+    expect(darlingView.currentChildTransactions).not.toContainEqual(honeyChild)
+    expect(darlingView.latestFinalizedCycle?.unapprovedTotal).toBe(9999)
+    expect(darlingView.latestFinalizedCycle?.unapprovedTotal).not.toBe(1500)
+  })
+})
