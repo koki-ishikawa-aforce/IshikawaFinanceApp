@@ -60,6 +60,8 @@ gh issue edit <番号> --add-label "status:in-progress"
 
 `/verify` の手順を全 green になるまで繰り返す。green になるまで次工程に進まない。
 
+`/verify` の実行判定に該当する変更(`packages/domain` の振る舞い、または `packages/adapters-neon`)がある場合は、**統合テストまで green にする**(`pnpm test` は統合テストを含まないため、これを省くと CI で初めて赤が判明する)。実行方法とフォールバックは `/verify` の「統合テスト」節に従う。
+
 ## 5. DDD レビュー
 
 `/ddd-review` を実行し(ddd-reviewer サブエージェントが main との diff をレビュー)、must-fix と suggestion を修正したら再度 `/verify` を回す。suggestion は原則この場で対応し、見送るのは `/ddd-review` の例外基準に該当する場合のみ(その際は Issue 化して追跡する)。
@@ -136,11 +138,21 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
   (`needs-decision` はユーザーが回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外になる)
 - `/ddd-review` の suggestion でユーザーの意思決定が必要なもの(見送り例外に該当)は、既存ルール通り Issue 化する。その Issue も `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする
 
-### 手順6の差分: PR 作成とマージ判断 Issue
+### 手順6の差分: PR 作成・CI green の確認・マージ判断 Issue
 
 - PR 本文は `templates/pr-body.md` のフォーマットで書き、通常の PR(Draft ではない)として作成する。ただし**マージ判断は必ず人間が行う**(自動マージは禁止。マージは `/decide` セッション内の明示承認か、ユーザー自身の操作でのみ行われる)
 - PR 作成後、**マージ判断 Issue** を作成する:
   - タイトル: `[マージ判断] PR #<PR番号> <PRタイトル>`
   - 本文: `templates/judgment-issue.md` に従い、先頭にマーカー `<!-- merge-judgment-pr: <PR番号> -->` を含める(PR のマージ/クローズ時に通知ワークフローがこの Issue を自動クローズするための目印)
   - ラベル: `needs-decision`
-- CI が green になったら、PR とマージ判断 Issue の URL・受け入れ条件の充足状況・選定理由を最終報告して終了する。CI が失敗した場合の修正ループは対話モードと同じだが、同一エラーで3回失敗したらマージ判断 Issue に状況(何が失敗し、何を試したか)を執筆ルールに従ってコメントして終了する(無限リトライ禁止)
+
+#### 「完了」の定義: PR の CI が green であること
+
+**無人モードの1 fire は、PR 作成では終わらない。作成した PR の CI(`.github/workflows/ci.yml`)が green になるのを確認して初めて完了とする。** ローカルの `/verify` が全 green でも、統合テストをローカルで実行できなかった場合(イメージ pull 不可のフォールバックも失敗した等)は、CI が初めて統合テストを走らせる。ここを確認せずに fire を終えると「ルーティンは完了・PR は CI 赤」の不整合が残り、以降の fire も拾わない(この不整合の再発防止が本手順の目的)。
+
+1. PR 作成後、**同一 fire セッション内で CI の完了を待つ**。`gh pr checks <PR番号> --watch`(または GitHub MCP で checks/statuses をポーリング)で結果を得る。CI はネットワーク待ちを含むため、`sleep` で潰さず、チェック状態が確定するまで待機する
+2. **green** なら、PR とマージ判断 Issue の URL・受け入れ条件の充足状況・選定理由を最終報告して完了
+3. **赤**なら、対話モードと同じ修正ループに入る: `gh run view <run-id> --log-failed`(または MCP で失敗ジョブのログ取得)で原因を特定 → 修正 → `/verify`(統合テスト含む)→ 再 push を、CI が green になるまで同一 fire 内で繰り返す
+4. **同一エラーで3回**修正に失敗したら、無限リトライを避けて撤退する。マージ判断 Issue に状況(何の CI ジョブが・どんなエラーで失敗し、何を試したか)を執筆ルールに従ってコメントし、その旨を最終報告して終了する(赤いまま PR は残るが、判断待ちとして人間に可視化される)
+
+補足(セッション寿命が尽きて CI を待ち切れない場合): fire が CI 完了前に終了する場合は、マージ判断 Issue に「CI 未確認のまま終了した(要 CI 確認)」旨を執筆ルールに従って明記する。PR は通知ワークフロー(`notify-pr-opened`)でオーナーに assign 済みのため人間には可視化されるが、CI 赤の見落としを防ぐため判断依頼側にも残す。**第一義は同一 fire 内での green 確認**であり、待ち切れは例外扱いとする。
