@@ -50,6 +50,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 2. Issue の実装〜PR 作成: `/issue-work`
 3. 検証ループ: `/verify` — コード変更を完了と報告する前に必ず全 green にする
 4. DDD 観点レビュー: `/ddd-review`(PR 前に実施)— レビュー指摘は must-fix だけでなく suggestion も原則その場で修正する。見送りは例外(大規模リファクタ相当・設計判断が必要な場合)のみで、必ず Issue 化して追跡する
+   - UI レビュー: `/ui-review`(`packages/web` 配下に変更がある場合、`/ddd-review` に加えて実施)— `DESIGN.md` とプレゼンテーション層の観点(デザイントークン規律・絵文字リグレッション・テーマ両対応・アクセシビリティ)でレビュー。指摘の扱いは `/ddd-review` と同じ
 5. 判断待ちの消化: `/decide` — 無人モードが `needs-decision` に集約した判断依頼を対話で消化し、決定を Issue と docs に反映する
 6. 無人運用の振り返り: `/retro` — 無人モード(`/issue-work`・`/pr-steward`)の失敗データを週次で振り返り、繰り返す失敗パターンから skills / CLAUDE.md / Issue テンプレートの改善案を `needs-decision` Issue として起票する(読み取り専用。判断は `/decide`)
 
