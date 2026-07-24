@@ -13,7 +13,6 @@ import {
   TransactionIdSchema,
   abortBulkClassificationSession,
   applicableClassification,
-  assertPersonalExpenseClassMatchesRole,
   classify,
   completeBulkClassificationSession,
   disableMerchantLearning,
@@ -136,12 +135,7 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
       throw new InvariantViolationError(`無効化された学習ルールは遡及適用できない: ${merchantName}`)
     }
     const details = detailsFromRule(rule)
-    // C#11 の防御的多重化: 遡及適用先は必ず viewer 所有（下のループでガード）なので、
-    // ルール由来の個人費用区分が viewer のロールと整合することをここでも強制する。
-    assertPersonalExpenseClassMatchesRole(
-      details.expenseClass,
-      await deps.resolveViewerRole(viewerId),
-    )
+    const ownerRole = await deps.resolveViewerRole(viewerId)
 
     const view = await deps.retroactiveCandidateQuery.fetchCandidates(viewerId, merchantName)
     const candidateIds = view.candidates.map(candidate => candidate.transactionId)
@@ -160,7 +154,7 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
       ) {
         continue
       }
-      await deps.transactionRepository.save(classify(transaction, details))
+      await deps.transactionRepository.save(classify(transaction, details, ownerRole))
       appliedCount++
     }
     // 08b §3 J-3: 実際に再分類された取引がある場合のみ「過去未分類が一括再分類された」

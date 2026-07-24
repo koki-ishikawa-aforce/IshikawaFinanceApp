@@ -8,6 +8,7 @@
  *
  * 不変条件:
  *  - 経費(会社) 取引は経費種別ID 必須
+ *  - 個人費用区分は所有者ロールと一致（personal_honey↔honey, personal_darling↔darling）
  *  - 削除済み取引は変更不可（型遷移として表現、deleted → 他状態への関数を提供しない）
  */
 import { z } from 'zod'
@@ -22,7 +23,11 @@ import { ExpenseClassSchema } from '../../shared/value-objects/ExpenseClass'
 import { ImportSourceSchema } from '../../shared/value-objects/ImportSource'
 import { ClassificationBasisSchema } from '../../shared/value-objects/ClassificationBasis'
 import { UnclassifiedReasonSchema } from '../../shared/value-objects/UnclassifiedReason'
-import { DefaultExpenseClassSchema } from '../../shared/value-objects/PersonalExpenseClass'
+import {
+  DefaultExpenseClassSchema,
+  assertPersonalExpenseClassMatchesRole,
+} from '../../shared/value-objects/PersonalExpenseClass'
+import type { UserRole } from '../../shared/value-objects/UserRole'
 
 /** 共通取引属性 */
 export const CommonTransactionAttrsSchema = z.object({
@@ -114,14 +119,30 @@ export function createTransaction(input: unknown): Transaction {
   return TransactionSchema.parse(input)
 }
 
-/** 状態遷移: 未分類 → 分類済み */
+/** 状態遷移: 未分類 → 分類済み（個人費用区分と所有者ロールの整合を強制する） */
 export function classify(
   unclassified: UnclassifiedTransaction,
   details: ClassifiedDetails,
+  ownerRole: UserRole,
 ): ClassifiedTransaction {
+  assertPersonalExpenseClassMatchesRole(details.expenseClass, ownerRole)
   return TransactionSchema.parse({
     kind: 'classified',
     common: unclassified.common,
+    details,
+  }) as ClassifiedTransaction
+}
+
+/** 分類済み取引の生成（再分類・手動作成用。個人費用区分と所有者ロールの整合を強制する） */
+export function createClassifiedTransaction(
+  common: unknown,
+  details: ClassifiedDetails,
+  ownerRole: UserRole,
+): ClassifiedTransaction {
+  assertPersonalExpenseClassMatchesRole(details.expenseClass, ownerRole)
+  return TransactionSchema.parse({
+    kind: 'classified',
+    common,
     details,
   }) as ClassifiedTransaction
 }

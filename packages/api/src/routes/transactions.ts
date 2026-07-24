@@ -12,8 +12,8 @@ import {
   TransactionSchema,
   YearMonthSchema,
   ExpenseClassSchema,
-  assertPersonalExpenseClassMatchesRole,
   classify,
+  createClassifiedTransaction,
   createTransaction,
   deleteTransaction,
   normalizeMerchantName,
@@ -105,19 +105,6 @@ export function transactionsRoutes(
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
 
-  /**
-   * 個人費用区分（personal_honey/darling）が取引の所有者ロールと整合するか検証する（C#11）。
-   * 取引は所有者 = viewer（create は viewer 所有で生成、classify は assertOwnedByViewer 済み）
-   * のため、viewer のロールを所有者ロールとして扱う。相手の個人費用区分を付けると
-   * 個人合計が相手へ誤集計されるのを未然に防ぐ。
-   */
-  async function assertClassificationMatchesOwner(
-    input: ClassificationInput,
-    ownerUserId: UserId,
-  ): Promise<void> {
-    assertPersonalExpenseClassMatchesRole(input.expenseClass, await resolveViewerRole(ownerUserId))
-  }
-
   /** 手動分類の確定をイベントとして発行する（学習ルールへの反映は購読側 #34） */
   async function publishManuallyClassified(
     transactionId: TransactionId,
@@ -184,21 +171,19 @@ export function transactionsRoutes(
       occurredAt: body.occurredAt,
       importSource: { kind: 'manual', enteredAt: now, enteredByUserId: viewerId },
     }
-    if (body.classification !== undefined) {
-      await assertClassificationMatchesOwner(body.classification, viewerId)
-    }
+    const ownerRole = await resolveViewerRole(viewerId)
     const transaction =
       body.classification !== undefined
-        ? createTransaction({
-            kind: 'classified',
+        ? createClassifiedTransaction(
             common,
-            details: buildManualDetails(body.classification, viewerId, now),
-          })
+            buildManualDetails(body.classification, viewerId, now),
+            ownerRole,
+          )
         : createTransaction({
             kind: 'unclassified',
             common,
             reason: 'merchant_rule_unlearned',
-            defaultExpenseClass: roleToPersonalExpenseClass(await resolveViewerRole(viewerId)),
+            defaultExpenseClass: roleToPersonalExpenseClass(ownerRole),
           })
     await transactionRepository.save(transaction)
     if (body.classification !== undefined) {
@@ -263,13 +248,13 @@ export function transactionsRoutes(
     if (transaction.kind === 'deleted') {
       throw new InvariantViolationError('削除済みの取引は分類できない')
     }
-    await assertClassificationMatchesOwner(input, viewerId)
+    const ownerRole = await resolveViewerRole(viewerId)
     const now = new Date()
     const details = buildManualDetails(input, viewerId, now)
     const isFirstConfirmation = transaction.kind === 'unclassified'
     const classified = isFirstConfirmation
-      ? classify(transaction, details)
-      : createTransaction({ kind: 'classified', common: transaction.common, details })
+      ? classify(transaction, details, ownerRole)
+      : createClassifiedTransaction(transaction.common, details, ownerRole)
     await transactionRepository.save(classified)
     // イベント発行は未分類→分類済みの確定（08c「未分類取引を分類して確定する」）に限定する。
     // 分類済み取引の再分類はカテゴリ／費用区分手動修正イベント + L-4 のユーザー選択
