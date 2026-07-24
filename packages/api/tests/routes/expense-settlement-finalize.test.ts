@@ -301,7 +301,7 @@ describe('最終確定時の不認定分振替の検証（08e §1-§2）', () =>
     expect(body.deposit.kind).toBe('unrecognized_confirmed')
   })
 
-  it('振替先に配偶者の個人区分を指定すると 403', async () => {
+  it('振替先に配偶者の個人区分を指定すると 409（区分の取り違え＝整合性違反、OQ-51）', async () => {
     const t = createTestApp()
     const cycleId = await seedCsvConfirmedCycleWithTotal(t, 10000)
     const depositId = await seedDeposit(t, 5000)
@@ -317,7 +317,7 @@ describe('最終確定時の不認定分振替の検証（08e §1-§2）', () =>
         ],
       },
     })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(409)
   })
 
   it('不認定分振替の合計が突合差額と一致しないと 409', async () => {
