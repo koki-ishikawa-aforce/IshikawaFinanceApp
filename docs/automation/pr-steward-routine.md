@@ -51,6 +51,8 @@ Routine(定期 fire): /pr-steward を実行
 
 **コンフリクト解消は2か所が担う**。毎時のバックログ Routine が preflight で先解消するため放置時間の上限は最長でも fire 間隔（Routine の登録数とスケジュールに依存）に収まり、PR 執事 Routine はより広い間隔で CI 修復とあわせて保守する。どちらもコンフリクト判定は mergeable 状態で機械的に行い(`mergeable == CONFLICTING` / `mergeable_state == dirty`)、`unknown`(計算中)は数秒待って再照会する。**マージは両者とも行わない**。
 
+2か所が同じ PR ブランチをほぼ同時に修復すると、片方の push が non-fast-forward(リモートが先に進んでいて早送りできない状態)で拒否されうる。拒否されたセッションはリモートを fetch し直して mergeable を再確認し、**既に別セッションが解消済みなら何もせず次へ進む**。まだコンフリクトが残る場合のみ取り直した head に base を再度マージして1回だけやり直し、それでも失敗したらその PR の解消を保留して完了報告に記す(競合時の詳細手順は `.claude/skills/issue-work/SKILL.md` のコンフリクト修復 preflight と `.claude/skills/pr-steward/SKILL.md` 手順2c に定義)。
+
 バックログ Routine は PR 作成後に同一 fire 内で CI green を確認するが、以下のケースで CI が赤いまま残ることがある:
 
 - fire のセッション寿命が尽きて CI を待ち切れなかった
