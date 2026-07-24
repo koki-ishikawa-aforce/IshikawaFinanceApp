@@ -112,7 +112,27 @@ Playwright E2E 化する際は、テスト名にこの AT-ID を対応させる(
 
 AT-9xx(保留)は本表の対象外。ブロッカー機能の実装後に [90-pending.md](./90-pending.md) から昇格させる。
 
-## 8. 一次資料
+## 8. Playwright E2E 自動化との分担
+
+受入シナリオの一部は `e2e/` ワークスペースの Playwright テストとして自動化されている。自動化済みのシナリオは PR ごとに CI で回帰検証されるため、本番受入テストでは手動確認の優先度を下げてよい（CI green であれば手動チェックリストで ✅ として扱える）。
+
+| AT-ID | 自動化状況 | 備考 |
+| --- | --- | --- |
+| AT-001 | 自動化済み | API ヘルスチェック（`e2e/tests/smoke/at-001-api-health.spec.ts`） |
+| AT-004 | 自動化済み（部分） | KPI 表示・NaN 検証（`e2e/tests/smoke/at-004-dashboard-widgets.spec.ts`）。モックデータによる検証のため、実データの整合性は手動で確認する |
+| AT-005 | 自動化済み | 全画面スモーク巡回（`e2e/tests/smoke/at-005-screen-smoke.spec.ts`） |
+
+自動化されていないシナリオ（AT-002〜003、AT-1xx 以降）は引き続き手動で実施する。
+
+実行方法（ローカル）:
+
+```bash
+docker compose up -d db
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
+  pnpm --filter @warimaru/e2e test:e2e
+```
+
+## 9. 一次資料
 
 - 月次サイクル: [docs/domain/04-scenario-a-monthly-cycle.md](../domain/04-scenario-a-monthly-cycle.md)
 - オンボーディング: [docs/domain/05-scenario-b-onboarding.md](../domain/05-scenario-b-onboarding.md)
