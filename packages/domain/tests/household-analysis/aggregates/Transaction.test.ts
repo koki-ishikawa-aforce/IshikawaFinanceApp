@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   TransactionSchema,
+  classify,
+  createClassifiedTransaction,
   type CommonTransactionAttrs,
+  type ClassifiedDetails,
+  type UnclassifiedTransaction,
 } from '../../../src/household-analysis/aggregates/Transaction'
+import { InvariantViolationError } from '../../../src/shared/errors'
 
 const validCommon: CommonTransactionAttrs = {
   transactionId: '01TX0000000000000000000001' as never,
@@ -119,6 +124,70 @@ describe('Transaction 集約', () => {
           },
         }),
       ).not.toThrow()
+    })
+  })
+
+  describe('個人費用区分と所有者ロールの整合ガード', () => {
+    const unclassifiedHoney: UnclassifiedTransaction = TransactionSchema.parse({
+      kind: 'unclassified',
+      common: validCommon,
+      reason: 'merchant_rule_unlearned',
+      defaultExpenseClass: 'personal_honey',
+    }) as UnclassifiedTransaction
+
+    const makeDetails = (expenseClass: string): ClassifiedDetails =>
+      ({
+        categoryId: '01CAT000000000000000000001',
+        expenseClass,
+        expenseTypeRef:
+          expenseClass === 'business_expense'
+            ? { kind: 'business', expenseTypeId: '01EXP000000000000000000001' }
+            : { kind: 'non_business' },
+        basis: { kind: 'user_manual', modifiedByUserId: 'user_honey', modifiedAt: new Date() },
+      }) as never
+
+    describe('classify()', () => {
+      it('所有者ロールと一致する個人費用区分なら成功', () => {
+        expect(() =>
+          classify(unclassifiedHoney, makeDetails('personal_honey'), 'honey'),
+        ).not.toThrow()
+      })
+
+      it('相手の個人費用区分なら InvariantViolationError', () => {
+        expect(() => classify(unclassifiedHoney, makeDetails('personal_darling'), 'honey')).toThrow(
+          InvariantViolationError,
+        )
+      })
+
+      it('世帯・経費(会社) は所有者ロールに縛られない', () => {
+        expect(() => classify(unclassifiedHoney, makeDetails('household'), 'honey')).not.toThrow()
+        expect(() =>
+          classify(unclassifiedHoney, makeDetails('business_expense'), 'honey'),
+        ).not.toThrow()
+      })
+    })
+
+    describe('createClassifiedTransaction()', () => {
+      it('所有者ロールと一致する個人費用区分なら成功', () => {
+        expect(() =>
+          createClassifiedTransaction(validCommon, makeDetails('personal_honey'), 'honey'),
+        ).not.toThrow()
+      })
+
+      it('相手の個人費用区分なら InvariantViolationError', () => {
+        expect(() =>
+          createClassifiedTransaction(validCommon, makeDetails('personal_darling'), 'honey'),
+        ).toThrow(InvariantViolationError)
+      })
+
+      it('世帯・経費(会社) は所有者ロールに縛られない', () => {
+        expect(() =>
+          createClassifiedTransaction(validCommon, makeDetails('household'), 'darling'),
+        ).not.toThrow()
+        expect(() =>
+          createClassifiedTransaction(validCommon, makeDetails('business_expense'), 'darling'),
+        ).not.toThrow()
+      })
     })
   })
 
