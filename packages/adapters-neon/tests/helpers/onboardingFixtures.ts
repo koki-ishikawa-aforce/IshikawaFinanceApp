@@ -88,11 +88,7 @@ export function operationStartedUser(
     operationStartedAt: new Date('2026-06-20T00:00:00.000Z'),
     lineOperationSettings: {
       friendAdd: { kind: 'added', followWebhookReceivedAt: new Date('2026-06-15T00:00:00.000Z') },
-      talkRoomJoin: {
-        kind: 'joined',
-        talkRoomId,
-        joinWebhookReceivedAt: new Date('2026-06-16T00:00:00.000Z'),
-      },
+      // 共通トークルーム参加は世帯レベルの SharedTalkRoom が持つ（OQ-55 ①）
       notificationActivation: {
         kind: 'activated',
         talkRoomId,

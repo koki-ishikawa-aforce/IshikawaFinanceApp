@@ -44,6 +44,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     '/api/onboarding',
     onboardingRoutes({
       appUserRepository: deps.appUserRepository,
+      sharedTalkRoomRepository: deps.sharedTalkRoomRepository,
       accountRepository: deps.accountRepository,
       spouseCompletionQuery: deps.spouseCompletionQuery,
       allowlistQuery: deps.allowlistQuery,

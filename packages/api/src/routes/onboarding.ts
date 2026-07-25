@@ -36,7 +36,7 @@ import {
   completeSectionF,
   judgeRole,
   recordLineFriendAdded,
-  recordTalkRoomJoined,
+  recordSharedTalkRoomJoined,
   registerAppUser,
   skipSectionF,
   startPhase2,
@@ -52,6 +52,7 @@ import type {
   GmailOAuthGateway,
   InitialBalanceRegistrationRef,
   Phase2InProgressUser,
+  SharedTalkRoomRepository,
   SpouseCompletionQuery,
   UserId,
 } from '@warimaru/domain'
@@ -69,6 +70,8 @@ const SectionFBodySchema = z.discriminatedUnion('kind', [
 
 export interface OnboardingRoutesDeps {
   appUserRepository: AppUserRepository
+  /** 共通トークルーム参加状態の「正」（世帯レベル、OQ-55 ①） */
+  sharedTalkRoomRepository: SharedTalkRoomRepository
   /** SectionB の事前条件「初期残高が登録された」を残高・資産推移管理コンテキスト越しに照合する */
   accountRepository: AccountRepository
   spouseCompletionQuery: SpouseCompletionQuery
@@ -132,10 +135,15 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     }
   }
 
-  /** 自分の AppUser（Phase / 進捗）の取得。未登録なら user: null */
+  /**
+   * 自分の AppUser（Phase / 進捗）の取得。未登録なら user: null。
+   * 共通トークルーム参加状態は世帯にひとつの事実（OQ-55 ①）のため、per-user の集約とは
+   * 別に世帯レベルの記録を併せて返す（画面のセットアップ手順の判定に使う）。
+   */
   app.get('/me', async c => {
     const user = await deps.appUserRepository.findById(c.get('viewerId'))
-    return c.json({ user })
+    const sharedTalkRoom = await deps.sharedTalkRoomRepository.find()
+    return c.json({ user, sharedTalkRoom })
   })
 
   /**
@@ -228,16 +236,19 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
    * Phase1: 共通トークルーム参加の完了記録（冪等）。
    * 暫定: talkRoomId は Web（LIFF context）からの自己申告。共通トークルームID の正は
    * join Webhook（08f §2）であり、LINE Webhook 受信ルートの実装時にそちらを正とする
-   * （フォローアップ Issue で追跡）。
+   * （自己申告 API の廃止は #298）。
+   * 保存先は世帯レベルの SharedTalkRoom 1 か所（OQ-55 ①）。per-user の LINE 運用設定へは
+   * 書き込まない（二重管理の防止）。
    */
   app.post('/phase1/talk-room', async c => {
     const body = TalkRoomBodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
     const user = await getUserOr404(viewerId)
     const now = new Date()
-    const updated = recordTalkRoomJoined(user, body.talkRoomId, now)
-    if (updated !== user) {
-      await deps.appUserRepository.save(updated)
+    const current = await deps.sharedTalkRoomRepository.find()
+    const updated = recordSharedTalkRoomJoined(current, body.talkRoomId, now)
+    if (updated !== current) {
+      await deps.sharedTalkRoomRepository.save(updated)
       await deps.eventBus.publish(
         LineTalkRoomJoinedSchema.parse({
           ...domainEventBase(now),
@@ -247,11 +258,11 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
         }),
       )
     }
-    return c.json({ user: updated })
+    return c.json({ user, sharedTalkRoom: updated })
   })
 
   /**
-   * Phase1: 通知有効化の完了記録（友だち追加 + トークルーム参加が前提。冪等）。
+   * Phase1: 通知有効化の完了記録（友だち追加 + 世帯の共通トークルーム参加が前提。冪等）。
    * NotificationActivated イベント（世帯レベル、通知配信のテスト送信を起動）は
    * ここでは発行しない — 08f §2 のとおり両者の運用開始が揃った時点（運用開始発火、
    * 本 Issue のスコープ外）で一元発行する。
@@ -260,7 +271,8 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const viewerId = c.get('viewerId')
     const user = await getUserOr404(viewerId)
     const now = new Date()
-    const updated = activateNotification(user, now)
+    const sharedTalkRoom = await deps.sharedTalkRoomRepository.find()
+    const updated = activateNotification(user, sharedTalkRoom, now)
     if (updated !== user) {
       await deps.appUserRepository.save(updated)
     }

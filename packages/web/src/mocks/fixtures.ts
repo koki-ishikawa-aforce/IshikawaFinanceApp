@@ -404,16 +404,16 @@ export function onboardingMeFixture(): unknown {
         firstRegisteredAt: '2026-01-01T00:00:00.000Z',
         lineOperationSettings: {
           friendAdd: { kind: 'added' },
-          talkRoomJoin: { kind: 'joined' },
           notificationActivation: { kind: 'activated' },
         },
       },
       lineOperationSettings: {
         friendAdd: { kind: 'added' },
-        talkRoomJoin: { kind: 'joined' },
         notificationActivation: { kind: 'activated' },
       },
     },
+    // 共通トークルーム参加は世帯レベルの記録（OQ-55 ①）
+    sharedTalkRoom: { kind: 'joined' },
   }
 }
 

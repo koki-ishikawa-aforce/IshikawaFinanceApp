@@ -1,4 +1,5 @@
 export * from './NeonAppUserRepository'
 export * from './NeonGmailOAuthTokenRepository'
+export * from './NeonSharedTalkRoomRepository'
 export * from './NeonSpouseCompletionQuery'
 export * from './resolveViewerRole'

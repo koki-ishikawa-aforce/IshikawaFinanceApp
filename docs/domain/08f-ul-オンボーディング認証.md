@@ -131,7 +131,13 @@ data LINE_運用設定 = LINE_友達追加状態 AND 通知機能有効化状態
 data LINE_友達追加状態 = 未追加 OR 友達追加済み
 data 友達追加済み = ユーザーID AND follow_Webhook受信日時
 
-data 共通トークルーム参加状態 = 未参加 OR 参加済み  // 世帯レベル（アプリユーザー集約の外に置く。世帯にひとつの事実）
+// --- 共通トークルーム: 集約ルート（世帯レベル） ---
+// アプリユーザー集約の外に置く。参加は世帯にひとつの事実であり、join Webhook は userID を含まない
+
+// aggregate root
+data 共通トークルーム = 共通トークルーム参加状態
+
+data 共通トークルーム参加状態 = 未参加 OR 参加済み
 data 参加済み = 共通トークルームID AND join_Webhook受信日時
 // 通知配信（DeliveryTarget.shared_talk_room）・通知機能有効化が参照する「正」はこの世帯レベルの記録
 
