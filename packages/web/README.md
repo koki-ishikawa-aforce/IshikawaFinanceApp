@@ -31,6 +31,21 @@ pnpm --filter @warimaru/web dev:mock
 - **通常ビルドへの影響**: モック分岐は `process.env.NEXT_PUBLIC_MOCK` の定数畳み込みで
   デッドコード除去され、`src/mocks/` は動的 import のため通常の `pnpm build` には読み込まれない。
 
+### 静的ファイルとして書き出す
+
+PR ごとの画面プレビュー配信（`docs/automation/pr-preview.md`）で使う。
+
+```bash
+pnpm --filter @warimaru/web build:mock
+# = NEXT_PUBLIC_MOCK=1 next build → out/ に Static Export
+```
+
+- **サブパス配信**: `NEXT_PUBLIC_BASE_PATH=/<リポジトリ名>/pr-<番号>` を渡すと、その
+  パス配下へ置ける成果物になる（Next.js の `basePath`）。未設定なら空文字で、通常の
+  ビルド・ローカル開発・VRT の挙動は変わらない。
+- **ロールの保持**: `?mockRole=honey` で指定したロールはタブ単位（`sessionStorage`）で
+  保持される。クエリを持たない画面遷移やリロードの後もテーマとデータが食い違わない。
+
 ## E2E テスト（Playwright）
 
 モック起動モードの `next dev` を Playwright が自動で立ち上げてスモークテストを実行する。
