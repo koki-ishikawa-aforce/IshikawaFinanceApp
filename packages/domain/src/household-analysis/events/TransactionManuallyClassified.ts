@@ -6,6 +6,7 @@ import {
   TransactionIdSchema,
   UserIdSchema,
 } from '../../shared/ids'
+import { AmazonProductKeySchema } from '../../shared/value-objects/AmazonProductKey'
 import { ExpenseClassSchema } from '../../shared/value-objects/ExpenseClass'
 
 /**
@@ -41,6 +42,13 @@ export const TransactionManuallyClassifiedSchema = DomainEventBaseSchema.extend(
   transactionId: TransactionIdSchema,
   userId: UserIdSchema,
   merchantName: z.string().min(1),
+  /**
+   * Amazon 商品キー（08b X-1）。加盟店名が「AMAZON.CO.JP」の取引を確定したとき、
+   * 商品カテゴリキーを下流（自動分類・学習）へ運び Amazon商品キー学習ルールへ学習させる。
+   * optional: 通常加盟店の確定や、実際の商品キーを供給できない経路（本番供給経路は
+   * 別 Issue）では欠落する。既存購読者は本フィールドを参照しないため破壊しない。
+   */
+  amazonProductKey: AmazonProductKeySchema.optional(),
   confirmedClassification: ConfirmedClassificationSchema,
 })
 export type TransactionManuallyClassified = z.infer<typeof TransactionManuallyClassifiedSchema>
