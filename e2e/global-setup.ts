@@ -27,10 +27,16 @@ async function seedTestData(pool: import('pg').Pool): Promise<void> {
   try {
     await client.query('BEGIN')
 
-    for (const u of [
+    const users = [
       { userId: 'U_DARLING_DEV', role: 'darling' },
       { userId: 'U_HONEY_DEV', role: 'honey' },
-    ] as const) {
+    ] as const
+    await client.query(
+      `DELETE FROM app_users
+       WHERE role = ANY($1) AND user_id != ALL($2)`,
+      [users.map(u => u.role), users.map(u => u.userId)],
+    )
+    for (const u of users) {
       await client.query(
         `INSERT INTO app_users (user_id, role, kind, payload)
          VALUES ($1, $2, 'operation_started', $3)
