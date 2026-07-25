@@ -73,7 +73,7 @@ description: docs/domain とコードの乖離検知。読み取り専用で、�
 3. **`ready-to-implement` 判定**: docs とコードのどちらが正かが自明で、修正が機械的に行える場合(例: README への export 名追記)は `ready-to-implement` を付与する。判断が必要な場合は `needs-decision` を付与する。これは「ready 化は人間起点のみ」(`docs/automation/backlog-routine.md` 設計原則「ready 化と実装は分離する」)の明文化された例外であり、自明で機械的な乖離修正に限る(マージ判断のゲートは残るため実害は小さい)
 4. **Issue 起票**:
 
-   タイトル: `[docs-drift] <乖離の要約>`
+   タイトル: `[乖離報告] <乖離の要約>`(先頭の種別目印は判断待ち Issue 共通の規約。`.claude/skills/issue-work/templates/judgment-issue.md`「タイトルの種別目印」を参照)
 
    本文の構成:
    - **何の乖離か**: 1〜2 文で事実を述べる(docs の記述とコードの実態)
@@ -86,7 +86,7 @@ description: docs/domain とコードの乖離検知。読み取り専用で、�
 
    ```bash
    gh label create "docs-drift" --color C2E0C6 --description "ドキュメントとコードの乖離" 2>/dev/null || true
-   gh issue create --title "[docs-drift] ..." --body "..." --label "docs-drift,ready-to-implement"
+   gh issue create --title "[乖離報告] ..." --body "..." --label "docs-drift,ready-to-implement"
    # または --label "docs-drift,needs-decision"
    ```
 

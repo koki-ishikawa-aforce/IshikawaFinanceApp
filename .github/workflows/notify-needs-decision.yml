@@ -29,11 +29,25 @@ jobs:
             const { owner, repo } = context.repo;
             const issue_number = context.payload.issue.number;
             await github.rest.issues.addAssignees({ owner, repo, issue_number, assignees: [owner] });
+            // タイトル先頭の種別目印から「あなたがすること」の1行を出し分ける。
+            // 目印はテンプレート .claude/skills/issue-work/templates/judgment-issue.md で規定。
+            // 目印が無い場合(元 Issue へのコメント経由の needs-decision など)は共通文にフォールバックする。
+            const title = (context.payload.issue.title ?? '').trimStart();
+            const ACTIONS = [
+              { marker: '[マージ判断]', line: '本文を確認し、PR をマージしてよいか判断してください(よければマージ、不要ならクローズ)。' },
+              { marker: '[判断待ち]', line: '本文の「判断してほしいこと」を確認し、選択肢から方針を選んで回答してください。' },
+              { marker: '[乖離報告]', line: '本文の乖離を確認し、docs とコードのどちらを直すか方針を決めてください。' },
+              { marker: '[改善案]', line: '本文の改善案を確認し、採用する(実装に回す)か見送るかを決めてください。' },
+            ];
+            const matched = ACTIONS.find((a) => title.startsWith(a.marker));
+            const action = matched
+              ? matched.line
+              : 'あなたの判断が必要です。本文の「判断してほしいこと」を確認してください。';
             await github.rest.issues.createComment({
               owner,
               repo,
               issue_number,
-              body: `@${owner} あなたの判断が必要です。本文の「判断してほしいこと」を確認してください。`,
+              body: `@${owner} ${action}`,
             });
 
   # PR が作られたらオーナーを assign する。Draft/通常を問わない(自分のアカウントで
