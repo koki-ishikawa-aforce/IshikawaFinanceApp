@@ -20,7 +20,12 @@ import type { UserId } from '../../shared/ids'
 export type LineFriendshipStatus =
   | { kind: 'friend' }
   | { kind: 'not_friend' }
-  /** 照会に失敗し、友だちかどうかを判定できない（API 障害・通信断・トークン解決失敗） */
+  /**
+   * 照会に失敗し、友だちかどうかを判定できない（API 障害・通信断・トークン解決失敗）。
+   * detail は呼出し側がそのままログへ出すため、実装は**シークレット・PII・例外オブジェクトの
+   * 中身を含めない**（LINE の応答ボディには displayName / pictureUrl が、トークン解決の例外には
+   * Parameter Store のパスが含まれうる）。障害の種別が分かる短い文言に絞る。
+   */
   | { kind: 'unknown'; detail: string }
 
 export interface LineFriendshipGateway {

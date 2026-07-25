@@ -31,13 +31,14 @@ describe('createLineFriendshipGateway', () => {
   it('プロフィール照会が 200 なら friend を返し、Bearer トークンで照会する', async () => {
     const { fetchImpl, requests } = stubFetch({
       status: 200,
-      body: { userId: USER_ID, displayName: 'はにー' },
+      body: { userId: USER_ID, displayName: 'はにー', pictureUrl: 'https://example.com/p.png' },
     })
     const gateway = createLineFriendshipGateway({
       resolveChannelAccessToken: () => Promise.resolve('token-123'),
       fetchImpl,
     })
 
+    // 応答ボディの displayName / pictureUrl（PII）は結果に持ち込まない
     expect(await gateway.checkFriendship(USER_ID)).toEqual({ kind: 'friend' })
     expect(requests).toHaveLength(1)
     expect(requests[0]?.url).toBe(`https://api.line.me/v2/bot/profile/${USER_ID}`)
@@ -58,25 +59,26 @@ describe('createLineFriendshipGateway', () => {
   })
 
   it('404 以外の HTTP エラーは unknown（not_friend に倒さない）', async () => {
-    const { fetchImpl } = stubFetch({ status: 500 })
+    // 応答ボディにエラー詳細が入っていても detail はステータスのみに絞る（呼出し側がログに出すため）
+    const { fetchImpl } = stubFetch({ status: 500, body: { message: 'internal', request: {} } })
     const gateway = createLineFriendshipGateway({
       resolveChannelAccessToken: () => Promise.resolve('token-123'),
       fetchImpl,
     })
 
     const status = await gateway.checkFriendship(USER_ID)
-    expect(status.kind).toBe('unknown')
+    expect(status).toEqual({ kind: 'unknown', detail: 'LINE profile API 500' })
   })
 
   it('認証エラー（401）も unknown にする — 設定不備を「友だちでない」と誤って確定させない', async () => {
-    const { fetchImpl } = stubFetch({ status: 401 })
+    const { fetchImpl } = stubFetch({ status: 401, body: { message: 'Invalid access token' } })
     const gateway = createLineFriendshipGateway({
       resolveChannelAccessToken: () => Promise.resolve('expired-token'),
       fetchImpl,
     })
 
     const status = await gateway.checkFriendship(USER_ID)
-    expect(status.kind).toBe('unknown')
+    expect(status).toEqual({ kind: 'unknown', detail: 'LINE profile API 401' })
   })
 
   it('通信断は unknown', async () => {
