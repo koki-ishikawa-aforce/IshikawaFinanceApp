@@ -7,7 +7,7 @@ const HEADERS = {
 }
 const CURRENT_MONTH = new Date().toISOString().slice(0, 7)
 
-test.describe('AT-201: 取引の手動登録・編集・削除', () => {
+test.describe.serial('AT-201: 取引の手動登録・編集・削除', () => {
   let transactionId: string
 
   test('手順1: TEST-コーナン ¥1500 を登録', async ({ request }) => {

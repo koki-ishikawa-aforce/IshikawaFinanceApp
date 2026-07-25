@@ -9,7 +9,7 @@ const CAT_OTHER = '01JAAAAAAAAAAAAAAAAAAAAAA4'
 const EXPENSE_TYPE_GYM = '01JEEEEEEEEEEEEEEEEEEEEE1'
 const CURRENT_MONTH = new Date().toISOString().slice(0, 7)
 
-test.describe('AT-202: 未分類取引の3軸修正と学習ルール即時登録', () => {
+test.describe.serial('AT-202: 未分類取引の3軸修正と学習ルール即時登録', () => {
   let firstTxId: string
   let secondTxId: string
 
@@ -35,8 +35,8 @@ test.describe('AT-202: 未分類取引の3軸修正と学習ルール即時登�
         expenseTypeId: EXPENSE_TYPE_GYM,
       },
     })
-    expect(classifyRes.status()).toBe(200)
     const classified = await classifyRes.json()
+    expect(classifyRes.status(), `classify response: ${JSON.stringify(classified)}`).toBe(200)
     expect(classified.kind).toBe('classified')
     expect(classified.details.categoryId).toBe(CAT_OTHER)
     expect(classified.details.expenseClass).toBe('business_expense')
