@@ -59,17 +59,18 @@ gh label create "needs-decision" --color D93F0B --description "人間の判断�
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する(Routine はクラウド側で動くため、手元のセッションや PC の状態に依存しない)。
 
 - **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。ネットワークポリシーは pnpm install と GitHub 操作が通る設定にする。`gh` CLI が無い環境でも動くよう、スキル側は GitHub MCP ツールへのフォールバックを定めている(issue-work スキルの「実行環境の注意」)
-- **Trigger**: Schedule、毎時(消化ペースを落としたい場合は間隔を広げる)
+- **Trigger**: Schedule、毎時(消化ペースを落としたい場合は間隔を広げる)。現在は同一プロンプトの Routine を3本登録しており、cron は UTC で `1 * * * *` / `18 * * * *` / `42 * * * *`(実効ペースは約20分に1 fire)。複数本を登録する場合は fire 時刻を均等に散らす — 数分差で走らせても CAS ロックが二重着手を弾くだけで、候補ループの空振りとコンフリクト修復の競合(`/pr-steward` 手順2c)が増える
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):
 
   ```
   無人モードで /issue-work を実行してください。
 
-  - ready-to-implement ラベル付きの open Issue から1件だけ選んで実装し、PR の作成まで行ってください(マージはしない)
-  - WIP 上限・排他ロック・曖昧なときの撤退・PR 化は .claude/skills/issue-work/SKILL.md の「無人モード」節に従ってください
+  - ready-to-implement ラベル付きの open Issue から1件だけ選んで実装し、通常 PR（Draft にはしない）の作成、および作成した PR の CI が green になることの確認まで行ってください
+  - WIP 上限・排他ロック・曖昧なときの撤退・PR 作成・CI green の確認は .claude/skills/issue-work/SKILL.md の「無人モード」節に従ってください。PR は必ず通常 PR として作成し、Draft にはしないこと（このリポジトリの CI は draft PR では発火せず、CI green を確認できなくなるため）
   - 人間の判断が必要になった場合(撤退・見送り追認・マージ判断)は、SKILL.md の指示どおり needs-decision ラベル付きの Issue に集約し、テンプレートと執筆ルールに従って書いてください
   - 着手できる Issue がない場合(WIP 上限超過・候補なし)は、リポジトリに一切変更を加えず理由だけ報告して終了してください
+  - 最終的な報告は日本語を使ってください。
   ```
 
   プロンプトを変更した場合は、claude.ai 側の Routine に貼り直すまで反映されない(Routine のプロンプトはリポジトリからは変更できない)。

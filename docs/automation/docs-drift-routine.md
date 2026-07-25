@@ -49,7 +49,7 @@ Routine(週次 fire・fresh session): /docs-drift を実行
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する(Routine はクラウド側で動くため、手元のセッションや PC の状態に依存しない)。
 
 - **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。バックログ Routine と同じ環境を使える。ネットワークポリシーは GitHub 操作が通る設定にする(`gh` CLI が無い環境でも GitHub MCP ツールで動くよう、スキル側にフォールバックを定めている)
-- **Trigger**: Schedule、週次(例: 毎週水曜の朝)。バックログ Routine(毎時)や振り返り Routine(毎週月曜)とずらすのが望ましい — 振り返りが拾う失敗データとドキュメント乖離は独立した関心事のため、曜日を分散させて負荷を分ける
+- **Trigger**: Schedule、週次(例: 毎週水曜の朝)。現在は UTC で `0 0 * * 3`(= 水曜 09:00 JST)。バックログ Routine(毎時)や振り返り Routine(毎週月曜)とずらすのが望ましい — 振り返りが拾う失敗データとドキュメント乖離は独立した関心事のため、曜日を分散させて負荷を分ける
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):
 
@@ -61,6 +61,7 @@ Routine(週次 fire・fresh session): /docs-drift を実行
   - 検知した乖離はコードも docs も変更せず、乖離内容と修正方針案を記した Issue として起票してください(1 乖離 = 1 Issue)
   - docs とコードのどちらが正かが自明な場合は ready-to-implement、判断が必要な場合は needs-decision を付けてください
   - 乖離が見つからなかった場合は、何も起票せず突合結果だけを報告して終了してください
+  - 最終的な報告は日本語を使ってください。
   ```
 
   プロンプトを変更した場合は、claude.ai 側の Routine に貼り直すまで反映されない(Routine のプロンプトはリポジトリからは変更できない)。
