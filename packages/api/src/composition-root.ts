@@ -201,6 +201,8 @@ export interface AppDeps {
   failsafeEmailRecipients: string[]
   /** フェイルセーフ発火しきい値（FAILSAFE_FAILURE_THRESHOLD。省略時はドメイン既定値） */
   failsafeFailureThreshold?: number | undefined
+  /** CORS 許可オリジン（CORS_ALLOWED_ORIGINS、カンマ区切り。開発環境の既定は localhost:3000） */
+  allowedOrigins: string[]
 }
 
 export interface CompositionEnv {
@@ -225,6 +227,12 @@ export interface CompositionEnv {
   FAILSAFE_EMAIL_TO?: string | undefined
   /** フェイルセーフ発火しきい値（省略時はドメイン既定値 = 3） */
   FAILSAFE_FAILURE_THRESHOLD?: string | undefined
+  /**
+   * CORS 許可オリジン（カンマ区切り）。本番の web オリジン（CloudFront のドメイン等）を指定する。
+   * 本番では未設定を致命的な設定漏れとして扱い起動エラーにする（DATABASE_URL と同じ方針）。
+   * 開発環境で未設定の場合のみ localhost:3000 を既定とする。
+   */
+  CORS_ALLOWED_ORIGINS?: string | undefined
 }
 
 /** FAILSAFE_EMAIL_TO（カンマ区切り）→ 宛先リスト */
@@ -240,6 +248,31 @@ function parseFailsafeThreshold(value: string | undefined): number | undefined {
   if (value === undefined) return undefined
   const parsed = Number(value)
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
+}
+
+/** 開発環境で CORS_ALLOWED_ORIGINS が未設定のときの既定（web の `next dev` のオリジン） */
+const DEV_ALLOWED_ORIGIN = 'http://localhost:3000'
+
+/**
+ * CORS_ALLOWED_ORIGINS（カンマ区切り）→ 許可オリジンのリスト。
+ *
+ * 本番で未設定なら起動エラーにする。本番の web は CloudFront のドメインから配信されるため、
+ * localhost の既定値に黙ってフォールバックすると LIFF 画面からの API 呼び出しが
+ * すべてプリフライトで拒否され、原因の分かりにくい全面障害になる。
+ */
+function resolveAllowedOrigins(env: CompositionEnv): string[] {
+  const configured = (env.CORS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+  if (configured.length > 0) return configured
+
+  if (isProduction(env.NODE_ENV)) {
+    throw new Error(
+      'CORS_ALLOWED_ORIGINS is required in production. Refusing to start with the localhost default — set the web origin (e.g. https://xxxx.cloudfront.net).',
+    )
+  }
+  return [DEV_ALLOWED_ORIGIN]
 }
 
 export function createDeps(env: CompositionEnv): AppDeps {
@@ -307,8 +340,12 @@ export function createDeps(env: CompositionEnv): AppDeps {
       failsafeEmailGateway: createMockFailsafeEmailGateway(),
       failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
       failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
+      allowedOrigins: resolveAllowedOrigins(env),
     }
   }
+
+  // 設定の検証は DB クライアント等を組み立てる前に済ませる（本番の設定漏れは即起動エラー）
+  const allowedOrigins = resolveAllowedOrigins(env)
 
   const db =
     env.NODE_ENV === 'test' ? createNodePgDb(env.DATABASE_URL) : createNeonHttpDb(env.DATABASE_URL)
@@ -414,5 +451,6 @@ export function createDeps(env: CompositionEnv): AppDeps {
     failsafeEmailGateway,
     failsafeEmailRecipients,
     failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
+    allowedOrigins,
   }
 }

@@ -33,7 +33,9 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
   const app = new Hono<AppEnv>()
 
-  app.use('*', cors({ origin: ['http://localhost:3000'] }))
+  // 許可オリジンは composition-root が環境変数 CORS_ALLOWED_ORIGINS から解決する
+  // （本番の web オリジンは CloudFront のドメインになるためハードコードできない）
+  app.use('*', cors({ origin: deps.allowedOrigins }))
   app.use('/api/*', isDev ? devViewerIdMiddleware : lineAuthMiddleware)
   app.onError(errorHandler)
 
@@ -124,7 +126,6 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     expenseTypesRoutes({
       expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
       expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
-      monthlyLimitRepository: deps.monthlyLimitRepository,
       eventBus: deps.eventBus,
     }),
   )
