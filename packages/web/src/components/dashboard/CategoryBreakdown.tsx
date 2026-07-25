@@ -5,6 +5,7 @@ import type { CategoryBreakdownView } from '@warimaru/domain'
 import { DonutChart } from './DonutChart'
 import { formatMoney } from '@/lib/format'
 import { FALLBACK_CATEGORY_COLORS } from '@/theme/tokens'
+import ui from '@/components/ui/common.module.css'
 import styles from './CategoryBreakdown.module.css'
 
 interface CategoryBreakdownProps {
@@ -19,6 +20,15 @@ function getColor(name: string, index: number, colors: Record<string, string>): 
 }
 
 export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownProps) {
+  // 支出が 1 件も無い月は、弧の無いドーナツと空の凡例ではなく空状態の案内を出す
+  if (data.items.length === 0) {
+    return (
+      <div className={styles.container}>
+        <div className={ui.empty}>この月の支出はありません</div>
+      </div>
+    )
+  }
+
   const segments = data.items.map((item, i) => ({
     label: item.categoryName,
     percentage: item.percentage,
