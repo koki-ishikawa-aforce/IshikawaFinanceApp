@@ -18,6 +18,7 @@ import { registerMasterDataDeletionCoordinator } from './master-data-deletion-co
 import { registerMonthlyReportCsvConfirmationEventHandlers } from './monthly-report-csv-confirmation.js'
 import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
 import { registerExpenseProrationRecalcEventHandlers } from './expense-proration-recalc.js'
+import { registerMonthlyLimitSeedEventHandlers } from './monthly-limit-seed.js'
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
 import { registerUnpaidBalanceUpdateEventHandlers } from './unpaid-balance-update.js'
 
@@ -52,6 +53,11 @@ export function registerEventHandlers(deps: AppDeps): void {
     monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
     expenseReimbursementDepositRepository: deps.expenseReimbursementDepositRepository,
     monthlyReportRepository: deps.monthlyReportRepository,
+  })
+  // 役割確定 → 規定経費種別の月次上限を seed 投入 (#56 / 論点14)
+  registerMonthlyLimitSeedEventHandlers(deps.eventBus, {
+    expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
+    monthlyLimitRepository: deps.monthlyLimitRepository,
   })
   // 月次上限変更 → 当月按分再計算 (#140)
   registerExpenseProrationRecalcEventHandlers(deps.eventBus, {
