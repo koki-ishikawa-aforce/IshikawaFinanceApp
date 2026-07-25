@@ -72,7 +72,10 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          AUTH_HEADER="AUTHORIZATION: basic $(printf '%s' "x-access-token:${GITHUB_TOKEN}" | base64 -w0)"
+          CREDENTIAL="$(printf '%s' "x-access-token:${GITHUB_TOKEN}" | base64 -w0)"
+          # base64 化した値は Actions の自動マスクに掛からないため、明示的に伏せる。
+          echo "::add-mask::${CREDENTIAL}"
+          AUTH_HEADER="AUTHORIZATION: basic ${CREDENTIAL}"
 
           mkdir -p "${RUNNER_TEMP}/site"
           cd "${RUNNER_TEMP}/site"
@@ -95,12 +98,18 @@ jobs:
             # <ベースパス>.txt を取りに行き 404 になる(Next.js の Static Export の挙動)。
             # 画面は動くが配信のたびにコンソールへ赤いエラーが出て、レビュー時に
             # 変更側の不具合と紛らわしいため、同じ中身をその名前でも置く。
-            cp "${PREVIEW_DIR}/index.txt" "${PREVIEW_DIR}.txt"
+            # Next.js の出力名が変わったときに配信ごと止めないよう、無ければ黙って飛ばす。
+            if [ -f "${PREVIEW_DIR}/index.txt" ]; then
+              cp "${PREVIEW_DIR}/index.txt" "${PREVIEW_DIR}.txt"
+            fi
           fi
 
           # Pages の Actions デプロイは Jekyll を通さないが、_next のような
           # アンダースコア始まりのディレクトリが落ちる事故を防ぐ保険として置く。
           touch .nojekyll
+
+          # 未リリースの画面が検索結果に載らないようにサイト全体を除外する。
+          printf 'User-agent: *\nDisallow: /\n' > robots.txt
 
           # サイト直下は現存するプレビューの一覧にする(直リンクを忘れたときの入口)。
           {
@@ -133,7 +142,7 @@ jobs:
           # 公開物に .git を含めない(リモート設定や履歴をサイトへ出さない)。
           rm -rf .git
 
-      # Pages が未設定なら有効化を試みる。権限が無くて有効化できない場合は、
+      # Pages が未設定なら有効化を試みる。権限が無くて設定できない場合は、
       # 配信を諦めて手動セットアップを PR にコメントする(ここで失敗させない)。
       - name: Ensure GitHub Pages is enabled
         id: pages
@@ -141,23 +150,31 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
+          skip() {
+            echo 'ready=false' >> "${GITHUB_OUTPUT}"
+            echo "::notice::${1} 配信を省略する。docs/automation/pr-preview.md の手動セットアップを参照。"
+            exit 0
+          }
+
           build_type="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '.build_type' 2>/dev/null || true)"
-          if [ "${build_type}" = 'workflow' ]; then
-            echo 'ready=true' >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          if [ -n "${build_type}" ]; then
+          if [ -z "${build_type}" ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null 2>&1 \
+              || skip 'GitHub Pages を有効化できなかったため'
+          elif [ "${build_type}" != 'workflow' ]; then
             # Pages は有効だが公開元が Actions ではない(ブランチ配信のまま)。
-            if gh api --method PUT "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null 2>&1; then
-              echo 'ready=true' >> "${GITHUB_OUTPUT}"
-              exit 0
-            fi
-          elif gh api --method POST "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null 2>&1; then
-            echo 'ready=true' >> "${GITHUB_OUTPUT}"
-            exit 0
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null 2>&1 \
+              || skip 'GitHub Pages の公開元を GitHub Actions に変更できなかったため'
           fi
-          echo 'ready=false' >> "${GITHUB_OUTPUT}"
-          echo '::notice::GitHub Pages を有効化できなかったため配信を省略した。docs/automation/pr-preview.md の手動セットアップを参照。'
+
+          # Pages を有効化すると github-pages 環境が作られ、既定ではデフォルト
+          # ブランチからのデプロイしか許可されない。本ワークフローは pull_request で
+          # 走る(ref は refs/pull/<番号>/merge)ため、この制限が残っているとデプロイが
+          # 必ず弾かれる。制限を外せない場合は配信を諦める(PR の検証は止めない)。
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/environments/github-pages" \
+            -F 'deployment_branch_policy=null' >/dev/null 2>&1 \
+            || skip 'github-pages 環境のデプロイ元ブランチ制限を解除できなかったため'
+
+          echo 'ready=true' >> "${GITHUB_OUTPUT}"
 
       - name: Upload the site as a Pages artifact
         if: steps.pages.outputs.ready == 'true'
@@ -169,6 +186,9 @@ jobs:
     needs: publish
     if: needs.publish.outputs.pages_ready == 'true'
     runs-on: ubuntu-latest
+    # プレビューはマージ判断の補助であって検証の関門ではない。配信に失敗しても
+    # PR を赤くせず、失敗した事実は comment ジョブが PR 上に書く。
+    continue-on-error: true
     permissions:
       pages: write
       id-token: write
@@ -203,10 +223,13 @@ jobs:
             const pageUrl = process.env.PAGE_URL ?? '';
             let lines;
             if (pageUrl !== '') {
+              const base = `${pageUrl}pr-${issue_number}/`;
               lines = [
-                `${pageUrl}pr-${issue_number}/`,
+                `- [darling で開く](${base})`,
+                `- [honey で開く](${base}?mockRole=honey)`,
                 '',
-                'ログイン不要のモックデータで動きます。`?mockRole=honey` を付けるともう一方のテーマになります。',
+                'ログイン不要の固定データで動きます。テーマは開いたときのリンクのまま画面を移動しても保たれます。',
+                'モックデータを用意していない画面はエラー表示になります(この PR の不具合ではありません)。',
                 'この PR をクローズ / マージすると自動で片付けられます。',
               ];
             } else if (process.env.PAGES_READY !== 'true') {

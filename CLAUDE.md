@@ -64,6 +64,8 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 
 PR の保守(CI 修復・コンフリクト解消・重複検知): `/pr-steward` が Routine 起点の open PR を巡回し、人間の仕事をマージ判断だけに絞る(運用: `docs/automation/pr-steward-routine.md`)。
 
+マージ判断の材料: `packages/web` に変更がある PR は、モック起動モードの画面が GitHub Pages に自動配信され、配信 URL が PR にコメントされる(運用・セットアップ: `docs/automation/pr-preview.md`)。
+
 無人運用の自己改善: `/retro` が無人モードの失敗データ(撤退・CI リトライ・レビュー指摘)を週次で振り返り、繰り返す失敗パターンから改善案を `needs-decision` Issue として起票する(読み取り専用。運用: `docs/automation/retro-routine.md`)。
 
 ## してはいけないこと
