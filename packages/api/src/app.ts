@@ -107,6 +107,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       transactionRepository: deps.transactionRepository,
       pdfToCsvConverter: deps.pdfToCsvConverter,
       resolveViewerRole: deps.resolveViewerRole,
+      eventBus: deps.eventBus,
     }),
   )
   app.route(
