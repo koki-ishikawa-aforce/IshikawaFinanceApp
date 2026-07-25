@@ -28,12 +28,12 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 
 | 品質特性 | 担保手段 | 現状 |
 | --- | --- | --- |
-| **機能適合性**(要求どおり動くか) | CI: `pnpm test`(単体・統合)、Playwright E2E / VRT<br>レビュー: `/ddd-review`(不変条件の置き場所)<br>人間: `docs/acceptance/` の受入テスト(#58) | ⚠️ 部分的 — Issue 単位の受け入れ条件は `/verify` で見るが、`docs/acceptance/` のどの AT シナリオを満たしたかを照合する工程が無い(#333) |
+| **機能適合性**(要求どおり動くか) | CI: `pnpm test`(単体・統合)、Playwright E2E / VRT<br>レビュー: `/ddd-review`(不変条件の置き場所)<br>プロセス: `/issue-work` 手順6(`docs/acceptance/` の AT シナリオとの照合)<br>人間: `docs/acceptance/` の受入テスト(#58) | ✅ 担保済み — Issue 単位の受け入れ条件は `/verify`、それがどの AT シナリオに当たるかは `/issue-work` 手順6 が照合して PR 本文に残す。**合否そのものの判定は本番受入テスト(#58)で人間が行う**ので、ここで担保されるのは「シナリオとの対応が追える状態を保つこと」まで |
 | **性能効率**(初期表示・クエリ本数) | CI: バンドルサイズ予算(`pnpm --filter @warimaru/web bundle-size`)→ [bundle-budget.md](./bundle-budget.md)<br>レビュー: `/data-review`(N+1・索引欠落) | ✅ 担保済み — クエリ側(N+1・索引欠落・上限なしの取得)は `/data-review`、初期表示側はルートごとの gzip 予算を CI が担保<br>担保範囲の注記: 測るのは**配信量**(HTML が参照する js / css の gzip 合計)であり、実行時間・レンダリング速度・実機 LIFF での体感は含まない |
 | **信頼性**(外部依存の失敗・冪等性・可観測性) | レビュー: 信頼性・可観測性レビュー(#331) | ❌ 未整備 — Gmail / LINE / Neon の失敗時挙動とイベントハンドラの再実行安全性を誰も見ていない(#331) |
 | **セキュリティ**(外周の攻撃面) | CI: `pnpm audit`(依存脆弱性)→ [dependency-audit.md](./dependency-audit.md)<br>レビュー: `/security-review`、`/ddd-review`(プライバシー3段階ルール = ドメイン内の可視性) | ✅ 担保済み — 依存脆弱性は CI、Webhook 署名検証・IDトークン検証・認可の位置・PII ログ流出は `/security-review` が担保 |
 | **データ互換性**(スキーマ変更とデプロイ) | CI: 統合テスト(空の PostgreSQL への `migrate` 適用 = 構文と適用可能性)<br>レビュー: `/data-review` | ✅ 担保済み — 破壊的スキーマ変更・デプロイ順序・トランザクション境界・イベントハンドラの冪等性は `/data-review` が担保。CI が適用するのは**空の DB** なので、既存データがある本番で失敗する変更はレビュー側でしか捕まらない |
-| **保守性**(設計・テスト品質) | CI: `pnpm lint` / `pnpm typecheck` / `pnpm format:check`<br>レビュー: `/ddd-review`(依存の向き・命名・ユビキタス言語・barrel)、テスト品質レビュー(#329) | ⚠️ 部分的 — 設計規約は `/ddd-review` が担保。テストが実際に振る舞いを検証しているかは未整備(#329) |
+| **保守性**(設計・テスト品質) | CI: `pnpm lint` / `pnpm typecheck` / `pnpm format:check`<br>レビュー: `/ddd-review`(依存の向き・命名・ユビキタス言語・barrel)、`/test-review`(テストが振る舞いを検証しているか) | ✅ 担保済み — 設計規約は `/ddd-review`、テストが実装をなぞっただけになっていないか・境界値と異常系・否定形テスト・ピラミッドの置き場所は `/test-review` が担保 |
 | **使用性**(使いやすさ) | 規範: [`docs/design/usability.md`](../design/usability.md)<br>レビュー: `/ux-review`、`/ui-review`(デザインシステム適合) | ✅ 担保済み — 規範を `/ux-review` が差分に適用する。ただし §9「既知の未対応」12件は未解消で、本レビューは**新しい画面で繰り返さないこと**を担保する |
 
 判定の凡例: ✅ 担保済み / ⚠️ 部分的 / ❌ 未整備
@@ -53,7 +53,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | `packages/api/src/routes/**`<br>`packages/api/src/middleware/**`<br>`packages/api/src/gmail-oauth/**`<br>`packages/api/src/aws/**`(シークレット・トークンの取得/保管)<br>認証・外部連携(LINE / Gmail)の変更 | `/security-review` | ✅ 稼働中 |
 | `packages/adapters-neon/drizzle/**`(マイグレーション)<br>`packages/adapters-neon/src/schema/**`(テーブル定義・索引・制約)<br>`packages/adapters-neon/src/**`(Repository / Query 実装)<br>`packages/domain/src/*/events/**`・`packages/api/src/event-handlers/**`(再実行による二重適用の観点のみ) | `/data-review` | ✅ 稼働中 |
 | `packages/domain/src/*/events/**`<br>`packages/api/src/event-handlers/**`<br>`packages/api/src/notification/**` | 信頼性・可観測性レビュー | ❌ #331 |
-| テストファイルを含む差分、またはドメインの振る舞い変更 | テスト品質レビュー | ❌ #329 |
+| テストファイル(`**/tests/**`・`**/__tests__/**`・`*.test.ts(x)`・`*.spec.ts`)を含む差分<br>`packages/domain/src/**` の振る舞い変更(テストを含まない場合も対象) | `/test-review` | ✅ 稼働中 |
 
 複数該当する場合はすべて起動する。`/ddd-review` と `/verify` は常時なので、上表の該当分は「追加で回すもの」と読む。
 
@@ -62,6 +62,8 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 該当が無い差分(docs のみの変更など)では `/ddd-review` の起動を省略してよい。省略した場合は PR 本文にその旨を書く。
 
 `packages/web/**` の変更でも、色・余白・書体だけの変更やテスト / VRT スナップショットのみの差分では `/ux-review` を省略してよい(`/ui-review` は起動する)。省略の判定条件は `.claude/skills/ux-review/SKILL.md` の「起動条件」を正とする。
+
+上表とは別に、`/issue-work` 手順6 の **受入シナリオとの照合**が同じタイミング(PR 作成前)で走る。これはレビューではなく、`docs/acceptance/` の AT シナリオと差分の対応を PR 本文に残す工程で、ドキュメント・開発プロセスだけの差分では省略してよい。手順は `.claude/skills/issue-work/SKILL.md` 手順6 を正とする。
 
 ### レビュー結果の扱い(全レビュー共通)
 
@@ -76,23 +78,34 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 
 `.github/workflows/ci.yml` の verify ジョブ。すべて失敗が後続をブロックする。
 
-| ステップ | 担保する観点 |
+レビュースキルと同じく、CI のステップも**変更パスで出し分ける**。実行枠(GitHub Actions の無料枠)は有限で、docs / skills だけの変更で Playwright まで回すと 1 run あたり 8 分を使い切るため。判定は `Detect changed paths` ステップが行い、**判定できないときは全ステップを実行する**(検証漏れを起こさない側に倒す)。
+
+| 実行条件 | 対象 |
 | --- | --- |
-| `pnpm build` | ビルド可能性 |
-| `pnpm --filter @warimaru/web bundle-size` | 初期表示ペイロードの予算(性能効率)→ [bundle-budget.md](./bundle-budget.md) |
-| `pnpm typecheck` | 型整合(保守性) |
-| `pnpm test` | 単体テストの成否(機能適合性) |
-| `pnpm --filter @warimaru/adapters-neon test:integration` | 実 PostgreSQL に対する永続化層の振る舞い |
-| `pnpm --filter @warimaru/web test:e2e` | ビジュアルリグレッション(darling / honey 両テーマ) |
-| `pnpm --filter @warimaru/e2e test:e2e` | 受入シナリオの E2E(AT-0xx / AT-2xx / AT-3xx) |
-| `pnpm lint` | lint ルール + stylelint(トークン直値の機械判定) |
-| `pnpm audit --audit-level moderate` | 依存パッケージの既知脆弱性 → [dependency-audit.md](./dependency-audit.md) |
-| `pnpm format:check` | フォーマット |
+| `code` | `docs/` `.claude/` `*.md` **以外**の変更がある |
+| `web` | `packages/web/` または `packages/domain/` の変更がある(domain は dist 経由で画面表示に波及する) |
+| 常時 | 上記によらず必ず実行する |
+
+| ステップ | 実行条件 | 担保する観点 |
+| --- | --- | --- |
+| `pnpm build` | `code` | ビルド可能性 |
+| `pnpm --filter @warimaru/web bundle-size` | `code` | 初期表示ペイロードの予算(性能効率)→ [bundle-budget.md](./bundle-budget.md) |
+| `pnpm typecheck` | `code` | 型整合(保守性) |
+| `pnpm test` | `code` | 単体テストの成否(機能適合性) |
+| `pnpm --filter @warimaru/adapters-neon test:integration` | `code` | 実 PostgreSQL に対する永続化層の振る舞い |
+| `pnpm --filter @warimaru/web test:e2e` | `web` | ビジュアルリグレッション(darling / honey 両テーマ) |
+| `pnpm --filter @warimaru/e2e test:e2e` | `code` | 受入シナリオの E2E(AT-0xx / AT-2xx / AT-3xx) |
+| `pnpm lint` | `code` | lint ルール + stylelint(トークン直値の機械判定) |
+| `pnpm audit --audit-level moderate` | 常時 | 依存パッケージの既知脆弱性 → [dependency-audit.md](./dependency-audit.md) |
+| `pnpm format:check` | 常時 | フォーマット(docs / skills の Markdown も対象) |
+
+`main` への push(マージ後の検証)は変更パスによらず全ステップを実行する。また、同じ PR に push が続いたときは追い越された run をキャンセルする(`concurrency`)。
 
 ## 5. 観点を追加するときの手順
 
 1. §1 の切り分け原則で **CI かレビュースキルか** を決める
 2. §2 の対応表にその観点の行を追加(または既存行の担保手段を更新)する
 3. レビュースキルの場合は §3 のトリガー表に起動条件を追加する。**無条件に常時起動にしない**(無人運用が破綻する)
+   CI の場合は §4 の実行条件(`code` / `web` / 常時)を決めて表に追加する。数秒で終わるもの以外を常時実行にしない
 4. 既存レビューとの責務分担をスキル冒頭に明記し、重複して指摘しないことを指示する
 5. `CLAUDE.md` の開発フロー節に位置づけを追記する

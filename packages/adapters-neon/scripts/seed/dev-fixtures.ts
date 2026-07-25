@@ -55,12 +55,9 @@ function makeAppUserPayload(userId: string, role: 'honey' | 'darling') {
     operationStartedAt: REGISTERED,
     lineOperationSettings: {
       friendAdd: { kind: 'added', followWebhookReceivedAt: REGISTERED },
-      // 共通トークルーム参加は世帯にひとつの事実（OQ-55 ①）。shared_talk_rooms へ別途シードする
-      notificationActivation: {
-        kind: 'activated',
-        talkRoomId: TALK_ROOM_ID,
-        activatedAt: REGISTERED,
-      },
+      // 共通トークルーム参加は世帯にひとつの事実（OQ-55 ①）。shared_talk_rooms へ別途シードする。
+      // 有効化記録は日時のみを持ち、トークルームID は複製しない（#334）
+      notificationActivation: { kind: 'activated', activatedAt: REGISTERED },
     },
   })
 }

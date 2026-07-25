@@ -4,6 +4,13 @@
 
 Closes #
 
+## 受け入れシナリオ(AT)
+
+<!-- `docs/acceptance/` の該当シナリオ(AT 番号)と、どの期待結果に対応するか。
+     シナリオを追加・更新した場合はその AT 番号と内容。
+     該当なしと判断した場合はその理由を1行。
+     判定の手順は `.claude/skills/issue-work/SKILL.md` 手順6 -->
+
 ## 検証
 
 - [ ] `pnpm build && pnpm typecheck && pnpm test && pnpm lint && pnpm format:check` が全て green
@@ -11,3 +18,4 @@ Closes #
 - [ ] web の変更あり → VRT(`pnpm --filter @warimaru/web test:e2e`)も green / 変更なし → 不要
 - [ ] DDD レビュー(/ddd-review)を実施し、must-fix を解消済み
 - [ ] web の変更あり → UI レビュー(/ui-review)を実施し、must-fix を解消済み / 変更なし → 不要
+- [ ] `docs/acceptance/` の受入シナリオと照合済み(結果を「受け入れシナリオ(AT)」節に記載) / ドキュメント・開発プロセスのみの差分 → 不要

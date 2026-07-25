@@ -78,7 +78,6 @@ export function operationStartedUser(
 ): AppUser {
   const base = phase2CompletedUser(input)
   if (base.kind !== 'phase2_completed') throw new Error('unreachable')
-  const talkRoomId = 'talk-room-1'
   return AppUserSchema.parse({
     kind: 'operation_started',
     common: base.common,
@@ -88,10 +87,10 @@ export function operationStartedUser(
     operationStartedAt: new Date('2026-06-20T00:00:00.000Z'),
     lineOperationSettings: {
       friendAdd: { kind: 'added', followWebhookReceivedAt: new Date('2026-06-15T00:00:00.000Z') },
-      // 共通トークルーム参加は世帯レベルの SharedTalkRoom が持つ（OQ-55 ①）
+      // 共通トークルーム参加は世帯レベルの SharedTalkRoom が持つ（OQ-55 ①）。
+      // 有効化記録は日時のみ（#334）
       notificationActivation: {
         kind: 'activated',
-        talkRoomId,
         activatedAt: new Date('2026-06-17T00:00:00.000Z'),
       },
     },

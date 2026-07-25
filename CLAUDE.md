@@ -24,7 +24,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
   DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
     pnpm --filter @warimaru/adapters-neon test:integration
   ```
-- マイグレーション生成: `pnpm --filter @warimaru/adapters-neon db:generate`(SQL の手書きは禁止)
+- マイグレーション生成: `pnpm --filter @warimaru/adapters-neon db:generate`(DDL の手書きは禁止。データ移行 DML の例外は「してはいけないこと」を参照)
 
 ## アーキテクチャ原則(要点)
 
@@ -54,6 +54,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 4. DDD 観点レビュー: `/ddd-review`(PR 前に実施)— レビュー指摘は must-fix だけでなく suggestion も原則その場で修正する。見送りは例外(大規模リファクタ相当・設計判断が必要な場合)のみで、必ず Issue 化して追跡する
    - UI レビュー: `/ui-review`(`packages/web` 配下に変更がある場合、`/ddd-review` に加えて実施)— `DESIGN.md` とプレゼンテーション層の観点(デザイントークン規律・絵文字リグレッション・テーマ両対応・アクセシビリティ)でレビュー。指摘の扱いは `/ddd-review` と同じ
    - 使用性レビュー: `/ux-review`(`packages/web` 配下のうち画面・フローの追加変更がある場合、`/ui-review` に加えて実施)— `docs/design/usability.md` の規範(状態の網羅・プライバシーの UI 表現・ユーザーエラー防止・入力負荷・マイクロコピー・インタラクションの一貫性・LIFF 固有・アクセシビリティ)でレビュー。デザインシステム適合の5観点は `/ui-review` の担当なので重複させない。指摘の扱いは `/ddd-review` と同じ
+   - テスト品質レビュー: `/test-review`(テストファイルを含む差分、または `packages/domain` の振る舞いに変更がある場合、`/ddd-review` に加えて実施)— テストが実際に振る舞いを検証しているか(実装をなぞっただけのテスト・境界値と異常系・否定形テスト・テストピラミッドの置き場所・公開 API に対して書かれているか)でレビュー。プライバシー3段階ルールの否定形テストは `/ddd-review` の担当なので重複させない。指摘の扱いは `/ddd-review` と同じ
    - セキュリティレビュー: `/security-review`(`packages/api` の routes / middleware / gmail-oauth / aws、または認証・外部連携(LINE / Gmail)に変更がある場合、`/ddd-review` に加えて実施)— 外周の攻撃面(Webhook 署名検証・ID トークン検証・認可の位置・シークレット/PII のログ流出・外部入力の検証)でレビュー。プライバシー3段階ルールは `/ddd-review` の担当なので重複させない。指摘の扱いは `/ddd-review` と同じ
    - データレビュー: `/data-review`(`packages/adapters-neon`(マイグレーション / スキーマ / Query)、またはドメインイベントとそのハンドラに変更がある場合、`/ddd-review` に加えて実施)— 既存データとデプロイに対する安全性(破壊的スキーマ変更・デプロイ順序・索引欠落と N+1・トランザクション境界・イベントハンドラの冪等性)でレビュー。マイグレーションの構文と適用可能性は CI が担保するので重複させない。指摘の扱いは `/ddd-review` と同じ
 5. 判断待ちの消化: `/decide` — 各スキルが `needs-decision` に集約した判断依頼を対話で消化し、決定を Issue と docs に反映する
@@ -74,6 +75,9 @@ PR の保守(CI 修復・コンフリクト解消・重複検知): `/pr-steward`
 
 - `packages/domain` に I/O・フレームワーク依存を追加しない(zod のみ)
 - ドメイン不変条件を adapters / api 層で再実装しない(superRefine に置く)
-- migration SQL を手書きしない(`db:generate` を使う)
+- migration のテーブル定義(DDL)を手書きしない(`db:generate` の生成物のみ。生成された DDL は改変しない)
+  - 例外: 既存データの移し替え(DML)は `db:generate` が生成できないため、**生成されたマイグレーションファイルの末尾に手書きで追記してよい**
+  - 手書き部を追記するときは `packages/adapters-neon/drizzle/0008_reflective_jazinda.sql` の形式を踏襲する(冒頭コメントで「どこまでが生成物・どこからが手書き」の境界と、手書きが必要な理由を明記する)
+  - 手書き禁止の狙いは「コード上の定義と DB 実体のずれ防止」であり、生成物の DDL を無改変のまま残せばこの狙いは損なわれない
 - main へ直接 push しない(必ず PR 経由)
 - `*.module.css` に色・余白・角丸・フォントサイズの直値を書かない(デザイントークン `var(--*)` を参照する。定義元は `packages/web/src/app/globals.css`)

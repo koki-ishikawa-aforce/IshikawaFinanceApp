@@ -53,4 +53,4 @@ description: 変更差分をデータ・マイグレーション互換性の観�
 
 ## マイグレーションの手書き部分について
 
-DDL は `db:generate` の生成物のみ(CLAUDE.md「してはいけないこと」)。既存データの移し替え(DML)は drizzle-kit が生成できないため手書きになるが、その場合は **生成された DDL を改変せず、ファイル末尾に追記**し、**どこまでが生成物・どこからが手書きかとその理由をコメントで明記**する。先例は `packages/adapters-neon/drizzle/0008_reflective_jazinda.sql`(規約の明文化は #335)。
+DDL は `db:generate` の生成物のみ(CLAUDE.md「してはいけないこと」)。既存データの移し替え(DML)は drizzle-kit が生成できないため手書きになるが、その場合は **生成された DDL を改変せず、ファイル末尾に追記**し、**どこまでが生成物・どこからが手書きかとその理由をコメントで明記**する。先例は `packages/adapters-neon/drizzle/0008_reflective_jazinda.sql`(この例外は CLAUDE.md「してはいけないこと」に明文化されている)。
