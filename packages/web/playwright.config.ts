@@ -30,6 +30,8 @@ export default defineConfig({
     port: PORT,
     reuseExistingServer: !process.env['CI'],
     timeout: 120_000,
-    env: { NEXT_PUBLIC_MOCK: '1' },
+    // NEXT_PUBLIC_BASE_PATH は PR プレビュー配信でのみ使う。端末の環境変数を
+    // 引き継ぐと baseURL とずれて VRT が全滅するため、ここで空に固定する。
+    env: { NEXT_PUBLIC_MOCK: '1', NEXT_PUBLIC_BASE_PATH: '' },
   },
 })
