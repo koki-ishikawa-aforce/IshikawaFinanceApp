@@ -24,7 +24,11 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
   if (data.items.length === 0) {
     return (
       <div className={styles.container}>
-        <div className={ui.empty}>この月の支出はありません</div>
+        <div className={ui.empty}>
+          {data.mode === 'household'
+            ? 'この月の世帯支出はありません'
+            : 'この月の個人支出はありません'}
+        </div>
       </div>
     )
   }

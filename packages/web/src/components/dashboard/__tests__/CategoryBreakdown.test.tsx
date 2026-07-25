@@ -75,16 +75,31 @@ describe('CategoryBreakdown', () => {
       <CategoryBreakdown data={emptyData} categoryColors={categoryColors} />,
     )
 
-    expect(screen.getByText('この月の支出はありません')).toBeInTheDocument()
+    expect(screen.getByText('この月の世帯支出はありません')).toBeInTheDocument()
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
     expect(container.querySelector('svg')).toBeNull()
-    expect(container.querySelector('ul')).toBeNull()
+  })
+
+  it('個人モードの空状態は個人支出の文言になる', () => {
+    const personalEmptyData = CategoryBreakdownViewSchema.parse({
+      mode: 'personal',
+      yearMonth: '2026-06',
+      totalAmount: 0,
+      items: [],
+    })
+
+    render(<CategoryBreakdown data={personalEmptyData} categoryColors={categoryColors} />)
+
+    expect(screen.getByText('この月の個人支出はありません')).toBeInTheDocument()
   })
 
   it('支出がある月はドーナツと凡例を描画する（空状態にならない）', () => {
     const { container } = render(<CategoryBreakdown data={data} categoryColors={categoryColors} />)
 
-    expect(screen.queryByText('この月の支出はありません')).not.toBeInTheDocument()
+    expect(screen.queryByText(/支出はありません/)).not.toBeInTheDocument()
+    expect(screen.getByRole('list')).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
     expect(container.querySelector('svg')).not.toBeNull()
-    expect(container.querySelectorAll('li')).toHaveLength(2)
   })
 })
