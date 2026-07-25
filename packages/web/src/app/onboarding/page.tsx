@@ -81,7 +81,9 @@ type StepId =
 const STEPS: { id: StepId; label: string }[] = [
   { id: 'nickname', label: 'ニックネーム' },
   { id: 'line_friend', label: '友だち追加' },
-  { id: 'talk_room', label: 'トークルーム' },
+  // 世帯にひとつの事実（OQ-55 ①）なので、自分の操作を指していると読めない「共通」を冠する。
+  // 表記はユビキタス言語（docs/domain/08f-ul-オンボーディング認証.md §1「共通トークルーム」）に合わせる
+  { id: 'talk_room', label: '共通トークルーム' },
   { id: 'notifications', label: '通知設定' },
   { id: 'phase2', label: 'Phase 2' },
   { id: 'spouse_wait', label: '完了確認' },
@@ -365,14 +367,14 @@ export default function OnboardingPage() {
           <div className={styles.stepAvatar}>
             <LuUsers aria-hidden="true" size="1.5em" />
           </div>
-          <span className={ui.sectionTitle}>トークルームへ参加</span>
+          <span className={ui.sectionTitle}>共通トークルームへ参加</span>
           <p className={styles.note}>
-            ふたりの家計通知が届く共有トークルームに参加してください。招待リンクは配偶者または公式アカウントのメッセージから開けます。
+            ふたりの家計通知が届く共通トークルームに参加してください。ふたりで共有する設定なので、どちらかが参加を記録すればこの手順は完了します。招待リンクは配偶者または公式アカウントのメッセージから開けます。
           </p>
           {talkRoomId === null && (
             <p className={styles.note}>
               <LuTriangleAlert aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
-              参加を記録するトークルームを特定できません。共有トークルーム内からこの画面を開き直してください。
+              参加を記録するトークルームを特定できません。共通トークルーム内からこの画面を開き直してください。
             </p>
           )}
           <button
