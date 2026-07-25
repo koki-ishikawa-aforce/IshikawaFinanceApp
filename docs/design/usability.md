@@ -125,7 +125,7 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 
 ### 規範
 
-- **4-1 金額入力には `inputMode="numeric"` を指定する**。日付は `type="date"`、数値以外の数字列(口座番号など)も `inputMode` を明示する。モバイルキーボードの切り替えを利用者にさせない
+- **4-1 金額入力は `type="text"` + `inputMode="numeric"` にする**。`type="number"` は使わない(小数・`e`・`+/-` を受け付け §4-2 に反するほか、スクロールで値が変わるブラウザがある)。日付は `type="date"`、数値以外の数字列(口座番号など)も `inputMode` を明示する。モバイルキーボードの切り替えを利用者にさせない
 - **4-2** 金額に小数を使わない(円単位)。小数キーが出る指定をしない
 - **4-3 タップターゲットは最小 44×44 px を確保する**。`padding` だけに頼らず、`min-height` で保証する。アイコンのみのボタンは特に確認する
 - **4-4** 並んだタップターゲットの間隔を最低 `--space-2` 確保する。誤タップを防ぐ
@@ -136,10 +136,10 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 ### 違反例
 
 ```tsx
-// 違反(4-1): モバイルで数値キーボードが保証されない・小数キーが出る
+// 違反(4-1): 数値キーボードが保証されず、小数・e も入力できてしまう
 <input type="number" value={amount} onChange={...} />
-// 適合
-<input type="number" inputMode="numeric" value={amount} onChange={...} />
+// 適合: type="text" + inputMode で数値キーボードを出し、値の検証はバリデーションで行う
+<input type="text" inputMode="numeric" value={amount} onChange={...} />
 ```
 
 ```css
@@ -274,7 +274,7 @@ return <span>{formatMoney(query.data.total)}</span>
 // 適合
 <div className={ui.field}>
   <label className={ui.fieldLabel} htmlFor="amount">金額（円）</label>
-  <input className={ui.input} id="amount" type="number" inputMode="numeric" />
+  <input className={ui.input} id="amount" type="text" inputMode="numeric" />
 </div>
 ```
 
@@ -299,7 +299,7 @@ return <span>{formatMoney(query.data.total)}</span>
 | 4 | 8-1 | フォーカスの可視スタイルが `.input:focus` にしか無い。`.button` / `.buttonGhost` / `.buttonDanger` / `.select` は `:hover` のみ | `packages/web/src/components/ui/common.module.css` |
 | 5 | 4-3 | タップターゲットの最小サイズ規定が無い。`.button` は縦パディング 8px + フォント 12px で実効高 約30px | `packages/web/src/components/ui/common.module.css`。`--tap-target-min` トークンも未定義 |
 | 6 | 6-1 / 3-2 | 破壊的操作の確認が `window.confirm`(取引削除)で、`Modal` 採用パターンと不統一。文言に影響(学習ルールの扱い)が書かれていない | `packages/web/src/app/transactions/page.tsx:378` |
-| 7 | 4-1 | 金額入力に `inputMode` 指定が無い(`type="number"` のみ) | `transactions/page.tsx:207,335`、`expense-settlement/page.tsx:97`、`settings/page.tsx:207,263,916` |
+| 7 | 4-1 | 金額入力が `type="number"` のみで、規範の `type="text"` + `inputMode="numeric"` になっていない | `transactions/page.tsx:207,335`、`expense-settlement/page.tsx:97`、`settings/page.tsx:207,263,916` |
 | 8 | 1-3 | データ取得失敗時の再試行手段が画面ごとに不統一。onboarding は「再読み込み」ボタンあり、transactions / expense-settlement は文言のみ | `transactions/page.tsx:494`、`expense-settlement/page.tsx:263,323` ほか |
 | 9 | 1-2 | 空状態が次の行動を示していないものがある(`この条件の取引はありません`、`当月の按分子取引はありません` 等)。示しているもの(`突合待ちの入金がありません。先に…`)と混在 | `transactions/page.tsx:503`、`expense-settlement/page.tsx:326,346` ほか。共通部品化は #341 で判断待ち |
 | 10 | 1-4 | 部分失敗の扱いが定義されていない。複数クエリを並べる画面で一部だけ失敗した場合の表示方針が実装ごとに異なる | `app/page.tsx`(ダッシュボード)、`reports/page.tsx`、`balances/page.tsx` |
