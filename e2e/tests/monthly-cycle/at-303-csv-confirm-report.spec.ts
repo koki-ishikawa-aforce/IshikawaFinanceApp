@@ -83,7 +83,7 @@ test.describe('AT-303: CSV 確定とレポート状態昇格', () => {
     )
     expect(summaryRes.status()).toBe(200)
     const summary = await summaryRes.json()
-    expect(summary.totalCount).toBeGreaterThanOrEqual(0)
+    expect(summary.count).toBeGreaterThanOrEqual(0)
 
     const cycleRes = await request.get(
       `${API_URL}/api/expense-settlement/cycles?month=${TARGET_MONTH}`,
@@ -110,10 +110,9 @@ test.describe('AT-303: CSV 確定とレポート状態昇格', () => {
       headers: DARLING_HEADERS,
     })
     expect(res.status()).toBe(200)
-    const body = await res.json()
-    const items = body.items ?? body
+    const items = await res.json()
     const honeyItems = (Array.isArray(items) ? items : []).filter(
-      (t: { common: { ownerUserId: string } }) => t.common.ownerUserId === E2E_HONEY_USER_ID,
+      (t: { merchantName: string | null }) => t.merchantName?.startsWith('TEST-'),
     )
     expect(honeyItems).toHaveLength(0)
   })

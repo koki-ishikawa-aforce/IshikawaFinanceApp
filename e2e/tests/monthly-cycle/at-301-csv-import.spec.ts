@@ -80,10 +80,9 @@ test.describe('AT-301: カード CSV 取込（検証・候補確認・重複除�
     })
     expect(res.status()).toBe(200)
 
-    const body = await res.json()
-    const items = body.items ?? body
+    const items = await res.json()
     const testItems = (Array.isArray(items) ? items : []).filter(
-      (t: { common: { merchantName: string } }) => t.common.merchantName.startsWith('TEST-'),
+      (t: { merchantName: string | null }) => t.merchantName?.startsWith('TEST-'),
     )
     expect(testItems.length).toBeGreaterThanOrEqual(2)
   })

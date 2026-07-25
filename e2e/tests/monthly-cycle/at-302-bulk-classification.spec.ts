@@ -49,7 +49,7 @@ test.describe('AT-302: 取込サマリと一括分類セッション', () => {
     expect(res.status()).toBe(200)
 
     const body = await res.json()
-    expect(body.totalCount).toBeGreaterThanOrEqual(2)
+    expect(body.count).toBeGreaterThanOrEqual(2)
   })
 
   test('AT-302 準備: カテゴリ作成と未分類取引 ID 取得', async ({ request }) => {
@@ -65,14 +65,13 @@ test.describe('AT-302: 取込サマリと一括分類セッション', () => {
       headers: HEADERS,
     })
     expect(txRes.status()).toBe(200)
-    const txBody = await txRes.json()
-    const items = txBody.items ?? txBody
+    const items = await txRes.json()
     transactionIds = (Array.isArray(items) ? items : [])
       .filter(
-        (t: { kind: string; common: { merchantName: string } }) =>
-          t.kind === 'unclassified' && t.common.merchantName.startsWith('TEST-'),
+        (t: { isUnclassified: boolean; merchantName: string | null }) =>
+          t.isUnclassified && t.merchantName?.startsWith('TEST-'),
       )
-      .map((t: { common: { transactionId: string } }) => t.common.transactionId)
+      .map((t: { transactionId: string }) => t.transactionId)
     expect(transactionIds.length).toBeGreaterThanOrEqual(2)
   })
 
@@ -143,14 +142,13 @@ test.describe('AT-302: 取込サマリと一括分類セッション', () => {
     const txRes = await request.get(`${API_URL}/api/transactions?month=${TARGET_MONTH}`, {
       headers: HEADERS,
     })
-    const txBody = await txRes.json()
-    const items = txBody.items ?? txBody
+    const items = await txRes.json()
     const abortTxIds = (Array.isArray(items) ? items : [])
       .filter(
-        (t: { kind: string; common: { merchantName: string } }) =>
-          t.kind === 'unclassified' && t.common.merchantName === 'TEST-中断テスト店',
+        (t: { isUnclassified: boolean; merchantName: string | null }) =>
+          t.isUnclassified && t.merchantName === 'TEST-中断テスト店',
       )
-      .map((t: { common: { transactionId: string } }) => t.common.transactionId)
+      .map((t: { transactionId: string }) => t.transactionId)
     expect(abortTxIds.length).toBeGreaterThanOrEqual(1)
 
     const sessionRes = await request.post(`${API_URL}/api/classification/bulk-sessions`, {
