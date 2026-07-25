@@ -3,7 +3,6 @@ import { LineOperationSettingsSchema } from '../../../src/onboarding-auth/value-
 
 const activated = {
   kind: 'activated',
-  talkRoomId: 'room_001' as never,
   activatedAt: new Date(),
 }
 
@@ -46,5 +45,14 @@ describe('LineOperationSettings 値オブジェクト', () => {
       notificationActivation: activated,
     })
     expect(parsed).not.toHaveProperty('talkRoomJoin')
+  })
+
+  it('移行前に保存された有効化記録の talkRoomId は読取り時に落ちる（#334）', () => {
+    const parsed = LineOperationSettingsSchema.parse({
+      friendAdd: { kind: 'added', followWebhookReceivedAt: new Date() },
+      notificationActivation: { ...activated, talkRoomId: 'room_001' },
+    })
+    expect(parsed.notificationActivation).not.toHaveProperty('talkRoomId')
+    expect(parsed.notificationActivation.kind).toBe('activated')
   })
 })
