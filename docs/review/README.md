@@ -33,7 +33,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | **信頼性**(外部依存の失敗・冪等性・可観測性) | レビュー: 信頼性・可観測性レビュー(#331) | ❌ 未整備 — Gmail / LINE / Neon の失敗時挙動とイベントハンドラの再実行安全性を誰も見ていない(#331) |
 | **セキュリティ**(外周の攻撃面) | CI: `pnpm audit`(依存脆弱性)→ [dependency-audit.md](./dependency-audit.md)<br>レビュー: `/security-review`、`/ddd-review`(プライバシー3段階ルール = ドメイン内の可視性) | ✅ 担保済み — 依存脆弱性は CI、Webhook 署名検証・IDトークン検証・認可の位置・PII ログ流出は `/security-review` が担保 |
 | **データ互換性**(スキーマ変更とデプロイ) | レビュー: データ・マイグレーション互換性レビュー(#328) | ❌ 未整備 — `db:generate` は生成物の構文的正しさしか保証せず、既存データ・デプロイ順序の安全性は未判定(#328) |
-| **保守性**(設計・テスト品質) | CI: `pnpm lint` / `pnpm typecheck` / `pnpm format:check`<br>レビュー: `/ddd-review`(依存の向き・命名・ユビキタス言語・barrel)、テスト品質レビュー(#329) | ⚠️ 部分的 — 設計規約は `/ddd-review` が担保。テストが実際に振る舞いを検証しているかは未整備(#329) |
+| **保守性**(設計・テスト品質) | CI: `pnpm lint` / `pnpm typecheck` / `pnpm format:check`<br>レビュー: `/ddd-review`(依存の向き・命名・ユビキタス言語・barrel)、`/test-review`(テストが振る舞いを検証しているか) | ✅ 担保済み — 設計規約は `/ddd-review`、テストが実装をなぞっただけになっていないか・境界値と異常系・否定形テスト・ピラミッドの置き場所は `/test-review` が担保 |
 | **使用性**(使いやすさ) | 規範: [`docs/design/usability.md`](../design/usability.md)<br>レビュー: `/ux-review`(#330)、`/ui-review`(デザインシステム適合) | ⚠️ 部分的 — 規範は言語化済み。レビュー工程への接続が未整備(#330) |
 
 判定の凡例: ✅ 担保済み / ⚠️ 部分的 / ❌ 未整備
@@ -53,7 +53,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | `packages/api/src/routes/**`<br>`packages/api/src/middleware/**`<br>`packages/api/src/gmail-oauth/**`<br>`packages/api/src/aws/**`(シークレット・トークンの取得/保管)<br>認証・外部連携(LINE / Gmail)の変更 | `/security-review` | ✅ 稼働中 |
 | `packages/adapters-neon/**`(特に `drizzle/`(マイグレーション)・`src/**/queries/`) | データ・マイグレーション互換性レビュー | ❌ #328 |
 | `packages/domain/src/*/events/**`<br>`packages/api/src/event-handlers/**`<br>`packages/api/src/notification/**` | 信頼性・可観測性レビュー | ❌ #331 |
-| テストファイルを含む差分、またはドメインの振る舞い変更 | テスト品質レビュー | ❌ #329 |
+| テストファイル(`**/tests/**`・`**/__tests__/**`・`*.test.ts(x)`・`*.spec.ts`)を含む差分<br>`packages/domain/src/**` の振る舞い変更(テストを含まない場合も対象) | `/test-review` | ✅ 稼働中 |
 
 複数該当する場合はすべて起動する。`/ddd-review` と `/verify` は常時なので、上表の該当分は「追加で回すもの」と読む。
 
