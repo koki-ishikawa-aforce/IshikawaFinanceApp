@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import { createDbConnection } from '../src/client'
+import { isProductionNodeEnv } from '../src/nodeEnv'
 import * as schema from '../src/schema'
 import { serializeForPayload } from '../src/serialize'
 
@@ -9,14 +10,10 @@ if (!DATABASE_URL) {
   process.exit(1)
 }
 
-// 本番判定は packages/api/src/env.ts の isProduction() と同じ正規化を使う
-// （adapters-neon から api を import できないため、スクリプト側で同じ判定を書く）
-const IS_PRODUCTION = process.env['NODE_ENV']?.trim().toLowerCase() === 'production'
-
 // 接続先が Neon なら neon-http、ローカルの素の PostgreSQL なら node-postgres (#323)
 const connection = createDbConnection({
   databaseUrl: DATABASE_URL,
-  isProduction: IS_PRODUCTION,
+  isProduction: isProductionNodeEnv(process.env['NODE_ENV']),
   driverOverride: process.env['DATABASE_DRIVER'],
 })
 const db = connection.db
@@ -661,4 +658,7 @@ seed()
     console.error('Seed failed:', err)
     process.exitCode = 1
   })
-  .finally(() => connection.close())
+  .finally(() =>
+    // close の失敗で seed 本体の失敗理由が unhandled rejection に埋もれないようにする
+    connection.close().catch(e => console.error('Failed to close DB connection:', e)),
+  )

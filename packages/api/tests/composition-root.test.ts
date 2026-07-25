@@ -37,6 +37,31 @@ describe('createDeps モックフォールバックの環境ガード (#47)', ()
   })
 })
 
+describe('DB ドライバ選択の配線 (#323)', () => {
+  const NEON_URL = 'postgresql://user:pass@ep-cool-block-123.ap-northeast-1.aws.neon.tech/warimaru'
+
+  it('本番で DATABASE_DRIVER=node-postgres を指定したら起動エラーにする（ローカル向けドライバへ倒さない）', () => {
+    expect(() =>
+      createDeps({
+        NODE_ENV: 'production',
+        DATABASE_URL: NEON_URL,
+        DATABASE_DRIVER: 'node-postgres',
+        CORS_ALLOWED_ORIGINS: 'https://example.cloudfront.net',
+      }),
+    ).toThrowError(/not allowed in production/)
+  })
+
+  it('未知の DATABASE_DRIVER は起動エラーにする（既定へ黙って倒さない）', () => {
+    expect(() =>
+      createDeps({
+        NODE_ENV: 'development',
+        DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/warimaru_dev',
+        DATABASE_DRIVER: 'sqlite',
+      }),
+    ).toThrowError(/DATABASE_DRIVER must be one of/)
+  })
+})
+
 describe('CORS 許可オリジンの解決 (#309)', () => {
   afterEach(() => {
     vi.restoreAllMocks()

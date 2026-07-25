@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveDbDriver } from '../../src/client'
+import { createDbConnection, resolveDbDriver } from '../../src/client'
 
 const NEON_URL = 'postgresql://user:pass@ep-cool-block-123.ap-northeast-1.aws.neon.tech/warimaru'
 const LOCAL_URL = 'postgres://postgres:postgres@localhost:5432/warimaru_test'
@@ -47,6 +47,16 @@ describe('resolveDbDriver（接続先に応じたドライバ判定、#323）', 
       ).toBe('neon-http')
     })
 
+    it('DATABASE_DRIVER の大文字小文字・前後の空白は吸収する', () => {
+      expect(
+        resolveDbDriver({
+          databaseUrl: LOCAL_URL,
+          isProduction: false,
+          driverOverride: ' Neon-HTTP ',
+        }),
+      ).toBe('neon-http')
+    })
+
     it('空文字・空白のみの DATABASE_DRIVER は未指定として扱う', () => {
       expect(
         resolveDbDriver({ databaseUrl: LOCAL_URL, isProduction: false, driverOverride: '  ' }),
@@ -84,5 +94,16 @@ describe('resolveDbDriver（接続先に応じたドライバ判定、#323）', 
         resolveDbDriver({ databaseUrl: NEON_URL, isProduction: true, driverOverride: 'neon-http' }),
       ).toBe('neon-http')
     })
+  })
+})
+
+describe('createDbConnection の close 契約（#323）', () => {
+  // seed スクリプトはこの契約に乗ってプロセスを終える。
+  // neon-http は接続を保持しないため close() は何もせず resolve する（実接続なしで確認できる）。
+  it('neon-http は db を返し、close() が接続なしで resolve する', async () => {
+    const connection = createDbConnection({ databaseUrl: NEON_URL, isProduction: true })
+
+    expect(connection.db).toBeDefined()
+    await expect(connection.close()).resolves.toBeUndefined()
   })
 })

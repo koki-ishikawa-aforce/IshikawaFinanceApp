@@ -54,7 +54,8 @@ export interface DbDriverConfig {
 
 /** DATABASE_DRIVER の検証。未設定は undefined、未知の値は起動エラー（黙って既定へ倒さない） */
 function parseDriverOverride(value: string | undefined): DbDriverKind | undefined {
-  const normalized = value?.trim()
+  // ホスト判定・NODE_ENV 判定と同じく、前後の空白と大文字小文字は吸収する
+  const normalized = value?.trim().toLowerCase()
   if (normalized === undefined || normalized === '') return undefined
   if ((DB_DRIVER_KINDS as readonly string[]).includes(normalized)) {
     return normalized as DbDriverKind
@@ -116,6 +117,10 @@ function createNeonHttpConnection(databaseUrl: string): DbConnection {
 
 function createNodePgConnection(databaseUrl: string): DbConnection {
   const pool = new Pool({ connectionString: databaseUrl })
+  // アイドル接続のエラー（DB 再起動・docker compose down 等）は 'error' で通知される。
+  // リスナーが無いと Node が unhandled 'error' としてプロセスごと落とすため、
+  // 常駐するローカル開発の API が DB の再起動で不可解に停止する。ログに残して致命化させない。
+  pool.on('error', err => console.error('pg pool error (idle client):', err))
   return { db: drizzleNodePg(pool, { schema }), close: () => pool.end() }
 }
 

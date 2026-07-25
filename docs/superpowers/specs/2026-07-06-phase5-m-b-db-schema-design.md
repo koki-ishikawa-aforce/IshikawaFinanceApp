@@ -360,7 +360,7 @@ packages/adapters-neon/
 ├── drizzle/                  # drizzle-kit generate の SQL マイグレーション（コミット対象）
 ├── src/
 │   ├── schema/               # Drizzle テーブル定義（§4–§5 の DDL に対応）
-│   ├── client.ts             # @neondatabase/serverless の HTTP / Pool 接続ファクトリ
+│   ├── client.ts             # DB 接続ファクトリ（neon-http / node-postgres の切替、§2.5）
 │   ├── serialize.ts          # 集約 ⇔ payload jsonb の変換（Date revive を含む、§3）
 │   ├── household-analysis/   # 2 Repository（Transaction / MonthlyReport）+ 3 Query 実装
 │   └── balance-asset-tracking/  # 2 Repository（Account / MitsuiSumitomoUnpaid）+ 2 Query 実装
