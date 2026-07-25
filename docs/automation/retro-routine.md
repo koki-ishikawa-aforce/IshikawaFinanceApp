@@ -51,7 +51,7 @@ Routine(週次 fire・fresh session): /retro を実行
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する(Routine はクラウド側で動くため、手元のセッションや PC の状態に依存しない)。
 
 - **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。バックログ Routine と同じ環境を使える。ネットワークポリシーは GitHub 操作が通る設定にする(`gh` CLI が無い環境でも GitHub MCP ツールで動くよう、スキル側にフォールバックを定めている)
-- **Trigger**: Schedule、週次(例: 毎週月曜の朝)。バックログ Routine(毎時)より十分に長い間隔にする — 1 週間分の運用データが溜まってから振り返るため
+- **Trigger**: Schedule、週次(例: 毎週月曜の朝)。現在は UTC で `0 0 * * 1`(= 月曜 09:00 JST)。バックログ Routine(毎時)より十分に長い間隔にする — 1 週間分の運用データが溜まってから振り返るため
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):
 
@@ -62,6 +62,7 @@ Routine(週次 fire・fresh session): /retro を実行
   - 手順は .claude/skills/retro/SKILL.md に従ってください
   - 改善案は自動で適用せず、needs-decision ラベル付きの Issue として起票してください(1改善 = 1 Issue、judgment-issue テンプレートと執筆ルールに従う)
   - 再発パターンが無い場合は、何も起票せず収集結果だけを報告して終了してください
+  - 最終的な報告は日本語を使ってください。
   ```
 
   プロンプトを変更した場合は、claude.ai 側の Routine に貼り直すまで反映されない(Routine のプロンプトはリポジトリからは変更できない)。
