@@ -137,7 +137,18 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
   pnpm --filter @warimaru/e2e test:e2e
 ```
 
-## 9. 一次資料
+## 9. 実装時の照合(シナリオを最新に保つ運用)
+
+本チェックリストはリリース直前にだけ使うものではなく、**実装のたびに最新に保つ**。`/issue-work` は PR を作る前に、その変更が本ファイル群のどのシナリオに当たるかを照合する工程を持つ(`.claude/skills/issue-work/SKILL.md` 手順6)。
+
+- 該当する AT 番号は PR 本文の「受け入れシナリオ(AT)」節に記録される。受入テストの実施時は、対象コミットまでの PR を辿れば **どのシナリオを再実施すべきか** が分かる
+- ユーザーに見える振る舞いを足したのに該当シナリオが無い場合は、同じ PR でシナリオを追加する。§4 の ID 規約で領域を決め、§7 のマスタチェックリストにも行を足す。未実装機能に依存してまだ実施できないものは [90-pending.md](./90-pending.md) の AT-9xx に置く
+- 既存シナリオの手順・期待結果が成立しなくなる変更では、実装とシナリオのどちらが正かを決める。実装が正しければ同じ PR でシナリオ側を更新し(**実施記録の表は消さない**)、シナリオが正しければ実装を直す
+- どちらが正か決められない場合は `needs-decision` ラベル付きの Issue に切り出し、`/decide` で判断する
+
+この工程の担保状況は [docs/review/README.md](../review/README.md) §2 の「機能適合性」行に位置づけている。
+
+## 10. 一次資料
 
 - 月次サイクル: [docs/domain/04-scenario-a-monthly-cycle.md](../domain/04-scenario-a-monthly-cycle.md)
 - オンボーディング: [docs/domain/05-scenario-b-onboarding.md](../domain/05-scenario-b-onboarding.md)
