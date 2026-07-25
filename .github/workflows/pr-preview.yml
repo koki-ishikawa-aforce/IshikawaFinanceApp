@@ -80,8 +80,10 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          base_sha=''
           if git -c http.extraheader="${AUTH_HEADER}" fetch --depth 1 origin "${STORAGE_BRANCH}"; then
             git checkout FETCH_HEAD -- .
+            base_sha="$(git rev-parse FETCH_HEAD)"
           else
             echo "置き場所ブランチ ${STORAGE_BRANCH} は未作成のため、新規に作成する"
           fi
@@ -118,7 +120,15 @@ jobs:
 
           git add -A
           git commit -q --allow-empty -m "chore(preview): PR #${PR_NUMBER} (${ACTION})"
-          git -c http.extraheader="${AUTH_HEADER}" push -q --force origin "publish:${STORAGE_BRANCH}"
+
+          # 取得時点から置き場所ブランチが動いていたら押し負ける(--force-with-lease)。
+          # concurrency で直列化してはいるが、取りこぼしを黙って上書きしないための保険。
+          if [ -n "${base_sha}" ]; then
+            git -c http.extraheader="${AUTH_HEADER}" push -q \
+              --force-with-lease="${STORAGE_BRANCH}:${base_sha}" origin "publish:${STORAGE_BRANCH}"
+          else
+            git -c http.extraheader="${AUTH_HEADER}" push -q origin "publish:${STORAGE_BRANCH}"
+          fi
 
           # 公開物に .git を含めない(リモート設定や履歴をサイトへ出さない)。
           rm -rf .git
