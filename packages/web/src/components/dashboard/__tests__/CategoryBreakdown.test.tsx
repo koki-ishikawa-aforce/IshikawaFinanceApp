@@ -126,13 +126,20 @@ describe('CategoryBreakdown', () => {
     expect(container.querySelector('svg')).not.toBeNull()
   })
 
-  it('支出はあるが合計0円の月はドーナツを描画しない', () => {
+  it('支出はあるが合計0円の月はドーナツと中央の合計表示を出さない', () => {
     const { container } = render(
       <CategoryBreakdown data={zeroTotalData} categoryColors={categoryColors} />,
     )
 
     expect(container.querySelector('svg')).toBeNull()
-    expect(screen.getByText(/内訳グラフは表示していません/)).toBeInTheDocument()
+    // ドーナツ中央の「合計 / ¥0」も一緒に消える（合計は KPI 側に出る）
+    expect(screen.queryByText('合計')).not.toBeInTheDocument()
+    expect(screen.queryByText('¥0')).not.toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'この月は返金などで世帯支出の合計が0円になったため、内訳グラフは表示していません',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('支出はあるが合計0円の月もカテゴリ一覧（名前・金額・遷移先）は残る', () => {
@@ -180,7 +187,55 @@ describe('CategoryBreakdown', () => {
     render(<CategoryBreakdown data={personalZeroTotalData} categoryColors={categoryColors} />)
 
     expect(
-      screen.getByText('この月は個人支出の合計が0円のため、内訳グラフは表示していません'),
+      screen.getByText(
+        'この月は返金などで個人支出の合計が0円になったため、内訳グラフは表示していません',
+      ),
     ).toBeInTheDocument()
+  })
+
+  // 合計が負になる月（返金が支出を上回る）は #340 の決定「合計0円」の範囲外。
+  // 判定条件を誤って <= 0 に広げたことに気づけるよう、現行挙動を固定する
+  it('合計が負の月は現状ドーナツと割合を表示する（0円判定を負値へ広げていない）', () => {
+    const negativeTotalData = CategoryBreakdownViewSchema.parse({
+      mode: 'household',
+      yearMonth: '2026-04',
+      totalAmount: -3000,
+      items: [
+        {
+          categoryId: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+          categoryName: '食費',
+          total: 2000,
+          count: 1,
+          percentage: 0,
+        },
+        {
+          categoryId: '01BX5ZZKBKACTAV9WEVGEMMVRZ',
+          categoryName: '娯楽',
+          total: -5000,
+          count: 1,
+          percentage: 100,
+        },
+      ],
+    })
+
+    const { container } = render(
+      <CategoryBreakdown data={negativeTotalData} categoryColors={categoryColors} />,
+    )
+
+    expect(container.querySelector('svg')).not.toBeNull()
+    expect(screen.getByText('100.0%')).toBeInTheDocument()
+    expect(screen.queryByText(/内訳グラフは表示していません/)).not.toBeInTheDocument()
+  })
+
+  it('グラフと案内文が入れ替わる領域は支援技術に通知される', () => {
+    const { rerender } = render(<CategoryBreakdown data={data} categoryColors={categoryColors} />)
+
+    expect(screen.getByRole('status')).toBeInTheDocument()
+
+    rerender(<CategoryBreakdown data={zeroTotalData} categoryColors={categoryColors} />)
+    expect(screen.getByRole('status')).toHaveTextContent('内訳グラフは表示していません')
+
+    rerender(<CategoryBreakdown data={emptyData} categoryColors={categoryColors} />)
+    expect(screen.getByRole('status')).toHaveTextContent('この月の世帯支出はありません')
   })
 })
