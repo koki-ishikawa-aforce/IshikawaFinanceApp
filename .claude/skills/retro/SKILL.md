@@ -87,6 +87,7 @@ description: 無人運用(Routine による /issue-work・/pr-steward)の失敗�
 
 改善案があれば、`needs-decision` ラベル付き Issue として起票する。**このスキル自身はファイルを変更しない**(改善案は Issue の本文に書き、実装は承認後の別 fire に委ねる)。
 
+- タイトルは先頭に種別目印 `[改善案]` を付ける(例: `[改善案] <改善対象の要約>`)。目印はメール件名での種別識別と @メンション文面の出し分けに使われる(`.claude/skills/issue-work/templates/judgment-issue.md`「タイトルの種別目印」を参照)
 - 本文は `.claude/skills/issue-work/templates/judgment-issue.md`(見送り追認の用途)のフォーマットで書き、SKILL.md 側の「人間向け報告の執筆ルール」を必ず適用する
 - 冒頭の質問は「この改善案を採用してよいか?」を 1 文で。選択肢は「A: 採用して実装(`ready-to-implement` を付ける)/ B: 見送り(この Issue を閉じる)」を基本とする
 - 「経緯」に**根拠**(どの PR/Issue で・何回起きたか)を必ず引用する

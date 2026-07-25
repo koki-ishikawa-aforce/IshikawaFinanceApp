@@ -30,7 +30,7 @@ Routine(定期 fire): /pr-steward を実行
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する。
 
 - **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。バックログ Routine と同じ環境を使える
-- **Trigger**: Schedule(バックログ Routine と異なる間隔を推奨。例: 2〜4時間ごと、または手動 fire)
+- **Trigger**: Schedule(バックログ Routine と異なる間隔を推奨。例: 2〜4時間ごと、または手動 fire)。現在は UTC で `10 */3 * * *`(3時間ごと)
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):
 
@@ -41,6 +41,7 @@ Routine(定期 fire): /pr-steward を実行
   - 手順は .claude/skills/pr-steward/SKILL.md に従ってください
   - マージは絶対に行わないでください(マージ判断は人間が行います)
   - 重複 PR を検知した場合は自動クローズせず needs-decision で人間に委ねてください
+  - 最終的な報告は日本語を使ってください。
   ```
 
 ## バックログ Routine との関係

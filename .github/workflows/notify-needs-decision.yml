@@ -29,11 +29,25 @@ jobs:
             const { owner, repo } = context.repo;
             const issue_number = context.payload.issue.number;
             await github.rest.issues.addAssignees({ owner, repo, issue_number, assignees: [owner] });
+            // タイトル先頭の種別目印から「あなたがすること」の1行を出し分ける。
+            // 目印はテンプレート .claude/skills/issue-work/templates/judgment-issue.md で規定。
+            // 目印が無い場合(元 Issue へのコメント経由の needs-decision など)は共通文にフォールバックする。
+            const title = (context.payload.issue.title ?? '').trimStart();
+            const ACTIONS = [
+              { marker: '[マージ判断]', line: '本文を確認し、PR をマージしてよいか判断してください(よければマージ、不要ならクローズ)。' },
+              { marker: '[判断待ち]', line: '本文の「判断してほしいこと」を確認し、選択肢から方針を選んで回答してください。' },
+              { marker: '[乖離報告]', line: '本文の乖離を確認し、docs とコードのどちらを直すか方針を決めてください。' },
+              { marker: '[改善案]', line: '本文の改善案を確認し、採用する(実装に回す)か見送るかを決めてください。' },
+            ];
+            const matched = ACTIONS.find((a) => title.startsWith(a.marker));
+            const action = matched
+              ? matched.line
+              : 'あなたの判断が必要です。本文の「判断してほしいこと」を確認してください。';
             await github.rest.issues.createComment({
               owner,
               repo,
               issue_number,
-              body: `@${owner} あなたの判断が必要です。本文の「判断してほしいこと」を確認してください。`,
+              body: `@${owner} ${action}`,
             });
 
   # PR が作られたらオーナーを assign する。Draft/通常を問わない(自分のアカウントで
@@ -57,6 +71,8 @@ jobs:
   # 着手中ロック(status:in-progress)を解除する。これをしないとロックが残り、
   # ready-to-implement な Issue が全部ロック済みになって Routine が毎 fire スキップする
   # (docs/automation/backlog-routine.md「ゴミロックの自動回収」節)。
+  # コメントは投稿しない(assignee への Participating 通知を防ぐ。ラベル遷移は
+  # Issue タイムラインに残るため追跡可能。#290)。
   unlock-in-progress-on-pr-close:
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == false
     runs-on: ubuntu-latest
@@ -67,7 +83,6 @@ jobs:
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
             const LOCK = 'status:in-progress';
-            // PR 本文の close キーワード(close/fix/resolve #N)から紐づく Issue 番号を抽出
             const re = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
             const numbers = new Set();
             let m;
@@ -77,25 +92,22 @@ jobs:
               try {
                 issue = (await github.rest.issues.get({ owner, repo, issue_number })).data;
               } catch {
-                continue; // 存在しない番号など
+                continue;
               }
-              if (issue.state !== 'open') continue; // クローズ済みならロックは無害
+              if (issue.state !== 'open') continue;
               const hasLock = (issue.labels ?? []).some(
                 (l) => (typeof l === 'string' ? l : l.name) === LOCK,
               );
               if (!hasLock) continue;
               await github.rest.issues
                 .removeLabel({ owner, repo, issue_number, name: LOCK })
-                .catch(() => {}); // 競合で既に外れていても無視
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body: `PR #${pr.number} がマージされずにクローズされたため、着手中ロック(\`${LOCK}\`)を解除しました。\`ready-to-implement\` が付いていれば次の定時実行が再度拾います。`,
-              });
+                .catch(() => {});
             }
 
-  # PR がマージ/クローズされたら、対応するマージ判断 Issue を自動クローズする
+  # PR がマージ/クローズされたら、対応するマージ判断 Issue を自動クローズする。
+  # assignee を先に外してからクローズし、コメントは投稿しない(Participating
+  # 通知を防ぐ。クローズ理由 completed/not_planned と Issue タイムラインで
+  # 追跡可能。#290)。
   close-merge-judgment:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
@@ -114,15 +126,17 @@ jobs:
               per_page: 100,
             });
             for (const issue of issues) {
-              if (issue.pull_request) continue; // PR は対象外(Issues API は PR も返すため)
+              if (issue.pull_request) continue;
               if (!(issue.body ?? '').includes(marker)) continue;
-              const outcome = pr.merged ? 'マージされた' : 'マージせずクローズされた';
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: issue.number,
-                body: `PR #${pr.number} が${outcome}ため、このマージ判断 Issue を自動クローズします。`,
-              });
+              const assignees = (issue.assignees ?? []).map((a) => a.login);
+              if (assignees.length > 0) {
+                await github.rest.issues.removeAssignees({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  assignees,
+                });
+              }
               await github.rest.issues.update({
                 owner,
                 repo,

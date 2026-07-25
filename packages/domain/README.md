@@ -26,7 +26,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - Query I/F: `DashboardQuery`, `MonthlyReportQuery`, `TransactionListQuery`
 - View 型: `DashboardKpisView`, `CategoryBreakdownView`, `MonthlyReportView`, `TransactionListItem`
 - プライバシー: `ViewerContext`, `ViewerRole`（`applyPrivacyFilter` 関数群は内部実装、Query 実装層からのみ使用）
-- ドメインイベント: `MonthlyReportCsvConfirmed`, `MonthlyReportFinalized`, `TransactionDeleted`, `TransactionManuallyClassified`（`ConfirmedClassification` を含む）
+- ドメインイベント: `MonthlyReportCsvConfirmed`, `MonthlyReportFinalized`, `TransactionDeleted`, `TransactionManuallyClassified`（`ConfirmedClassification` + `amazonProductKey?`（X-1 商品キー。下流の自動分類・学習が消費）を含む）, `CategoryTransactionsRemapped`（マスタ削除リマップの家計分析完了通知）
 
 ### balance-asset-tracking（残高・資産推移管理）
 
@@ -39,11 +39,11 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### auto-classification（自動分類・学習、08b）
 
-- 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否。`reflectManualClassification` で手動修正を T-2 軸独立に即時反映。`applicableClassification` で学習済みルールから適用可能な分類を導出）, `AmazonProductKeyLearningRule`, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`）
-- 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `ManualClassification`（UL「修正後分類」）+ `ReflectManualClassificationResult`
+- 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否。`reflectManualClassification` で手動修正を T-2 軸独立に即時反映。`applicableClassification` で学習済みルールから適用可能な分類を導出）, `AmazonProductKeyLearningRule`（X-1: AMAZON.CO.JP の受け皿。`reflectAmazonProductKeyManualClassification` で商品キー別に T-2 軸独立に即時反映。`applicableAmazonProductKeyClassification` で適用可能な分類を導出）, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`）
+- 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸（`LearningRefs` 束 + `deriveLearnedRefs` / `applicableClassificationFromRefs` を加盟店/Amazon 両学習で共有）, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `ManualClassification`（UL「修正後分類」）+ `ReflectManualClassificationResult` / `ReflectAmazonProductKeyClassificationResult`
 - Repository I/F: `MerchantLearningRuleRepository`, `AmazonProductKeyLearningRuleRepository`, `BulkClassificationSessionRepository`
 - Query I/F: `RetroactiveCandidateQuery`（J-3）+ `RetroactiveCandidateView`
-- ドメインイベント: `TransactionAutoClassified` ほか 9 種
+- ドメインイベント: `TransactionAutoClassified` ほか 11 種（マスタ削除リマップの自動分類学習完了通知 `CategoryLearningRulesRemapped` / `ExpenseTypeLearningRulesRemapped` を含む）
 
 ### expense-settlement（経費精算、08e）
 

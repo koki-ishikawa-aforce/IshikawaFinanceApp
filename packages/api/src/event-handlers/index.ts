@@ -14,9 +14,11 @@ import type { AppDeps } from '../composition-root.js'
 import { createNotificationDeliveryService } from '../notification/delivery-service.js'
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
 import { registerMasterDataRemapEventHandlers } from './master-data-remap.js'
+import { registerMasterDataDeletionCoordinator } from './master-data-deletion-coordinator.js'
 import { registerMonthlyReportCsvConfirmationEventHandlers } from './monthly-report-csv-confirmation.js'
 import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
 import { registerExpenseProrationRecalcEventHandlers } from './expense-proration-recalc.js'
+import { registerMonthlyLimitSeedEventHandlers } from './monthly-limit-seed.js'
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
 import { registerUnpaidBalanceUpdateEventHandlers } from './unpaid-balance-update.js'
 
@@ -30,7 +32,9 @@ export function registerEventHandlers(deps: AppDeps): void {
   registeredBuses.add(deps.eventBus)
   registerAutoClassificationEventHandlers(deps.eventBus, {
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
+    amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
   })
+  // マスタ削除リマップ: 各コンテキストが付け替えて完了通知を発行する（#89 / #223）
   registerMasterDataRemapEventHandlers(deps.eventBus, {
     transactionRepository: deps.transactionRepository,
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
@@ -38,10 +42,23 @@ export function registerEventHandlers(deps: AppDeps): void {
     categoryDeletionRequestRepository: deps.categoryDeletionRequestRepository,
     expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
   })
+  // マスタ削除コーディネーター: 全完了通知を集約してから物理削除する（#223）
+  registerMasterDataDeletionCoordinator(deps.eventBus, {
+    categoryMasterRepository: deps.categoryMasterRepository,
+    expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
+    monthlyLimitRepository: deps.monthlyLimitRepository,
+    categoryDeletionRequestRepository: deps.categoryDeletionRequestRepository,
+    expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
+  })
   registerMonthlyReportFinalizationEventHandlers(deps.eventBus, {
     monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
     expenseReimbursementDepositRepository: deps.expenseReimbursementDepositRepository,
     monthlyReportRepository: deps.monthlyReportRepository,
+  })
+  // 役割確定 → 規定経費種別の月次上限を seed 投入 (#56 / 論点14)
+  registerMonthlyLimitSeedEventHandlers(deps.eventBus, {
+    expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
+    monthlyLimitRepository: deps.monthlyLimitRepository,
   })
   // 月次上限変更 → 当月按分再計算 (#140)
   registerExpenseProrationRecalcEventHandlers(deps.eventBus, {

@@ -59,17 +59,18 @@ gh label create "needs-decision" --color D93F0B --description "人間の判断�
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する(Routine はクラウド側で動くため、手元のセッションや PC の状態に依存しない)。
 
 - **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。ネットワークポリシーは pnpm install と GitHub 操作が通る設定にする。`gh` CLI が無い環境でも動くよう、スキル側は GitHub MCP ツールへのフォールバックを定めている(issue-work スキルの「実行環境の注意」)
-- **Trigger**: Schedule、毎時(消化ペースを落としたい場合は間隔を広げる)
+- **Trigger**: Schedule、毎時(消化ペースを落としたい場合は間隔を広げる)。現在は同一プロンプトの Routine を3本登録しており、cron は UTC で `1 * * * *` / `18 * * * *` / `42 * * * *`(実効ペースは約20分に1 fire)。複数本を登録する場合は fire 時刻を均等に散らす — 数分差で走らせても CAS ロックが二重着手を弾くだけで、候補ループの空振りとコンフリクト修復の競合(`/pr-steward` 手順2c)が増える
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):
 
   ```
   無人モードで /issue-work を実行してください。
 
-  - ready-to-implement ラベル付きの open Issue から1件だけ選んで実装し、PR の作成まで行ってください(マージはしない)
-  - WIP 上限・排他ロック・曖昧なときの撤退・PR 化は .claude/skills/issue-work/SKILL.md の「無人モード」節に従ってください
+  - ready-to-implement ラベル付きの open Issue から1件だけ選んで実装し、通常 PR（Draft にはしない）の作成、および作成した PR の CI が green になることの確認まで行ってください
+  - WIP 上限・排他ロック・曖昧なときの撤退・PR 作成・CI green の確認は .claude/skills/issue-work/SKILL.md の「無人モード」節に従ってください。PR は必ず通常 PR として作成し、Draft にはしないこと（このリポジトリの CI は draft PR では発火せず、CI green を確認できなくなるため）
   - 人間の判断が必要になった場合(撤退・見送り追認・マージ判断)は、SKILL.md の指示どおり needs-decision ラベル付きの Issue に集約し、テンプレートと執筆ルールに従って書いてください
   - 着手できる Issue がない場合(WIP 上限超過・候補なし)は、リポジトリに一切変更を加えず理由だけ報告して終了してください
+  - 最終的な報告は日本語を使ってください。
   ```
 
   プロンプトを変更した場合は、claude.ai 側の Routine に貼り直すまで反映されない(Routine のプロンプトはリポジトリからは変更できない)。
@@ -78,14 +79,22 @@ gh label create "needs-decision" --color D93F0B --description "人間の判断�
 
 GitHub は**自分自身の操作を通知しない**。Routine はあなたのアカウントで Issue・PR を操作するため、Routine が作った PR や判断依頼は、Watch 設定をどう変えてもそのままではメールが届かない。そこで `.github/workflows/notify-needs-decision.yml` が github-actions bot(= 別のアクター)として以下を行い、Participating 通知(メール)を発生させる:
 
-| イベント | bot の動作 | 結果 |
+| イベント | bot の動作 | メール通知 |
 | --- | --- | --- |
-| Issue に `needs-decision` が付いた | あなたを assignee に追加 + @メンションコメント | メール通知 |
-| PR が作成された(Draft・通常を問わない) | あなたを assignee に追加 | メール通知(マージ判断 Issue が作られなかった場合の保険も兼ねる) |
-| PR がマージ/クローズされた | 対応するマージ判断 Issue(本文の `<!-- merge-judgment-pr: N -->` マーカーで特定)を自動クローズ | 判断待ち一覧が自動で片付く |
-| PR が**マージされずに**クローズされた | その PR が `Closes #N` で紐づけていた open Issue の `status:in-progress` を自動解除 | 着手中ロックが残らず、次の fire が再着手できる(下記「ゴミロックの自動回収」) |
+| Issue に `needs-decision` が付いた | あなたを assignee に追加 + @メンションコメント(種別ごとの「あなたがすること」1行) | **あり**(人間の判断が必要) |
+| PR が作成された(Draft・通常を問わない) | あなたを assignee に追加 | **あり**(マージ判断 Issue が作られなかった場合の保険も兼ねる) |
+| PR がマージ/クローズされた | 対応するマージ判断 Issue(本文の `<!-- merge-judgment-pr: N -->` マーカーで特定)の assignee を外してクローズ(コメントなし) | **なし**(自動処理。クローズ理由と Issue タイムラインで追跡可能) |
+| PR が**マージされずに**クローズされた | その PR が `Closes #N` で紐づけていた open Issue の `status:in-progress` を解除(コメントなし) | **なし**(自動処理。ラベル遷移は Issue タイムラインで追跡可能) |
+
+通知の出し分けの原則(#290): **人間が操作するものだけ通知する**。bot が自動で片付けた結果(マージ判断 Issue の自動クローズ、着手中ロックの自動解除)はメール通知を発生させない。一度 assignee になるとそのスレッドのすべてのコメントが Participating 通知(メール)になるため、通知不要のアクションではコメントを投稿しないか、先に assignee を外す。
 
 前提条件: GitHub の [Settings → Notifications](https://github.com/settings/notifications) で「Participating, @mentions and custom」の Email が有効になっていること(既定で有効)。メールが届かない場合はまずここを確認する。
+
+ワークフロー発火の取りこぼし対策: PR のマージ/クローズ時に `close-merge-judgment` が発火しなかった場合(GitHub Actions の一時的な障害など)、マージ判断 Issue が open のまま取り残される。`/pr-steward` の手順 3-2(孤児マージ判断 Issue の回収)が定期巡回で回収するため、手動でのクローズは通常不要。
+
+### 件名・文面の種別目印
+
+判断待ち Issue はタイトル**先頭**に種別の目印(`[マージ判断]` / `[判断待ち]` / `[乖離報告]` / `[改善案]`)を付ける規約になっている。これにより **メールの件名だけで種別が分かり**、`needs-decision` 付与時の @メンションコメントも目印から判別して「あなたがすること」の1行を出し分ける(目印が無い場合は共通文にフォールバック)。目印の一覧と用途・起票元スキルの対応は `.claude/skills/issue-work/templates/judgment-issue.md`「タイトルの種別目印」を正とする。
 
 ## ゴミロックの自動回収
 
