@@ -235,8 +235,8 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
   /**
    * Phase1: 共通トークルーム参加の完了記録（冪等）。
    * 暫定: talkRoomId は Web（LIFF context）からの自己申告。共通トークルームID の正は
-   * join Webhook（08f §2）であり、LINE Webhook 受信ルートの実装時にそちらを正とする
-   * （自己申告 API の廃止は #298）。
+   * join Webhook（08f §2）であり、その受信ルート（`/webhook/line`、#296）は実装済み。
+   * 本 API は移行期間の互換のために残しており、廃止は #298 で行う。
    * 保存先は世帯レベルの SharedTalkRoom 1 か所（OQ-55 ①）。per-user の LINE 運用設定へは
    * 書き込まない（二重管理の防止）。
    */
