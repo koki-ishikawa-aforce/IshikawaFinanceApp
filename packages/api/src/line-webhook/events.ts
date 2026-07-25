@@ -28,9 +28,16 @@ const LineWebhookEventSchema = z.object({
   source: LineWebhookSourceSchema.optional(),
 })
 
-/** LINE Webhook のリクエストボディ（`destination` と `events` を持つ） */
+/**
+ * LINE Webhook のリクエストボディ。
+ *
+ * イベント要素を `z.unknown()` で受けるのは、1 件でも想定外の形のイベントが混ざったときに
+ * バッチ全体を 400 で落とさないため。LINE は at-least-once で再送するため、そこで例外にすると
+ * 同じリクエストを恒久的に拒否し続け、同梱された正常なイベントも永久に処理できなくなる。
+ * 個々のイベントの検証は `toLineWebhookIntents` が 1 件ずつ行う。
+ */
 export const LineWebhookRequestSchema = z.object({
-  events: z.array(LineWebhookEventSchema),
+  events: z.array(z.unknown()),
 })
 export type LineWebhookRequest = z.infer<typeof LineWebhookRequestSchema>
 
@@ -52,13 +59,16 @@ function talkRoomIdOf(source: z.infer<typeof LineWebhookSourceSchema>): string |
 /**
  * Webhook リクエストを意図の列に翻訳する。
  *
- * 必要な ID を欠くイベント（LINE の仕様変更・検証用ダミー等）は意図に含めない。
- * ここで例外にすると、同じ内容で再送され続けるリクエストを永久に拒否し続けることになり、
- * 同じバッチに含まれる正常なイベントまで処理できなくなるため。
+ * 形が想定外のイベント・必要な ID を欠くイベント（LINE の仕様変更・検証用ダミー等）は
+ * 意図に含めず読み飛ばす。ここで例外にすると、同じ内容で再送され続けるリクエストを
+ * 永久に拒否し続けることになり、同じバッチに含まれる正常なイベントまで処理できなくなるため。
  */
 export function toLineWebhookIntents(request: LineWebhookRequest): LineWebhookIntent[] {
   const intents: LineWebhookIntent[] = []
-  for (const event of request.events) {
+  for (const raw of request.events) {
+    const parsed = LineWebhookEventSchema.safeParse(raw)
+    if (!parsed.success) continue
+    const event = parsed.data
     if (event.type === 'follow') {
       const userId = UserIdSchema.safeParse(event.source?.userId)
       if (userId.success) intents.push({ kind: 'friend_added', userId: userId.data })

@@ -257,13 +257,6 @@ export interface CompositionEnv {
   CORS_ALLOWED_ORIGINS?: string | undefined
 }
 
-/**
- * 開発モード（DATABASE_URL 未設定）の LINE Webhook 署名検証鍵。
- * Phase0Config も Parameter Store も無い環境で Webhook の署名検証を通せるようにするための
- * 固定値で、モックフォールバック自体が本番では起動エラーになるため開発専用に閉じている。
- */
-export const DEV_LINE_CHANNEL_SECRET = 'dev-line-channel-secret'
-
 /** FAILSAFE_EMAIL_TO（カンマ区切り）→ 宛先リスト */
 function parseFailsafeRecipients(value: string | undefined): string[] {
   return (value ?? '')
@@ -329,8 +322,10 @@ export function createDeps(env: CompositionEnv): AppDeps {
       gmailOAuthGateway: createMockGmailOAuthGateway(
         createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
       ),
+      // 開発モードは Phase0Config も Parameter Store も無いため、環境変数か固定値で署名検証を通す
+      // （この分岐自体が本番では起動エラーになるため、固定値は開発環境に閉じている）
       resolveLineChannelSecret: () =>
-        Promise.resolve(env.LINE_CHANNEL_SECRET ?? DEV_LINE_CHANNEL_SECRET),
+        Promise.resolve(env.LINE_CHANNEL_SECRET ?? 'dev-line-channel-secret'),
       eventBus: new InMemoryEventBus(),
       dashboardQuery: createMockDashboardQuery(),
       transactionListQuery: createMockTransactionListQuery(),
@@ -417,8 +412,10 @@ export function createDeps(env: CompositionEnv): AppDeps {
   // で毎回解決する（08g「LINE Channel設定値を取得する」。未投入・AWS 未構成は送信失敗に翻訳される）
   const lineChannelConfigQuery = new NeonLineChannelConfigQuery(db)
   // Webhook 署名検証鍵も同じ経路（Phase0Config の保管参照 → Parameter Store 復号）で毎回解決する。
-  // ローカル開発は Phase0Config を投入せずに動かせるよう LINE_CHANNEL_SECRET を優先する（OQ-55 ④）
-  const lineChannelSecretFromEnv = env.LINE_CHANNEL_SECRET
+  // ローカル開発は Phase0Config を投入せずに動かせるよう LINE_CHANNEL_SECRET を優先する（OQ-55 ④）。
+  // 本番でこの抜け道を許すと、鍵の実体がタスク定義に常駐し Parameter Store 側のローテーションにも
+  // 追従できなくなるため、環境変数の採用は開発環境に限る（Channel Access Token に抜け道が無いのと揃える）
+  const lineChannelSecretFromEnv = isProduction(env.NODE_ENV) ? undefined : env.LINE_CHANNEL_SECRET
   const resolveLineChannelSecret = lineChannelSecretFromEnv
     ? (): Promise<string> => Promise.resolve(lineChannelSecretFromEnv)
     : async (): Promise<string> => {

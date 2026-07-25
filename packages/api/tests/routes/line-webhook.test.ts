@@ -6,15 +6,25 @@ import { describe, it, expect } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { UserIdSchema, joinedTalkRoomIdOf, lineOperationSettingsOf } from '@warimaru/domain'
 import type { LineFriendAdded, LineTalkRoomJoined, UserId } from '@warimaru/domain'
-import { DEV_LINE_CHANNEL_SECRET } from '../../src/composition-root.js'
 import type { TestApp } from '../helpers/test-app.js'
-import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
+import { createTestApp as baseCreateTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
+import type { AppDeps } from '../../src/composition-root.js'
+
+const CHANNEL_SECRET = 'channel-secret-for-route-test'
+
+/** 署名検証鍵はテストから注入する（本番コードに固定値を公開しない） */
+function createTestApp(overrides: Partial<AppDeps> = {}): TestApp {
+  return baseCreateTestApp({
+    resolveLineChannelSecret: () => Promise.resolve(CHANNEL_SECRET),
+    ...overrides,
+  })
+}
 
 const TALK_ROOM_ID = 'Cgroup-warimaru-0001'
 const OTHER_TALK_ROOM_ID = 'Cgroup-warimaru-0002'
 const UNREGISTERED_USER_ID = 'Uunregistered-0001'
 
-function sign(body: string, secret = DEV_LINE_CHANNEL_SECRET): string {
+function sign(body: string, secret = CHANNEL_SECRET): string {
   return createHmac('sha256', secret).update(body).digest('base64')
 }
 
@@ -231,17 +241,33 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
     expect(log).toHaveLength(1)
   })
 
-  it('別トークルームでの join は最新の参加で置き換える（招待し直し）', async () => {
+  // join の source は userId を含まず、届いたトークルームが自世帯のものかは判定できない。
+  // 共通トークルームは家計サマリの配信先そのものなので、Webhook からの上書きは許さない
+  it('既に参加記録があるとき、別トークルームの join では配信先を差し替えない', async () => {
     const t = createTestApp()
     const log = subscribeTalkRoomJoined(t)
 
     await postWebhook(t, joinPayload(TALK_ROOM_ID))
-    await postWebhook(t, joinPayload(OTHER_TALK_ROOM_ID))
+    const res = await postWebhook(t, joinPayload(OTHER_TALK_ROOM_ID))
 
+    expect(res.status).toBe(200)
+    expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBe(TALK_ROOM_ID)
+    expect(log).toHaveLength(1)
+  })
+
+  it('参加先の変更は LIFF 認証つきの自己申告 API では引き続き行える', async () => {
+    const t = createTestApp()
+    await register(t)
+    await postWebhook(t, joinPayload(TALK_ROOM_ID))
+
+    const res = await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
+      body: { talkRoomId: OTHER_TALK_ROOM_ID },
+    })
+
+    expect(res.status).toBe(200)
     expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBe(
       OTHER_TALK_ROOM_ID,
     )
-    expect(log).toHaveLength(2)
   })
 
   it('複数人トーク（source.type = room）の join も参加として記録する', async () => {
@@ -301,6 +327,18 @@ describe('POST /webhook/line — 対象外イベント', () => {
     expect(res.status).toBe(200)
     expect(friendLog).toHaveLength(1)
     expect(joinLog).toHaveLength(0)
+  })
+
+  it('上限を超える本文は署名検証より前に 413 で拒否する（未認証の DoS 対策）', async () => {
+    const t = createTestApp()
+    // 1 MiB 超のイベントを 1 件だけ含む、形としては正しい JSON
+    const body = JSON.stringify({ events: [{ type: 'message', padding: 'x'.repeat(1024 * 1024) }] })
+    const res = await t.app.request('/webhook/line', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-line-signature': sign(body) },
+      body,
+    })
+    expect(res.status).toBe(413)
   })
 
   it('署名は正しいが JSON として壊れている本文は 400 で拒否する', async () => {

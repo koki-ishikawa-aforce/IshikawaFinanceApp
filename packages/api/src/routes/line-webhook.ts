@@ -16,35 +16,32 @@
  *    `LineTalkRoomJoined`（OQ-55 ①: 参加は世帯にひとつの事実）
  *
  * 冪等性: LINE Webhook は at-least-once であり、同一イベントが再送されうる。
- * `recordLineFriendAdded` / `recordSharedTalkRoomJoined` はいずれも状態が変わらない
- * ときに元の値をそのまま返すため、その参照比較で「変化したときだけ保存・発行する」
- * ことで二重記録・二重発行を防ぐ。
+ * 記録・保存・イベント発行は `line-operation-records.ts` に一本化しており、状態が
+ * 変わったときだけ保存・発行することで二重記録・二重発行を防ぐ。
  *
  * ログ: LINE userID・共通トークルームIDは個人を辿れる識別子のため出力しない。
  */
 import { Hono } from 'hono'
-import {
-  LineFriendAddedSchema,
-  LineTalkRoomJoinedSchema,
-  recordLineFriendAdded,
-  recordSharedTalkRoomJoined,
-} from '@warimaru/domain'
-import type {
-  AppUserRepository,
-  EventBus,
-  SharedTalkRoomRepository,
-  TalkRoomId,
-  UserId,
-} from '@warimaru/domain'
-import { domainEventBase } from '../event-handlers/index.js'
+import { bodyLimit } from 'hono/body-limit'
+import type { AppUserRepository, EventBus, SharedTalkRoomRepository } from '@warimaru/domain'
+import type { TalkRoomId, UserId } from '@warimaru/domain'
 import { readJsonObjectBody } from '../read-json-object-body.js'
 import { LineWebhookRequestSchema, toLineWebhookIntents } from '../line-webhook/events.js'
 import { verifyLineSignature } from '../line-webhook/signature.js'
+import { applyLineFriendAdded, applySharedTalkRoomJoined } from '../line-operation-records.js'
+
+/**
+ * 受理する本文の上限。ルートが認証の外にある以上、署名検証には生バイト列が必要で、
+ * 読み込みは検証より前に起きる。上限が無いと、署名を持たない相手でも巨大な本文を
+ * 送りつけてメモリを圧迫できる（api は前段のリバースプロキシ無しで待ち受けている）。
+ * LINE の Webhook 本文は 1 リクエストあたり数十 KB 程度に収まるため、余裕を見て 1 MiB。
+ */
+const MAX_BODY_BYTES = 1024 * 1024
 
 export interface LineWebhookRoutesDeps {
   appUserRepository: AppUserRepository
   sharedTalkRoomRepository: SharedTalkRoomRepository
-  /** 署名検証鍵の解決（OQ-55 ④: 環境変数、または Phase0Config の保管参照 → Parameter Store 復号） */
+  /** 署名検証鍵の解決（OQ-55 ④: 開発環境の環境変数、または Phase0Config の保管参照 → Parameter Store 復号） */
   resolveLineChannelSecret: () => Promise<string>
   eventBus: EventBus
 }
@@ -60,43 +57,52 @@ async function handleFriendAdded(
     console.info('LINE Webhook: 未登録ユーザーの follow を受信したため記録しない（OQ-55 ③）')
     return
   }
-  const updated = recordLineFriendAdded(user, receivedAt)
-  if (updated === user) return
-  await deps.appUserRepository.save(updated)
-  await deps.eventBus.publish(
-    LineFriendAddedSchema.parse({
-      ...domainEventBase(receivedAt),
-      type: 'LineFriendAdded',
-      userId,
-      receivedAt,
-    }),
-  )
+  await applyLineFriendAdded(deps, user, receivedAt)
 }
 
-/** join: 世帯レベルの共通トークルーム参加を記録する（OQ-55 ①） */
+/**
+ * join: 世帯レベルの共通トークルーム参加を記録する（OQ-55 ①）
+ *
+ * `join` の source は userId を含まないため、届いたトークルームが**この世帯のものか**は
+ * イベント単体からは判定できない。署名検証が保証するのは「LINE から来た」ことだけで、
+ * 公式アカウントを自分のグループへ招待できる第三者も正規の `join` を発生させられる。
+ * 共通トークルームは家計サマリの配信先（`DeliveryTarget.shared_talk_room`）そのものなので、
+ * 無条件に上書きすると配信先を差し替えられる。
+ *
+ * そのため Webhook 由来の記録は**まだ参加記録が無いときだけ**受け付け、既存の記録は
+ * 上書きしない。参加先の変更（招待し直し）は LIFF 認証を通る自己申告 API
+ * （`POST /api/onboarding/phase1/talk-room`）に残す。
+ * 未参加状態での取り違え（初回登録の取り合い）を防ぐ在籍確認（Messaging API の照会）は
+ * 外部連携の追加を伴う判断のため、#371 に切り出して判断を仰いでいる。
+ */
 async function handleTalkRoomJoined(
   deps: LineWebhookRoutesDeps,
   talkRoomId: TalkRoomId,
   receivedAt: Date,
 ): Promise<void> {
   const current = await deps.sharedTalkRoomRepository.find()
-  const updated = recordSharedTalkRoomJoined(current, talkRoomId, receivedAt)
-  if (updated === current) return
-  await deps.sharedTalkRoomRepository.save(updated)
-  await deps.eventBus.publish(
-    LineTalkRoomJoinedSchema.parse({
-      ...domainEventBase(receivedAt),
-      type: 'LineTalkRoomJoined',
-      talkRoomId,
-      receivedAt,
-    }),
-  )
+  if (current.kind === 'joined') {
+    if (current.talkRoomId !== talkRoomId) {
+      console.warn(
+        'LINE Webhook: 既に参加記録があるため、別トークルームの join を記録しない（配信先の差し替えを防ぐ）',
+      )
+    }
+    return
+  }
+  await applySharedTalkRoomJoined(deps, current, talkRoomId, receivedAt)
 }
 
 export function lineWebhookRoutes(deps: LineWebhookRoutesDeps): Hono {
   const app = new Hono()
 
-  app.post('/line', async c => {
+  // 既定の onError は HTTPException を throw し、app.onError（errorHandler）が
+  // 未マップの例外として 500 に落としてしまうため、413 をここで直接返す
+  const limit = bodyLimit({
+    maxSize: MAX_BODY_BYTES,
+    onError: c => c.json({ error: 'Payload too large' }, 413),
+  })
+
+  app.post('/line', limit, async c => {
     // 署名は受信した生バイト列に対して検証する（再直列化した JSON では一致しない）
     const rawBody = new Uint8Array(await c.req.arrayBuffer())
     const signature = c.req.header('x-line-signature')
@@ -106,8 +112,12 @@ export function lineWebhookRoutes(deps: LineWebhookRoutesDeps): Hono {
       channelSecret = await deps.resolveLineChannelSecret()
     } catch (err) {
       // 鍵を解決できない = 署名を検証できない。真正性を確かめられないまま受理しない。
-      // 500 を返すことで LINE 側の再送に委ね、構成修復後に取りこぼしを回収する
-      console.error('LINE Webhook: Channel Secret を解決できないため署名検証を実施できない', err)
+      // 500 を返すことで LINE 側の再送に委ね、構成修復後に取りこぼしを回収する。
+      // 例外オブジェクトを丸ごと出すと Parameter Store のパス等が落ちるため、種別だけ残す
+      console.error(
+        'LINE Webhook: Channel Secret を解決できないため署名検証を実施できない',
+        err instanceof Error ? err.name : 'unknown',
+      )
       return c.json({ error: 'LINE webhook is not configured' }, 500)
     }
 
