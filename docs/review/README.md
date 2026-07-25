@@ -29,7 +29,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | 品質特性 | 担保手段 | 現状 |
 | --- | --- | --- |
 | **機能適合性**(要求どおり動くか) | CI: `pnpm test`(単体・統合)、Playwright E2E / VRT<br>レビュー: `/ddd-review`(不変条件の置き場所)<br>人間: `docs/acceptance/` の受入テスト(#58) | ⚠️ 部分的 — Issue 単位の受け入れ条件は `/verify` で見るが、`docs/acceptance/` のどの AT シナリオを満たしたかを照合する工程が無い(#333) |
-| **性能効率**(初期表示・クエリ本数) | CI: バンドルサイズ予算(#332)<br>レビュー: `/data-review`(N+1・索引欠落) | ⚠️ 部分的 — クエリ側(N+1・索引欠落・上限なしの取得)は `/data-review` が担保。初期表示側は計測基盤が無く、劣化しても気づけない(#332) |
+| **性能効率**(初期表示・クエリ本数) | CI: バンドルサイズ予算(`pnpm --filter @warimaru/web bundle-size`)→ [bundle-budget.md](./bundle-budget.md)<br>レビュー: `/data-review`(N+1・索引欠落) | ✅ 担保済み — クエリ側(N+1・索引欠落・上限なしの取得)は `/data-review`、初期表示側はルートごとの gzip 予算を CI が担保<br>担保範囲の注記: 測るのは**配信量**(HTML が参照する js / css の gzip 合計)であり、実行時間・レンダリング速度・実機 LIFF での体感は含まない |
 | **信頼性**(外部依存の失敗・冪等性・可観測性) | レビュー: 信頼性・可観測性レビュー(#331) | ❌ 未整備 — Gmail / LINE / Neon の失敗時挙動とイベントハンドラの再実行安全性を誰も見ていない(#331) |
 | **セキュリティ**(外周の攻撃面) | CI: `pnpm audit`(依存脆弱性)→ [dependency-audit.md](./dependency-audit.md)<br>レビュー: `/security-review`、`/ddd-review`(プライバシー3段階ルール = ドメイン内の可視性) | ✅ 担保済み — 依存脆弱性は CI、Webhook 署名検証・IDトークン検証・認可の位置・PII ログ流出は `/security-review` が担保 |
 | **データ互換性**(スキーマ変更とデプロイ) | CI: 統合テスト(空の PostgreSQL への `migrate` 適用 = 構文と適用可能性)<br>レビュー: `/data-review` | ✅ 担保済み — 破壊的スキーマ変更・デプロイ順序・トランザクション境界・イベントハンドラの冪等性は `/data-review` が担保。CI が適用するのは**空の DB** なので、既存データがある本番で失敗する変更はレビュー側でしか捕まらない |
@@ -79,6 +79,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | ステップ | 担保する観点 |
 | --- | --- |
 | `pnpm build` | ビルド可能性 |
+| `pnpm --filter @warimaru/web bundle-size` | 初期表示ペイロードの予算(性能効率)→ [bundle-budget.md](./bundle-budget.md) |
 | `pnpm typecheck` | 型整合(保守性) |
 | `pnpm test` | 単体テストの成否(機能適合性) |
 | `pnpm --filter @warimaru/adapters-neon test:integration` | 実 PostgreSQL に対する永続化層の振る舞い |

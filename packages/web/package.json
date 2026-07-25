@@ -8,6 +8,7 @@
     "dev:mock": "NEXT_PUBLIC_MOCK=1 next dev --port 3000",
     "build": "next build",
     "build:mock": "NEXT_PUBLIC_MOCK=1 next build",
+    "bundle-size": "node scripts/check-bundle-size.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json",
     "lint": "next lint && stylelint --allow-empty-input 'src/**/*.css'",
     "test": "vitest run",
