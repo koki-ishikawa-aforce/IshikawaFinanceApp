@@ -24,7 +24,6 @@
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   font-weight: 700;
-  font-family: var(--font-family);
   cursor: pointer;
   background: transparent;
   color: var(--text-secondary);
@@ -94,7 +93,6 @@
   color: var(--accent);
   font-size: var(--text-sm);
   font-weight: 700;
-  font-family: var(--font-family);
   cursor: pointer;
   padding: var(--space-0_5);
 }

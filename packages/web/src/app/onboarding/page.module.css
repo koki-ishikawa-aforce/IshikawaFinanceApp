@@ -80,7 +80,6 @@
   color: var(--text-secondary);
   font-size: var(--text-xs);
   font-weight: 700;
-  font-family: var(--font-family);
   cursor: pointer;
   padding: var(--space-1) 0;
   text-align: center;
