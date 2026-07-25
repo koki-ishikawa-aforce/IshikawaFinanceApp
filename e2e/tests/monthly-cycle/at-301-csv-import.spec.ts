@@ -99,7 +99,7 @@ test.describe('AT-301: カード CSV 取込（検証・候補確認・重複除�
 
     const body = await res.json()
     expect(body.job.kind).toBe('completed')
-    expect(body.job.result.duplicateExcludedCount).toBeGreaterThanOrEqual(2)
+    expect(body.job.summary.duplicateExcludedCount).toBeGreaterThanOrEqual(2)
   })
 
   test('AT-301-6: 不正な形式のファイルをアップロードすると検証エラーになる', async ({
