@@ -143,11 +143,11 @@ Routine のセットアップ手順とラベル運用は `docs/automation/backlo
 
 無人モードでユーザーの判断が必要になったら、種類を問わず **`needs-decision` ラベル付きの Issue** に集約する(チャットの最終報告や PR 本文だけに書いて済ませない)。判断が必要な事象は3種:
 
-1. **撤退時の確認**(受け入れ条件が曖昧・設計判断が分かれる) → 元 Issue に判断依頼コメント + `needs-decision`
-2. **見送り追認**(`/ddd-review` suggestion の見送りなど) → 新規 Issue + `needs-decision`
-3. **マージ判断** → 無人モードが作成した PR ごとに新規 Issue + `needs-decision`
+1. **撤退時の確認**(受け入れ条件が曖昧・設計判断が分かれる) → 元 Issue に判断依頼コメント + `needs-decision`(既存 Issue のタイトルは変えないため種別目印は付けない)
+2. **見送り追認**(`/ddd-review` suggestion の見送りなど) → 新規 Issue + `needs-decision`(タイトル先頭に `[判断待ち]`)
+3. **マージ判断** → 無人モードが作成した PR ごとに新規 Issue + `needs-decision`(タイトル先頭に `[マージ判断]`)
 
-これによりユーザーは `is:issue is:open label:needs-decision` の一覧だけで判断すべきことを全量把握でき、ラベル付与をトリガーに通知ワークフロー(`.github/workflows/notify-needs-decision.yml`)がメール通知を発生させる。
+これによりユーザーは `is:issue is:open label:needs-decision` の一覧だけで判断すべきことを全量把握でき、ラベル付与をトリガーに通知ワークフロー(`.github/workflows/notify-needs-decision.yml`)がメール通知を発生させる。**新規に起票する判断待ち Issue はタイトル先頭に種別目印**(`[マージ判断]` / `[判断待ち]` / `[乖離報告]` / `[改善案]`)**を付ける**(メール件名での種別識別と @メンション文面の出し分けに使う。目印の一覧は `templates/judgment-issue.md`「タイトルの種別目印」を正とする)。
 
 判断依頼・PR の本文を書く前に、**必ず対応するテンプレート(`templates/judgment-issue.md` / `templates/pr-body.md`)を読み**、そのフォーマットで書く。
 
@@ -259,7 +259,7 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
   ```
   (`needs-decision` はユーザーが回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外になる)
   撤退してもその fire は終了せず、候補ループの次の Issue へ進む。これにより、1件の撤退で fire 全体が空振りする事態を防ぐ
-- `/ddd-review` の suggestion でユーザーの意思決定が必要なもの(見送り例外に該当)は、既存ルール通り Issue 化する。その Issue も `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする
+- `/ddd-review` の suggestion でユーザーの意思決定が必要なもの(見送り例外に該当)は、既存ルール通り Issue 化する。その Issue はタイトル先頭に `[判断待ち]` を付け、本文は `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする
 
 ### 手順4の差分: /verify 行き詰まり時の撤退
 

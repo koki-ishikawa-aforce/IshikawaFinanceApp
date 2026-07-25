@@ -80,12 +80,16 @@ GitHub は**自分自身の操作を通知しない**。Routine はあなたの�
 
 | イベント | bot の動作 | 結果 |
 | --- | --- | --- |
-| Issue に `needs-decision` が付いた | あなたを assignee に追加 + @メンションコメント | メール通知 |
+| Issue に `needs-decision` が付いた | あなたを assignee に追加 + @メンションコメント(種別ごとの「あなたがすること」1行) | メール通知 |
 | PR が作成された(Draft・通常を問わない) | あなたを assignee に追加 | メール通知(マージ判断 Issue が作られなかった場合の保険も兼ねる) |
 | PR がマージ/クローズされた | 対応するマージ判断 Issue(本文の `<!-- merge-judgment-pr: N -->` マーカーで特定)を自動クローズ | 判断待ち一覧が自動で片付く |
 | PR が**マージされずに**クローズされた | その PR が `Closes #N` で紐づけていた open Issue の `status:in-progress` を自動解除 | 着手中ロックが残らず、次の fire が再着手できる(下記「ゴミロックの自動回収」) |
 
 前提条件: GitHub の [Settings → Notifications](https://github.com/settings/notifications) で「Participating, @mentions and custom」の Email が有効になっていること(既定で有効)。メールが届かない場合はまずここを確認する。
+
+### 件名・文面の種別目印
+
+判断待ち Issue はタイトル**先頭**に種別の目印(`[マージ判断]` / `[判断待ち]` / `[乖離報告]` / `[改善案]`)を付ける規約になっている。これにより **メールの件名だけで種別が分かり**、`needs-decision` 付与時の @メンションコメントも目印から判別して「あなたがすること」の1行を出し分ける(目印が無い場合は共通文にフォールバック)。目印の一覧と用途・起票元スキルの対応は `.claude/skills/issue-work/templates/judgment-issue.md`「タイトルの種別目印」を正とする。
 
 ## ゴミロックの自動回収
 

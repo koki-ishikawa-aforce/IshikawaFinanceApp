@@ -40,6 +40,8 @@ PR 本文の close キーワード(`.claude/skills/issue-work/SKILL.md` 無人�
 
 **いずれかに該当する場合**: 重複 PR は自動クローズせず、対象 PR と対象 Issue の両方に `needs-decision` ラベルを付与し、判断依頼コメントを残す(`.claude/skills/issue-work/templates/judgment-issue.md` のフォーマットに従う)。コメントには重複している PR 番号の一覧と、どの PR を残すべきかの判断を人間に委ねる旨を記載する。
 
+> 種別目印の扱い: ここで `needs-decision` を付けるのは既存の PR / Issue(タイトルは変えない)であり、@メンション文面はタイトル先頭に目印が無いため共通文にフォールバックする。別途スタンドアロンの判断待ち Issue を新規起票する場合のみ、タイトル先頭に `[判断待ち]` を付ける(目印の規約は `templates/judgment-issue.md`「タイトルの種別目印」を正とする)。
+
 PR 本文に番号付きの close キーワードが**1つも無い**場合(例: `Closes #` のまま番号が欠落)も異常として扱い、その PR に `needs-decision` を付けて本文の修正を判断依頼する(番号が無いと重複ガードとロック自動解除がその PR を検知できないため)。
 
 #### 2a-2. 本文のリテラル `\n` 検知(auto-close 不発の予防)
