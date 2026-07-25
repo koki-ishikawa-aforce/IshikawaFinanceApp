@@ -42,6 +42,7 @@ import type {
   UserRole,
 } from '@warimaru/domain'
 import { AllowlistSchema, InMemoryEventBus } from '@warimaru/domain'
+import type { Db } from '@warimaru/adapters-neon'
 import {
   createNeonHttpDb,
   NeonAccountRepository,
@@ -241,7 +242,7 @@ function parseFailsafeThreshold(value: string | undefined): number | undefined {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
 }
 
-export function createDeps(env: CompositionEnv): AppDeps {
+export function createDeps(env: CompositionEnv, dbOverride?: Db): AppDeps {
   if (!env.DATABASE_URL) {
     // 本番では DATABASE_URL 未設定を致命的な設定漏れとして扱い、モックへ黙ってフォールバックしない。
     // モックフォールバックは開発環境専用（#47 / #14 と同じ方針）。
@@ -309,7 +310,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
     }
   }
 
-  const db = createNeonHttpDb(env.DATABASE_URL)
+  const db = dbOverride ?? createNeonHttpDb(env.DATABASE_URL)
   const resolveCategoryNames = createDbResolveCategoryNames(db)
   const resolveViewerRole = createDbResolveViewerRole(db)
   const now = (): Date => new Date()

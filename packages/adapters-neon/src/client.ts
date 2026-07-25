@@ -27,3 +27,18 @@ export function createNeonHttpDb(databaseUrl: string): Db {
   const client = neon(databaseUrl)
   return drizzle(client, { schema })
 }
+
+/**
+ * node-postgres (pg) ドライバで Db を作成する。
+ * Neon HTTP ドライバが使えない環境（CI の標準 PostgreSQL コンテナ等）用。
+ * pg は devDependency のため動的 import で解決する（本番では呼ばない）。
+ */
+export async function createPgDb(
+  databaseUrl: string,
+): Promise<{ db: Db; close: () => Promise<void> }> {
+  const { Pool } = await import('pg')
+  const nodePgDrizzle = await import('drizzle-orm/node-postgres')
+  const pool = new Pool({ connectionString: databaseUrl })
+  const db = nodePgDrizzle.drizzle(pool, { schema }) as unknown as Db
+  return { db, close: () => pool.end() }
+}
