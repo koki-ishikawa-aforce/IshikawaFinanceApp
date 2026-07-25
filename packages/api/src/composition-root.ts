@@ -194,6 +194,13 @@ export interface AppDeps {
   spouseCompletionQuery: SpouseCompletionQuery
   allowlistQuery: AllowlistQuery
   gmailOAuthGateway: GmailOAuthGateway
+  /**
+   * LINE Webhook 署名検証鍵の解決（#296、OQ-55 ④）。
+   * 環境変数 LINE_CHANNEL_SECRET を優先し、未設定なら Phase0Config の保管参照
+   * （lineChannel.channelSecretRef）→ Parameter Store 復号で毎回解決する
+   * （Channel Access Token と同じ経路。鍵の実体をプロセスに保持しない）。
+   */
+  resolveLineChannelSecret: () => Promise<string>
   // 通知配信 (#36): NotificationDeliveryService は createApp が本 deps から組み立てる
   deliveryMessageRepository: DeliveryMessageRepository
   lineDeliveryLogRepository: LineDeliveryLogRepository
@@ -229,6 +236,11 @@ export interface CompositionEnv {
   GOOGLE_OAUTH_REDIRECT_URI?: string | undefined
   /** state 署名鍵。未設定なら GOOGLE_OAUTH_CLIENT_SECRET を流用 */
   GMAIL_OAUTH_STATE_SECRET?: string | undefined
+  /**
+   * LINE Webhook 署名検証鍵（#296、OQ-55 ④）。ローカル開発用の指定手段。
+   * 未設定なら Phase0Config の保管参照 → Parameter Store から解決する（本番の経路）。
+   */
+  LINE_CHANNEL_SECRET?: string | undefined
   /** Parameter Store（許可リスト読出し / トークン保管）の有効化判定 */
   AWS_REGION?: string | undefined
   // フェイルセーフメール (#36)。未設定なら発火を保留 / 送信時に明示エラー
@@ -310,6 +322,10 @@ export function createDeps(env: CompositionEnv): AppDeps {
       gmailOAuthGateway: createMockGmailOAuthGateway(
         createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
       ),
+      // 開発モードは Phase0Config も Parameter Store も無いため、環境変数か固定値で署名検証を通す
+      // （この分岐自体が本番では起動エラーになるため、固定値は開発環境に閉じている）
+      resolveLineChannelSecret: () =>
+        Promise.resolve(env.LINE_CHANNEL_SECRET ?? 'dev-line-channel-secret'),
       eventBus: new InMemoryEventBus(),
       dashboardQuery: createMockDashboardQuery(),
       transactionListQuery: createMockTransactionListQuery(),
@@ -395,6 +411,17 @@ export function createDeps(env: CompositionEnv): AppDeps {
   // LINE Channel Access Token はマスタ管理（Phase0Config）の保管参照 → Parameter Store 復号
   // で毎回解決する（08g「LINE Channel設定値を取得する」。未投入・AWS 未構成は送信失敗に翻訳される）
   const lineChannelConfigQuery = new NeonLineChannelConfigQuery(db)
+  // Webhook 署名検証鍵も同じ経路（Phase0Config の保管参照 → Parameter Store 復号）で毎回解決する。
+  // ローカル開発は Phase0Config を投入せずに動かせるよう LINE_CHANNEL_SECRET を優先する（OQ-55 ④）。
+  // 本番でこの抜け道を許すと、鍵の実体がタスク定義に常駐し Parameter Store 側のローテーションにも
+  // 追従できなくなるため、環境変数の採用は開発環境に限る（Channel Access Token に抜け道が無いのと揃える）
+  const lineChannelSecretFromEnv = isProduction(env.NODE_ENV) ? undefined : env.LINE_CHANNEL_SECRET
+  const resolveLineChannelSecret = lineChannelSecretFromEnv
+    ? (): Promise<string> => Promise.resolve(lineChannelSecretFromEnv)
+    : async (): Promise<string> => {
+        const config = await lineChannelConfigQuery.fetch()
+        return parameterStore.read(config.channelSecretRef)
+      }
   const lineMessagingGateway = createLineMessagingGateway({
     resolveChannelAccessToken: async () => {
       const config = await lineChannelConfigQuery.fetch()
@@ -428,6 +455,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
       now,
     }),
     gmailOAuthGateway,
+    resolveLineChannelSecret,
     dashboardQuery: new NeonDashboardQuery(db, { resolveCategoryNames, resolveViewerRole }),
     transactionListQuery: new NeonTransactionListQuery(db, {
       resolveCategoryNames,

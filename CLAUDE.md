@@ -53,8 +53,10 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 3. 検証ループ: `/verify` — コード変更を完了と報告する前に必ず全 green にする
 4. DDD 観点レビュー: `/ddd-review`(PR 前に実施)— レビュー指摘は must-fix だけでなく suggestion も原則その場で修正する。見送りは例外(大規模リファクタ相当・設計判断が必要な場合)のみで、必ず Issue 化して追跡する
    - UI レビュー: `/ui-review`(`packages/web` 配下に変更がある場合、`/ddd-review` に加えて実施)— `DESIGN.md` とプレゼンテーション層の観点(デザイントークン規律・絵文字リグレッション・テーマ両対応・アクセシビリティ)でレビュー。指摘の扱いは `/ddd-review` と同じ
+   - 使用性レビュー: `/ux-review`(`packages/web` 配下のうち画面・フローの追加変更がある場合、`/ui-review` に加えて実施)— `docs/design/usability.md` の規範(状態の網羅・プライバシーの UI 表現・ユーザーエラー防止・入力負荷・マイクロコピー・インタラクションの一貫性・LIFF 固有・アクセシビリティ)でレビュー。デザインシステム適合の5観点は `/ui-review` の担当なので重複させない。指摘の扱いは `/ddd-review` と同じ
    - 信頼性・可観測性レビュー: `/reliability-review`(ドメインイベント・イベントハンドラー・通知配信・外部 API 呼び出しに変更がある場合、`/ddd-review` に加えて実施)— 外部呼び出しの失敗時挙動・失敗の握りつぶし・イベント再実行の回復性・障害に気づけるかの観点でレビュー。冪等性のうち「データに二重適用が残らないか」はデータレビューの担当なので重複させない。指摘の扱いは `/ddd-review` と同じ
    - セキュリティレビュー: `/security-review`(`packages/api` の routes / middleware / gmail-oauth / aws、または認証・外部連携(LINE / Gmail)に変更がある場合、`/ddd-review` に加えて実施)— 外周の攻撃面(Webhook 署名検証・ID トークン検証・認可の位置・シークレット/PII のログ流出・外部入力の検証)でレビュー。プライバシー3段階ルールは `/ddd-review` の担当なので重複させない。指摘の扱いは `/ddd-review` と同じ
+   - データレビュー: `/data-review`(`packages/adapters-neon`(マイグレーション / スキーマ / Query)、またはドメインイベントとそのハンドラに変更がある場合、`/ddd-review` に加えて実施)— 既存データとデプロイに対する安全性(破壊的スキーマ変更・デプロイ順序・索引欠落と N+1・トランザクション境界・イベントハンドラの冪等性)でレビュー。マイグレーションの構文と適用可能性は CI が担保するので重複させない。指摘の扱いは `/ddd-review` と同じ
 5. 判断待ちの消化: `/decide` — 各スキルが `needs-decision` に集約した判断依頼を対話で消化し、決定を Issue と docs に反映する
 6. 無人運用の振り返り: `/retro` — 無人モード(`/issue-work`・`/pr-steward`)の失敗データを週次で振り返り、繰り返す失敗パターンから skills / CLAUDE.md / Issue テンプレートの改善案を `needs-decision` Issue として起票する(読み取り専用。判断は `/decide`)
 
@@ -64,6 +66,8 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ PR 化する(運用・セットアップ: `docs/automation/backlog-routine.md`)。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える(設計判断が残存する Issue には `needs-decision` を付けて `/decide` に接続する)。依存する先行 Issue が open でも ready は付与でき、着手は Routine の依存チェックが遅延する(マージすると次の fire が自動で後続に着手)。無人モードはユーザー確認の代わりに撤退を選び、マージ判断は必ず人間が行う(`/decide` セッション内の明示承認を含む)。溜まった `needs-decision` は `/decide` でまとめて消化する。
 
 PR の保守(CI 修復・コンフリクト解消・重複検知): `/pr-steward` が Routine 起点の open PR を巡回し、人間の仕事をマージ判断だけに絞る(運用: `docs/automation/pr-steward-routine.md`)。
+
+マージ判断の材料: `packages/web` に変更がある PR は、モック起動モードの画面が GitHub Pages に自動配信され、配信 URL が PR にコメントされる(運用・セットアップ: `docs/automation/pr-preview.md`)。
 
 無人運用の自己改善: `/retro` が無人モードの失敗データ(撤退・CI リトライ・レビュー指摘)を週次で振り返り、繰り返す失敗パターンから改善案を `needs-decision` Issue として起票する(読み取り専用。運用: `docs/automation/retro-routine.md`)。
 

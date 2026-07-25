@@ -17,6 +17,7 @@ import { monthlyLimitsRoutes } from './routes/monthly-limits.js'
 import { classificationRoutes } from './routes/classification.js'
 import { onboardingRoutes } from './routes/onboarding.js'
 import { gmailOAuthRoutes } from './routes/gmail-oauth.js'
+import { lineWebhookRoutes } from './routes/line-webhook.js'
 import { lineAuthMiddleware } from './middleware/line-auth.js'
 import { devViewerIdMiddleware } from './middleware/viewer-id.js'
 import { errorHandler } from './middleware/error-handler.js'
@@ -59,6 +60,17 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       appUserRepository: deps.appUserRepository,
       gmailOAuthTokenRepository: deps.gmailOAuthTokenRepository,
       gmailOAuthGateway: deps.gmailOAuthGateway,
+      eventBus: deps.eventBus,
+    }),
+  )
+  // LINE Webhook は LINE プラットフォームから到達するため LIFF 認証（/api/*）の外に置く
+  // （OQ-55 ④）。送信元の真正性は x-line-signature の署名検証だけが担保する
+  app.route(
+    '/webhook',
+    lineWebhookRoutes({
+      appUserRepository: deps.appUserRepository,
+      sharedTalkRoomRepository: deps.sharedTalkRoomRepository,
+      resolveLineChannelSecret: deps.resolveLineChannelSecret,
       eventBus: deps.eventBus,
     }),
   )
