@@ -76,22 +76,33 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 
 `.github/workflows/ci.yml` の verify ジョブ。すべて失敗が後続をブロックする。
 
-| ステップ | 担保する観点 |
+レビュースキルと同じく、CI のステップも**変更パスで出し分ける**。実行枠(GitHub Actions の無料枠)は有限で、docs / skills だけの変更で Playwright まで回すと 1 run あたり 8 分を使い切るため。判定は `Detect changed paths` ステップが行い、**判定できないときは全ステップを実行する**(検証漏れを起こさない側に倒す)。
+
+| 実行条件 | 対象 |
 | --- | --- |
-| `pnpm build` | ビルド可能性 |
-| `pnpm typecheck` | 型整合(保守性) |
-| `pnpm test` | 単体テストの成否(機能適合性) |
-| `pnpm --filter @warimaru/adapters-neon test:integration` | 実 PostgreSQL に対する永続化層の振る舞い |
-| `pnpm --filter @warimaru/web test:e2e` | ビジュアルリグレッション(darling / honey 両テーマ) |
-| `pnpm --filter @warimaru/e2e test:e2e` | 受入シナリオの E2E(AT-0xx / AT-2xx / AT-3xx) |
-| `pnpm lint` | lint ルール + stylelint(トークン直値の機械判定) |
-| `pnpm audit --audit-level moderate` | 依存パッケージの既知脆弱性 → [dependency-audit.md](./dependency-audit.md) |
-| `pnpm format:check` | フォーマット |
+| `code` | `docs/` `.claude/` `*.md` **以外**の変更がある |
+| `web` | `packages/web/` または `packages/domain/` の変更がある(domain は dist 経由で画面表示に波及する) |
+| 常時 | 上記によらず必ず実行する |
+
+| ステップ | 実行条件 | 担保する観点 |
+| --- | --- | --- |
+| `pnpm build` | `code` | ビルド可能性 |
+| `pnpm typecheck` | `code` | 型整合(保守性) |
+| `pnpm test` | `code` | 単体テストの成否(機能適合性) |
+| `pnpm --filter @warimaru/adapters-neon test:integration` | `code` | 実 PostgreSQL に対する永続化層の振る舞い |
+| `pnpm --filter @warimaru/web test:e2e` | `web` | ビジュアルリグレッション(darling / honey 両テーマ) |
+| `pnpm --filter @warimaru/e2e test:e2e` | `code` | 受入シナリオの E2E(AT-0xx / AT-2xx / AT-3xx) |
+| `pnpm lint` | `code` | lint ルール + stylelint(トークン直値の機械判定) |
+| `pnpm audit --audit-level moderate` | 常時 | 依存パッケージの既知脆弱性 → [dependency-audit.md](./dependency-audit.md) |
+| `pnpm format:check` | 常時 | フォーマット(docs / skills の Markdown も対象) |
+
+`main` への push(マージ後の検証)は変更パスによらず全ステップを実行する。また、同じ PR に push が続いたときは追い越された run をキャンセルする(`concurrency`)。
 
 ## 5. 観点を追加するときの手順
 
 1. §1 の切り分け原則で **CI かレビュースキルか** を決める
 2. §2 の対応表にその観点の行を追加(または既存行の担保手段を更新)する
 3. レビュースキルの場合は §3 のトリガー表に起動条件を追加する。**無条件に常時起動にしない**(無人運用が破綻する)
+   CI の場合は §4 の実行条件(`code` / `web` / 常時)を決めて表に追加する。数秒で終わるもの以外を常時実行にしない
 4. 既存レビューとの責務分担をスキル冒頭に明記し、重複して指摘しないことを指示する
 5. `CLAUDE.md` の開発フロー節に位置づけを追記する

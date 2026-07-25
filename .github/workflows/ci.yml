@@ -5,9 +5,18 @@ on:
     branches: [main]
   pull_request:
 
+# 同じ PR に push が続いたとき、追い越された run を捨てて実行枠の空費を防ぐ。
+# main への push はマージ後の履歴を検証する唯一の機会なのでキャンセルしない。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # 通常は 8 分前後で終わる。倍以上かかっているものは無限待ちとみなし、
+    # 既定の 6 時間を待たずに打ち切って実行枠を守る。
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -25,6 +34,64 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 変更パスで後段の検証を出し分ける。docs / skills だけの変更でも
+      # Playwright まで含めて 1 run 8 分を使い切っており(実測)、
+      # マージ実績の約半数がその種の変更だったため段階を設けた。
+      #
+      # 判定できないときは必ず「全部実行」に倒す。検証を飛ばす条件を
+      # 積極的に満たしにいくと、判定の不具合がそのまま検証漏れになるため。
+      - name: Detect changed paths
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -uo pipefail
+
+          run_all() {
+            echo "::notice::変更パスを判定できなかったため全ての検証を実行する(${1})"
+            {
+              echo 'code=true'
+              echo 'web=true'
+            } >>"${GITHUB_OUTPUT}"
+            exit 0
+          }
+
+          # push(main へのマージ)は常に全部。マージ結果そのものの検証は省かない。
+          [ "${GITHUB_EVENT_NAME}" = 'pull_request' ] || run_all 'pull_request 以外のイベント'
+
+          # checkout は深さ 1 のため、比較の基点だけを追加で取得する。
+          git fetch --no-tags --depth=1 origin "${BASE_SHA}" 2>/dev/null || run_all '基点の取得に失敗'
+          files="$(git diff --name-only "${BASE_SHA}" HEAD)" || run_all '差分の取得に失敗'
+          [ -n "${files}" ] || run_all '変更ファイルが空'
+
+          # code: ビルド・型・テスト・lint を要する変更
+          # web : 画面の見た目が変わりうる変更(視覚回帰テストを要する)
+          code=false
+          web=false
+          while IFS= read -r file; do
+            case "${file}" in
+              docs/* | .claude/* | *.md) ;;
+              packages/web/*)
+                code=true
+                web=true
+                ;;
+              # domain は web が dist 経由で参照するため、画面表示にも波及しうる。
+              packages/domain/*)
+                code=true
+                web=true
+                ;;
+              *) code=true ;;
+            esac
+          done <<<"${files}"
+
+          echo '変更ファイル:'
+          echo "${files}" | sed 's/^/  /'
+          echo "判定: code=${code} web=${web}"
+          {
+            echo "code=${code}"
+            echo "web=${web}"
+          } >>"${GITHUB_OUTPUT}"
+
       - uses: pnpm/action-setup@v4
         # バージョンは package.json の packageManager フィールドから解決される
 
@@ -37,25 +104,50 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
+        if: steps.scope.outputs.code == 'true'
         run: pnpm build
 
       - name: Typecheck
+        if: steps.scope.outputs.code == 'true'
         run: pnpm typecheck
 
       - name: Test
+        if: steps.scope.outputs.code == 'true'
         run: pnpm test
 
       - name: Integration test (adapters-neon)
+        if: steps.scope.outputs.code == 'true'
         run: pnpm --filter @warimaru/adapters-neon test:integration
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/warimaru_test
 
+      # ブラウザ本体(約 150MB)は毎回ダウンロードすると 30 秒以上かかる。
+      # 依存が変わらない限り中身は同じなのでロックファイルを鍵に持ち回す。
+      - name: Cache Playwright browsers
+        if: steps.scope.outputs.code == 'true'
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Playwright browsers
+        if: steps.scope.outputs.code == 'true'
+        env:
+          CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
         run: |
-          pnpm --filter @warimaru/web exec playwright install --with-deps chromium
+          set -euo pipefail
+          # キャッシュが効いたときもブラウザの動作に必要な OS 側の依存だけは入れ直す
+          # (これはランナー側の状態でキャッシュの対象外のため)。
+          if [ "${CACHE_HIT}" = 'true' ]; then
+            pnpm --filter @warimaru/web exec playwright install-deps chromium
+          else
+            pnpm --filter @warimaru/web exec playwright install --with-deps chromium
+          fi
           pnpm --filter @warimaru/e2e exec playwright install chromium
 
       - name: Visual regression tests (Playwright)
+        if: steps.scope.outputs.web == 'true'
         run: pnpm --filter @warimaru/web test:e2e
 
       - name: Upload VRT diff artifacts
@@ -67,6 +159,7 @@ jobs:
           retention-days: 30
 
       - name: E2E smoke tests
+        if: steps.scope.outputs.code == 'true'
         run: pnpm --filter @warimaru/e2e test:e2e
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/warimaru_test
@@ -80,6 +173,7 @@ jobs:
           retention-days: 30
 
       - name: Lint
+        if: steps.scope.outputs.code == 'true'
         run: pnpm lint
 
       # 失敗基準を moderate にしている理由: 個人の金融データを扱うため既知脆弱性を放置したくなく、
@@ -89,8 +183,11 @@ jobs:
       # 対象・理由・再評価時期を docs/review/dependency-audit.md に記録する。
       # build / test より後段に置く理由: 上流の advisory 公開だけで落ちうるため、
       # 前段に置くと他の検証結果すら得られなくなる。
+      # 変更パスによらず必ず実行する理由: 上流の advisory 公開は自分の変更と無関係に
+      # 起きるため、docs だけの変更のときに検知の機会を落とす意味がない(実測 1 秒)。
       - name: Audit dependencies
         run: pnpm audit --audit-level moderate
 
+      # prettier は docs / skills の Markdown も対象なので必ず実行する。
       - name: Format check
         run: pnpm format:check

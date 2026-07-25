@@ -13,6 +13,14 @@ name: PR preview
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
+    # 画面が変わらない PR(docs / skills だけの変更など)にプレビューは要らない。
+    # 配信対象を web の変更がある PR に限る(CLAUDE.md の記載と同じ範囲)。
+    # closed も同じ条件で評価されるため、配信した PR の後片付けは走る。
+    # 途中まで web を触っていた PR が最終差分から web を落として閉じた場合だけ
+    # 配信物が残るが、サイト直下の一覧に出るので手動で消せる。
+    paths:
+      - 'packages/web/**'
+      - '.github/workflows/pr-preview.yml'
 
 permissions:
   contents: write
