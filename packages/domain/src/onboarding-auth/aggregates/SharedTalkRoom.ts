@@ -25,6 +25,9 @@ export const SharedTalkRoomSchema = z.discriminatedUnion('kind', [
 ])
 export type SharedTalkRoom = z.infer<typeof SharedTalkRoomSchema>
 
+/** 参加済みの共通トークルーム（永続化の対象はこの状態のみ） */
+export type JoinedSharedTalkRoom = Extract<SharedTalkRoom, { kind: 'joined' }>
+
 /** 未参加（記録が存在しない状態と同義） */
 export const NOT_JOINED_SHARED_TALK_ROOM: SharedTalkRoom = { kind: 'not_joined' }
 
@@ -36,13 +39,13 @@ export function recordSharedTalkRoomJoined(
   room: SharedTalkRoom,
   talkRoomId: TalkRoomId,
   at: Date,
-): SharedTalkRoom {
+): JoinedSharedTalkRoom {
   if (room.kind === 'joined' && room.talkRoomId === talkRoomId) return room
   return SharedTalkRoomSchema.parse({
     kind: 'joined',
     talkRoomId,
     joinWebhookReceivedAt: at,
-  })
+  }) as JoinedSharedTalkRoom
 }
 
 /** 参加済みの共通トークルームID。未参加なら undefined */

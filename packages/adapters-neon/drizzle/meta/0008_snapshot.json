@@ -1,5 +1,5 @@
 {
-  "id": "88b1c54b-99de-4991-af64-06d093032795",
+  "id": "7760b9e6-1df5-4c4e-a3eb-c3e553a346d2",
   "prevId": "2652ae83-38a2-444a-983d-3ecc116a86d4",
   "version": "7",
   "dialect": "postgresql",
@@ -918,18 +918,18 @@
       "name": "shared_talk_rooms",
       "schema": "",
       "columns": {
-        "talk_room_id": {
-          "name": "talk_room_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
         "singleton": {
           "name": "singleton",
           "type": "boolean",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "default": true
+        },
+        "talk_room_id": {
+          "name": "talk_room_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "join_webhook_received_at": {
           "name": "join_webhook_received_at",
@@ -955,15 +955,7 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "shared_talk_rooms_singleton_unique": {
-          "name": "shared_talk_rooms_singleton_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "singleton"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
         "shared_talk_rooms_singleton_check": {

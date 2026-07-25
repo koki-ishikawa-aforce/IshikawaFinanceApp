@@ -8,7 +8,6 @@ import {
   changeNickname,
   lineOperationSettingsOf,
   recordLineFriendAdded,
-  activateNotification,
   completeSectionA,
   completeSectionB,
   completeSectionF,
@@ -20,6 +19,7 @@ import {
   NOT_JOINED_SHARED_TALK_ROOM,
   recordSharedTalkRoomJoined,
 } from '../../../src/onboarding-auth/aggregates/SharedTalkRoom'
+import { activateNotification } from '../../../src/onboarding-auth/services/activateNotification'
 import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 
 /** 世帯の共通トークルーム参加済み記録（通知有効化の前提） */
@@ -198,27 +198,6 @@ describe('LINE 運用設定の事前蓄積（#41）', () => {
     const again = recordLineFriendAdded(added, new Date('2026-07-02T00:00:00Z'))
     const settings = lineOperationSettingsOf(again)
     expect(settings.friendAdd).toEqual({ kind: 'added', followWebhookReceivedAt: first })
-  })
-
-  it('通知有効化は友達追加と世帯の共通トークルーム参加の完了が前提', () => {
-    const at = new Date()
-    expect(() => activateNotification(base(), joinedTalkRoom(at), at)).toThrow(
-      InvariantViolationError,
-    )
-
-    const friendOnly = recordLineFriendAdded(base(), at)
-    // 友達追加済みでも世帯が共通トークルーム未参加なら有効化できない
-    expect(() => activateNotification(friendOnly, NOT_JOINED_SHARED_TALK_ROOM, at)).toThrow(
-      InvariantViolationError,
-    )
-
-    const activated = activateNotification(friendOnly, joinedTalkRoom(at), at)
-    const settings = lineOperationSettingsOf(activated)
-    expect(settings.notificationActivation).toEqual({
-      kind: 'activated',
-      talkRoomId: 'room_001',
-      activatedAt: at,
-    })
   })
 
   it('LINE 運用設定は Phase 遷移（startPhase2）を越えて引き継がれる', () => {

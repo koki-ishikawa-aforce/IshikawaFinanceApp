@@ -34,14 +34,13 @@ import {
   SpouseCompletionResultSchema,
   type SpouseCompletionResult,
 } from '../value-objects/SpouseCompletionResult'
-import type { SharedTalkRoom } from './SharedTalkRoom'
 
 /**
  * 共通属性（userId = LINE userID、OQ-15）
  *
  * lineOperationSettings は運用開始前に事前蓄積される LINE 運用設定（友達追加・
- * トークルーム参加・通知有効化。Web オンボーディングの完了記録や follow/join
- * Webhook で更新される、#41）。運用開始発火（startOperation）時に
+ * 通知有効化。Web オンボーディングの完了記録や follow Webhook で更新される、#41。
+ * 共通トークルーム参加は世帯レベルの SharedTalkRoom が持つ、OQ-55 ①）。運用開始発火（startOperation）時に
  * `operation_started.lineOperationSettings` へ昇格し、common 側からは除去する
  * （二重管理の禁止は superRefine が検査）。未設定は全状態未着手と同義
  * （既存レコード互換のため optional）。
@@ -238,7 +237,8 @@ export function lineOperationSettingsOf(user: AppUser): LineOperationSettings {
   return user.common.lineOperationSettings ?? EMPTY_LINE_OPERATION_SETTINGS
 }
 
-function withLineOperationSettings(user: AppUser, settings: LineOperationSettings): AppUser {
+/** LINE 運用設定を差し替える（運用開始済みは集約直下、それ以前は common の事前蓄積へ書く） */
+export function withLineOperationSettings(user: AppUser, settings: LineOperationSettings): AppUser {
   if (user.kind === 'operation_started') {
     return AppUserSchema.parse({ ...user, lineOperationSettings: settings })
   }
@@ -255,35 +255,6 @@ export function recordLineFriendAdded(user: AppUser, at: Date): AppUser {
   return withLineOperationSettings(user, {
     ...settings,
     friendAdd: { kind: 'added', followWebhookReceivedAt: at },
-  })
-}
-
-/**
- * 通知機能を有効化する（冪等: 有効化済みなら変更しない）
- * 友達追加済み かつ 世帯の共通トークルーム参加済み でなければ InvariantViolationError を throw
- * する。有効化対象は世帯レベルの参加済みトークルーム（OQ-55 ①: 参加状態の「正」は
- * SharedTalkRoom 集約）。AppUser と SharedTalkRoom の 2 集約にまたがる不変条件のため、
- * VO（LineOperationSettings）ではなく本関数が強制する。
- */
-export function activateNotification(
-  user: AppUser,
-  sharedTalkRoom: SharedTalkRoom,
-  at: Date,
-): AppUser {
-  const settings = lineOperationSettingsOf(user)
-  if (settings.notificationActivation.kind === 'activated') return user
-  if (settings.friendAdd.kind !== 'added' || sharedTalkRoom.kind !== 'joined') {
-    throw new InvariantViolationError(
-      '通知機能の有効化には LINE 友達追加と共通トークルーム参加の完了が必要',
-    )
-  }
-  return withLineOperationSettings(user, {
-    ...settings,
-    notificationActivation: {
-      kind: 'activated',
-      talkRoomId: sharedTalkRoom.talkRoomId,
-      activatedAt: at,
-    },
   })
 }
 

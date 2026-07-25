@@ -69,6 +69,7 @@ import type {
   PdfToCsvConverter,
   ProratedChildTransaction,
   ProratedChildTransactionRepository,
+  JoinedSharedTalkRoom,
   RetroactiveCandidateQuery,
   SharedTalkRoom,
   SharedTalkRoomRepository,
@@ -531,7 +532,7 @@ export function createMockSharedTalkRoomRepository(): SharedTalkRoomRepository {
     async find() {
       return room
     },
-    async save(next: SharedTalkRoom) {
+    async save(next: JoinedSharedTalkRoom) {
       room = next
     },
   }

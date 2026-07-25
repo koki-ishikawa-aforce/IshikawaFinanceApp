@@ -5,7 +5,11 @@
  * 行が無い = 未参加。参加記録は singleton カラム（UNIQUE + CHECK）の競合で UPDATE し、
  * 招待し直しによる別トークルームへの差し替えも 1 行のまま保つ。
  */
-import type { SharedTalkRoom, SharedTalkRoomRepository } from '@warimaru/domain'
+import type {
+  JoinedSharedTalkRoom,
+  SharedTalkRoom,
+  SharedTalkRoomRepository,
+} from '@warimaru/domain'
 import { NOT_JOINED_SHARED_TALK_ROOM, SharedTalkRoomSchema } from '@warimaru/domain'
 import type { Db } from '../client'
 import { sharedTalkRooms } from '../schema'
@@ -31,9 +35,7 @@ export class NeonSharedTalkRoomRepository implements SharedTalkRoomRepository {
     })
   }
 
-  async save(room: SharedTalkRoom): Promise<void> {
-    // 未参加は「記録が無い」と同義。参加記録の取り消し要件は無いため削除は行わない
-    if (room.kind !== 'joined') return
+  async save(room: JoinedSharedTalkRoom): Promise<void> {
     await this.db
       .insert(sharedTalkRooms)
       .values({

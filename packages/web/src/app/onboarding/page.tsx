@@ -56,7 +56,7 @@ const EMPTY_LINE_SETTINGS: LineOperationSettingsWire = {
   notificationActivation: { kind: 'not_activated' },
 }
 
-/** 世帯の共通トークルーム参加状態の既定値（レスポンス取得前） */
+/** 世帯の共通トークルーム参加状態の既定値（読み込み完了前は step 判定に到達しない） */
 const NOT_JOINED_TALK_ROOM: SharedTalkRoomWire = { kind: 'not_joined' }
 
 /**
