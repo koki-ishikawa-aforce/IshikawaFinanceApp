@@ -27,20 +27,22 @@ async function seedTestData(pool: import('pg').Pool): Promise<void> {
   try {
     await client.query('BEGIN')
 
-    const users = [
+    const { rows: tableRows } = await client.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables
+       WHERE schemaname = 'public' AND tablename != 'drizzle_migrations'`,
+    )
+    if (tableRows.length > 0) {
+      const names = tableRows.map(r => `"${r.tablename}"`).join(', ')
+      await client.query(`TRUNCATE ${names} CASCADE`)
+    }
+
+    for (const u of [
       { userId: 'U_DARLING_DEV', role: 'darling' },
       { userId: 'U_HONEY_DEV', role: 'honey' },
-    ] as const
-    await client.query(
-      `DELETE FROM app_users
-       WHERE role = ANY($1) AND user_id != ALL($2)`,
-      [users.map(u => u.role), users.map(u => u.userId)],
-    )
-    for (const u of users) {
+    ] as const) {
       await client.query(
         `INSERT INTO app_users (user_id, role, kind, payload)
-         VALUES ($1, $2, 'operation_started', $3)
-         ON CONFLICT (user_id) DO UPDATE SET role = $2, kind = 'operation_started', payload = $3`,
+         VALUES ($1, $2, 'operation_started', $3)`,
         [u.userId, u.role, JSON.stringify(makeAppUserPayload(u.userId, u.role))],
       )
     }
@@ -55,18 +57,10 @@ async function seedTestData(pool: import('pg').Pool): Promise<void> {
       { id: '01JAAAAAAAAAAAAAAAAAAAAAA3', name: '娯楽', defaultKind: 'entertainment' },
       { id: '01JAAAAAAAAAAAAAAAAAAAAAA4', name: 'その他', defaultKind: 'other' },
     ] as const
-    const catNames = categories.map(c => c.name)
-    const catIds = categories.map(c => c.id)
-    await client.query(
-      `DELETE FROM category_masters
-       WHERE owner_user_id IS NULL AND name = ANY($1) AND category_id != ALL($2)`,
-      [catNames, catIds],
-    )
     for (const c of categories) {
       await client.query(
         `INSERT INTO category_masters (category_id, kind, name, owner_user_id, payload)
-         VALUES ($1, 'default', $2, NULL, $3)
-         ON CONFLICT (category_id) DO UPDATE SET name = $2, payload = $3`,
+         VALUES ($1, 'default', $2, NULL, $3)`,
         [
           c.id,
           c.name,
@@ -88,18 +82,10 @@ async function seedTestData(pool: import('pg').Pool): Promise<void> {
       { id: '01JEEEEEEEEEEEEEEEEEEEEE4', name: '交通費', defaultKind: 'transportation' },
       { id: '01JEEEEEEEEEEEEEEEEEEEEE5', name: 'その他経費', defaultKind: 'other_expense' },
     ] as const
-    const etNames = expenseTypes.map(e => e.name)
-    const etIds = expenseTypes.map(e => e.id)
-    await client.query(
-      `DELETE FROM expense_type_masters
-       WHERE owner_user_id IS NULL AND name = ANY($1) AND expense_type_id != ALL($2)`,
-      [etNames, etIds],
-    )
     for (const e of expenseTypes) {
       await client.query(
         `INSERT INTO expense_type_masters (expense_type_id, kind, name, owner_user_id, payload)
-         VALUES ($1, 'default', $2, NULL, $3)
-         ON CONFLICT (expense_type_id) DO UPDATE SET name = $2, payload = $3`,
+         VALUES ($1, 'default', $2, NULL, $3)`,
         [
           e.id,
           e.name,
