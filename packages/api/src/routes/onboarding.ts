@@ -15,8 +15,6 @@ import {
   ImportJobIdSchema,
   InitialBalanceRegistrationRefSchema,
   InvariantViolationError,
-  LineFriendAddedSchema,
-  LineTalkRoomJoinedSchema,
   NicknameChangedSchema,
   NicknameSchema,
   NotFoundError,
@@ -35,8 +33,6 @@ import {
   completeSectionB,
   completeSectionF,
   judgeRole,
-  recordLineFriendAdded,
-  recordSharedTalkRoomJoined,
   registerAppUser,
   skipSectionF,
   startPhase2,
@@ -58,6 +54,7 @@ import type {
 } from '@warimaru/domain'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { applyLineFriendAdded, applySharedTalkRoomJoined } from '../line-operation-records.js'
 
 const RegisterBodySchema = z.object({ nickname: NicknameSchema.optional() })
 const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
@@ -217,26 +214,17 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const viewerId = c.get('viewerId')
     const user = await getUserOr404(viewerId)
     const now = new Date()
-    const updated = recordLineFriendAdded(user, now)
-    if (updated !== user) {
-      await deps.appUserRepository.save(updated)
-      await deps.eventBus.publish(
-        LineFriendAddedSchema.parse({
-          ...domainEventBase(now),
-          type: 'LineFriendAdded',
-          userId: viewerId,
-          receivedAt: now,
-        }),
-      )
-    }
+    const updated = await applyLineFriendAdded(deps, user, now)
     return c.json({ user: updated })
   })
 
   /**
    * Phase1: 共通トークルーム参加の完了記録（冪等）。
    * 暫定: talkRoomId は Web（LIFF context）からの自己申告。共通トークルームID の正は
-   * join Webhook（08f §2）であり、LINE Webhook 受信ルートの実装時にそちらを正とする
-   * （自己申告 API の廃止は #298）。
+   * join Webhook（08f §2）であり、その受信ルート（`/webhook/line`、#296）は実装済み。
+   * 本 API は移行期間の互換のために残しており、廃止は #298 で行う。
+   * Webhook 由来の記録は既存の参加記録を上書きしない（配信先の差し替え防止。routes/line-webhook.ts）
+   * ため、参加先の変更（招待し直し）は現状この LIFF 認証つき経路が担う。
    * 保存先は世帯レベルの SharedTalkRoom 1 か所（OQ-55 ①）。per-user の LINE 運用設定へは
    * 書き込まない（二重管理の防止）。
    */
@@ -246,18 +234,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const user = await getUserOr404(viewerId)
     const now = new Date()
     const current = await deps.sharedTalkRoomRepository.find()
-    const updated = recordSharedTalkRoomJoined(current, body.talkRoomId, now)
-    if (updated !== current) {
-      await deps.sharedTalkRoomRepository.save(updated)
-      await deps.eventBus.publish(
-        LineTalkRoomJoinedSchema.parse({
-          ...domainEventBase(now),
-          type: 'LineTalkRoomJoined',
-          talkRoomId: body.talkRoomId,
-          receivedAt: now,
-        }),
-      )
-    }
+    const updated = await applySharedTalkRoomJoined(deps, current, body.talkRoomId, now)
     return c.json({ user, sharedTalkRoom: updated })
   })
 
