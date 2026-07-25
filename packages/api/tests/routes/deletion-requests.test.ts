@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  CategoryDeletionRemapRequestedSchema,
   CategoryMasterSchema,
   MerchantLearningRuleSchema,
   AmazonProductKeyLearningRuleSchema,
@@ -7,7 +8,7 @@ import {
   TransactionSchema,
   YearMonthSchema,
 } from '@warimaru/domain'
-import type { UserId } from '@warimaru/domain'
+import type { CategoryDeletionRequestId, UserId } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, SPOUSE_ID, VIEWER_ID } from '../helpers/test-app.js'
@@ -249,5 +250,99 @@ describe('カテゴリ削除リマップの月次表示整合', () => {
     const tx = transactions[0]
     if (tx?.kind !== 'classified') throw new Error('classified を期待')
     expect(tx.details.categoryId).toBe(destination)
+  })
+})
+
+describe('マスタ削除リマップの冪等性・失敗時のマスタ保全（#223）', () => {
+  it('リマップ要請イベントの再配信で二重付け替えせず、マスタは削除済みのまま', async () => {
+    const t = createTestApp()
+    const target = await createCategory(t, '推し活')
+    const destination = await createCategory(t, '娯楽費')
+    const transactionId = await seedClassifiedTransaction(t, { categoryId: target })
+    await t.deps.merchantLearningRuleRepository.save(
+      MerchantLearningRuleSchema.parse({
+        kind: 'active',
+        common: { userId: VIEWER_ID, merchantName: 'スーパーA' },
+        categoryRef: { kind: 'learned', categoryId: target },
+        expenseClassRef: { kind: 'learned', expenseClass: 'household' },
+        expenseTypeRef: { kind: 'unlearned' },
+        lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
+      }),
+    )
+
+    const res = await request(t.app, 'POST', `/api/categories/${target}/deletion-requests`, {
+      body: { destinationCategoryId: destination, destinationExpenseClass: 'household' },
+    })
+    expect(res.status).toBe(201)
+    const { request: deletionRequest } = (await res.json()) as {
+      request: {
+        categoryDeletionRequestId: string
+        state: { kind: string; affectedTransactionCount: number; affectedLearningRuleCount: number }
+      }
+    }
+    expect(deletionRequest.state.kind).toBe('remap_completed')
+
+    // 同一のリマップ要請イベントを再配信（at-least-once の二重配信を模擬）
+    await t.deps.eventBus.publish(
+      CategoryDeletionRemapRequestedSchema.parse({
+        eventId: newUlid(),
+        occurredAt: new Date(),
+        type: 'CategoryDeletionRemapRequested',
+        categoryDeletionRequestId: deletionRequest.categoryDeletionRequestId,
+        targetCategoryId: target,
+        destinationCategoryId: destination,
+        destinationExpenseClass: 'household',
+      }),
+    )
+
+    // マスタは削除済みのまま、状態と件数は不変（二重付け替えしない）
+    expect(await t.deps.categoryMasterRepository.findById(target as never)).toBeNull()
+    const reread = await t.deps.categoryDeletionRequestRepository.findById(
+      deletionRequest.categoryDeletionRequestId as CategoryDeletionRequestId,
+    )
+    expect(reread?.state.kind).toBe('remap_completed')
+    if (reread?.state.kind === 'remap_completed') {
+      expect(reread.state.affectedTransactionCount).toBe(1)
+      expect(reread.state.affectedLearningRuleCount).toBe(1)
+    }
+    const remapped = await t.deps.transactionRepository.findById(
+      TransactionIdSchema.parse(transactionId),
+    )
+    if (remapped?.kind !== 'classified') throw new Error('classified を期待')
+    expect(remapped.details.categoryId).toBe(destination)
+  })
+
+  it('いずれかのコンテキストの付け替えが失敗するとマスタは物理削除されず remap_failed になる', async () => {
+    const t = createTestApp()
+    const target = await createCategory(t, '推し活')
+    const destination = await createCategory(t, '娯楽費')
+    await seedClassifiedTransaction(t, { categoryId: target })
+
+    // 自動分類・学習コンテキストの付け替えを失敗させる（学習ルールストア障害を模擬）
+    t.deps.merchantLearningRuleRepository.findAllByUser = async () => {
+      throw new Error('learning rule store unavailable')
+    }
+    // 保存された削除リクエストID を捕捉する（失敗時は POST レスポンスから取得できないため）
+    let capturedId: string | undefined
+    const originalSave = t.deps.categoryDeletionRequestRepository.save.bind(
+      t.deps.categoryDeletionRequestRepository,
+    )
+    t.deps.categoryDeletionRequestRepository.save = async deletionRequest => {
+      capturedId = deletionRequest.categoryDeletionRequestId
+      return originalSave(deletionRequest)
+    }
+
+    const res = await request(t.app, 'POST', `/api/categories/${target}/deletion-requests`, {
+      body: { destinationCategoryId: destination, destinationExpenseClass: 'household' },
+    })
+    expect(res.status).toBe(500)
+
+    // マスタは残る（1コンテキストでも失敗したら物理削除しない）
+    expect(await t.deps.categoryMasterRepository.findById(target as never)).not.toBeNull()
+    if (capturedId === undefined) throw new Error('削除リクエストID を捕捉できなかった')
+    const reread = await t.deps.categoryDeletionRequestRepository.findById(
+      capturedId as CategoryDeletionRequestId,
+    )
+    expect(reread?.state.kind).toBe('remap_failed')
   })
 })

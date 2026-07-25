@@ -124,7 +124,6 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     expenseTypesRoutes({
       expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
       expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
-      monthlyLimitRepository: deps.monthlyLimitRepository,
       eventBus: deps.eventBus,
     }),
   )

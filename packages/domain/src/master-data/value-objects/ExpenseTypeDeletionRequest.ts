@@ -5,7 +5,11 @@ import {
   UserIdSchema,
 } from '../../shared/ids'
 import { DeletionRequestStateSchema } from './DeletionRequestState'
-import type { DeletionRequestState, RemapTargetContext } from './DeletionRequestState'
+import type {
+  CompletedRemapContext,
+  DeletionRequestState,
+  RemapTargetContext,
+} from './DeletionRequestState'
 
 /**
  * 経費種別削除リクエスト
@@ -52,19 +56,58 @@ export function requestExpenseTypeRemap(
   }) as RemapRequestedExpenseTypeDeletionRequest
 }
 
-/** 状態遷移: リマップ依頼済み → リマップ完了 */
+/**
+ * 依頼先コンテキストからのリマップ完了通知を1件記録する（remap_requested のまま）。
+ * 冪等: 同一コンテキストの通知が再配信されても二重に記録しない（at-least-once 配信対策）。
+ */
+export function recordExpenseTypeRemapContextCompletion(
+  request: RemapRequestedExpenseTypeDeletionRequest,
+  completion: Omit<CompletedRemapContext, 'completedAt'>,
+  at: Date,
+): RemapRequestedExpenseTypeDeletionRequest {
+  if (request.state.completedContexts.some(c => c.context === completion.context)) {
+    return request
+  }
+  return ExpenseTypeDeletionRequestSchema.parse({
+    ...request,
+    state: {
+      ...request.state,
+      completedContexts: [...request.state.completedContexts, { ...completion, completedAt: at }],
+    },
+  }) as RemapRequestedExpenseTypeDeletionRequest
+}
+
+/** 依頼先コンテキストが全て完了通知を返したか（物理削除の前提条件） */
+export function isExpenseTypeRemapFullyCompleted(
+  request: RemapRequestedExpenseTypeDeletionRequest,
+): boolean {
+  const completed = new Set(request.state.completedContexts.map(c => c.context))
+  return request.state.requestedContexts.every(context => completed.has(context))
+}
+
+/**
+ * 状態遷移: リマップ依頼済み → リマップ完了。
+ * 影響件数は記録済みの各コンテキスト完了通知を合算して確定する。
+ */
 export function completeExpenseTypeRemap(
   request: RemapRequestedExpenseTypeDeletionRequest,
-  counts: { affectedTransactionCount: number; affectedLearningRuleCount: number },
   at: Date,
 ): RemapCompletedExpenseTypeDeletionRequest {
+  const affectedTransactionCount = request.state.completedContexts.reduce(
+    (sum, c) => sum + c.affectedTransactionCount,
+    0,
+  )
+  const affectedLearningRuleCount = request.state.completedContexts.reduce(
+    (sum, c) => sum + c.affectedLearningRuleCount,
+    0,
+  )
   return ExpenseTypeDeletionRequestSchema.parse({
     ...request,
     state: {
       kind: 'remap_completed',
       completedAt: at,
-      affectedTransactionCount: counts.affectedTransactionCount,
-      affectedLearningRuleCount: counts.affectedLearningRuleCount,
+      affectedTransactionCount,
+      affectedLearningRuleCount,
     },
   }) as RemapCompletedExpenseTypeDeletionRequest
 }

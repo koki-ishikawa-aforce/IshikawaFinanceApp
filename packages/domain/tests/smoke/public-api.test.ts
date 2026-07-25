@@ -21,6 +21,7 @@ import {
   ViewerContextSchema,
   ViewerRoleSchema,
   toListItems,
+  CategoryTransactionsRemappedSchema,
   // balance-asset-tracking
   AccountSchema,
   MitsuiSumitomoUnpaidSchema,
@@ -54,6 +55,8 @@ import {
   RetroactiveCandidateViewSchema,
   TransactionAutoClassifiedSchema,
   BulkClassificationCompletedSchema,
+  CategoryLearningRulesRemappedSchema,
+  ExpenseTypeLearningRulesRemappedSchema,
   // expense-settlement
   MonthlyExpenseCycleSchema,
   ProratedChildTransactionSchema,
@@ -63,6 +66,7 @@ import {
   ExpenseSettlementManagementViewSchema,
   MonthlyExpenseCycleFinalizedSchema,
   ExpenseDepositMatchedSchema,
+  ExpenseTypeTransactionsRemappedSchema,
   // transaction-import
   TransactionCandidateSchema,
   DailyMailImportBatchSchema,
@@ -200,6 +204,11 @@ describe('@warimaru/domain 公開 API', () => {
     expect(AllowlistSchema).toBeDefined()
     expect(MonthlyLimitChangedSchema).toBeDefined()
     expect(CategoryDeletionRemapRequestedSchema).toBeDefined()
+    // マスタ削除リマップ 各コンテキスト完了通知（#223）
+    expect(CategoryTransactionsRemappedSchema).toBeDefined()
+    expect(CategoryLearningRulesRemappedSchema).toBeDefined()
+    expect(ExpenseTypeTransactionsRemappedSchema).toBeDefined()
+    expect(ExpenseTypeLearningRulesRemappedSchema).toBeDefined()
     // notification-delivery
     expect(DeliveryMessageSchema).toBeDefined()
     expect(LineDeliveryLogSchema).toBeDefined()

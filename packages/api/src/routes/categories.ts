@@ -13,7 +13,6 @@ import {
   PermissionDeniedError,
   assertCategoryNameAvailable,
   assertVisibleTo,
-  completeCategoryRemap,
   failCategoryRemap,
   renameCustomCategory,
   requestCategoryRemap,
@@ -31,7 +30,6 @@ import type {
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
-import type { RemapResults } from '../event-handlers/master-data-remap.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
 
@@ -164,28 +162,27 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
     await deps.categoryDeletionRequestRepository.save(requested)
 
     try {
-      const remapResults: RemapResults = {
-        affectedTransactionCount: 0,
-        affectedLearningRuleCount: 0,
-      }
-      const event = {
-        ...CategoryDeletionRemapRequestedSchema.parse({
+      // リマップ要請を発火する。各コンテキストの付け替え → 完了通知 → コーディネーターによる
+      // 物理削除まで同期バス上で連鎖して完了する（#223）。
+      await deps.eventBus.publish(
+        CategoryDeletionRemapRequestedSchema.parse({
           ...domainEventBase(now),
-          type: 'CategoryDeletionRemapRequested' as const,
+          type: 'CategoryDeletionRemapRequested',
           categoryDeletionRequestId: pending.categoryDeletionRequestId,
           targetCategoryId: target.categoryId,
           destinationCategoryId: body.destinationCategoryId,
           destinationExpenseClass: body.destinationExpenseClass,
         }),
-        _remapResults: remapResults,
-      }
-      await deps.eventBus.publish(event)
-
-      const completed = completeCategoryRemap(requested, remapResults, new Date())
-      await deps.categoryDeletionRequestRepository.save(completed)
-      await deps.categoryMasterRepository.deleteById(target.categoryId)
-      return c.json({ request: completed }, 201)
+      )
     } catch (e) {
+      // コーディネーターが remap_completed まで到達済みなら、後続の副作用失敗で
+      // 完了を remap_failed に覆さない（マスタ削除済みなのに失敗記録、を防ぐ）。
+      const current = await deps.categoryDeletionRequestRepository.findById(
+        pending.categoryDeletionRequestId,
+      )
+      if (current?.state.kind === 'remap_completed') {
+        return c.json({ request: current }, 201)
+      }
       const failed = failCategoryRemap(
         requested,
         e instanceof Error ? e.message : String(e),
@@ -194,6 +191,19 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
       await deps.categoryDeletionRequestRepository.save(failed)
       throw e
     }
+
+    const finalized = await deps.categoryDeletionRequestRepository.findById(
+      pending.categoryDeletionRequestId,
+    )
+    if (finalized === null) {
+      throw new NotFoundError('CategoryDeletionRequest', pending.categoryDeletionRequestId)
+    }
+    // 依頼先コンテキストの完了通知が全て揃えばコーディネーターが remap_completed へ遷移する。
+    // 揃わない（購読漏れ等の想定外配線）まま 201 を返さず、内部エラーとして顕在化させる。
+    if (finalized.state.kind !== 'remap_completed') {
+      throw new Error('カテゴリ削除リマップが完了しなかった（完了通知が揃わなかった）')
+    }
+    return c.json({ request: finalized }, 201)
   })
 
   app.delete('/:id', c => {
