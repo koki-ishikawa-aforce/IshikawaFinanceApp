@@ -1,4 +1,5 @@
 export * from './LearningRefs'
+export * from './ManualClassification'
 export * from './ClassificationResult'
 export * from './AmazonMatchState'
 export * from './LearningAxis'

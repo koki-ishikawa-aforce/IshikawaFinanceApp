@@ -30,6 +30,7 @@ export function registerEventHandlers(deps: AppDeps): void {
   registeredBuses.add(deps.eventBus)
   registerAutoClassificationEventHandlers(deps.eventBus, {
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
+    amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
   })
   registerMasterDataRemapEventHandlers(deps.eventBus, {
     transactionRepository: deps.transactionRepository,
