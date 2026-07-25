@@ -53,6 +53,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 3. 検証ループ: `/verify` — コード変更を完了と報告する前に必ず全 green にする
 4. DDD 観点レビュー: `/ddd-review`(PR 前に実施)— レビュー指摘は must-fix だけでなく suggestion も原則その場で修正する。見送りは例外(大規模リファクタ相当・設計判断が必要な場合)のみで、必ず Issue 化して追跡する
    - UI レビュー: `/ui-review`(`packages/web` 配下に変更がある場合、`/ddd-review` に加えて実施)— `DESIGN.md` とプレゼンテーション層の観点(デザイントークン規律・絵文字リグレッション・テーマ両対応・アクセシビリティ)でレビュー。指摘の扱いは `/ddd-review` と同じ
+   - 信頼性・可観測性レビュー: `/reliability-review`(ドメインイベント・イベントハンドラー・通知配信・外部 API 呼び出しに変更がある場合、`/ddd-review` に加えて実施)— 外部呼び出しの失敗時挙動・失敗の握りつぶし・イベント再実行の回復性・障害に気づけるかの観点でレビュー。冪等性のうち「データに二重適用が残らないか」はデータレビューの担当なので重複させない。指摘の扱いは `/ddd-review` と同じ
    - セキュリティレビュー: `/security-review`(`packages/api` の routes / middleware / gmail-oauth / aws、または認証・外部連携(LINE / Gmail)に変更がある場合、`/ddd-review` に加えて実施)— 外周の攻撃面(Webhook 署名検証・ID トークン検証・認可の位置・シークレット/PII のログ流出・外部入力の検証)でレビュー。プライバシー3段階ルールは `/ddd-review` の担当なので重複させない。指摘の扱いは `/ddd-review` と同じ
 5. 判断待ちの消化: `/decide` — 各スキルが `needs-decision` に集約した判断依頼を対話で消化し、決定を Issue と docs に反映する
 6. 無人運用の振り返り: `/retro` — 無人モード(`/issue-work`・`/pr-steward`)の失敗データを週次で振り返り、繰り返す失敗パターンから skills / CLAUDE.md / Issue テンプレートの改善案を `needs-decision` Issue として起票する(読み取り専用。判断は `/decide`)

@@ -30,7 +30,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | --- | --- | --- |
 | **機能適合性**(要求どおり動くか) | CI: `pnpm test`(単体・統合)、Playwright E2E / VRT<br>レビュー: `/ddd-review`(不変条件の置き場所)<br>人間: `docs/acceptance/` の受入テスト(#58) | ⚠️ 部分的 — Issue 単位の受け入れ条件は `/verify` で見るが、`docs/acceptance/` のどの AT シナリオを満たしたかを照合する工程が無い(#333) |
 | **性能効率**(初期表示・クエリ本数) | CI: バンドルサイズ予算(#332)<br>レビュー: N+1・インデックス欠落はデータレビュー(#328) | ❌ 未整備 — 計測基盤が無く、劣化しても気づけない(#332) |
-| **信頼性**(外部依存の失敗・冪等性・可観測性) | レビュー: 信頼性・可観測性レビュー(#331) | ❌ 未整備 — Gmail / LINE / Neon の失敗時挙動とイベントハンドラの再実行安全性を誰も見ていない(#331) |
+| **信頼性**(外部依存の失敗・冪等性・可観測性) | レビュー: `/reliability-review` | ✅ 担保済み — Gmail / LINE / Neon / SES の失敗時挙動、失敗の握りつぶし、イベント再実行の回復性、障害に気づけるかを `/reliability-review` が担保<br>担保範囲の注記: 担保するのは**新しい差分が失敗経路を増やさないこと**。構造化ログ・ログ収集・監視・アラート・相関 ID・リトライの各基盤は依然として存在せず、`safeSubscribe` 配下の失敗は `console.error` に留まる(能動通知はフェイルセーフメール1経路のみ) |
 | **セキュリティ**(外周の攻撃面) | CI: `pnpm audit`(依存脆弱性)→ [dependency-audit.md](./dependency-audit.md)<br>レビュー: `/security-review`、`/ddd-review`(プライバシー3段階ルール = ドメイン内の可視性) | ✅ 担保済み — 依存脆弱性は CI、Webhook 署名検証・IDトークン検証・認可の位置・PII ログ流出は `/security-review` が担保 |
 | **データ互換性**(スキーマ変更とデプロイ) | レビュー: データ・マイグレーション互換性レビュー(#328) | ❌ 未整備 — `db:generate` は生成物の構文的正しさしか保証せず、既存データ・デプロイ順序の安全性は未判定(#328) |
 | **保守性**(設計・テスト品質) | CI: `pnpm lint` / `pnpm typecheck` / `pnpm format:check`<br>レビュー: `/ddd-review`(依存の向き・命名・ユビキタス言語・barrel)、テスト品質レビュー(#329) | ⚠️ 部分的 — 設計規約は `/ddd-review` が担保。テストが実際に振る舞いを検証しているかは未整備(#329) |
@@ -52,12 +52,21 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | `packages/web/**` のうち画面・フローの追加変更を含む差分 | `/ux-review` | ❌ #330 |
 | `packages/api/src/routes/**`<br>`packages/api/src/middleware/**`<br>`packages/api/src/gmail-oauth/**`<br>`packages/api/src/aws/**`(シークレット・トークンの取得/保管)<br>認証・外部連携(LINE / Gmail)の変更 | `/security-review` | ✅ 稼働中 |
 | `packages/adapters-neon/**`(特に `drizzle/`(マイグレーション)・`src/**/queries/`) | データ・マイグレーション互換性レビュー | ❌ #328 |
-| `packages/domain/src/*/events/**`<br>`packages/api/src/event-handlers/**`<br>`packages/api/src/notification/**` | 信頼性・可観測性レビュー | ❌ #331 |
+| `packages/domain/src/*/events/**`<br>`packages/api/src/event-handlers/**`<br>`packages/api/src/notification/**`<br>外部 API 呼び出しの追加・変更(`packages/api/src/gmail-oauth/**`・`pdf-conversion/**`・`aws/**`、その他 `fetch` / SDK 呼び出し) | `/reliability-review` | ✅ 稼働中 |
 | テストファイルを含む差分、またはドメインの振る舞い変更 | テスト品質レビュー | ❌ #329 |
 
 複数該当する場合はすべて起動する。`/ddd-review` と `/verify` は常時なので、上表の該当分は「追加で回すもの」と読む。
 
 該当が無い差分(docs のみの変更など)では `/ddd-review` の起動を省略してよい。省略した場合は PR 本文にその旨を書く。
+
+イベント型の**定義だけ**を追加し、購読も発行もまだ無い差分では `/reliability-review` を省略してよい(失敗経路が存在しないため)。
+
+`/security-review` と `/reliability-review` は `gmail-oauth/**`・`aws/**` で二重に該当する。同じ箇所を別の面から見るため、見る面を次のとおり切り分ける(§1-3)。
+
+| 対象 | `/security-review` が見る面 | `/reliability-review` が見る面 |
+| --- | --- | --- |
+| 外部 API 呼び出し | トークン・state の扱い、外部入力の検証 | タイムアウトの有無、失敗理由の区別、リトライ前提の誤り |
+| ログ出力 | シークレット・PII の流出(`routes/**`・`middleware/**`・`gmail-oauth/**`・`aws/**`) | 障害を診断できる識別子が残るか。PII は `/security-review` が起動しないパス(イベントハンドラー・`notification/**`)に限って見る |
 
 ### レビュー結果の扱い(全レビュー共通)
 
