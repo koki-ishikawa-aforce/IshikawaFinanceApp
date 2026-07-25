@@ -1,6 +1,5 @@
 import 'dotenv/config'
-import { neon } from '@neondatabase/serverless'
-import { drizzle } from 'drizzle-orm/neon-http'
+import { createDbConnection } from '../src/client'
 import * as schema from '../src/schema'
 import { serializeForPayload } from '../src/serialize'
 
@@ -10,8 +9,17 @@ if (!DATABASE_URL) {
   process.exit(1)
 }
 
-const client = neon(DATABASE_URL)
-const db = drizzle(client, { schema })
+// 本番判定は packages/api/src/env.ts の isProduction() と同じ正規化を使う
+// （adapters-neon から api を import できないため、スクリプト側で同じ判定を書く）
+const IS_PRODUCTION = process.env['NODE_ENV']?.trim().toLowerCase() === 'production'
+
+// 接続先が Neon なら neon-http、ローカルの素の PostgreSQL なら node-postgres (#323)
+const connection = createDbConnection({
+  databaseUrl: DATABASE_URL,
+  isProduction: IS_PRODUCTION,
+  driverOverride: process.env['DATABASE_DRIVER'],
+})
+const db = connection.db
 
 const NOW = new Date('2026-07-15T03:00:00.000Z')
 
@@ -647,7 +655,10 @@ async function seed() {
   console.log('Seed complete!')
 }
 
-seed().catch(err => {
-  console.error('Seed failed:', err)
-  process.exit(1)
-})
+// node-postgres はプールを保持するため、閉じないとスクリプトが終了しない
+seed()
+  .catch(err => {
+    console.error('Seed failed:', err)
+    process.exitCode = 1
+  })
+  .finally(() => connection.close())

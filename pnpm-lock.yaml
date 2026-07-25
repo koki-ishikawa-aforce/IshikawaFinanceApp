@@ -60,6 +60,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.20.0)(pg@8.22.0)
+      pg:
+        specifier: ^8.22.0
+        version: 8.22.0
       ulid:
         specifier: ^3.0.2
         version: 3.0.2
@@ -79,9 +82,6 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
-      pg:
-        specifier: ^8.22.0
-        version: 8.22.0
       tsx:
         specifier: ^4.16.0
         version: 4.23.0
