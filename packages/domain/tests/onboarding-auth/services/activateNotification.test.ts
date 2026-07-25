@@ -39,19 +39,12 @@ describe('通知機能有効化サービス（AppUser × SharedTalkRoom、OQ-55 
     const at = new Date()
     const friendOnly = recordLineFriendAdded(base(), at)
     const activated = activateNotification(friendOnly, joinedTalkRoom(at), at)
+    // toEqual は余剰キーも不一致にするため、共通トークルームID を焼き付けていないことも
+    // ここで固定される（世帯レベルの記録が唯一の正、#334）
     expect(lineOperationSettingsOf(activated).notificationActivation).toEqual({
       kind: 'activated',
       activatedAt: at,
     })
-  })
-
-  it('有効化記録に共通トークルームID を焼き付けない（世帯レベルの記録が唯一の正、#334）', () => {
-    const at = new Date()
-    const friendOnly = recordLineFriendAdded(base(), at)
-    const activated = activateNotification(friendOnly, joinedTalkRoom(at), at)
-    expect(lineOperationSettingsOf(activated).notificationActivation).not.toHaveProperty(
-      'talkRoomId',
-    )
   })
 
   it('有効化済みなら冪等（再実行しても変化しない）', () => {
