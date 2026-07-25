@@ -1,0 +1,9 @@
+{
+  "$comment": "初期表示ペイロードの予算。単位は KiB(gzip)。根拠と更新手順は docs/review/bundle-budget.md",
+  "default": {
+    "js": 241,
+    "css": 105,
+    "total": 356
+  },
+  "routes": {}
+}

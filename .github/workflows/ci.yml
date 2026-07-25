@@ -107,6 +107,15 @@ jobs:
         if: steps.scope.outputs.code == 'true'
         run: pnpm build
 
+      # Build 直後に置く理由: out/ を読むだけで数秒しかかからず、初期表示の肥大化は
+      # 早く気づくほど原因の特定が容易なため。予算の根拠と超過時の判断は
+      # docs/review/bundle-budget.md に記録する。
+      - name: Bundle size budget (web)
+        # Build と同じ実行条件にする。計測対象の packages/web/out/ は Build が作るため、
+        # Build がスキップされる差分でこのステップだけ走ると出力が無く失敗する。
+        if: steps.scope.outputs.code == 'true'
+        run: pnpm --filter @warimaru/web bundle-size
+
       - name: Typecheck
         if: steps.scope.outputs.code == 'true'
         run: pnpm typecheck

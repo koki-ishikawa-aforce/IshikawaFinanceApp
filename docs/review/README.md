@@ -29,7 +29,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | 品質特性 | 担保手段 | 現状 |
 | --- | --- | --- |
 | **機能適合性**(要求どおり動くか) | CI: `pnpm test`(単体・統合)、Playwright E2E / VRT<br>レビュー: `/ddd-review`(不変条件の置き場所)<br>プロセス: `/issue-work` 手順6(`docs/acceptance/` の AT シナリオとの照合)<br>人間: `docs/acceptance/` の受入テスト(#58) | ✅ 担保済み — Issue 単位の受け入れ条件は `/verify`、それがどの AT シナリオに当たるかは `/issue-work` 手順6 が照合して PR 本文に残す。**合否そのものの判定は本番受入テスト(#58)で人間が行う**ので、ここで担保されるのは「シナリオとの対応が追える状態を保つこと」まで |
-| **性能効率**(初期表示・クエリ本数) | CI: バンドルサイズ予算(#332)<br>レビュー: `/data-review`(N+1・索引欠落) | ⚠️ 部分的 — クエリ側(N+1・索引欠落・上限なしの取得)は `/data-review` が担保。初期表示側は計測基盤が無く、劣化しても気づけない(#332) |
+| **性能効率**(初期表示・クエリ本数) | CI: バンドルサイズ予算(`pnpm --filter @warimaru/web bundle-size`)→ [bundle-budget.md](./bundle-budget.md)<br>レビュー: `/data-review`(N+1・索引欠落) | ✅ 担保済み — クエリ側(N+1・索引欠落・上限なしの取得)は `/data-review`、初期表示側はルートごとの gzip 予算を CI が担保<br>担保範囲の注記: 測るのは**配信量**(HTML が参照する js / css の gzip 合計)であり、実行時間・レンダリング速度・実機 LIFF での体感は含まない |
 | **信頼性**(外部依存の失敗・冪等性・可観測性) | レビュー: `/reliability-review` | ✅ 担保済み — Gmail / LINE / Neon / SES の失敗時挙動、失敗の握りつぶし、イベント再実行の回復性、障害に気づけるかを `/reliability-review` が担保<br>担保範囲の注記: 担保するのは**新しい差分が失敗経路を増やさないこと**。構造化ログ・ログ収集・監視・アラート・相関 ID・リトライの各基盤は依然として存在せず、`safeSubscribe` 配下の失敗は `console.error` に留まる(能動通知はフェイルセーフメール1経路のみ) |
 | **セキュリティ**(外周の攻撃面) | CI: `pnpm audit`(依存脆弱性)→ [dependency-audit.md](./dependency-audit.md)<br>レビュー: `/security-review`、`/ddd-review`(プライバシー3段階ルール = ドメイン内の可視性) | ✅ 担保済み — 依存脆弱性は CI、Webhook 署名検証・IDトークン検証・認可の位置・PII ログ流出は `/security-review` が担保 |
 | **データ互換性**(スキーマ変更とデプロイ) | CI: 統合テスト(空の PostgreSQL への `migrate` 適用 = 構文と適用可能性)<br>レビュー: `/data-review` | ✅ 担保済み — 破壊的スキーマ変更・デプロイ順序・トランザクション境界・イベントハンドラの冪等性は `/data-review` が担保。CI が適用するのは**空の DB** なので、既存データがある本番で失敗する変更はレビュー側でしか捕まらない |
@@ -98,6 +98,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | ステップ | 実行条件 | 担保する観点 |
 | --- | --- | --- |
 | `pnpm build` | `code` | ビルド可能性 |
+| `pnpm --filter @warimaru/web bundle-size` | `code` | 初期表示ペイロードの予算(性能効率)→ [bundle-budget.md](./bundle-budget.md) |
 | `pnpm typecheck` | `code` | 型整合(保守性) |
 | `pnpm test` | `code` | 単体テストの成否(機能適合性) |
 | `pnpm --filter @warimaru/adapters-neon test:integration` | `code` | 実 PostgreSQL に対する永続化層の振る舞い |
