@@ -112,6 +112,25 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * フォーム要素のフォント継承。
+ *
+ * button / input / select / textarea は UA スタイルシートが font ショートハンド
+ * （Chromium では `font: 400 13.333px Arial`）を持つため、html / body に指定した
+ * --font-family を継承せず、既定書体（Arial）で描画されてしまう。
+ * CJK 既定フォントを持たない環境（CI コンテナや headless Chromium）では
+ * 日本語ラベルが豆腐（□□）になる。
+ *
+ * font-size は各コンポーネントが --text-* トークンで指定しているため、
+ * ここでは font-family のみを継承させ、既存のサイズ指定には手を入れない。
+ */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 /* 下部固定ナビゲーション（AppNav）と重ならない余白 */
 body {
   padding-bottom: var(--space-14);
