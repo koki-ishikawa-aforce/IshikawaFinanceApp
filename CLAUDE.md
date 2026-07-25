@@ -41,10 +41,12 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 - ユビキタス言語: `docs/domain/08-ubiquitous-language.md`(BC 別: 08a〜08h)
 - 集約定義: `docs/domain/09-aggregates.md`
 - デザインガイド: `DESIGN.md` — web の見た目に関わる変更はこれに従う(トークン・アイコン・装飾・テーマ・アクセシビリティ)
+- 使用性の規範: `docs/design/usability.md` — web の画面・フローに関わる変更はこれにも従う(状態の網羅・プライバシーの UI 表現・ユーザーエラー防止・入力負荷・マイクロコピー・インタラクションの一貫性・LIFF 固有・アクセシビリティ)
+- レビュー観点の体系: `docs/review/README.md` — 品質特性ごとの担保手段(CI / レビュースキル / 人間)と「変更パス → 起動するレビュー」のトリガー表
 
 ## 開発フロー
 
-タスク管理は GitHub Issue 起点。
+タスク管理は GitHub Issue 起点。どの差分でどのレビューを回すかは `docs/review/README.md` のトリガー表に従う。
 
 1. 要件の Issue 化: `/issue-create`
 2. Issue の実装〜PR 作成: `/issue-work`

@@ -82,5 +82,15 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # 失敗基準を moderate にしている理由: 個人の金融データを扱うため既知脆弱性を放置したくなく、
+      # かつ導入時点で moderate 以上を 0 件にできたため high へ緩める必要がなかった。
+      # low は対応不能な情報系指摘が混ざり CI が慢性的に赤くなるため採らない。
+      # 除外は `|| true` ではなく package.json の pnpm.auditConfig.ignoreGhsas で宣言し、
+      # 対象・理由・再評価時期を docs/review/dependency-audit.md に記録する。
+      # build / test より後段に置く理由: 上流の advisory 公開だけで落ちうるため、
+      # 前段に置くと他の検証結果すら得られなくなる。
+      - name: Audit dependencies
+        run: pnpm audit --audit-level moderate
+
       - name: Format check
         run: pnpm format:check
