@@ -57,6 +57,13 @@
       "when": 1784625284952,
       "tag": "0007_ancient_squirrel_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784944538249,
+      "tag": "0008_small_hydra",
+      "breakpoints": true
     }
   ]
 }

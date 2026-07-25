@@ -8,7 +8,6 @@ import {
   changeNickname,
   lineOperationSettingsOf,
   recordLineFriendAdded,
-  recordTalkRoomJoined,
   activateNotification,
   completeSectionA,
   completeSectionB,
@@ -17,7 +16,15 @@ import {
   type Phase1CompletedUser,
   type Phase2InProgressUser,
 } from '../../../src/onboarding-auth/aggregates/AppUser'
+import {
+  NOT_JOINED_SHARED_TALK_ROOM,
+  recordSharedTalkRoomJoined,
+} from '../../../src/onboarding-auth/aggregates/SharedTalkRoom'
 import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
+
+/** 世帯の共通トークルーム参加済み記録（通知有効化の前提） */
+const joinedTalkRoom = (at: Date) =>
+  recordSharedTalkRoomJoined(NOT_JOINED_SHARED_TALK_ROOM, 'room_001' as never, at)
 
 const common = {
   userId: 'line_user_honey' as never,
@@ -140,7 +147,8 @@ describe('AppUser 集約', () => {
 
     const at = new Date()
     const withSettings = activateNotification(
-      recordTalkRoomJoined(recordLineFriendAdded(completed, at), 'room_001' as never, at),
+      recordLineFriendAdded(completed, at),
+      joinedTalkRoom(at),
       at,
     )
     const operating = startOperation(withSettings as typeof completed, at)
@@ -181,7 +189,6 @@ describe('LINE 運用設定の事前蓄積（#41）', () => {
   it('未設定の LINE 運用設定は全状態未着手として読める', () => {
     const settings = lineOperationSettingsOf(base())
     expect(settings.friendAdd.kind).toBe('not_added')
-    expect(settings.talkRoomJoin.kind).toBe('not_joined')
     expect(settings.notificationActivation.kind).toBe('not_activated')
   })
 
@@ -193,15 +200,19 @@ describe('LINE 運用設定の事前蓄積（#41）', () => {
     expect(settings.friendAdd).toEqual({ kind: 'added', followWebhookReceivedAt: first })
   })
 
-  it('通知有効化は友達追加とトークルーム参加の完了が前提', () => {
+  it('通知有効化は友達追加と世帯の共通トークルーム参加の完了が前提', () => {
     const at = new Date()
-    expect(() => activateNotification(base(), at)).toThrow(InvariantViolationError)
+    expect(() => activateNotification(base(), joinedTalkRoom(at), at)).toThrow(
+      InvariantViolationError,
+    )
 
     const friendOnly = recordLineFriendAdded(base(), at)
-    expect(() => activateNotification(friendOnly, at)).toThrow(InvariantViolationError)
+    // 友達追加済みでも世帯が共通トークルーム未参加なら有効化できない
+    expect(() => activateNotification(friendOnly, NOT_JOINED_SHARED_TALK_ROOM, at)).toThrow(
+      InvariantViolationError,
+    )
 
-    const joined = recordTalkRoomJoined(friendOnly, 'room_001' as never, at)
-    const activated = activateNotification(joined, at)
+    const activated = activateNotification(friendOnly, joinedTalkRoom(at), at)
     const settings = lineOperationSettingsOf(activated)
     expect(settings.notificationActivation).toEqual({
       kind: 'activated',

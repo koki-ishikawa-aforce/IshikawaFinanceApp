@@ -33,6 +33,7 @@ import type {
   PdfToCsvConverter,
   ProratedChildTransactionRepository,
   RetroactiveCandidateQuery,
+  SharedTalkRoomRepository,
   SpouseCompletionQuery,
   StatementImportJobRepository,
   TransactionCandidateRepository,
@@ -70,6 +71,7 @@ import {
   NeonMonthlyReportRepository,
   NeonProratedChildTransactionRepository,
   NeonRetroactiveCandidateQuery,
+  NeonSharedTalkRoomRepository,
   NeonStatementImportJobRepository,
   NeonTransactionCandidateRepository,
   NeonTransactionListQuery,
@@ -138,6 +140,7 @@ import {
   createMockMonthlyReportRepository,
   createMockProratedChildTransactionRepository,
   createMockRetroactiveCandidateQuery,
+  createMockSharedTalkRoomRepository,
   createMockStatementImportJobRepository,
   createMockTransactionCandidateRepository,
   createMockTransactionRepository,
@@ -186,6 +189,8 @@ export interface AppDeps {
   // オンボーディング・認証 (#41)
   appUserRepository: AppUserRepository
   gmailOAuthTokenRepository: GmailOAuthTokenRepository
+  /** 共通トークルーム参加は世帯にひとつの事実（OQ-55 ①）。per-user の集約とは別に保持する */
+  sharedTalkRoomRepository: SharedTalkRoomRepository
   spouseCompletionQuery: SpouseCompletionQuery
   allowlistQuery: AllowlistQuery
   gmailOAuthGateway: GmailOAuthGateway
@@ -293,6 +298,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
     return {
       appUserRepository,
       gmailOAuthTokenRepository: createMockGmailOAuthTokenRepository(),
+      sharedTalkRoomRepository: createMockSharedTalkRoomRepository(),
       allowlistQuery: createMockAllowlistQuery(devAllowlist),
       spouseCompletionQuery: createMockSpouseCompletionQuery(appUserRepository, devAllowlist),
       gmailOAuthGateway: createMockGmailOAuthGateway(
@@ -404,6 +410,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
     eventBus: new InMemoryEventBus(),
     appUserRepository: new NeonAppUserRepository(db),
     gmailOAuthTokenRepository: new NeonGmailOAuthTokenRepository(db),
+    sharedTalkRoomRepository: new NeonSharedTalkRoomRepository(db),
     allowlistQuery,
     spouseCompletionQuery: new NeonSpouseCompletionQuery(db, {
       fetchAllowlist: () => allowlistQuery.fetch(),

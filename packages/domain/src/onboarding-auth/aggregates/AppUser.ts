@@ -15,7 +15,7 @@
  *  - ニックネームは本人のみ変更可（Phase 3.5。操作者検証は application service、Phase 5 M-B）
  */
 import { z } from 'zod'
-import { UserIdSchema, type ImportJobId, type TalkRoomId, type UserId } from '../../shared/ids'
+import { UserIdSchema, type ImportJobId, type UserId } from '../../shared/ids'
 import { UserRoleSchema, type UserRole } from '../../shared/value-objects/UserRole'
 import type { ParameterStorePath } from '../../shared/value-objects/ParameterStorePath'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
@@ -34,6 +34,7 @@ import {
   SpouseCompletionResultSchema,
   type SpouseCompletionResult,
 } from '../value-objects/SpouseCompletionResult'
+import type { SharedTalkRoom } from './SharedTalkRoom'
 
 /**
  * 共通属性（userId = LINE userID、OQ-15）
@@ -225,7 +226,6 @@ export function changeNickname(user: AppUser, nickname: Nickname | undefined): A
 
 const EMPTY_LINE_OPERATION_SETTINGS: LineOperationSettings = {
   friendAdd: { kind: 'not_added' },
-  talkRoomJoin: { kind: 'not_joined' },
   notificationActivation: { kind: 'not_activated' },
 }
 
@@ -258,36 +258,30 @@ export function recordLineFriendAdded(user: AppUser, at: Date): AppUser {
   })
 }
 
-/** 共通トークルーム参加を記録する（冪等: 同一トークルーム参加済みなら変更しない） */
-export function recordTalkRoomJoined(user: AppUser, talkRoomId: TalkRoomId, at: Date): AppUser {
-  const settings = lineOperationSettingsOf(user)
-  if (settings.talkRoomJoin.kind === 'joined' && settings.talkRoomJoin.talkRoomId === talkRoomId) {
-    return user
-  }
-  return withLineOperationSettings(user, {
-    ...settings,
-    talkRoomJoin: { kind: 'joined', talkRoomId, joinWebhookReceivedAt: at },
-  })
-}
-
 /**
  * 通知機能を有効化する（冪等: 有効化済みなら変更しない）
- * 友達追加済み かつ トークルーム参加済み でなければ InvariantViolationError を throw する
- * （LineOperationSettings の不変条件。有効化対象は参加済みトークルーム）。
+ * 友達追加済み かつ 世帯の共通トークルーム参加済み でなければ InvariantViolationError を throw
+ * する。有効化対象は世帯レベルの参加済みトークルーム（OQ-55 ①: 参加状態の「正」は
+ * SharedTalkRoom 集約）。AppUser と SharedTalkRoom の 2 集約にまたがる不変条件のため、
+ * VO（LineOperationSettings）ではなく本関数が強制する。
  */
-export function activateNotification(user: AppUser, at: Date): AppUser {
+export function activateNotification(
+  user: AppUser,
+  sharedTalkRoom: SharedTalkRoom,
+  at: Date,
+): AppUser {
   const settings = lineOperationSettingsOf(user)
   if (settings.notificationActivation.kind === 'activated') return user
-  if (settings.friendAdd.kind !== 'added' || settings.talkRoomJoin.kind !== 'joined') {
+  if (settings.friendAdd.kind !== 'added' || sharedTalkRoom.kind !== 'joined') {
     throw new InvariantViolationError(
-      '通知機能の有効化には LINE 友達追加とトークルーム参加の完了が必要',
+      '通知機能の有効化には LINE 友達追加と共通トークルーム参加の完了が必要',
     )
   }
   return withLineOperationSettings(user, {
     ...settings,
     notificationActivation: {
       kind: 'activated',
-      talkRoomId: settings.talkRoomJoin.talkRoomId,
+      talkRoomId: sharedTalkRoom.talkRoomId,
       activatedAt: at,
     },
   })

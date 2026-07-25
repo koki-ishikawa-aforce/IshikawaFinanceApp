@@ -379,10 +379,18 @@ export const MonthlyLimitListWireSchema = z.object({
 
 const LineOperationSettingsWireSchema = z.object({
   friendAdd: z.object({ kind: z.enum(['not_added', 'added']) }),
-  talkRoomJoin: z.object({ kind: z.enum(['not_joined', 'joined']) }),
   notificationActivation: z.object({ kind: z.enum(['not_activated', 'activated']) }),
 })
 export type LineOperationSettingsWire = z.infer<typeof LineOperationSettingsWireSchema>
+
+/**
+ * 共通トークルーム参加状態（世帯レベル）のワイヤー形式。
+ * 参加は世帯にひとつの事実のため、per-user の LINE 運用設定ではなく世帯の記録として返る。
+ */
+const SharedTalkRoomWireSchema = z.object({
+  kind: z.enum(['not_joined', 'joined']),
+})
+export type SharedTalkRoomWire = z.infer<typeof SharedTalkRoomWireSchema>
 
 const Phase2ProgressWireSchema = z.object({
   sectionA: z.object({ kind: z.enum(['not_started', 'completed']) }),
@@ -419,7 +427,17 @@ export const AppUserWireSchema = z.discriminatedUnion('kind', [
 ])
 export type AppUserWire = z.infer<typeof AppUserWireSchema>
 
-export const OnboardingMeWireSchema = z.object({ user: AppUserWireSchema.nullable() })
+/** AppUser のみを返すエンドポイント（register / nickname / phase2 各種）のレスポンス */
+export const OnboardingUserWireSchema = z.object({ user: AppUserWireSchema.nullable() })
+
+/**
+ * 世帯レベルの共通トークルーム参加状態を併せて返すレスポンス
+ * （GET /me と POST /phase1/talk-room）。
+ */
+export const OnboardingMeWireSchema = z.object({
+  user: AppUserWireSchema.nullable(),
+  sharedTalkRoom: SharedTalkRoomWireSchema,
+})
 
 export const SpouseCompletionResultWireSchema = z.discriminatedUnion('kind', [
   z.object({

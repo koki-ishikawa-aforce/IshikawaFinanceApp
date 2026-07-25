@@ -10,9 +10,11 @@ import {
   GmailAuthorizeResponseSchema,
   ImportStatusResponseSchema,
   OnboardingMeWireSchema,
+  OnboardingUserWireSchema,
   SpouseCompletionResultWireSchema,
   type AppUserWire,
   type LineOperationSettingsWire,
+  type SharedTalkRoomWire,
 } from '@/lib/api-schemas'
 import { getTalkRoomContextId, openExternal } from '@/lib/liff'
 import { getCurrentMonth } from '@/lib/month'
@@ -51,9 +53,11 @@ const CONFIGURED_TALK_ROOM_ID = process.env['NEXT_PUBLIC_TALK_ROOM_ID'] ?? null
 
 const EMPTY_LINE_SETTINGS: LineOperationSettingsWire = {
   friendAdd: { kind: 'not_added' },
-  talkRoomJoin: { kind: 'not_joined' },
   notificationActivation: { kind: 'not_activated' },
 }
+
+/** 世帯の共通トークルーム参加状態の既定値（レスポンス取得前） */
+const NOT_JOINED_TALK_ROOM: SharedTalkRoomWire = { kind: 'not_joined' }
 
 /**
  * ワイヤー形式向けの LINE 運用設定の読取り。
@@ -83,7 +87,11 @@ const STEPS: { id: StepId; label: string }[] = [
   { id: 'spouse_wait', label: '完了確認' },
 ]
 
-function currentStep(user: AppUserWire | null, notificationsDeferred: boolean): StepId {
+function currentStep(
+  user: AppUserWire | null,
+  sharedTalkRoom: SharedTalkRoomWire,
+  notificationsDeferred: boolean,
+): StepId {
   if (user === null) return 'nickname'
   if (user.kind === 'phase2_in_progress') return 'phase2'
   if (user.kind === 'phase2_completed') return 'spouse_wait'
@@ -91,7 +99,8 @@ function currentStep(user: AppUserWire | null, notificationsDeferred: boolean): 
   if (user.common.nickname === undefined) return 'nickname'
   const settings = lineSettingsOf(user)
   if (settings.friendAdd.kind !== 'added') return 'line_friend'
-  if (settings.talkRoomJoin.kind !== 'joined') return 'talk_room'
+  // 共通トークルーム参加は世帯にひとつの事実（per-user ではなく世帯の記録を見る）
+  if (sharedTalkRoom.kind !== 'joined') return 'talk_room'
   if (settings.notificationActivation.kind !== 'activated' && !notificationsDeferred) {
     return 'notifications'
   }
@@ -125,6 +134,7 @@ export default function OnboardingPage() {
     queryFn: () => apiFetch('/api/onboarding/me', OnboardingMeWireSchema),
   })
   const user = meQuery.data?.user ?? null
+  const sharedTalkRoom = meQuery.data?.sharedTalkRoom ?? NOT_JOINED_TALK_ROOM
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['onboarding'] })
 
@@ -134,19 +144,19 @@ export default function OnboardingPage() {
         ? apiMutate(
             '/api/onboarding/register',
             { method: 'POST', body: { nickname } },
-            OnboardingMeWireSchema,
+            OnboardingUserWireSchema,
           )
         : apiMutate(
             '/api/onboarding/nickname',
             { method: 'PUT', body: { nickname } },
-            OnboardingMeWireSchema,
+            OnboardingUserWireSchema,
           ),
     onSuccess: invalidate,
   })
 
   const recordLineFriend = useMutation({
     mutationFn: () =>
-      apiMutate('/api/onboarding/phase1/line-friend', { method: 'POST' }, OnboardingMeWireSchema),
+      apiMutate('/api/onboarding/phase1/line-friend', { method: 'POST' }, OnboardingUserWireSchema),
     onSuccess: invalidate,
   })
 
@@ -162,13 +172,17 @@ export default function OnboardingPage() {
 
   const activateNotification = useMutation({
     mutationFn: () =>
-      apiMutate('/api/onboarding/phase1/notification', { method: 'POST' }, OnboardingMeWireSchema),
+      apiMutate(
+        '/api/onboarding/phase1/notification',
+        { method: 'POST' },
+        OnboardingUserWireSchema,
+      ),
     onSuccess: invalidate,
   })
 
   const startPhase2 = useMutation({
     mutationFn: () =>
-      apiMutate('/api/onboarding/phase2/start', { method: 'POST' }, OnboardingMeWireSchema),
+      apiMutate('/api/onboarding/phase2/start', { method: 'POST' }, OnboardingUserWireSchema),
     onSuccess: invalidate,
   })
 
@@ -193,7 +207,7 @@ export default function OnboardingPage() {
       apiMutate(
         '/api/onboarding/phase2/section-b',
         { method: 'PUT', body: { initialBalanceRef } },
-        OnboardingMeWireSchema,
+        OnboardingUserWireSchema,
       ),
     onSuccess: invalidate,
   })
@@ -203,14 +217,14 @@ export default function OnboardingPage() {
       apiMutate(
         '/api/onboarding/phase2/section-f',
         { method: 'PUT', body },
-        OnboardingMeWireSchema,
+        OnboardingUserWireSchema,
       ),
     onSuccess: invalidate,
   })
 
   const completePhase2 = useMutation({
     mutationFn: () =>
-      apiMutate('/api/onboarding/phase2/complete', { method: 'POST' }, OnboardingMeWireSchema),
+      apiMutate('/api/onboarding/phase2/complete', { method: 'POST' }, OnboardingUserWireSchema),
     onSuccess: invalidate,
   })
 
@@ -269,7 +283,7 @@ export default function OnboardingPage() {
     )
   }
 
-  const step = currentStep(user, notificationsDeferred)
+  const step = currentStep(user, sharedTalkRoom, notificationsDeferred)
   const stepIndex = step === 'done' ? STEPS.length : STEPS.findIndex(s => s.id === step)
   const role = user?.common.role ?? me?.role
   const avatarRole = role === 'honey' ? 'honey' : ('darling' as const)

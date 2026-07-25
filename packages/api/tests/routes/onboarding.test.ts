@@ -9,7 +9,7 @@ import {
   registerNisaAccount,
   registerOtherSavingsAccount,
 } from '@warimaru/domain'
-import type { AppUser, UserId } from '@warimaru/domain'
+import type { AppUser, SharedTalkRoom, UserId } from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, SPOUSE_ID, VIEWER_ID } from '../helpers/test-app.js'
 
@@ -225,10 +225,16 @@ describe('Phase1 ステップの完了記録', () => {
     expect(notification.status).toBe(200)
 
     const me = await request(t.app, 'GET', '/api/onboarding/me')
-    const user = (await json<{ user: AppUser }>(me)).user
-    expect(user.common.lineOperationSettings?.friendAdd.kind).toBe('added')
-    expect(user.common.lineOperationSettings?.talkRoomJoin.kind).toBe('joined')
-    expect(user.common.lineOperationSettings?.notificationActivation.kind).toBe('activated')
+    const body = await json<{ user: AppUser; sharedTalkRoom: SharedTalkRoom }>(me)
+    expect(body.user.common.lineOperationSettings?.friendAdd.kind).toBe('added')
+    expect(body.user.common.lineOperationSettings?.notificationActivation.kind).toBe('activated')
+    // 参加状態の「正」は世帯レベルの記録（OQ-55 ①）。per-user 側には持たない
+    expect(body.sharedTalkRoom).toEqual({
+      kind: 'joined',
+      talkRoomId: 'room_test_001',
+      joinWebhookReceivedAt: expect.any(String),
+    })
+    expect(body.user.common.lineOperationSettings).not.toHaveProperty('talkRoomJoin')
   })
 
   it('友だち追加・トークルーム参加前の通知有効化は 409', async () => {
@@ -236,6 +242,27 @@ describe('Phase1 ステップの完了記録', () => {
     await register(t)
     const res = await request(t.app, 'POST', '/api/onboarding/phase1/notification')
     expect(res.status).toBe(409)
+  })
+
+  it('友だち追加済みでも世帯が共通トークルーム未参加なら通知有効化は 409', async () => {
+    const t = createTestApp()
+    await register(t)
+    expect((await request(t.app, 'POST', '/api/onboarding/phase1/line-friend')).status).toBe(200)
+    const res = await request(t.app, 'POST', '/api/onboarding/phase1/notification')
+    expect(res.status).toBe(409)
+  })
+
+  it('共通トークルーム参加は世帯で共有される（配偶者の記録が相方にも見える）', async () => {
+    const t = createTestApp()
+    await register(t)
+    await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
+      body: { talkRoomId: 'room_test_001' },
+    })
+
+    // 配偶者（別 viewer）から見ても同じ世帯の参加記録が返る
+    const me = await request(t.app, 'GET', '/api/onboarding/me', { viewerId: SPOUSE_ID })
+    const body = await json<{ sharedTalkRoom: SharedTalkRoom }>(me)
+    expect(body.sharedTalkRoom.kind).toBe('joined')
   })
 })
 
