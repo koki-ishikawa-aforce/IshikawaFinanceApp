@@ -10,10 +10,11 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "lint": "eslint src tests --ext .ts",
+    "lint": "eslint src tests scripts --ext .ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "db:seed:dev": "tsx scripts/seed.ts --with-dev-fixtures"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

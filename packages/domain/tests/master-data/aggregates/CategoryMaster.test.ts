@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   CategoryMasterSchema,
   assertCategoryNameAvailable,
+  seedDefaultCategory,
+  DEFAULT_CATEGORY_NAMES,
   renameCustomCategory,
   type CustomCategory,
 } from '../../../src/master-data/aggregates/CategoryMaster'
@@ -82,5 +84,31 @@ describe('assertCategoryNameAvailable（同一スコープ内で名前一意、0
     expect(() => assertCategoryNameAvailable(visible, '食費', custom.categoryId)).toThrow(
       InvariantViolationError,
     )
+  })
+})
+
+describe('規定カテゴリの seed 投入 (#322)', () => {
+  it('規定 4 種の名前が 08h のユビキタス言語と一致する', () => {
+    expect(DEFAULT_CATEGORY_NAMES).toEqual({
+      housing_utilities_communication: '住居光熱通信',
+      food: '食費',
+      entertainment: '娯楽',
+      other: 'その他',
+    })
+  })
+
+  it('seedDefaultCategory は世帯共有スコープの規定カテゴリを作る', () => {
+    const category = seedDefaultCategory({
+      categoryId: '01JAAAAAAAAAAAAAAAAAAAAAA2' as never,
+      defaultKind: 'food',
+    })
+
+    expect(category).toEqual({
+      kind: 'default',
+      categoryId: '01JAAAAAAAAAAAAAAAAAAAAAA2',
+      name: '食費',
+      scope: { kind: 'household_shared' },
+      defaultKind: 'food',
+    })
   })
 })
