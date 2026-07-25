@@ -1,6 +1,6 @@
 import 'dotenv/config'
-import { neon } from '@neondatabase/serverless'
-import { drizzle } from 'drizzle-orm/neon-http'
+import { createDbConnection } from '../src/client'
+import { isProductionNodeEnv } from '../src/nodeEnv'
 import * as schema from '../src/schema'
 import { serializeForPayload } from '../src/serialize'
 
@@ -10,8 +10,13 @@ if (!DATABASE_URL) {
   process.exit(1)
 }
 
-const client = neon(DATABASE_URL)
-const db = drizzle(client, { schema })
+// 接続先が Neon なら neon-http、ローカルの素の PostgreSQL なら node-postgres (#323)
+const connection = createDbConnection({
+  databaseUrl: DATABASE_URL,
+  isProduction: isProductionNodeEnv(process.env['NODE_ENV']),
+  driverOverride: process.env['DATABASE_DRIVER'],
+})
+const db = connection.db
 
 const NOW = new Date('2026-07-15T03:00:00.000Z')
 
@@ -647,7 +652,13 @@ async function seed() {
   console.log('Seed complete!')
 }
 
-seed().catch(err => {
-  console.error('Seed failed:', err)
-  process.exit(1)
-})
+// node-postgres はプールを保持するため、閉じないとスクリプトが終了しない
+seed()
+  .catch(err => {
+    console.error('Seed failed:', err)
+    process.exitCode = 1
+  })
+  .finally(() =>
+    // close の失敗で seed 本体の失敗理由が unhandled rejection に埋もれないようにする
+    connection.close().catch(e => console.error('Failed to close DB connection:', e)),
+  )

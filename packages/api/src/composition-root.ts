@@ -44,8 +44,7 @@ import type {
 } from '@warimaru/domain'
 import { AllowlistSchema, InMemoryEventBus } from '@warimaru/domain'
 import {
-  createNeonHttpDb,
-  createNodePgDb,
+  createDb,
   NeonAccountRepository,
   NeonAllowlistQuery,
   NeonAppUserRepository,
@@ -218,6 +217,12 @@ export interface CompositionEnv {
    * 未設定・その他の値は開発環境扱い（#14 の DEFAULT_USER_ID フォールバックと同じ方針）。
    */
   NODE_ENV?: string | undefined
+  /**
+   * DB ドライバの明示指定（'neon-http' / 'node-postgres'）。
+   * 未設定なら DATABASE_URL のホストから判定する（Neon なら neon-http、それ以外は node-postgres）。
+   * 本番は常に neon-http のため、この指定は開発環境でのみ意味を持つ (#323)。
+   */
+  DATABASE_DRIVER?: string | undefined
   // Gmail OAuth (#41)。未設定なら実 DB モードでも Gmail 連携のみ未構成エラーになる
   GOOGLE_OAUTH_CLIENT_ID?: string | undefined
   GOOGLE_OAUTH_CLIENT_SECRET?: string | undefined
@@ -353,8 +358,12 @@ export function createDeps(env: CompositionEnv): AppDeps {
   // 設定の検証は DB クライアント等を組み立てる前に済ませる（本番の設定漏れは即起動エラー）
   const allowedOrigins = resolveAllowedOrigins(env)
 
-  const db =
-    env.NODE_ENV === 'test' ? createNodePgDb(env.DATABASE_URL) : createNeonHttpDb(env.DATABASE_URL)
+  // 接続先に応じて neon-http（本番の Neon）/ node-postgres（ローカルの素の PostgreSQL）を選ぶ (#323)
+  const db = createDb({
+    databaseUrl: env.DATABASE_URL,
+    isProduction: isProduction(env.NODE_ENV),
+    driverOverride: env.DATABASE_DRIVER,
+  })
   const resolveCategoryNames = createDbResolveCategoryNames(db)
   const resolveViewerRole = createDbResolveViewerRole(db)
   const now = (): Date => new Date()

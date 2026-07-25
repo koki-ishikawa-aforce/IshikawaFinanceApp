@@ -1,12 +1,22 @@
-# ローカル統合テスト用 PostgreSQL（Neon 互換の素の postgres:16）
-# 使い方:
+# ローカル開発・統合テスト用 PostgreSQL（Neon 互換の素の postgres:16）
+# 使い方（統合テスト）:
 #   docker compose up -d db
 #   DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
 #     pnpm --filter @warimaru/adapters-neon test:integration
 #
+# 使い方（ローカル開発 — 実 Neon なしで API を動かす、#323）:
+#   docker compose exec db createdb -U postgres warimaru_dev   # コンテナを作り直すたびに実行
+#   export DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_dev
+#   pnpm --filter @warimaru/adapters-neon db:migrate
+#   pnpm --filter @warimaru/adapters-neon db:seed
+#   pnpm --filter @warimaru/api dev
+# 開発用は warimaru_test と別 DB にする（統合テストは warimaru_test を毎回 TRUNCATE するため）。
+# Neon 以外のホストでは自動的に node-postgres ドライバへ切り替わる（DATABASE_DRIVER で明示指定も可）。
+#
 # データは永続化しない（エフェメラル）: テスト専用 DB のため、
 # マイグレーション再生成時にローカルの journal 残留と CI（毎回フレッシュ）で
 # 挙動が割れるのを防ぐ。リセットは `docker compose down && docker compose up -d db`。
+# 開発用 DB も同様に消えるため、コンテナを作り直したら createdb → db:migrate → db:seed をやり直す。
 services:
   db:
     image: postgres:16
