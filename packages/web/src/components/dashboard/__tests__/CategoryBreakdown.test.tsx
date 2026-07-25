@@ -26,6 +26,13 @@ const data = CategoryBreakdownViewSchema.parse({
   ],
 })
 
+const emptyData = CategoryBreakdownViewSchema.parse({
+  mode: 'household',
+  yearMonth: '2026-06',
+  totalAmount: 0,
+  items: [],
+})
+
 const categoryColors = { 食費: '#ff6f90' }
 
 describe('CategoryBreakdown', () => {
@@ -61,5 +68,38 @@ describe('CategoryBreakdown', () => {
       'href',
       '/transactions?month=2026-07&categoryId=01BX5ZZKBKACTAV9WEVGEMMVRZ',
     )
+  })
+
+  it('支出が無い月はドーナツと凡例の代わりに空状態の案内を表示する', () => {
+    const { container } = render(
+      <CategoryBreakdown data={emptyData} categoryColors={categoryColors} />,
+    )
+
+    expect(screen.getByText('この月の世帯支出はありません')).toBeInTheDocument()
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
+    expect(container.querySelector('svg')).toBeNull()
+  })
+
+  it('個人モードの空状態は個人支出の文言になる', () => {
+    const personalEmptyData = CategoryBreakdownViewSchema.parse({
+      mode: 'personal',
+      yearMonth: '2026-06',
+      totalAmount: 0,
+      items: [],
+    })
+
+    render(<CategoryBreakdown data={personalEmptyData} categoryColors={categoryColors} />)
+
+    expect(screen.getByText('この月の個人支出はありません')).toBeInTheDocument()
+  })
+
+  it('支出がある月はドーナツと凡例を描画する（空状態にならない）', () => {
+    const { container } = render(<CategoryBreakdown data={data} categoryColors={categoryColors} />)
+
+    expect(screen.queryByText(/支出はありません/)).not.toBeInTheDocument()
+    expect(screen.getByRole('list')).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    expect(container.querySelector('svg')).not.toBeNull()
   })
 })
