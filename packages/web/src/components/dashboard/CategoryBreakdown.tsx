@@ -33,6 +33,11 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
     )
   }
 
+  // 支出の記録はあるが合計が 0 円の月(返金による相殺など)は、割合が定義できず
+  // 弧の描けないドーナツと全項目 0.0% の割合表示になる。グラフと割合だけを落とし、
+  // 記録されている金額はそのまま見せる
+  const hasZeroTotal = data.totalAmount === 0
+
   const segments = data.items.map((item, i) => ({
     label: item.categoryName,
     percentage: item.percentage,
@@ -41,7 +46,15 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
 
   return (
     <div className={styles.container}>
-      <DonutChart segments={segments} totalAmount={data.totalAmount} />
+      {hasZeroTotal ? (
+        <div className={ui.empty}>
+          {data.mode === 'household'
+            ? 'この月は世帯支出の合計が0円のため、内訳グラフは表示していません'
+            : 'この月は個人支出の合計が0円のため、内訳グラフは表示していません'}
+        </div>
+      ) : (
+        <DonutChart segments={segments} totalAmount={data.totalAmount} />
+      )}
       <ul className={styles.legend}>
         {data.items.map((item, i) => (
           <li key={item.categoryId}>
@@ -56,7 +69,9 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
               />
               <span className={styles.name}>{item.categoryName}</span>
               <span className={styles.amount}>{formatMoney(item.total)}</span>
-              <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
+              {!hasZeroTotal && (
+                <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
+              )}
               <span className={styles.chevron} aria-hidden="true">
                 ›
               </span>
