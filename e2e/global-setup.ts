@@ -54,11 +54,13 @@ async function seedTestUsers(pool: import('pg').Pool): Promise<void> {
     },
   ]
 
+  await pool.query(`DELETE FROM app_users WHERE role IN ('honey', 'darling')`)
+
   for (const u of users) {
     await pool.query(
       `INSERT INTO app_users (user_id, role, kind, payload)
        VALUES ($1, $2, $3, $4)
-       ON CONFLICT (user_id) DO NOTHING`,
+       ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role, kind = EXCLUDED.kind, payload = EXCLUDED.payload`,
       [u.userId, u.role, u.payload.kind, JSON.stringify(u.payload)],
     )
   }
