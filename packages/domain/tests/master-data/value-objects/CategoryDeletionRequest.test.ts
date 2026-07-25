@@ -3,6 +3,8 @@ import {
   CategoryDeletionRequestSchema,
   completeCategoryRemap,
   failCategoryRemap,
+  isCategoryRemapFullyCompleted,
+  recordCategoryRemapContextCompletion,
   requestCategoryRemap,
 } from '../../../src/master-data/value-objects/CategoryDeletionRequest'
 import type { PendingRemapCategoryDeletionRequest } from '../../../src/master-data/value-objects/CategoryDeletionRequest'
@@ -57,7 +59,7 @@ describe('CategoryDeletionRequest', () => {
 describe('CategoryDeletionRequest 状態遷移', () => {
   const at = new Date('2026-07-02T00:00:00Z')
 
-  it('pending_remap → remap_requested → remap_completed', () => {
+  it('pending_remap → remap_requested → 各コンテキスト完了記録 → remap_completed（件数は合算）', () => {
     const requested = requestCategoryRemap(
       pendingRequest(),
       ['household_analysis', 'auto_classification'],
@@ -65,15 +67,47 @@ describe('CategoryDeletionRequest 状態遷移', () => {
     )
     expect(requested.state.kind).toBe('remap_requested')
     expect(requested.state.requestedContexts).toEqual(['household_analysis', 'auto_classification'])
+    expect(requested.state.completedContexts).toEqual([])
+    expect(isCategoryRemapFullyCompleted(requested)).toBe(false)
 
-    const completed = completeCategoryRemap(
+    const afterHousehold = recordCategoryRemapContextCompletion(
       requested,
-      { affectedTransactionCount: 3, affectedLearningRuleCount: 2 },
+      { context: 'household_analysis', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
       at,
     )
+    expect(isCategoryRemapFullyCompleted(afterHousehold)).toBe(false)
+
+    const afterAuto = recordCategoryRemapContextCompletion(
+      afterHousehold,
+      { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 2 },
+      at,
+    )
+    expect(isCategoryRemapFullyCompleted(afterAuto)).toBe(true)
+
+    const completed = completeCategoryRemap(afterAuto, at)
     expect(completed.state.kind).toBe('remap_completed')
     expect(completed.state.affectedTransactionCount).toBe(3)
     expect(completed.state.affectedLearningRuleCount).toBe(2)
+  })
+
+  it('同一コンテキストの完了通知は冪等（再記録しても二重加算しない）', () => {
+    const requested = requestCategoryRemap(
+      pendingRequest(),
+      ['household_analysis', 'auto_classification'],
+      at,
+    )
+    const once = recordCategoryRemapContextCompletion(
+      requested,
+      { context: 'household_analysis', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
+      at,
+    )
+    const twice = recordCategoryRemapContextCompletion(
+      once,
+      { context: 'household_analysis', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
+      at,
+    )
+    expect(twice.state.completedContexts).toHaveLength(1)
+    expect(isCategoryRemapFullyCompleted(twice)).toBe(false)
   })
 
   it('pending_remap → remap_requested → remap_failed', () => {

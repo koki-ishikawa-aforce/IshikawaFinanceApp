@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import type { CategoryDeletionRequestId } from '@warimaru/domain'
 import type { PendingRemapCategoryDeletionRequest } from '@warimaru/domain'
-import { completeCategoryRemap, requestCategoryRemap } from '@warimaru/domain'
+import {
+  completeCategoryRemap,
+  recordCategoryRemapContextCompletion,
+  requestCategoryRemap,
+} from '@warimaru/domain'
 import { db } from './setup'
 import { NeonCategoryDeletionRequestRepository } from '../../src/master-data/NeonCategoryDeletionRequestRepository'
 import { categoryDeletionRequest } from '../helpers/masterDataFixtures'
@@ -33,11 +37,22 @@ describe('NeonCategoryDeletionRequestRepository', () => {
     await repo.save(requested)
     expect(await repo.findById(pending.categoryDeletionRequestId)).toEqual(requested)
 
-    const completed = completeCategoryRemap(
+    // 各コンテキストの完了通知を記録（completedContexts の永続化往復も検証）
+    const afterHousehold = recordCategoryRemapContextCompletion(
       requested,
-      { affectedTransactionCount: 2, affectedLearningRuleCount: 1 },
+      { context: 'household_analysis', affectedTransactionCount: 2, affectedLearningRuleCount: 0 },
       at,
     )
+    await repo.save(afterHousehold)
+    expect(await repo.findById(pending.categoryDeletionRequestId)).toEqual(afterHousehold)
+
+    const afterAuto = recordCategoryRemapContextCompletion(
+      afterHousehold,
+      { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 1 },
+      at,
+    )
+
+    const completed = completeCategoryRemap(afterAuto, at)
     await repo.save(completed)
     expect(await repo.findById(pending.categoryDeletionRequestId)).toEqual(completed)
   })
