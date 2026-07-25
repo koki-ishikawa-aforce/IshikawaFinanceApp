@@ -34,7 +34,6 @@
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-family: var(--font-family);
   transition: opacity 0.2s;
 }
 
