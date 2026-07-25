@@ -21,6 +21,7 @@ export default async function globalSetup(): Promise<void> {
     await migrate(drizzle(pool), { migrationsFolder })
 
     await seedTestUsers(pool)
+    await seedDefaultMasters(pool)
   } finally {
     await pool.end()
   }
@@ -62,6 +63,71 @@ async function seedTestUsers(pool: import('pg').Pool): Promise<void> {
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role, kind = EXCLUDED.kind, payload = EXCLUDED.payload`,
       [u.userId, u.role, u.payload.kind, JSON.stringify(u.payload)],
+    )
+  }
+}
+
+/**
+ * 規定カテゴリ / 規定経費種別を投入する。
+ * 分類シナリオ（AT-202）は規定マスタの ID を直接指定するため、テスト側で ID を固定できる
+ * ようにここで seed する。世帯共有スコープ（owner_user_id = NULL）で入れる。
+ * 取込シナリオ（AT-301〜303）は必要なカテゴリを API で自ら作るため、この seed に依存しない。
+ */
+async function seedDefaultMasters(pool: import('pg').Pool): Promise<void> {
+  const categories = [
+    {
+      id: '01JAAAAAAAAAAAAAAAAAAAAAA1',
+      name: '住居光熱通信',
+      defaultKind: 'housing_utilities_communication',
+    },
+    { id: '01JAAAAAAAAAAAAAAAAAAAAAA2', name: '食費', defaultKind: 'food' },
+    { id: '01JAAAAAAAAAAAAAAAAAAAAAA3', name: '娯楽', defaultKind: 'entertainment' },
+    { id: '01JAAAAAAAAAAAAAAAAAAAAAA4', name: 'その他', defaultKind: 'other' },
+  ] as const
+
+  for (const c of categories) {
+    await pool.query(
+      `INSERT INTO category_masters (category_id, kind, name, owner_user_id, payload)
+       VALUES ($1, 'default', $2, NULL, $3)
+       ON CONFLICT DO NOTHING`,
+      [
+        c.id,
+        c.name,
+        JSON.stringify({
+          kind: 'default',
+          categoryId: c.id,
+          name: c.name,
+          scope: { kind: 'household_shared' },
+          defaultKind: c.defaultKind,
+        }),
+      ],
+    )
+  }
+
+  const expenseTypes = [
+    { id: '01JEEEEEEEEEEEEEEEEEEEEEE1', name: 'ジム', defaultKind: 'gym' },
+    { id: '01JEEEEEEEEEEEEEEEEEEEEEE2', name: '書籍・新聞', defaultKind: 'books_newspaper' },
+    { id: '01JEEEEEEEEEEEEEEEEEEEEEE3', name: 'AI利用', defaultKind: 'ai_usage' },
+    { id: '01JEEEEEEEEEEEEEEEEEEEEEE4', name: '交通費', defaultKind: 'transportation' },
+    { id: '01JEEEEEEEEEEEEEEEEEEEEEE5', name: 'その他経費', defaultKind: 'other_expense' },
+  ] as const
+
+  for (const e of expenseTypes) {
+    await pool.query(
+      `INSERT INTO expense_type_masters (expense_type_id, kind, name, owner_user_id, payload)
+       VALUES ($1, 'default', $2, NULL, $3)
+       ON CONFLICT DO NOTHING`,
+      [
+        e.id,
+        e.name,
+        JSON.stringify({
+          kind: 'default',
+          expenseTypeId: e.id,
+          name: e.name,
+          scope: { kind: 'household_shared' },
+          defaultKind: e.defaultKind,
+        }),
+      ],
     )
   }
 }

@@ -2,7 +2,7 @@
  * DATABASE_URL 未設定時（開発モード）のインメモリ Repository 実装。
  * プロセス再起動でデータは消える。永続化・一意制約の最終保証は Neon 実装側が担う。
  */
-import { InvariantViolationError } from '@warimaru/domain'
+import { InvariantViolationError, NOT_JOINED_SHARED_TALK_ROOM } from '@warimaru/domain'
 import type {
   Account,
   AccountId,
@@ -69,7 +69,10 @@ import type {
   PdfToCsvConverter,
   ProratedChildTransaction,
   ProratedChildTransactionRepository,
+  JoinedSharedTalkRoom,
   RetroactiveCandidateQuery,
+  SharedTalkRoom,
+  SharedTalkRoomRepository,
   StatementImportJob,
   StatementImportJobRepository,
   Transaction,
@@ -518,6 +521,19 @@ export function createMockGmailOAuthTokenRepository(): GmailOAuthTokenRepository
     },
     async save(token: GmailOAuthToken) {
       store.set(token.userId, token)
+    },
+  }
+}
+
+/** 共通トークルーム（世帯レベル・シングルトン、OQ-55 ①） */
+export function createMockSharedTalkRoomRepository(): SharedTalkRoomRepository {
+  let room: SharedTalkRoom = NOT_JOINED_SHARED_TALK_ROOM
+  return {
+    async find() {
+      return room
+    },
+    async save(next: JoinedSharedTalkRoom) {
+      room = next
     },
   }
 }

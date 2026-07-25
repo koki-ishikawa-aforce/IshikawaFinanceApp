@@ -55,7 +55,7 @@ function makeAppUserPayload(userId: string, role: 'honey' | 'darling') {
     operationStartedAt: REGISTERED,
     lineOperationSettings: {
       friendAdd: { kind: 'added', followWebhookReceivedAt: REGISTERED },
-      talkRoomJoin: { kind: 'joined', talkRoomId: TALK_ROOM_ID, joinWebhookReceivedAt: REGISTERED },
+      // 共通トークルーム参加は世帯にひとつの事実（OQ-55 ①）。shared_talk_rooms へ別途シードする
       notificationActivation: {
         kind: 'activated',
         talkRoomId: TALK_ROOM_ID,
@@ -481,6 +481,16 @@ export async function seedDevFixtures(db: Db): Promise<void> {
         set: { role: u.role, kind: u.kind, payload: u.payload, updatedAt: NOW },
       })
   }
+
+  // 共通トークルーム（世帯レベル・シングルトン）。通知配信が参照する「正」（OQ-55 ①）
+  console.log('Seeding shared_talk_rooms...')
+  await db
+    .insert(schema.sharedTalkRooms)
+    .values({ talkRoomId: TALK_ROOM_ID, joinWebhookReceivedAt: REGISTERED })
+    .onConflictDoUpdate({
+      target: schema.sharedTalkRooms.singleton,
+      set: { talkRoomId: TALK_ROOM_ID, joinWebhookReceivedAt: REGISTERED, updatedAt: NOW },
+    })
 
   console.log('Seeding accounts...')
   const accountRows = [
