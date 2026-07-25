@@ -47,6 +47,7 @@ import type {
   EventBus,
   GmailOAuthGateway,
   InitialBalanceRegistrationRef,
+  LineFriendshipGateway,
   Phase2InProgressUser,
   SharedTalkRoomRepository,
   SpouseCompletionQuery,
@@ -74,6 +75,8 @@ export interface OnboardingRoutesDeps {
   spouseCompletionQuery: SpouseCompletionQuery
   allowlistQuery: AllowlistQuery
   gmailOAuthGateway: GmailOAuthGateway
+  /** 登録完了時の友だち状態照会（OQ-55 ③。登録前 follow の取りこぼしを拾い直す） */
+  lineFriendshipGateway: LineFriendshipGateway
   eventBus: EventBus
 }
 
@@ -91,6 +94,37 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
       throw new InvariantViolationError(`Phase2 進行中ではない（現状態: ${user.kind}）`)
     }
     return user
+  }
+
+  /**
+   * 登録完了時に LINE の友だち状態を照会し、既に友だち追加済みなら記録する（OQ-55 ③）。
+   *
+   * 登録より前に友だち追加した場合、その follow Webhook は宛先のアプリユーザーが未登録のため
+   * 記録されず破棄される（routes/line-webhook.ts）。自己申告 API は廃止される（OQ-55 ②）ので、
+   * この照会が取りこぼしを拾い直す唯一の経路になる。
+   *
+   * 照会の失敗・記録の失敗はいずれも登録を失敗させない。登録そのものは既に永続化されており、
+   * ここで 5xx を返すと利用者から見て登録できていないのと区別がつかなくなる。友だち追加は
+   * この後に届く follow Webhook でも記録されるため、失敗はログに残して先へ進む。
+   */
+  async function recordFriendAddedIfAlreadyFollowing(user: AppUser, at: Date): Promise<AppUser> {
+    try {
+      const status = await deps.lineFriendshipGateway.checkFriendship(user.common.userId)
+      if (status.kind === 'friend') return await applyLineFriendAdded(deps, user, at)
+      if (status.kind === 'unknown') {
+        console.error(
+          `登録完了時の LINE 友だち状態照会に失敗した（${status.detail}）— 記録は follow Webhook に委ねる`,
+        )
+      }
+      return user
+    } catch (e) {
+      // 照会・記録のどちらで落ちても登録は成立させる。LINE userID はログに出さない（PII）
+      console.error(
+        '登録完了時の友だち追加記録に失敗した — 記録は follow Webhook に委ねる',
+        e instanceof Error ? e.name : 'unknown',
+      )
+      return user
+    }
   }
 
   /**
@@ -146,6 +180,9 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
   /**
    * アプリユーザーの新規登録（Phase1: 役割判定 + 登録、05-scenario-b §Phase1）。
    * 許可リスト不一致は 403（P1-2）。登録済みなら現状を返す冪等操作。
+   * 新規登録が成立した場合のみ、LINE の友だち状態を照会して登録前の友だち追加を拾い直す
+   * （OQ-55 ③。既登録の早期 return では照会しない — 拾い直しは登録の瞬間に一度あればよく、
+   * 冪等呼び出しのたびに外部 API を叩く必要はない）。
    */
   app.post('/register', async c => {
     const body = RegisterBodySchema.parse(await c.req.json().catch(() => ({})))
@@ -185,7 +222,9 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
         role: judgment.role,
       }),
     )
-    return c.json({ user }, 201)
+    // 登録より前に友だち追加していた場合の取りこぼしを、ここで拾い直す（OQ-55 ③）
+    const registered = await recordFriendAddedIfAlreadyFollowing(user, now)
+    return c.json({ user: registered }, 201)
   })
 
   /** ニックネームの設定（本人のみ変更可。null で未設定 = ロール名表示に戻す） */

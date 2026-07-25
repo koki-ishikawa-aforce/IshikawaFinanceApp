@@ -5,7 +5,12 @@
 import { describe, it, expect } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { UserIdSchema, joinedTalkRoomIdOf, lineOperationSettingsOf } from '@warimaru/domain'
-import type { LineFriendAdded, LineTalkRoomJoined, UserId } from '@warimaru/domain'
+import type {
+  LineFriendAdded,
+  LineFriendshipStatus,
+  LineTalkRoomJoined,
+  UserId,
+} from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp as baseCreateTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
 import type { AppDeps } from '../../src/composition-root.js'
@@ -206,6 +211,29 @@ describe('POST /webhook/line — follow（友だち追加）', () => {
     expect((await postWebhook(t, followPayload(VIEWER_ID))).status).toBe(200)
 
     expect(await friendAddKindOf(t)).toBe('added')
+    expect(log).toHaveLength(1)
+  })
+
+  it('登録前の follow は破棄され、登録完了時の友だち状態照会が1回だけ拾い直す（#297 / OQ-55 ③）', async () => {
+    const t = createTestApp({
+      lineFriendshipGateway: {
+        checkFriendship: (): Promise<LineFriendshipStatus> => Promise.resolve({ kind: 'friend' }),
+      },
+    })
+    const log = subscribeFriendAdded(t)
+
+    // 登録前に届いた follow は宛先ユーザーが居らず破棄される
+    expect((await postWebhook(t, followPayload(VIEWER_ID))).status).toBe(200)
+    expect(await t.deps.appUserRepository.findById(VIEWER_ID)).toBeNull()
+    expect(log).toHaveLength(0)
+
+    // 登録完了時の照会で拾い直す
+    await register(t)
+    expect(await friendAddKindOf(t)).toBe('added')
+    expect(log).toHaveLength(1)
+
+    // 拾い直した後に follow が再送されても二重記録・二重発行にならない
+    expect((await postWebhook(t, followPayload(VIEWER_ID))).status).toBe(200)
     expect(log).toHaveLength(1)
   })
 })
