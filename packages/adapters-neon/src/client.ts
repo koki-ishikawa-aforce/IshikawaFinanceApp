@@ -12,12 +12,14 @@
  */
 import { neon } from '@neondatabase/serverless'
 import { drizzle } from 'drizzle-orm/neon-http'
+import { drizzle as drizzleNodePg } from 'drizzle-orm/node-postgres'
+import { Pool } from 'pg'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 import * as schema from './schema'
 
 /**
  * ドライバ横断の DB 型。
- * 本番 = drizzle-orm/neon-http、統合テスト = drizzle-orm/node-postgres（素の PostgreSQL）。
+ * 本番 = drizzle-orm/neon-http、統合テスト / E2E = drizzle-orm/node-postgres（素の PostgreSQL）。
  * どちらも PgDatabase のサブタイプであり、adapter はこの共通型にのみ依存する。
  * （両ファクトリとも `{ schema }` を渡すこと — 渡さないと TFullSchema が単一化しない）
  */
@@ -26,4 +28,9 @@ export type Db = PgDatabase<PgQueryResultHKT, typeof schema>
 export function createNeonHttpDb(databaseUrl: string): Db {
   const client = neon(databaseUrl)
   return drizzle(client, { schema })
+}
+
+export function createNodePgDb(databaseUrl: string): Db {
+  const pool = new Pool({ connectionString: databaseUrl })
+  return drizzleNodePg(pool, { schema })
 }
