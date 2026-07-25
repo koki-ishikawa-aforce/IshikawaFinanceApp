@@ -55,12 +55,12 @@ test.describe('AT-202: 未分類取引の3軸修正と学習ルール即時登�
     )
     expect(rule).toBeTruthy()
     expect(rule.kind).toBe('active')
-    expect(rule.categoryAxis.kind).toBe('learned')
-    expect(rule.categoryAxis.categoryId).toBe(CAT_OTHER)
-    expect(rule.expenseClassAxis.kind).toBe('learned')
-    expect(rule.expenseClassAxis.expenseClass).toBe('business_expense')
-    expect(rule.expenseTypeAxis.kind).toBe('learned')
-    expect(rule.expenseTypeAxis.expenseTypeId).toBe(EXPENSE_TYPE_GYM)
+    expect(rule.categoryRef.kind).toBe('learned')
+    expect(rule.categoryRef.categoryId).toBe(CAT_OTHER)
+    expect(rule.expenseClassRef.kind).toBe('learned')
+    expect(rule.expenseClassRef.expenseClass).toBe('business_expense')
+    expect(rule.expenseTypeRef.kind).toBe('learned')
+    expect(rule.expenseTypeRef.expenseTypeId).toBe(EXPENSE_TYPE_GYM)
   })
 
   test('手順4: 学習ルールを使って同じ加盟店の新規取引を分類済みで登録', async ({ request }) => {
@@ -80,9 +80,9 @@ test.describe('AT-202: 未分類取引の3軸修正と学習ルール即時登�
         amount: 8000,
         occurredAt: new Date().toISOString(),
         classification: {
-          categoryId: rule.categoryAxis.categoryId,
-          expenseClass: rule.expenseClassAxis.expenseClass,
-          expenseTypeId: rule.expenseTypeAxis.expenseTypeId,
+          categoryId: rule.categoryRef.categoryId,
+          expenseClass: rule.expenseClassRef.expenseClass,
+          expenseTypeId: rule.expenseTypeRef.expenseTypeId,
         },
       },
     })
