@@ -1,0 +1,225 @@
+# PR ごとのプレビュー配信。モック起動モード(#141)の Static Export を GitHub Pages の
+# サブパス(/<リポジトリ名>/pr-<番号>/)へ公開し、マージ判断者がコードを読まずに
+# 実際の画面を触って確認できるようにする。運用: docs/automation/pr-preview.md
+#
+# サイトの実体は gh-pages ブランチに保持し、そこから Pages へデプロイする。
+# Pages の公式デプロイ(actions/deploy-pages)はサイト全体を毎回置き換えるため、
+# PR ごとのサブパスを並存させるには「全 PR 分の現状を持つ置き場所」が必要になる。
+# gh-pages ブランチは毎回 1 コミットの孤児コミットで force push し、履歴を溜めない
+# (ビルド成果物を積み上げるとリポジトリが際限なく肥大するため)。
+
+name: PR preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+  pages: write
+  pull-requests: write
+
+# gh-pages ブランチへの push が PR 間で同時に走ると、force push で相手の
+# プレビューを消してしまう。リポジトリ全体で 1 本ずつ直列化する
+# (実行中のものはキャンセルしない。掃除の取りこぼしを防ぐため)。
+concurrency:
+  group: pr-preview
+  cancel-in-progress: false
+
+env:
+  STORAGE_BRANCH: gh-pages
+  PREVIEW_DIR: pr-${{ github.event.pull_request.number }}
+
+jobs:
+  publish:
+    # fork からの PR では GITHUB_TOKEN が読み取り専用になり配信できない。
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      pages_ready: ${{ steps.pages.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        if: github.event.action != 'closed'
+        # バージョンは package.json の packageManager フィールドから解決される
+
+      - uses: actions/setup-node@v4
+        if: github.event.action != 'closed'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        if: github.event.action != 'closed'
+        run: pnpm install --frozen-lockfile
+
+      # web は @warimaru/domain の dist を参照するため、先に domain をビルドする。
+      - name: Build mock static export
+        if: github.event.action != 'closed'
+        env:
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}/${{ env.PREVIEW_DIR }}
+        run: |
+          pnpm --filter @warimaru/domain build
+          pnpm --filter @warimaru/web build:mock
+
+      # 置き場所ブランチの現状を取得し、この PR 分のディレクトリだけを差し替える
+      # (クローズ時は削除する)。認証情報はディスクに残さず、都度ヘッダで渡す。
+      - name: Update the preview on the storage branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTION: ${{ github.event.action }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          AUTH_HEADER="AUTHORIZATION: basic $(printf '%s' "x-access-token:${GITHUB_TOKEN}" | base64 -w0)"
+
+          mkdir -p "${RUNNER_TEMP}/site"
+          cd "${RUNNER_TEMP}/site"
+          git init -q -b publish
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          if git -c http.extraheader="${AUTH_HEADER}" fetch --depth 1 origin "${STORAGE_BRANCH}"; then
+            git checkout FETCH_HEAD -- .
+          else
+            echo "置き場所ブランチ ${STORAGE_BRANCH} は未作成のため、新規に作成する"
+          fi
+
+          rm -rf "${PREVIEW_DIR}" "${PREVIEW_DIR}.txt"
+          if [ "${ACTION}" != 'closed' ]; then
+            cp -r "${GITHUB_WORKSPACE}/packages/web/out" "${PREVIEW_DIR}"
+            # ベースパスを付けると、トップ画面の先読みだけが親階層の
+            # <ベースパス>.txt を取りに行き 404 になる(Next.js の Static Export の挙動)。
+            # 画面は動くが配信のたびにコンソールへ赤いエラーが出て、レビュー時に
+            # 変更側の不具合と紛らわしいため、同じ中身をその名前でも置く。
+            cp "${PREVIEW_DIR}/index.txt" "${PREVIEW_DIR}.txt"
+          fi
+
+          # Pages の Actions デプロイは Jekyll を通さないが、_next のような
+          # アンダースコア始まりのディレクトリが落ちる事故を防ぐ保険として置く。
+          touch .nojekyll
+
+          # サイト直下は現存するプレビューの一覧にする(直リンクを忘れたときの入口)。
+          {
+            echo '<!doctype html>'
+            echo '<html lang="ja"><head><meta charset="utf-8">'
+            echo '<meta name="robots" content="noindex">'
+            echo '<title>わりまる PR プレビュー</title></head><body>'
+            echo '<h1>わりまる PR プレビュー</h1><ul>'
+            for dir in pr-*/; do
+              [ -d "${dir}" ] || continue
+              number="${dir#pr-}"
+              number="${number%/}"
+              echo "<li><a href=\"./${dir}\">PR #${number}</a></li>"
+            done
+            echo '</ul></body></html>'
+          } > index.html
+
+          git add -A
+          git commit -q --allow-empty -m "chore(preview): PR #${PR_NUMBER} (${ACTION})"
+          git -c http.extraheader="${AUTH_HEADER}" push -q --force origin "publish:${STORAGE_BRANCH}"
+
+          # 公開物に .git を含めない(リモート設定や履歴をサイトへ出さない)。
+          rm -rf .git
+
+      # Pages が未設定なら有効化を試みる。権限が無くて有効化できない場合は、
+      # 配信を諦めて手動セットアップを PR にコメントする(ここで失敗させない)。
+      - name: Ensure GitHub Pages is enabled
+        id: pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          build_type="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '.build_type' 2>/dev/null || true)"
+          if [ "${build_type}" = 'workflow' ]; then
+            echo 'ready=true' >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [ -n "${build_type}" ]; then
+            # Pages は有効だが公開元が Actions ではない(ブランチ配信のまま)。
+            if gh api --method PUT "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null 2>&1; then
+              echo 'ready=true' >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+          elif gh api --method POST "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow >/dev/null 2>&1; then
+            echo 'ready=true' >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo 'ready=false' >> "${GITHUB_OUTPUT}"
+          echo '::notice::GitHub Pages を有効化できなかったため配信を省略した。docs/automation/pr-preview.md の手動セットアップを参照。'
+
+      - name: Upload the site as a Pages artifact
+        if: steps.pages.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+
+  deploy:
+    needs: publish
+    if: needs.publish.outputs.pages_ready == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # 配信 URL(または手動セットアップの案内)を PR に 1 件だけ残す。
+  # 同じ目印のコメントがあれば書き換えるので、push のたびには増えない。
+  comment:
+    needs: [publish, deploy]
+    if: always() && needs.publish.result == 'success' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          PAGE_URL: ${{ needs.deploy.outputs.page_url }}
+          PAGES_READY: ${{ needs.publish.outputs.pages_ready }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const marker = '<!-- pr-preview -->';
+            const heading = [marker, '### 画面プレビュー', ''];
+            const pageUrl = process.env.PAGE_URL ?? '';
+            let lines;
+            if (pageUrl !== '') {
+              lines = [
+                `${pageUrl}pr-${issue_number}/`,
+                '',
+                'ログイン不要のモックデータで動きます。`?mockRole=honey` を付けるともう一方のテーマになります。',
+                'この PR をクローズ / マージすると自動で片付けられます。',
+              ];
+            } else if (process.env.PAGES_READY !== 'true') {
+              lines = [
+                'この PR の画面プレビューは配信できませんでした(GitHub Pages が未設定です)。',
+                '有効化の手順は `docs/automation/pr-preview.md` を参照してください。',
+              ];
+            } else {
+              lines = [
+                'この PR の画面プレビューは配信に失敗しました。',
+                'このワークフローの実行ログ(PR preview)を確認してください。',
+              ];
+            }
+            const body = [...heading, ...lines].join('\n');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find(c => (c.body ?? '').startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
