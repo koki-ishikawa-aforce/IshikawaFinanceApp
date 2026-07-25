@@ -76,11 +76,11 @@ async function seedTestData(pool: import('pg').Pool): Promise<void> {
     }
 
     const expenseTypes = [
-      { id: '01JEEEEEEEEEEEEEEEEEEEEE1', name: 'ジム', defaultKind: 'gym' },
-      { id: '01JEEEEEEEEEEEEEEEEEEEEE2', name: '書籍・新聞', defaultKind: 'books_newspaper' },
-      { id: '01JEEEEEEEEEEEEEEEEEEEEE3', name: 'AI利用', defaultKind: 'ai_usage' },
-      { id: '01JEEEEEEEEEEEEEEEEEEEEE4', name: '交通費', defaultKind: 'transportation' },
-      { id: '01JEEEEEEEEEEEEEEEEEEEEE5', name: 'その他経費', defaultKind: 'other_expense' },
+      { id: '01JEEEEEEEEEEEEEEEEEEEEEE1', name: 'ジム', defaultKind: 'gym' },
+      { id: '01JEEEEEEEEEEEEEEEEEEEEEE2', name: '書籍・新聞', defaultKind: 'books_newspaper' },
+      { id: '01JEEEEEEEEEEEEEEEEEEEEEE3', name: 'AI利用', defaultKind: 'ai_usage' },
+      { id: '01JEEEEEEEEEEEEEEEEEEEEEE4', name: '交通費', defaultKind: 'transportation' },
+      { id: '01JEEEEEEEEEEEEEEEEEEEEEE5', name: 'その他経費', defaultKind: 'other_expense' },
     ] as const
     for (const e of expenseTypes) {
       await client.query(

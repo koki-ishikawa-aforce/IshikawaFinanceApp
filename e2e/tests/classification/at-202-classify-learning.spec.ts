@@ -6,7 +6,7 @@ const HEADERS = {
   'X-User-Id': 'U_DARLING_DEV',
 }
 const CAT_OTHER = '01JAAAAAAAAAAAAAAAAAAAAAA4'
-const EXPENSE_TYPE_GYM = '01JEEEEEEEEEEEEEEEEEEEEE1'
+const EXPENSE_TYPE_GYM = '01JEEEEEEEEEEEEEEEEEEEEEE1'
 const CURRENT_MONTH = new Date().toISOString().slice(0, 7)
 
 test.describe.serial('AT-202: 未分類取引の3軸修正と学習ルール即時登録', () => {
