@@ -3,6 +3,8 @@ import {
   ExpenseTypeDeletionRequestSchema,
   completeExpenseTypeRemap,
   failExpenseTypeRemap,
+  isExpenseTypeRemapFullyCompleted,
+  recordExpenseTypeRemapContextCompletion,
   requestExpenseTypeRemap,
 } from '../../../src/master-data/value-objects/ExpenseTypeDeletionRequest'
 import type { PendingRemapExpenseTypeDeletionRequest } from '../../../src/master-data/value-objects/ExpenseTypeDeletionRequest'
@@ -22,21 +24,33 @@ function pendingRequest() {
 describe('ExpenseTypeDeletionRequest 状態遷移', () => {
   const at = new Date('2026-07-02T00:00:00Z')
 
-  it('pending_remap → remap_requested → remap_completed', () => {
+  it('pending_remap → remap_requested → 各コンテキスト完了記録 → remap_completed', () => {
     const requested = requestExpenseTypeRemap(
       pendingRequest(),
       ['expense_settlement', 'auto_classification'],
       at,
     )
     expect(requested.state.kind).toBe('remap_requested')
+    expect(requested.state.completedContexts).toEqual([])
 
-    const completed = completeExpenseTypeRemap(
+    const afterSettlement = recordExpenseTypeRemapContextCompletion(
       requested,
-      { affectedTransactionCount: 1, affectedLearningRuleCount: 0 },
+      { context: 'expense_settlement', affectedTransactionCount: 1, affectedLearningRuleCount: 0 },
       at,
     )
+    expect(isExpenseTypeRemapFullyCompleted(afterSettlement)).toBe(false)
+
+    const afterAuto = recordExpenseTypeRemapContextCompletion(
+      afterSettlement,
+      { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 4 },
+      at,
+    )
+    expect(isExpenseTypeRemapFullyCompleted(afterAuto)).toBe(true)
+
+    const completed = completeExpenseTypeRemap(afterAuto, at)
     expect(completed.state.kind).toBe('remap_completed')
     expect(completed.state.affectedTransactionCount).toBe(1)
+    expect(completed.state.affectedLearningRuleCount).toBe(4)
   })
 
   it('pending_remap → remap_requested → remap_failed', () => {

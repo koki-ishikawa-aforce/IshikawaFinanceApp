@@ -11,7 +11,6 @@ import {
   PermissionDeniedError,
   assertExpenseTypeNameAvailable,
   assertVisibleTo,
-  completeExpenseTypeRemap,
   failExpenseTypeRemap,
   renameCustomExpenseType,
   requestExpenseTypeRemap,
@@ -22,14 +21,12 @@ import type {
   ExpenseTypeDeletionRequestRepository,
   ExpenseTypeMaster,
   ExpenseTypeMasterRepository,
-  MonthlyLimitRepository,
   PendingRemapExpenseTypeDeletionRequest,
   UserId,
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
-import type { RemapResults } from '../event-handlers/master-data-remap.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
 
@@ -53,7 +50,6 @@ function assertEditableCustomExpenseType(
 export interface ExpenseTypesRoutesDeps {
   expenseTypeMasterRepository: ExpenseTypeMasterRepository
   expenseTypeDeletionRequestRepository: ExpenseTypeDeletionRequestRepository
-  monthlyLimitRepository: MonthlyLimitRepository
   eventBus: EventBus
 }
 
@@ -147,30 +143,26 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
     await deps.expenseTypeDeletionRequestRepository.save(requested)
 
     try {
-      const remapResults: RemapResults = {
-        affectedTransactionCount: 0,
-        affectedLearningRuleCount: 0,
-      }
-      const event = {
-        ...ExpenseTypeDeletionRemapRequestedSchema.parse({
+      // リマップ要請を発火する。取引の付け替え・学習ルールの付け替え → 完了通知 →
+      // コーディネーターによる月次上限とマスタの物理削除まで同期バス上で連鎖する（#223）。
+      await deps.eventBus.publish(
+        ExpenseTypeDeletionRemapRequestedSchema.parse({
           ...domainEventBase(now),
-          type: 'ExpenseTypeDeletionRemapRequested' as const,
+          type: 'ExpenseTypeDeletionRemapRequested',
           expenseTypeDeletionRequestId: pending.expenseTypeDeletionRequestId,
           targetExpenseTypeId: target.expenseTypeId,
           destinationExpenseTypeId: body.destinationExpenseTypeId,
         }),
-        _remapResults: remapResults,
-      }
-      await deps.eventBus.publish(event)
-
-      // 削除対象経費種別の月次上限は残すと宙に浮くため物理削除する
-      await deps.monthlyLimitRepository.deleteByExpenseType(target.expenseTypeId)
-
-      const completed = completeExpenseTypeRemap(requested, remapResults, new Date())
-      await deps.expenseTypeDeletionRequestRepository.save(completed)
-      await deps.expenseTypeMasterRepository.deleteById(target.expenseTypeId)
-      return c.json({ request: completed }, 201)
+      )
     } catch (e) {
+      // コーディネーターが remap_completed まで到達済みなら、後続の副作用失敗で
+      // 完了を remap_failed に覆さない（マスタ削除済みなのに失敗記録、を防ぐ）。
+      const current = await deps.expenseTypeDeletionRequestRepository.findById(
+        pending.expenseTypeDeletionRequestId,
+      )
+      if (current?.state.kind === 'remap_completed') {
+        return c.json({ request: current }, 201)
+      }
       const failed = failExpenseTypeRemap(
         requested,
         e instanceof Error ? e.message : String(e),
@@ -179,6 +171,19 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
       await deps.expenseTypeDeletionRequestRepository.save(failed)
       throw e
     }
+
+    const finalized = await deps.expenseTypeDeletionRequestRepository.findById(
+      pending.expenseTypeDeletionRequestId,
+    )
+    if (finalized === null) {
+      throw new NotFoundError('ExpenseTypeDeletionRequest', pending.expenseTypeDeletionRequestId)
+    }
+    // 依頼先コンテキストの完了通知が全て揃えばコーディネーターが remap_completed へ遷移する。
+    // 揃わない（購読漏れ等の想定外配線）まま 201 を返さず、内部エラーとして顕在化させる。
+    if (finalized.state.kind !== 'remap_completed') {
+      throw new Error('経費種別削除リマップが完了しなかった（完了通知が揃わなかった）')
+    }
+    return c.json({ request: finalized }, 201)
   })
 
   app.delete('/:id', c => {

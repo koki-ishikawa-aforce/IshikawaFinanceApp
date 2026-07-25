@@ -14,6 +14,7 @@ import type { AppDeps } from '../composition-root.js'
 import { createNotificationDeliveryService } from '../notification/delivery-service.js'
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
 import { registerMasterDataRemapEventHandlers } from './master-data-remap.js'
+import { registerMasterDataDeletionCoordinator } from './master-data-deletion-coordinator.js'
 import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
 import { registerExpenseProrationRecalcEventHandlers } from './expense-proration-recalc.js'
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
@@ -29,10 +30,19 @@ export function registerEventHandlers(deps: AppDeps): void {
   registerAutoClassificationEventHandlers(deps.eventBus, {
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
   })
+  // マスタ削除リマップ: 各コンテキストが付け替えて完了通知を発行する（#89 / #223）
   registerMasterDataRemapEventHandlers(deps.eventBus, {
     transactionRepository: deps.transactionRepository,
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
     amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
+    categoryDeletionRequestRepository: deps.categoryDeletionRequestRepository,
+    expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
+  })
+  // マスタ削除コーディネーター: 全完了通知を集約してから物理削除する（#223）
+  registerMasterDataDeletionCoordinator(deps.eventBus, {
+    categoryMasterRepository: deps.categoryMasterRepository,
+    expenseTypeMasterRepository: deps.expenseTypeMasterRepository,
+    monthlyLimitRepository: deps.monthlyLimitRepository,
     categoryDeletionRequestRepository: deps.categoryDeletionRequestRepository,
     expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
   })
