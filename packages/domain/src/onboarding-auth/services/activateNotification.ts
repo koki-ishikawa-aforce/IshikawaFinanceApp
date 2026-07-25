@@ -9,9 +9,13 @@
  * 共通トークルーム参加状態は世帯にひとつの事実として per-user の LINE_運用設定から
  * 分離済み（OQ-55 ①）のため、per-user の VO では検証できない。
  *
+ * 改訂（2026-07-25・判断セッション / #334）: 有効化記録に共通トークルームID を残さない。
+ * 世帯レベルの `SharedTalkRoom` が唯一の正であり、有効化時点の ID を per-user に焼き付けると
+ * 招待し直しで古い ID が残る。本サービスは参加済みであることを前提条件として検証するのみで、
+ * トークルームID は保持しない（配信先を決める側が都度 `SharedTalkRoom` を読む）。
+ *
  * 不変条件:
  *  - 有効化には LINE 友達追加済み かつ 世帯の共通トークルーム参加済み が必要
- *  - 有効化対象のトークルームは世帯レベルの参加済みトークルーム
  */
 import { InvariantViolationError } from '../../shared/errors/DomainError'
 import {
@@ -36,10 +40,6 @@ export function activateNotification(
   }
   return withLineOperationSettings(user, {
     ...settings,
-    notificationActivation: {
-      kind: 'activated',
-      talkRoomId: sharedTalkRoom.talkRoomId,
-      activatedAt: at,
-    },
+    notificationActivation: { kind: 'activated', activatedAt: at },
   })
 }
