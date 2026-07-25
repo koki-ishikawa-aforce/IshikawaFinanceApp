@@ -15,17 +15,19 @@
  * 専用 ID は持たない（自然キー = userId + merchantName、09-aggregates.md #4）。
  */
 import { z } from 'zod'
-import { CategoryIdSchema, ExpenseTypeIdSchema, UserIdSchema, type UserId } from '../../shared/ids'
-import { ExpenseClassSchema } from '../../shared/value-objects/ExpenseClass'
-import { InvariantViolationError } from '../../shared/errors'
+import { UserIdSchema, type UserId } from '../../shared/ids'
 import {
   CategoryLearningRefSchema,
   ExpenseClassLearningRefSchema,
   ExpenseTypeLearningRefSchema,
-  type CategoryLearningRef,
-  type ExpenseClassLearningRef,
-  type ExpenseTypeLearningRef,
+  applicableClassificationFromRefs,
+  deriveLearnedRefs,
+  type LearningRefs,
 } from '../value-objects/LearningRefs'
+import {
+  ManualClassificationSchema,
+  type ManualClassification,
+} from '../value-objects/ManualClassification'
 import type { LearningAxis } from '../value-objects/LearningAxis'
 
 /** 共通属性（自然キー） */
@@ -87,28 +89,6 @@ function isAmazonMerchant(merchantName: string): boolean {
 }
 
 /**
- * 修正後分類（自動分類・学習コンテキストの分類値）
- *
- * 用途は2つ:
- *  - `reflectManualClassification` の入力（08b §2「手動修正を学習に反映する」）
- *  - `applicableClassification` の出力（学習済みルールから導く適用可能な分類）
- *
- * 経費種別ID は費用区分が経費（business_expense）のときのみ意味を持つ。
- * 家計分析の `ConfirmedClassificationSchema`（取引確定入力）とは意図的に
- * 別スキーマにしている: あちらは「経費なら経費種別ID 必須」を superRefine で
- * 課すが、本スキーマは経費でも経費種別ID を任意にする。学習反映（T-2 軸独立）
- * では経費種別が未提供でも既存の学習済み経費種別軸を保持するため、必須化
- * すると軸独立の不変条件と衝突する。BC 境界を跨いだ共有を避けるため
- * 自動分類・学習コンテキスト内に閉じて定義する。
- */
-export const ManualClassificationSchema = z.object({
-  categoryId: CategoryIdSchema,
-  expenseClass: ExpenseClassSchema,
-  expenseTypeId: ExpenseTypeIdSchema.optional(),
-})
-export type ManualClassification = z.infer<typeof ManualClassificationSchema>
-
-/**
  * 学習済みの3軸（カテゴリ・費用区分・経費種別）から適用可能な分類を導出する。
  *
  * 遡及適用・自動分類でルールを取引へ適用する際の唯一の判定ポイント。
@@ -118,48 +98,15 @@ export type ManualClassification = z.infer<typeof ManualClassificationSchema>
  *  - 経費(会社) かつ経費種別が未学習 → 適用不可（経費は経費種別まで学習が必要）
  */
 export function applicableClassification(rule: ActiveMerchantLearningRule): ManualClassification {
-  if (rule.categoryRef.kind !== 'learned' || rule.expenseClassRef.kind !== 'learned') {
-    throw new InvariantViolationError(
-      `学習が完了していないルールは適用できない: ${rule.common.merchantName}`,
-    )
-  }
-  const expenseClass = rule.expenseClassRef.expenseClass
-  if (expenseClass === 'business_expense' && rule.expenseTypeRef.kind !== 'learned') {
-    throw new InvariantViolationError(
-      `経費種別が未学習のため適用できない: ${rule.common.merchantName}`,
-    )
-  }
-  return ManualClassificationSchema.parse({
-    categoryId: rule.categoryRef.categoryId,
-    expenseClass,
-    ...(expenseClass === 'business_expense' && rule.expenseTypeRef.kind === 'learned'
-      ? { expenseTypeId: rule.expenseTypeRef.expenseTypeId }
-      : {}),
-  })
+  return ManualClassificationSchema.parse(
+    applicableClassificationFromRefs(rule, rule.common.merchantName),
+  )
 }
 
 export type ReflectManualClassificationResult =
   | { kind: 'updated'; rule: ActiveMerchantLearningRule; updatedAxes: LearningAxis[] }
   | { kind: 'unchanged' }
   | { kind: 'skipped'; reason: 'amazon_merchant' | 'learning_disabled' }
-
-function sameCategoryRef(a: CategoryLearningRef, b: CategoryLearningRef): boolean {
-  return a.kind === 'unlearned'
-    ? b.kind === 'unlearned'
-    : b.kind === 'learned' && a.categoryId === b.categoryId
-}
-
-function sameExpenseClassRef(a: ExpenseClassLearningRef, b: ExpenseClassLearningRef): boolean {
-  return a.kind === 'unlearned'
-    ? b.kind === 'unlearned'
-    : b.kind === 'learned' && a.expenseClass === b.expenseClass
-}
-
-function sameExpenseTypeRef(a: ExpenseTypeLearningRef, b: ExpenseTypeLearningRef): boolean {
-  return a.kind === 'unlearned'
-    ? b.kind === 'unlearned'
-    : b.kind === 'learned' && a.expenseTypeId === b.expenseTypeId
-}
 
 /**
  * 手動修正を学習に反映する（08b §2）
@@ -186,39 +133,24 @@ export function reflectManualClassification(
   }
   const input = ManualClassificationSchema.parse(classification)
 
-  const baseCategoryRef: CategoryLearningRef = existing?.categoryRef ?? { kind: 'unlearned' }
-  const baseExpenseClassRef: ExpenseClassLearningRef = existing?.expenseClassRef ?? {
-    kind: 'unlearned',
+  const base: LearningRefs = {
+    categoryRef: existing?.categoryRef ?? { kind: 'unlearned' },
+    expenseClassRef: existing?.expenseClassRef ?? { kind: 'unlearned' },
+    expenseTypeRef: existing?.expenseTypeRef ?? { kind: 'unlearned' },
   }
-  const baseExpenseTypeRef: ExpenseTypeLearningRef = existing?.expenseTypeRef ?? {
-    kind: 'unlearned',
-  }
-
-  const nextCategoryRef: CategoryLearningRef = { kind: 'learned', categoryId: input.categoryId }
-  const nextExpenseClassRef: ExpenseClassLearningRef = {
-    kind: 'learned',
-    expenseClass: input.expenseClass,
-  }
-  // 経費以外への修正では経費種別軸を触らない（T-2 軸独立）
-  const nextExpenseTypeRef: ExpenseTypeLearningRef =
-    input.expenseClass === 'business_expense' && input.expenseTypeId !== undefined
-      ? { kind: 'learned', expenseTypeId: input.expenseTypeId }
-      : baseExpenseTypeRef
-
-  const updatedAxes: LearningAxis[] = []
-  if (!sameCategoryRef(baseCategoryRef, nextCategoryRef)) updatedAxes.push('category')
-  if (!sameExpenseClassRef(baseExpenseClassRef, nextExpenseClassRef)) {
-    updatedAxes.push('expense_class')
-  }
-  if (!sameExpenseTypeRef(baseExpenseTypeRef, nextExpenseTypeRef)) updatedAxes.push('expense_type')
+  // T-2 軸独立で反映（経費以外への修正では経費種別軸を触らない）。共通ヘルパに一元化
+  const { categoryRef, expenseClassRef, expenseTypeRef, updatedAxes } = deriveLearnedRefs(
+    base,
+    input,
+  )
   if (updatedAxes.length === 0) return { kind: 'unchanged' }
 
   const rule = MerchantLearningRuleSchema.parse({
     kind: 'active',
     common: { userId, merchantName },
-    categoryRef: nextCategoryRef,
-    expenseClassRef: nextExpenseClassRef,
-    expenseTypeRef: nextExpenseTypeRef,
+    categoryRef,
+    expenseClassRef,
+    expenseTypeRef,
     lastUpdatedAt: at,
   }) as ActiveMerchantLearningRule
   return { kind: 'updated', rule, updatedAxes }

@@ -78,14 +78,18 @@ gh label create "needs-decision" --color D93F0B --description "人間の判断�
 
 GitHub は**自分自身の操作を通知しない**。Routine はあなたのアカウントで Issue・PR を操作するため、Routine が作った PR や判断依頼は、Watch 設定をどう変えてもそのままではメールが届かない。そこで `.github/workflows/notify-needs-decision.yml` が github-actions bot(= 別のアクター)として以下を行い、Participating 通知(メール)を発生させる:
 
-| イベント | bot の動作 | 結果 |
+| イベント | bot の動作 | メール通知 |
 | --- | --- | --- |
-| Issue に `needs-decision` が付いた | あなたを assignee に追加 + @メンションコメント(種別ごとの「あなたがすること」1行) | メール通知 |
-| PR が作成された(Draft・通常を問わない) | あなたを assignee に追加 | メール通知(マージ判断 Issue が作られなかった場合の保険も兼ねる) |
-| PR がマージ/クローズされた | 対応するマージ判断 Issue(本文の `<!-- merge-judgment-pr: N -->` マーカーで特定)を自動クローズ | 判断待ち一覧が自動で片付く |
-| PR が**マージされずに**クローズされた | その PR が `Closes #N` で紐づけていた open Issue の `status:in-progress` を自動解除 | 着手中ロックが残らず、次の fire が再着手できる(下記「ゴミロックの自動回収」) |
+| Issue に `needs-decision` が付いた | あなたを assignee に追加 + @メンションコメント(種別ごとの「あなたがすること」1行) | **あり**(人間の判断が必要) |
+| PR が作成された(Draft・通常を問わない) | あなたを assignee に追加 | **あり**(マージ判断 Issue が作られなかった場合の保険も兼ねる) |
+| PR がマージ/クローズされた | 対応するマージ判断 Issue(本文の `<!-- merge-judgment-pr: N -->` マーカーで特定)の assignee を外してクローズ(コメントなし) | **なし**(自動処理。クローズ理由と Issue タイムラインで追跡可能) |
+| PR が**マージされずに**クローズされた | その PR が `Closes #N` で紐づけていた open Issue の `status:in-progress` を解除(コメントなし) | **なし**(自動処理。ラベル遷移は Issue タイムラインで追跡可能) |
+
+通知の出し分けの原則(#290): **人間が操作するものだけ通知する**。bot が自動で片付けた結果(マージ判断 Issue の自動クローズ、着手中ロックの自動解除)はメール通知を発生させない。一度 assignee になるとそのスレッドのすべてのコメントが Participating 通知(メール)になるため、通知不要のアクションではコメントを投稿しないか、先に assignee を外す。
 
 前提条件: GitHub の [Settings → Notifications](https://github.com/settings/notifications) で「Participating, @mentions and custom」の Email が有効になっていること(既定で有効)。メールが届かない場合はまずここを確認する。
+
+ワークフロー発火の取りこぼし対策: PR のマージ/クローズ時に `close-merge-judgment` が発火しなかった場合(GitHub Actions の一時的な障害など)、マージ判断 Issue が open のまま取り残される。`/pr-steward` の手順 3-2(孤児マージ判断 Issue の回収)が定期巡回で回収するため、手動でのクローズは通常不要。
 
 ### 件名・文面の種別目印
 
