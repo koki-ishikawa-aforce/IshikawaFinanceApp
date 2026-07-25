@@ -34,11 +34,11 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | **セキュリティ**(外周の攻撃面) | CI: `pnpm audit`(依存脆弱性)→ [dependency-audit.md](./dependency-audit.md)<br>レビュー: `/security-review`、`/ddd-review`(プライバシー3段階ルール = ドメイン内の可視性) | ✅ 担保済み — 依存脆弱性は CI、Webhook 署名検証・IDトークン検証・認可の位置・PII ログ流出は `/security-review` が担保 |
 | **データ互換性**(スキーマ変更とデプロイ) | レビュー: データ・マイグレーション互換性レビュー(#328) | ❌ 未整備 — `db:generate` は生成物の構文的正しさしか保証せず、既存データ・デプロイ順序の安全性は未判定(#328) |
 | **保守性**(設計・テスト品質) | CI: `pnpm lint` / `pnpm typecheck` / `pnpm format:check`<br>レビュー: `/ddd-review`(依存の向き・命名・ユビキタス言語・barrel)、テスト品質レビュー(#329) | ⚠️ 部分的 — 設計規約は `/ddd-review` が担保。テストが実際に振る舞いを検証しているかは未整備(#329) |
-| **使用性**(使いやすさ) | 規範: [`docs/design/usability.md`](../design/usability.md)<br>レビュー: `/ux-review`(#330)、`/ui-review`(デザインシステム適合) | ⚠️ 部分的 — 規範は言語化済み。レビュー工程への接続が未整備(#330) |
+| **使用性**(使いやすさ) | 規範: [`docs/design/usability.md`](../design/usability.md)<br>レビュー: `/ux-review`、`/ui-review`(デザインシステム適合) | ✅ 担保済み — 規範を `/ux-review` が差分に適用する。ただし §9「既知の未対応」12件は未解消で、本レビューは**新しい画面で繰り返さないこと**を担保する |
 
 判定の凡例: ✅ 担保済み / ⚠️ 部分的 / ❌ 未整備
 
-`/ui-review` は **デザインシステム適合レビュー**(トークン規律・絵文字・テーマ両対応・aria / 色依存・`DESIGN.md` 整合)であり、使用性そのものは対象外。使用性は `docs/design/usability.md` を根拠に `/ux-review` が見る(#330 で新設)。
+`/ui-review` は **デザインシステム適合レビュー**(トークン規律・絵文字・テーマ両対応・aria / 色依存・`DESIGN.md` 整合)であり、使用性そのものは対象外。使用性は `docs/design/usability.md` を根拠に `/ux-review` が見る。両者の境界が近い3点(コントラスト比・ロール識別・フォーカス可視化)の分担は `.claude/agents/ux-reviewer.md` の「責務分担」に表で定義してある。
 
 ## 3. 変更パス → 起動するレビュー
 
@@ -49,7 +49,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | **常時**(すべての差分) | `/ddd-review` | ✅ 稼働中 |
 | **常時**(コード変更を完了と報告する前・PR 作成前) | `/verify` | ✅ 稼働中 |
 | `packages/web/**` | `/ui-review` | ✅ 稼働中 |
-| `packages/web/**` のうち画面・フローの追加変更を含む差分 | `/ux-review` | ❌ #330 |
+| `packages/web/**` のうち画面・フローの追加変更を含む差分<br>(`src/app/**` のページ・レイアウト、`src/components/**` の表示 / 操作を持つ部品、`src/hooks/**` の状態の扱い、`components/ui/common.module.css` の `.loading` / `.empty` / `.error` / `.button` 系) | `/ux-review` | ✅ 稼働中 |
 | `packages/api/src/routes/**`<br>`packages/api/src/middleware/**`<br>`packages/api/src/gmail-oauth/**`<br>`packages/api/src/aws/**`(シークレット・トークンの取得/保管)<br>認証・外部連携(LINE / Gmail)の変更 | `/security-review` | ✅ 稼働中 |
 | `packages/adapters-neon/**`(特に `drizzle/`(マイグレーション)・`src/**/queries/`) | データ・マイグレーション互換性レビュー | ❌ #328 |
 | `packages/domain/src/*/events/**`<br>`packages/api/src/event-handlers/**`<br>`packages/api/src/notification/**` | 信頼性・可観測性レビュー | ❌ #331 |
@@ -58,6 +58,8 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 複数該当する場合はすべて起動する。`/ddd-review` と `/verify` は常時なので、上表の該当分は「追加で回すもの」と読む。
 
 該当が無い差分(docs のみの変更など)では `/ddd-review` の起動を省略してよい。省略した場合は PR 本文にその旨を書く。
+
+`packages/web/**` の変更でも、色・余白・書体だけの変更やテスト / VRT スナップショットのみの差分では `/ux-review` を省略してよい(`/ui-review` は起動する)。省略の判定条件は `.claude/skills/ux-review/SKILL.md` の「起動条件」を正とする。
 
 ### レビュー結果の扱い(全レビュー共通)
 
