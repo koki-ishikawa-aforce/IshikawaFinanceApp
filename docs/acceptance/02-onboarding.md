@@ -60,7 +60,7 @@
 - 目的: デプロイ時 seed(Phase 0)が本番 DB に正しく投入されていること(シナリオB Phase 0 / Section C/D/E)
 - 対象: `${WEB_URL}/settings`
 - 実施者: どちらか(上限値の個人差は AT-101/603 で両方確認)
-- 前提条件: 本番 DB への seed 投入完了
+- 前提条件: 本番 DB への規定マスタ seed 投入完了、かつ Phase 1 の役割確定済み(月次上限は役割確定を契機に自動作成されるため #321。手順5 はこれが済んでいないと 0 件になる)
 
 | # | 操作 | 期待結果 | ☐ |
 | --- | --- | --- | --- |
@@ -71,7 +71,7 @@
 | 5 | 月次上限タブを開く | seed 値が表示される(ジム 5,000 / 新聞図書 5,000 / AI 利用費 夫 10,000・妻 3,000 / 交通費・その他経費 無制限) | ☐ |
 
 - 事後処理: なし(読み取りのみ)
-- 備考: 依存 API `GET /api/categories`, `GET /api/expense-types`, `GET /api/monthly-limits`。seed 投入は `pnpm --filter @warimaru/adapters-neon db:seed`
+- 備考: 依存 API `GET /api/categories`, `GET /api/expense-types`, `GET /api/monthly-limits`。規定マスタ(カテゴリ4種・経費種別5種)の投入は `pnpm --filter @warimaru/adapters-neon db:seed`(本番でも実行してよい内容のみ)。開発用のダミーデータも入れる場合は `db:seed:dev`。月次上限は seed では作られず、役割確定時に自動作成される(#321)
 
 ### 実施記録
 

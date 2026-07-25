@@ -96,3 +96,34 @@ export function renameCustomExpenseType(
     ],
   }) as CustomExpenseType
 }
+
+/**
+ * 規定経費種別の名前（08h §1 `data 規定経費種別種別`）。
+ * 規定経費種別は改名不可のため、この対応が名前の唯一の出典になる。
+ */
+export const DEFAULT_EXPENSE_TYPE_NAMES: Record<DefaultExpenseTypeKind, string> = {
+  gym: 'ジム',
+  books_newspaper: '新聞図書費',
+  ai_usage: 'AI利用費',
+  transportation: '交通費',
+  other_expense: 'その他経費',
+}
+
+/**
+ * 規定経費種別を seed 投入する（08h: `behavior 規定経費種別をseed投入する`）。
+ *
+ * 名前は改名不可の固定値のため呼び出し側から受け取らず、DEFAULT_EXPENSE_TYPE_NAMES を正とする。
+ * スコープが世帯共有であることは superRefine が保証する。
+ */
+export function seedDefaultExpenseType(input: {
+  expenseTypeId: ExpenseTypeId
+  defaultKind: DefaultExpenseTypeKind
+}): DefaultExpenseType {
+  return ExpenseTypeMasterSchema.parse({
+    kind: 'default',
+    expenseTypeId: input.expenseTypeId,
+    name: DEFAULT_EXPENSE_TYPE_NAMES[input.defaultKind],
+    scope: { kind: 'household_shared' },
+    defaultKind: input.defaultKind,
+  }) as DefaultExpenseType
+}

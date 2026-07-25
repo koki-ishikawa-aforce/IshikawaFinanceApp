@@ -34,7 +34,6 @@
   color: var(--warning-muted);
   font-size: var(--text-sm);
   font-weight: 700;
-  font-family: var(--font-family);
   padding: var(--space-2) var(--space-2_5);
   text-align: left;
   cursor: pointer;
@@ -79,7 +78,6 @@
   box-shadow: var(--shadow-sm);
   padding: var(--space-2) var(--space-2_5);
   cursor: pointer;
-  font-family: var(--font-family);
   text-align: left;
 }
 

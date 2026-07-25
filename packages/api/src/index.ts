@@ -6,6 +6,7 @@ import { createApp } from './app.js'
 const deps = createDeps({
   NODE_ENV: process.env['NODE_ENV'],
   DATABASE_URL: process.env['DATABASE_URL'],
+  DATABASE_DRIVER: process.env['DATABASE_DRIVER'],
   GOOGLE_OAUTH_CLIENT_ID: process.env['GOOGLE_OAUTH_CLIENT_ID'],
   GOOGLE_OAUTH_CLIENT_SECRET: process.env['GOOGLE_OAUTH_CLIENT_SECRET'],
   GOOGLE_OAUTH_REDIRECT_URI: process.env['GOOGLE_OAUTH_REDIRECT_URI'],

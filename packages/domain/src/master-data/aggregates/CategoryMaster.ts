@@ -100,3 +100,33 @@ export function renameCustomCategory(
     ],
   }) as CustomCategory
 }
+
+/**
+ * 規定カテゴリの名前（08h §1 `data 規定カテゴリ種別`）。
+ * 規定カテゴリは改名不可のため、この対応が名前の唯一の出典になる。
+ */
+export const DEFAULT_CATEGORY_NAMES: Record<DefaultCategoryKind, string> = {
+  housing_utilities_communication: '住居光熱通信',
+  food: '食費',
+  entertainment: '娯楽',
+  other: 'その他',
+}
+
+/**
+ * 規定カテゴリを seed 投入する（08h: `behavior 規定カテゴリをseed投入する`）。
+ *
+ * 名前は改名不可の固定値のため呼び出し側から受け取らず、DEFAULT_CATEGORY_NAMES を正とする。
+ * スコープが世帯共有であることは superRefine が保証する。
+ */
+export function seedDefaultCategory(input: {
+  categoryId: CategoryId
+  defaultKind: DefaultCategoryKind
+}): DefaultCategory {
+  return CategoryMasterSchema.parse({
+    kind: 'default',
+    categoryId: input.categoryId,
+    name: DEFAULT_CATEGORY_NAMES[input.defaultKind],
+    scope: { kind: 'household_shared' },
+    defaultKind: input.defaultKind,
+  }) as DefaultCategory
+}
