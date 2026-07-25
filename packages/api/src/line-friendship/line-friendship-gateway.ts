@@ -16,11 +16,35 @@
  *
  * detail には例外オブジェクトの中身を入れない。呼出し側がログへ出すため、Parameter Store の
  * パス等が落ちうる文字列を持ち込まない（routes/line-webhook.ts の鍵解決失敗ログと同じ方針）。
+ * 応答ボディ（displayName / pictureUrl は PII）も読まずに破棄する。
+ *
+ * timeoutMs は LINE への HTTP 呼び出しと Channel Access Token の解決の双方に掛ける。
+ * 本ゲートウェイは登録リクエストの同期パスから呼ばれるため、どちらが詰まっても
+ * 利用者の待ち時間が無制限に伸びる。
  */
 import type { LineFriendshipGateway, LineFriendshipStatus, UserId } from '@warimaru/domain'
 
 const LINE_PROFILE_ENDPOINT = 'https://api.line.me/v2/bot/profile'
 const DEFAULT_TIMEOUT_MS = 10_000
+
+/**
+ * トークン解決（Phase0Config の取得 → Parameter Store 復号）に上限を掛ける。
+ * これらのクライアントは自前のタイムアウトを持たず、本ゲートウェイは利用者が待っている
+ * 登録リクエストの同期パスに乗るため、応答が返らないと画面が待ち続けることになる。
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const e = new Error('timed out')
+      e.name = 'TimeoutError'
+      reject(e)
+    }, ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer)
+  })
+}
 
 export interface LineFriendshipGatewayConfig {
   /** Channel Access Token の解決（Phase0Config の保管参照 → Parameter Store 復号） */
@@ -38,11 +62,14 @@ export function createLineFriendshipGateway(
     async checkFriendship(userId: UserId): Promise<LineFriendshipStatus> {
       let token: string
       try {
-        token = await config.resolveChannelAccessToken()
+        token = await withTimeout(config.resolveChannelAccessToken(), timeoutMs)
       } catch (e) {
+        const isTimeout = e instanceof Error && e.name === 'TimeoutError'
         return {
           kind: 'unknown',
-          detail: `Channel Access Token の解決に失敗した（${e instanceof Error ? e.name : 'unknown'}）`,
+          detail: isTimeout
+            ? 'Channel Access Token の解決がタイムアウトした'
+            : `Channel Access Token の解決に失敗した（${e instanceof Error ? e.name : 'unknown'}）`,
         }
       }
 

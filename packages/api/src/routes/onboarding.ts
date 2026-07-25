@@ -7,6 +7,7 @@
  * - 配偶者完了検知は画面ロード時のみ判定（論点19: ポーリング / WebSocket なし）
  * - Gmail OAuth コールバックは LIFF セッション外で到達するため routes/gmail-oauth.ts が担う
  */
+import { createHash } from 'node:crypto'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
@@ -33,6 +34,7 @@ import {
   completeSectionB,
   completeSectionF,
   judgeRole,
+  lineOperationSettingsOf,
   registerAppUser,
   skipSectionF,
   startPhase2,
@@ -66,6 +68,14 @@ const SectionFBodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('skipped') }),
 ])
 
+/**
+ * ログ用の短縮識別子。LINE userID は個人を辿れる識別子（PII）のためそのままは出さず、
+ * 復元できない形へ潰したうえで「同時刻の別ユーザーと区別できる」最小限だけを残す。
+ */
+function traceIdOf(userId: UserId): string {
+  return createHash('sha256').update(userId).digest('hex').slice(0, 8)
+}
+
 export interface OnboardingRoutesDeps {
   appUserRepository: AppUserRepository
   /** 共通トークルーム参加状態の「正」（世帯レベル、OQ-55 ①） */
@@ -97,33 +107,47 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
   }
 
   /**
-   * 登録完了時に LINE の友だち状態を照会し、既に友だち追加済みなら記録する（OQ-55 ③）。
+   * 登録要求の処理中に LINE の友だち状態を照会し、既に友だち追加済みなら記録する（OQ-55 ③）。
    *
    * 登録より前に友だち追加した場合、その follow Webhook は宛先のアプリユーザーが未登録のため
    * 記録されず破棄される（routes/line-webhook.ts）。自己申告 API は廃止される（OQ-55 ②）ので、
    * この照会が取りこぼしを拾い直す唯一の経路になる。
    *
    * 照会の失敗・記録の失敗はいずれも登録を失敗させない。登録そのものは既に永続化されており、
-   * ここで 5xx を返すと利用者から見て登録できていないのと区別がつかなくなる。友だち追加は
-   * この後に届く follow Webhook でも記録されるため、失敗はログに残して先へ進む。
+   * ここで 5xx を返すと利用者から見て登録できていないのと区別がつかなくなる。
+   *
+   * **失敗した回の回復は「次の登録要求での再照会」に依る**。follow Webhook は友だち追加
+   * （またはブロック解除）の瞬間にしか発生しないため、登録前に友だち追加していたユーザーへ
+   * 再送されることはなく、Webhook を回復経路として当てにはできない。そのため本関数は新規登録
+   * だけでなく登録済みの冪等な再要求でも呼び、未記録である限り毎回照会し直す（記録済みなら
+   * 照会しないので、外部 API を叩き続けることにはならない）。
    */
   async function recordFriendAddedIfAlreadyFollowing(user: AppUser, at: Date): Promise<AppUser> {
+    const userId = user.common.userId
+    if (lineOperationSettingsOf(user).friendAdd.kind === 'added') return user
     try {
-      const status = await deps.lineFriendshipGateway.checkFriendship(user.common.userId)
-      if (status.kind === 'friend') return await applyLineFriendAdded(deps, user, at)
+      const status = await deps.lineFriendshipGateway.checkFriendship(userId)
       if (status.kind === 'unknown') {
         console.error(
-          `登録完了時の LINE 友だち状態照会に失敗した（${status.detail}）— 記録は follow Webhook に委ねる`,
+          `登録時の LINE 友だち状態照会に失敗した（${status.detail}, user=${traceIdOf(userId)}）— 次の登録要求で再照会する`,
         )
+        return user
       }
-      return user
+      if (status.kind === 'not_friend') return user
+      // 照会の待ち時間中に follow Webhook が同じ事実を記録している可能性がある。古いスナップ
+      // ショットへ適用すると `recordLineFriendAdded` の冪等判定が効かず、再保存と
+      // LineFriendAdded の二重発行、および記録日時の上書きが起きるため、最新を読み直す
+      const latest = (await deps.appUserRepository.findById(userId)) ?? user
+      return await applyLineFriendAdded(deps, latest, at)
     } catch (e) {
-      // 照会・記録のどちらで落ちても登録は成立させる。LINE userID はログに出さない（PII）
+      // 照会・記録のどちらで落ちても登録は成立させる。LINE userID は PII のためログに出さず、
+      // 復元不能な短縮識別子だけを添えて「誰の登録で失敗したか」を追えるようにする
       console.error(
-        '登録完了時の友だち追加記録に失敗した — 記録は follow Webhook に委ねる',
-        e instanceof Error ? e.name : 'unknown',
+        `登録時の友だち追加記録に失敗した（${e instanceof Error ? e.name : 'unknown'}, user=${traceIdOf(userId)}）— 次の登録要求で再照会する`,
       )
-      return user
+      // 保存は成功しイベント発行で落ちた可能性があるため、応答は永続化されている最新に揃える
+      const latest = await deps.appUserRepository.findById(userId).catch(() => null)
+      return latest ?? user
     }
   }
 
@@ -180,17 +204,20 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
   /**
    * アプリユーザーの新規登録（Phase1: 役割判定 + 登録、05-scenario-b §Phase1）。
    * 許可リスト不一致は 403（P1-2）。登録済みなら現状を返す冪等操作。
-   * 新規登録が成立した場合のみ、LINE の友だち状態を照会して登録前の友だち追加を拾い直す
-   * （OQ-55 ③。既登録の早期 return では照会しない — 拾い直しは登録の瞬間に一度あればよく、
-   * 冪等呼び出しのたびに外部 API を叩く必要はない）。
+   * 新規登録・冪等呼び出しのいずれでも、友だち追加が未記録なら LINE の友だち状態を照会して
+   * 登録前の友だち追加を拾い直す（OQ-55 ③。照会が失敗した回を次の呼び出しで回復するため、
+   * 新規登録の瞬間だけには限定しない）。
    */
   app.post('/register', async c => {
     const body = RegisterBodySchema.parse(await c.req.json().catch(() => ({})))
     const viewerId = c.get('viewerId')
-    const existing = await deps.appUserRepository.findById(viewerId)
-    if (existing !== null) return c.json({ user: existing })
-
     const now = new Date()
+    const existing = await deps.appUserRepository.findById(viewerId)
+    // 登録済みでも友だち追加が未記録なら照会し直す（前回の照会が失敗した回をここで回復する）
+    if (existing !== null) {
+      return c.json({ user: await recordFriendAddedIfAlreadyFollowing(existing, now) })
+    }
+
     const judgment = judgeRole(viewerId, await deps.allowlistQuery.fetch(), now)
     await deps.eventBus.publish(
       RoleJudgedSchema.parse({

@@ -131,6 +131,8 @@ data LINE_運用設定 = LINE_友達追加状態 AND 通知機能有効化状態
 
 data LINE_友達追加状態 = 未追加 OR 友達追加済み
 data 友達追加済み = ユーザーID AND follow_Webhook受信日時
+// 日時の出自は follow Webhook の受信に限らない。登録時の 友達状態照会（下記 §2）で確認した
+// 場合はその確認時刻が入る。名称は既存の保存項目名との互換のため据え置いている（#297）
 
 data 通知機能有効化状態 = 未有効化 OR 有効化済み
 data 有効化済み = 有効化日時
@@ -274,18 +276,21 @@ behavior follow Webhook を受信する = LINE_userID AND Webhook受信日時 ->
 // 事前: ユーザーが LINE 公式アカウントを友達追加した
 // 事後: 宛先のアプリユーザーが未登録なら記録せず破棄する（OQ-55 ③。拾い直しは下の照会）
 
-behavior LINE友だち状態を照会する = LINE_userID -> 友だち状態照会結果
-data 友だち状態照会結果 = 友だち済み OR 友だち未追加 OR 照会不能
-data 友だち済み = なし
-data 友だち未追加 = なし
+behavior LINE友達状態を照会する = LINE_userID -> 友達状態照会結果
+data 友達状態照会結果 = 友達済み OR 友達未追加 OR 照会不能
+data 友達済み = なし
+data 友達未追加 = なし
 data 照会不能 = 照会失敗詳細
 data 照会失敗詳細 = 文字列
-// 事前: アプリユーザーの新規登録が成立した（`behavior アプリユーザーを新規登録する` の直後）
-// 事後: 友だち済み なら 友達追加済み を記録し friend_added_イベント を発行する（記録は冪等）
-// 事後: 照会不能 は 友だち未追加 と区別する（API 障害を根拠に未追加を確定させない）
-// 事後: 照会・記録の失敗は登録を失敗させない（後続の follow Webhook でも記録されるため）
+// 事前: アプリユーザーの登録要求を受けた（新規登録の成立直後、および登録済みの冪等な再要求時）
+// 事前: LINE_友達追加状態 = 未追加（追加済みなら照会しない）
+// 事後: 友達済み なら 友達追加済み を記録し friend_added_イベント を発行する（記録は冪等）
+// 事後: 照会不能 は 友達未追加 と区別する（API 障害を根拠に未追加を確定させない）
+// 事後: 照会・記録の失敗は登録を失敗させない。回復は次の登録要求での再照会に依る
+//       — follow Webhook は友達追加（またはブロック解除）の瞬間にしか発生せず、登録前に
+//       友達追加していたユーザーへ再送されないため、Webhook は回復経路にならない
 // 登録前の友達追加は follow Webhook が破棄される（上記）ため、この照会が唯一の拾い直し経路
-// （自己申告 API は廃止。OQ-55 ②③）
+// （自己申告 API は廃止予定。OQ-55 ②③）
 
 behavior join Webhook を受信する = 共通トークルームID AND Webhook受信日時 -> 参加済み AND join_イベント
 // 事前: LINE 公式アカウントが夫婦共通トークルームに招待された
@@ -335,7 +340,7 @@ data 検知結果 = 配偶者待ち OR 両者完了済み
 |---|---|---|
 | LINE Login（外部システム） | ACL（Anti-Corruption Layer） | `behavior LIFFを初期化する`／`behavior LINE_userIDを取得する` |
 | Gmail OAuth（外部システム） | ACL（Anti-Corruption Layer） | `behavior Gmail OAuth認可を開始する`／`behavior Gmail OAuth認可を完了する`／`behavior Gmail OAuth トークンの失効を検知する`／`behavior Gmail OAuth を再認可する` |
-| LINE Messaging API（外部、Webhook 受信／友だち状態照会） | ACL | `behavior follow Webhook を受信する`／`behavior join Webhook を受信する`／`behavior LINE友だち状態を照会する` |
+| LINE Messaging API（外部、Webhook 受信／友達状態照会） | ACL | `behavior follow Webhook を受信する`／`behavior join Webhook を受信する`／`behavior LINE友達状態を照会する` |
 | AWS Parameter Store（外部システム） | Conformist（順応者） | （Gmail OAuth トークン保管・許可リスト読出。実装は Parameter Store の API に従う） |
 | マスタ管理 | 顧客-供給者（上流: 許可リスト・LINE Channel 設定値を供給） | `behavior 役割を判定する`（許可リスト参照） |
 | 残高・資産推移管理 | 顧客-供給者（下流: 初期残高登録を依頼） | `behavior Phase2 SectionB を完了する` の事前条件として残高・資産推移管理の `behavior 初期残高を登録する` を呼出 |

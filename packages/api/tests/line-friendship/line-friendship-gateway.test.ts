@@ -46,6 +46,42 @@ describe('createLineFriendshipGateway', () => {
     expect((requests[0]?.init.headers as Record<string, string>).Authorization).toBe(
       'Bearer token-123',
     )
+    // 応答が返らないまま登録リクエストがぶら下がらないよう、必ず打ち切り signal を渡す
+    expect(requests[0]?.init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('userId をパスへ埋め込む際にエスケープする', async () => {
+    const { fetchImpl, requests } = stubFetch({ status: 404 })
+    const gateway = createLineFriendshipGateway({
+      resolveChannelAccessToken: () => Promise.resolve('token-123'),
+      fetchImpl,
+    })
+
+    await gateway.checkFriendship(UserIdSchema.parse('../../v2/bot/message/push?x=1'))
+
+    expect(requests[0]?.url).toBe(
+      'https://api.line.me/v2/bot/profile/..%2F..%2Fv2%2Fbot%2Fmessage%2Fpush%3Fx%3D1',
+    )
+  })
+
+  it('応答が返らない場合は打ち切って unknown にする', async () => {
+    // signal の abort を待つ fetch。timeoutMs を過ぎたら AbortError で reject される
+    const fetchImpl = ((_url: string | URL | Request, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const e = new Error('aborted')
+          e.name = 'AbortError'
+          reject(e)
+        })
+      })) as typeof fetch
+    const gateway = createLineFriendshipGateway({
+      resolveChannelAccessToken: () => Promise.resolve('token-123'),
+      fetchImpl,
+      timeoutMs: 20,
+    })
+
+    const status = await gateway.checkFriendship(USER_ID)
+    expect(status).toEqual({ kind: 'unknown', detail: 'LINE profile API がタイムアウトした' })
   })
 
   it('404 は not_friend（友だち未追加 / ブロック済み）へ翻訳する', async () => {
@@ -117,14 +153,34 @@ describe('createLineFriendshipGateway', () => {
     expect(requests).toHaveLength(0)
   })
 
+  it('Channel Access Token の解決が返ってこない場合も打ち切って unknown にする', async () => {
+    // Parameter Store / DB クライアントは自前のタイムアウトを持たないため、ここで上限を掛ける
+    const { fetchImpl, requests } = stubFetch({ status: 200 })
+    const gateway = createLineFriendshipGateway({
+      resolveChannelAccessToken: () => new Promise<string>(() => undefined),
+      fetchImpl,
+      timeoutMs: 20,
+    })
+
+    const status = await gateway.checkFriendship(USER_ID)
+    expect(status).toEqual({
+      kind: 'unknown',
+      detail: 'Channel Access Token の解決がタイムアウトした',
+    })
+    expect(requests).toHaveLength(0)
+  })
+
   it('照会失敗の detail に例外の中身を含めない（Parameter Store のパス等の流出防止）', async () => {
     const secretPath = '/warimaru/line/channel-access-token'
+    const { fetchImpl, requests } = stubFetch({ status: 200 })
     const gateway = createLineFriendshipGateway({
       resolveChannelAccessToken: () => Promise.reject(new Error(`${secretPath} が見つからない`)),
+      fetchImpl,
     })
 
     const status = await gateway.checkFriendship(USER_ID)
     expect(status.kind).toBe('unknown')
     expect(status.kind === 'unknown' && status.detail).not.toContain(secretPath)
+    expect(requests).toHaveLength(0)
   })
 })
