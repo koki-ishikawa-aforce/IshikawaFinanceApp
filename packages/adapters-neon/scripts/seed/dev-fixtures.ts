@@ -13,6 +13,7 @@ import * as schema from '../../src/schema'
 import { serializeForPayload } from '../../src/serialize'
 import { CAT_HOUSING, CAT_FOOD, CAT_ENTERTAINMENT, CAT_OTHER } from './masters'
 
+/** フィクスチャの基準時刻。決定的なダミーデータにするため固定値を使う */
 const NOW = new Date('2026-07-15T03:00:00.000Z')
 
 export const HONEY_ID = 'U_HONEY_DEV'
@@ -456,7 +457,7 @@ function makeUnpaidPayload(unpaidId: string, accountId: string, total: number, t
   })
 }
 
-export async function seedDevFixtures(db: Db, now: Date): Promise<void> {
+export async function seedDevFixtures(db: Db): Promise<void> {
   console.log('Seeding app_users...')
   for (const u of [
     {
@@ -477,7 +478,7 @@ export async function seedDevFixtures(db: Db, now: Date): Promise<void> {
       .values(u)
       .onConflictDoUpdate({
         target: schema.appUsers.userId,
-        set: { role: u.role, kind: u.kind, payload: u.payload, updatedAt: now },
+        set: { role: u.role, kind: u.kind, payload: u.payload, updatedAt: NOW },
       })
   }
 
@@ -532,7 +533,7 @@ export async function seedDevFixtures(db: Db, now: Date): Promise<void> {
       .values(a)
       .onConflictDoUpdate({
         target: schema.accounts.accountId,
-        set: { kind: a.kind, isActive: a.isActive, payload: a.payload, updatedAt: now },
+        set: { kind: a.kind, isActive: a.isActive, payload: a.payload, updatedAt: NOW },
       })
   }
 
@@ -559,7 +560,7 @@ export async function seedDevFixtures(db: Db, now: Date): Promise<void> {
         set: {
           currentMonthUnpaidTotal: u.currentMonthUnpaidTotal,
           payload: u.payload,
-          updatedAt: now,
+          updatedAt: NOW,
         },
       })
   }
@@ -590,7 +591,7 @@ export async function seedDevFixtures(db: Db, now: Date): Promise<void> {
           categoryId: row.categoryId,
           expenseClass: row.expenseClass,
           payload: row.payload,
-          updatedAt: now,
+          updatedAt: NOW,
         },
       })
   }

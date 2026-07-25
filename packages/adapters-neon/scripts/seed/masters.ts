@@ -2,18 +2,25 @@
  * 規定マスタの seed（本番・開発の共通部分）
  *
  * 規定カテゴリ 4 種・規定経費種別 5 種は世帯共有・削除改名不可の固定データで、
- * 本番でも投入が必要になる（05-scenario-b-onboarding.md「経費種別マスタ規定5種が
- * DB に seed 投入された」）。開発用のダミーデータは dev-fixtures.ts に分けている。
+ * 本番でも投入が必要になる（08h §2 `behavior 規定カテゴリをseed投入する` /
+ * `behavior 規定経費種別をseed投入する`）。開発用のダミーデータは
+ * dev-fixtures.ts に分けている。
  *
  * 規定経費種別が DB に無いと、役割確定を契機に月次上限を作るハンドラー
  * （packages/api/src/event-handlers/monthly-limit-seed.ts）が反復対象を 0 件と見なし、
  * 月次上限が 1 件も作られない（エラーにもならない）。
  *
- * 冪等: upsert のみで DELETE / TRUNCATE を含まない。
+ * 集約の組み立てはドメインの seed 関数（名前と世帯共有スコープの正）に委ね、
+ * 永続化は repository に委ねる。row マッピングも不変条件も、ここでは再実装しない。
+ *
+ * 冪等: repository の save が主キー upsert のため、何度実行しても結果は同じ。
  */
+import { CategoryIdSchema, ExpenseTypeIdSchema } from '@warimaru/domain'
+import type { DefaultCategoryKind, DefaultExpenseTypeKind } from '@warimaru/domain'
+import { seedDefaultCategory, seedDefaultExpenseType } from '@warimaru/domain'
 import type { Db } from '../../src/client'
-import * as schema from '../../src/schema'
-import { serializeForPayload } from '../../src/serialize'
+import { NeonCategoryMasterRepository } from '../../src/master-data/NeonCategoryMasterRepository'
+import { NeonExpenseTypeMasterRepository } from '../../src/master-data/NeonExpenseTypeMasterRepository'
 
 export const CAT_HOUSING = '01JAAAAAAAAAAAAAAAAAAAAAA1'
 export const CAT_FOOD = '01JAAAAAAAAAAAAAAAAAAAAAA2'
@@ -26,77 +33,44 @@ export const EXPENSE_TYPE_AI = '01JEEEEEEEEEEEEEEEEEEEEEE3'
 export const EXPENSE_TYPE_TRANSPORTATION = '01JEEEEEEEEEEEEEEEEEEEEEE4'
 export const EXPENSE_TYPE_OTHER = '01JEEEEEEEEEEEEEEEEEEEEEE5'
 
-/** 規定カテゴリ 4 種（DefaultCategoryKindSchema と対応） */
-export const DEFAULT_CATEGORIES = [
-  { id: CAT_HOUSING, name: '住居光熱通信', defaultKind: 'housing_utilities_communication' },
-  { id: CAT_FOOD, name: '食費', defaultKind: 'food' },
-  { id: CAT_ENTERTAINMENT, name: '娯楽', defaultKind: 'entertainment' },
-  { id: CAT_OTHER, name: 'その他', defaultKind: 'other' },
-] as const
+/** 規定カテゴリ 4 種の ID 割り当て（名前はドメインの DEFAULT_CATEGORY_NAMES が正） */
+export const DEFAULT_CATEGORY_SEEDS: { id: string; defaultKind: DefaultCategoryKind }[] = [
+  { id: CAT_HOUSING, defaultKind: 'housing_utilities_communication' },
+  { id: CAT_FOOD, defaultKind: 'food' },
+  { id: CAT_ENTERTAINMENT, defaultKind: 'entertainment' },
+  { id: CAT_OTHER, defaultKind: 'other' },
+]
 
-/** 規定経費種別 5 種（DefaultExpenseTypeKindSchema と対応。08h §1） */
-export const DEFAULT_EXPENSE_TYPES = [
-  { id: EXPENSE_TYPE_GYM, name: 'ジム', defaultKind: 'gym' },
-  { id: EXPENSE_TYPE_BOOKS, name: '新聞図書費', defaultKind: 'books_newspaper' },
-  { id: EXPENSE_TYPE_AI, name: 'AI利用費', defaultKind: 'ai_usage' },
-  { id: EXPENSE_TYPE_TRANSPORTATION, name: '交通費', defaultKind: 'transportation' },
-  { id: EXPENSE_TYPE_OTHER, name: 'その他経費', defaultKind: 'other_expense' },
-] as const
+/** 規定経費種別 5 種の ID 割り当て（名前はドメインの DEFAULT_EXPENSE_TYPE_NAMES が正） */
+export const DEFAULT_EXPENSE_TYPE_SEEDS: { id: string; defaultKind: DefaultExpenseTypeKind }[] = [
+  { id: EXPENSE_TYPE_GYM, defaultKind: 'gym' },
+  { id: EXPENSE_TYPE_BOOKS, defaultKind: 'books_newspaper' },
+  { id: EXPENSE_TYPE_AI, defaultKind: 'ai_usage' },
+  { id: EXPENSE_TYPE_TRANSPORTATION, defaultKind: 'transportation' },
+  { id: EXPENSE_TYPE_OTHER, defaultKind: 'other_expense' },
+]
 
-function makeCategoryPayload(categoryId: string, name: string, defaultKind: string) {
-  return serializeForPayload({
-    kind: 'default',
-    categoryId,
-    name,
-    scope: { kind: 'household_shared' },
-    defaultKind,
-  })
-}
+export async function seedDefaultMasters(db: Db): Promise<void> {
+  const categoryRepository = new NeonCategoryMasterRepository(db)
+  const expenseTypeRepository = new NeonExpenseTypeMasterRepository(db)
 
-function makeExpenseTypePayload(expenseTypeId: string, name: string, defaultKind: string) {
-  return serializeForPayload({
-    kind: 'default',
-    expenseTypeId,
-    name,
-    scope: { kind: 'household_shared' },
-    defaultKind,
-  })
-}
-
-export async function seedDefaultMasters(db: Db, now: Date): Promise<void> {
   console.log('Seeding category_masters...')
-  for (const c of DEFAULT_CATEGORIES) {
-    const row = {
-      categoryId: c.id,
-      kind: 'default' as const,
-      name: c.name,
-      ownerUserId: null,
-      payload: makeCategoryPayload(c.id, c.name, c.defaultKind),
-    }
-    await db
-      .insert(schema.categoryMasters)
-      .values(row)
-      .onConflictDoUpdate({
-        target: schema.categoryMasters.categoryId,
-        set: { name: row.name, payload: row.payload, updatedAt: now },
-      })
+  for (const c of DEFAULT_CATEGORY_SEEDS) {
+    await categoryRepository.save(
+      seedDefaultCategory({
+        categoryId: CategoryIdSchema.parse(c.id),
+        defaultKind: c.defaultKind,
+      }),
+    )
   }
 
   console.log('Seeding expense_type_masters...')
-  for (const e of DEFAULT_EXPENSE_TYPES) {
-    const row = {
-      expenseTypeId: e.id,
-      kind: 'default' as const,
-      name: e.name,
-      ownerUserId: null,
-      payload: makeExpenseTypePayload(e.id, e.name, e.defaultKind),
-    }
-    await db
-      .insert(schema.expenseTypeMasters)
-      .values(row)
-      .onConflictDoUpdate({
-        target: schema.expenseTypeMasters.expenseTypeId,
-        set: { name: row.name, payload: row.payload, updatedAt: now },
-      })
+  for (const e of DEFAULT_EXPENSE_TYPE_SEEDS) {
+    await expenseTypeRepository.save(
+      seedDefaultExpenseType({
+        expenseTypeId: ExpenseTypeIdSchema.parse(e.id),
+        defaultKind: e.defaultKind,
+      }),
+    )
   }
 }

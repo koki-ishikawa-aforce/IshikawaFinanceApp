@@ -34,8 +34,6 @@ if (withDevFixtures && process.env['NODE_ENV'] === 'production') {
   process.exit(1)
 }
 
-const NOW = new Date('2026-07-15T03:00:00.000Z')
-
 const client = neon(DATABASE_URL)
 const db = drizzle(client, { schema })
 
@@ -45,9 +43,9 @@ async function seed(): Promise<void> {
       ? 'Seed mode: default masters + development fixtures'
       : 'Seed mode: default masters only',
   )
-  await seedDefaultMasters(db, NOW)
+  await seedDefaultMasters(db)
   if (withDevFixtures) {
-    await seedDevFixtures(db, NOW)
+    await seedDevFixtures(db)
   }
   console.log('Seed complete!')
 }
