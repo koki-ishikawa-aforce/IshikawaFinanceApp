@@ -1,22 +1,16 @@
 import { expect, test } from '@playwright/test'
-
-const SCREENS = [
-  { name: 'dashboard', path: '/' },
-  { name: 'transactions', path: '/transactions' },
-  { name: 'balances', path: '/balances' },
-  { name: 'reports', path: '/reports' },
-  { name: 'settings', path: '/settings' },
-  { name: 'onboarding', path: '/onboarding' },
-] as const
+import { hideDevOverlay, waitForAppFonts } from './fonts'
+import { SCREENS, mockRoleQuery } from './screens'
 
 for (const screen of SCREENS) {
   for (const theme of ['darling', 'honey'] as const) {
     test(`${screen.name} - ${theme} theme`, async ({ page }) => {
-      const mockRole = theme === 'honey' ? '?mockRole=honey' : ''
-      await page.goto(`${screen.path}${mockRole}`)
+      await page.goto(`${screen.path}${mockRoleQuery(theme)}`)
 
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       await page.waitForLoadState('networkidle')
+      await waitForAppFonts(page)
+      await hideDevOverlay(page)
 
       await expect(page).toHaveScreenshot(`${screen.name}-${theme}.png`, {
         fullPage: true,

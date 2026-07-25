@@ -11,9 +11,8 @@
  * 冪等: どちらのモードも upsert のみで、2 回連続実行しても結果は同じ。
  */
 import 'dotenv/config'
-import { neon } from '@neondatabase/serverless'
-import { drizzle } from 'drizzle-orm/neon-http'
-import * as schema from '../src/schema'
+import { createDbConnection } from '../src/client'
+import { isProductionNodeEnv } from '../src/nodeEnv'
 import { seedDefaultMasters } from './seed/masters'
 import { seedDevFixtures } from './seed/dev-fixtures'
 
@@ -23,10 +22,12 @@ if (!DATABASE_URL) {
   process.exit(1)
 }
 
+const isProduction = isProductionNodeEnv(process.env['NODE_ENV'])
+
 const withDevFixtures = process.argv.includes('--with-dev-fixtures')
 
 // 本番へ開発フィクスチャを投入する事故を防ぐ（composition-root のモック拒否と同じ方針）
-if (withDevFixtures && process.env['NODE_ENV'] === 'production') {
+if (withDevFixtures && isProduction) {
   console.error(
     'Refusing to seed development fixtures with NODE_ENV=production. ' +
       'Run without --with-dev-fixtures to seed the default masters only.',
@@ -34,8 +35,13 @@ if (withDevFixtures && process.env['NODE_ENV'] === 'production') {
   process.exit(1)
 }
 
-const client = neon(DATABASE_URL)
-const db = drizzle(client, { schema })
+// 接続先が Neon なら neon-http、ローカルの素の PostgreSQL なら node-postgres (#323)
+const connection = createDbConnection({
+  databaseUrl: DATABASE_URL,
+  isProduction,
+  driverOverride: process.env['DATABASE_DRIVER'],
+})
+const db = connection.db
 
 async function seed(): Promise<void> {
   console.log(
@@ -50,7 +56,13 @@ async function seed(): Promise<void> {
   console.log('Seed complete!')
 }
 
-seed().catch(err => {
+// node-postgres はプールを保持するため、閉じないとスクリプトが終了しない
+try {
+  await seed()
+} catch (err) {
   console.error('Seed failed:', err)
-  process.exit(1)
-})
+  process.exitCode = 1
+} finally {
+  // close の失敗で seed 本体の失敗理由が unhandled rejection に埋もれないようにする
+  await connection.close().catch(e => console.error('Failed to close DB connection:', e))
+}

@@ -151,6 +151,16 @@ adapters 実装と同一 PR ではなく**独立コミットで先行**させる
   各ハンドラに義務付ける（冪等なイベントハンドラ）
 - LineDeliveryLog の save は INSERT のみ（append-only、UPDATE 経路を adapter に実装しない）
 
+**ドライバの切り替え（#323 で追記）**: 上記は本番（Neon）の接続方式。ローカル開発では実 Neon を必須にせず、
+素の PostgreSQL（`docker compose up -d db`）に `node-postgres`（pg）ドライバで接続できる。
+`packages/adapters-neon/src/client.ts` の `createDb()` が接続先ホストから選択する
+（`*.neon.tech` → neon-http、それ以外 → node-postgres。`DATABASE_DRIVER` で明示指定も可）。
+本番（`NODE_ENV=production`）はホストの綴りに関わらず neon-http に固定し、node-postgres の明示指定は起動エラーにする。
+
+adapter 実装はドライバ横断の `Db` 型にのみ依存するため実装差分は無いが、
+**`db.transaction`（interactive transaction）は neon-http では実行時に throw する**点は変わらない。
+ローカルの node-postgres では動いてしまい本番でのみ壊れるため、save は引き続き単文 upsert で完結させる。
+
 ### §2.6 イベント永続化: 行わない（OQ-42 確定）
 
 **決定**: ドメインイベント（M-A で型定義した 89 種）は **in-process pub/sub のみ**で流し、
@@ -350,7 +360,7 @@ packages/adapters-neon/
 ├── drizzle/                  # drizzle-kit generate の SQL マイグレーション（コミット対象）
 ├── src/
 │   ├── schema/               # Drizzle テーブル定義（§4–§5 の DDL に対応）
-│   ├── client.ts             # @neondatabase/serverless の HTTP / Pool 接続ファクトリ
+│   ├── client.ts             # DB 接続ファクトリ（neon-http / node-postgres の切替、§2.5）
 │   ├── serialize.ts          # 集約 ⇔ payload jsonb の変換（Date revive を含む、§3）
 │   ├── household-analysis/   # 2 Repository（Transaction / MonthlyReport）+ 3 Query 実装
 │   └── balance-asset-tracking/  # 2 Repository（Account / MitsuiSumitomoUnpaid）+ 2 Query 実装

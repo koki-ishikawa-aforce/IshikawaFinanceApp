@@ -29,7 +29,6 @@
   color: var(--white);
   font-size: var(--text-sm);
   font-weight: 700;
-  font-family: var(--font-family);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
@@ -52,7 +51,6 @@
   color: var(--accent);
   font-size: var(--text-sm);
   font-weight: 700;
-  font-family: var(--font-family);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
   transition: opacity 0.15s;
@@ -74,7 +72,6 @@
   color: var(--white);
   font-size: var(--text-sm);
   font-weight: 700;
-  font-family: var(--font-family);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
 }
@@ -91,7 +88,6 @@
   background: rgba(255, 255, 255, 0.8);
   padding: var(--space-2) var(--space-2_5);
   font-size: var(--text-base);
-  font-family: var(--font-family);
   color: var(--text-primary);
 }
 
@@ -107,7 +103,6 @@
   background: rgba(255, 255, 255, 0.8);
   padding: var(--space-2) var(--space-2_5);
   font-size: var(--text-base);
-  font-family: var(--font-family);
   color: var(--text-primary);
 }
 
