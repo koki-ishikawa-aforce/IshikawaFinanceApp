@@ -24,9 +24,7 @@ export default defineConfig({
       reuseExistingServer: !CI,
       timeout: 30_000,
       env: {
-        ...(process.env['DATABASE_URL']
-          ? { DATABASE_URL: process.env['DATABASE_URL'], DB_DRIVER: 'pg' }
-          : {}),
+        ...(process.env['DATABASE_URL'] ? { DATABASE_URL: process.env['DATABASE_URL'] } : {}),
         NODE_ENV: 'test',
         PORT: String(API_PORT),
       },

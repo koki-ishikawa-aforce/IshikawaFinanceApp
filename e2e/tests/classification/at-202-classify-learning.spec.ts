@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { E2E_DARLING_USER_ID } from '../../global-setup'
 
 const API_URL = 'http://localhost:3001'
 const HEADERS = {
   'Content-Type': 'application/json',
-  'X-User-Id': 'U_DARLING_DEV',
+  'X-User-Id': E2E_DARLING_USER_ID,
 }
 const CAT_OTHER = '01JAAAAAAAAAAAAAAAAAAAAAA4'
 const EXPENSE_TYPE_GYM = '01JEEEEEEEEEEEEEEEEEEEEEE1'

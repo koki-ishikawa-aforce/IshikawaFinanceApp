@@ -123,8 +123,11 @@ AT-9xx(保留)は本表の対象外。ブロッカー機能の実装後に [90-p
 | AT-005 | 自動化済み | 全画面スモーク巡回（`e2e/tests/smoke/at-005-screen-smoke.spec.ts`） |
 | AT-201 | 自動化済み | 取引 CRUD（`e2e/tests/classification/at-201-transaction-crud.spec.ts`）。API 経由で登録・編集・削除・未分類件数を検証 |
 | AT-202 | 自動化済み | 3軸分類と学習ルール即時登録（`e2e/tests/classification/at-202-classify-learning.spec.ts`）。API 経由で分類・ルール確認・ルール適用を検証 |
+| AT-301 | 自動化済み | カード CSV 取込・候補確認・除外確定・重複除外・不正ファイル検証（`e2e/tests/monthly-cycle/at-301-csv-import.spec.ts`） |
+| AT-302 | 自動化済み | 取込サマリ・一括分類セッション開始・分類・完了・中断（`e2e/tests/monthly-cycle/at-302-bulk-classification.spec.ts`） |
+| AT-303 | 自動化済み | 精算サイクル作成・CSV 確定・レポート確認（`e2e/tests/monthly-cycle/at-303-csv-confirm-report.spec.ts`） |
 
-自動化されていないシナリオ（AT-002〜003、AT-1xx のうち上記以外）は引き続き手動で実施する。
+自動化されていないシナリオ（AT-002〜003、AT-1xx、AT-203 以降、AT-304 以降）は引き続き手動で実施する。
 
 実行方法（ローカル）:
 

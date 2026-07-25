@@ -42,9 +42,9 @@ import type {
   UserRole,
 } from '@warimaru/domain'
 import { AllowlistSchema, InMemoryEventBus } from '@warimaru/domain'
-import type { Db } from '@warimaru/adapters-neon'
 import {
   createNeonHttpDb,
+  createNodePgDb,
   NeonAccountRepository,
   NeonAllowlistQuery,
   NeonAppUserRepository,
@@ -275,7 +275,7 @@ function resolveAllowedOrigins(env: CompositionEnv): string[] {
   return [DEV_ALLOWED_ORIGIN]
 }
 
-export function createDeps(env: CompositionEnv, dbOverride?: Db): AppDeps {
+export function createDeps(env: CompositionEnv): AppDeps {
   if (!env.DATABASE_URL) {
     // 本番では DATABASE_URL 未設定を致命的な設定漏れとして扱い、モックへ黙ってフォールバックしない。
     // モックフォールバックは開発環境専用（#47 / #14 と同じ方針）。
@@ -347,7 +347,8 @@ export function createDeps(env: CompositionEnv, dbOverride?: Db): AppDeps {
   // 設定の検証は DB クライアント等を組み立てる前に済ませる（本番の設定漏れは即起動エラー）
   const allowedOrigins = resolveAllowedOrigins(env)
 
-  const db = dbOverride ?? createNeonHttpDb(env.DATABASE_URL)
+  const db =
+    env.NODE_ENV === 'test' ? createNodePgDb(env.DATABASE_URL) : createNeonHttpDb(env.DATABASE_URL)
   const resolveCategoryNames = createDbResolveCategoryNames(db)
   const resolveViewerRole = createDbResolveViewerRole(db)
   const now = (): Date => new Date()

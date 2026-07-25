@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { E2E_DARLING_USER_ID } from '../../global-setup'
 
 const API_URL = 'http://localhost:3001'
 const HEADERS = {
   'Content-Type': 'application/json',
-  'X-User-Id': 'U_DARLING_DEV',
+  'X-User-Id': E2E_DARLING_USER_ID,
 }
 const CURRENT_MONTH = new Date().toISOString().slice(0, 7)
 
@@ -36,13 +37,13 @@ test.describe.serial('AT-201: 取引の手動登録・編集・削除', () => {
     })
     expect(list.status()).toBe(200)
 
-    const { items } = await list.json()
-    const tx = items.find(
-      (t: { common: { transactionId: string } }) => t.common.transactionId === transactionId,
-    )
+    // 一覧 Query はプライバシー3段階適用済みのフラットな行を配列で返す（集約そのものではない）
+    const items = await list.json()
+    expect(Array.isArray(items)).toBe(true)
+    const tx = items.find((t: { transactionId: string }) => t.transactionId === transactionId)
     expect(tx).toBeTruthy()
-    expect(tx.kind).toBe('unclassified')
-    expect(tx.defaultExpenseClass).toBe('personal_darling')
+    expect(tx.isUnclassified).toBe(true)
+    expect(tx.expenseClass).toBe('personal_darling')
   })
 
   test('手順3: 未分類件数に反映', async ({ request }) => {
