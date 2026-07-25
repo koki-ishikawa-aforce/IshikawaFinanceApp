@@ -49,6 +49,13 @@ async function seedTestData(pool: import('pg').Pool): Promise<void> {
       { id: '01JAAAAAAAAAAAAAAAAAAAAAA3', name: '娯楽', defaultKind: 'entertainment' },
       { id: '01JAAAAAAAAAAAAAAAAAAAAAA4', name: 'その他', defaultKind: 'other' },
     ] as const
+    const catNames = categories.map(c => c.name)
+    const catIds = categories.map(c => c.id)
+    await client.query(
+      `DELETE FROM category_masters
+       WHERE owner_user_id IS NULL AND name = ANY($1) AND category_id != ALL($2)`,
+      [catNames, catIds],
+    )
     for (const c of categories) {
       await client.query(
         `INSERT INTO category_masters (category_id, kind, name, owner_user_id, payload)
@@ -75,6 +82,13 @@ async function seedTestData(pool: import('pg').Pool): Promise<void> {
       { id: '01JEEEEEEEEEEEEEEEEEEEEE4', name: '交通費', defaultKind: 'transportation' },
       { id: '01JEEEEEEEEEEEEEEEEEEEEE5', name: 'その他経費', defaultKind: 'other_expense' },
     ] as const
+    const etNames = expenseTypes.map(e => e.name)
+    const etIds = expenseTypes.map(e => e.id)
+    await client.query(
+      `DELETE FROM expense_type_masters
+       WHERE owner_user_id IS NULL AND name = ANY($1) AND expense_type_id != ALL($2)`,
+      [etNames, etIds],
+    )
     for (const e of expenseTypes) {
       await client.query(
         `INSERT INTO expense_type_masters (expense_type_id, kind, name, owner_user_id, payload)
