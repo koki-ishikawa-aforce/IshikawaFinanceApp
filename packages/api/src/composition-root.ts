@@ -44,6 +44,7 @@ import type {
 import { AllowlistSchema, InMemoryEventBus } from '@warimaru/domain'
 import {
   createNeonHttpDb,
+  createNodePgDb,
   NeonAccountRepository,
   NeonAllowlistQuery,
   NeonAppUserRepository,
@@ -309,7 +310,8 @@ export function createDeps(env: CompositionEnv): AppDeps {
     }
   }
 
-  const db = createNeonHttpDb(env.DATABASE_URL)
+  const db =
+    env.NODE_ENV === 'test' ? createNodePgDb(env.DATABASE_URL) : createNeonHttpDb(env.DATABASE_URL)
   const resolveCategoryNames = createDbResolveCategoryNames(db)
   const resolveViewerRole = createDbResolveViewerRole(db)
   const now = (): Date => new Date()
