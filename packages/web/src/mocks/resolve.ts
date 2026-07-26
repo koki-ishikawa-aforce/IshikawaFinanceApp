@@ -24,10 +24,22 @@ import {
   monthlyReportFixture,
   onboardingMeFixture,
   ownAccountListFixture,
+  pdfConversionFailedResponseFixture,
   settingsProfileFixture,
   transactionListFixture,
   unclassifiedSummaryFixture,
 } from './fixtures'
+
+/** 実 API の 4xx 応答に相当するモック応答（api-client が ApiError に変換する） */
+export class MockErrorResponse extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(`Mock error ${status}`)
+    this.name = 'MockErrorResponse'
+  }
+}
 
 /** モックに fixture を用意していないパスへのアクセス（実 API の 404 相当） */
 export class MockNotFoundError extends Error {
@@ -88,6 +100,12 @@ export function resolveMock(method: string, path: string): unknown {
       case '/api/classification/amazon-rules':
         return amazonProductKeyLearningRuleListFixture(getMockRole())
     }
+  }
+
+  if (method === 'POST' && pathname === '/api/imports/pdf') {
+    // 変換の成否は Anthropic API 次第でモックでは再現できない。画面確認の価値が高い
+    // 失敗側（422 + 失敗ジョブ）を返す。成功系は CSV 取込で確認する
+    throw new MockErrorResponse(422, JSON.stringify(pdfConversionFailedResponseFixture()))
   }
 
   throw new MockNotFoundError(method, pathname)

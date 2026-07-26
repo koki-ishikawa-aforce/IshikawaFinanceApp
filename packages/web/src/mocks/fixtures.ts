@@ -451,6 +451,33 @@ export function importStatusFixture(): unknown {
 }
 
 /**
+ * POST /api/imports/pdf の失敗応答（実 API は 422 + 失敗ジョブ）。
+ * モックは Anthropic API を呼べないため、変換失敗の画面を確認できる側に倒している。
+ */
+export function pdfConversionFailedResponseFixture(): unknown {
+  return {
+    job: {
+      kind: 'failed',
+      common: {
+        importJobId: 'JOB_MOCK_PDF',
+        targetMonth: '2026-07',
+        fileKind: 'card_statement',
+        fileFormat: 'pdf',
+        fileRef: 'FILE_MOCK_PDF',
+      },
+      failedAt: '2026-07-05T10:00:00.000Z',
+      failureReason: {
+        kind: 'pdf_conversion_failed',
+        reason: 'total_amount_mismatch',
+        failureDetail: '合計金額が一致しない（抽出 128,400 / 記載 131,900）',
+        detectedAt: '2026-07-05T10:00:00.000Z',
+      },
+    },
+    conversionFailureReason: 'total_amount_mismatch',
+  }
+}
+
+/**
  * GET /api/classification/merchant-rules
  *
  * 学習データは完全個人別（08b F-1）なので、閲覧ロールごとに別のルールを返す。
