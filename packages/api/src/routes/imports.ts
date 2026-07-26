@@ -234,7 +234,12 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
     const isPdf =
       pdfBytes[0] === 0x25 && pdfBytes[1] === 0x50 && pdfBytes[2] === 0x44 && pdfBytes[3] === 0x46
     if (!isPdf) {
-      return c.json({ error: 'file が PDF ではない（%PDF シグネチャ不一致）' }, 400)
+      // reason は画面が文言を選ぶための機械可読な理由。同じ 400 でもサイズ超過等の
+      // ZodError 由来（error-handler の Validation error）とは区別できるようにする
+      return c.json(
+        { error: 'file が PDF ではない（%PDF シグネチャ不一致）', reason: 'not_a_pdf' },
+        400,
+      )
     }
 
     const fileRef = UploadFileIdSchema.parse(newUlid())

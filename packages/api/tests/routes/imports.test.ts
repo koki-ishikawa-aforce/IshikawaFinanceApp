@@ -257,6 +257,9 @@ describe('POST /api/imports/pdf', () => {
       formData: pdfFormData(new Uint8Array([0x00, 0x01, 0x02, 0x03])),
     })
     expect(res.status).toBe(400)
+    // 同じ 400 でもサイズ超過（ZodError）と区別できるよう、機械可読な理由を返す（画面の文言選択に使う）
+    const body = (await res.json()) as { error: string; reason?: string }
+    expect(body.reason).toBe('not_a_pdf')
     const jobs = await deps.statementImportJobRepository.findByUserAndMonth(
       VIEWER_ID,
       YearMonthSchema.parse('2026-06'),
@@ -264,12 +267,15 @@ describe('POST /api/imports/pdf', () => {
     expect(jobs).toHaveLength(0)
   })
 
-  it('10MB 超のファイルは 400', async () => {
+  it('10MB 超のファイルは 400（PDF 不正とは区別できる）', async () => {
     const { app } = createPdfTestApp(PDF_ROWS)
     const res = await request(app, 'POST', '/api/imports/pdf', {
       formData: pdfFormData(new Uint8Array(10_000_001)),
     })
     expect(res.status).toBe(400)
+    // シグネチャ不一致ではないので not_a_pdf を返さない（画面が「PDF が壊れている」と誤案内しないため）
+    const body = (await res.json()) as { reason?: string }
+    expect(body.reason).toBeUndefined()
   })
 })
 

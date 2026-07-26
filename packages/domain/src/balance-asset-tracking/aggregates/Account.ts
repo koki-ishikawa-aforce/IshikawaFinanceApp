@@ -10,6 +10,10 @@
  *  - 同一ユーザーID + 口座種別の組合せは一意（Repository.save 時にチェック、Phase 5）
  *  - 銀行名・証券会社名は所有者本人のみ変更可（changeBankName / changeBrokerageName が
  *    操作者ユーザーID で検証する、08d §2）
+ *  - 別銀行貯蓄残高・NISA 積立累計は負にならない（#397。取り崩し・手動補正・初期残高修正の
+ *    各ドメイン関数が事前条件として検証する）。SMBC 残高には課さない — 通知由来の変動を
+ *    そのまま反映する設計（applySmbcBalanceChange）で、引落が入金より先に届けば一時的に
+ *    負になりうるため
  */
 import { z } from 'zod'
 import {
@@ -23,7 +27,13 @@ import {
   type SettlementNoticeId,
   type TransactionId,
 } from '../../shared/ids'
-import { MoneySchema, addMoney, money, type Money } from '../../shared/value-objects/Money'
+import {
+  MoneySchema,
+  addMoney,
+  money,
+  subtractMoney,
+  type Money,
+} from '../../shared/value-objects/Money'
 import {
   InvariantViolationError,
   OtherSavingsMovementAlreadyAppliedError,
@@ -198,21 +208,28 @@ export function registerNisaAccount(params: {
   }) as NisaAccount
 }
 
-/** 口座を別銀行貯蓄口座として絞り込む。種別不一致は InvariantViolationError */
-export function asOtherSavingsAccount(account: Account): OtherSavingsAccount {
+/**
+ * 口座を別銀行貯蓄口座として絞り込む。種別不一致は InvariantViolationError。
+ * operation は種別を要求している操作名（既定は銀行名の変更）。呼び出し側が複数あるため、
+ * エラーメッセージが実際に拒否された操作を指すよう受け取る。
+ */
+export function asOtherSavingsAccount(
+  account: Account,
+  operation = '銀行名の変更',
+): OtherSavingsAccount {
   if (account.kind !== 'other_savings') {
     throw new InvariantViolationError(
-      `銀行名を変更できるのは別銀行貯蓄口座のみ（現種別: ${account.kind}）`,
+      `${operation}ができるのは別銀行貯蓄口座のみ（現種別: ${account.kind}）`,
     )
   }
   return account
 }
 
 /** 口座を NISA 口座として絞り込む。種別不一致は InvariantViolationError */
-export function asNisaAccount(account: Account): NisaAccount {
+export function asNisaAccount(account: Account, operation = '証券会社名の変更'): NisaAccount {
   if (account.kind !== 'nisa') {
     throw new InvariantViolationError(
-      `証券会社名を変更できるのは NISA 口座のみ（現種別: ${account.kind}）`,
+      `${operation}ができるのは NISA 口座のみ（現種別: ${account.kind}）`,
     )
   }
   return account
@@ -399,4 +416,293 @@ export function applyUnpaidSettlementToSmbcBalance(
       ],
     },
   }) as SmbcBankAccount
+}
+
+// --- #397: 残高の手動操作（取り崩し・手動補正・初期残高の後修正・非アクティブ化） ---
+
+/**
+ * 手入力・振込由来の金額の上限（10 億円）。夫婦2人の家計で扱う口座残高としては
+ * 十分に大きく、桁の打ち間違いを弾ける水準に置く。上限が無いと Money の安全整数域
+ * （約 9,007 兆）まで通り、その値が世帯資産合計にそのまま流れる。
+ */
+export const BALANCE_INPUT_LIMIT = 1_000_000_000
+
+/**
+ * 手入力・振込由来の金額は 1 円以上・上限以下（08d §2 の各振る舞いはいずれも「加算」「減算」で
+ * あり、0 円・負の金額の入力は変動として意味を持たない）。違反は ZodError（API 層で 400）。
+ */
+const PositiveMoneySchema = MoneySchema.refine(v => v > 0 && v <= BALANCE_INPUT_LIMIT, {
+  message: `金額は 1 円以上 ${BALANCE_INPUT_LIMIT} 円以下である必要がある`,
+})
+
+/**
+ * 手入力の残高（補正後残高・修正後初期残高）の上限。
+ * 「負にしない」は口座の状態に対する不変条件なので、入力形式ではなく各関数が
+ * InvariantViolationError で表す（下限はここでは課さない）。
+ */
+const BalanceInputSchema = MoneySchema.refine(v => v <= BALANCE_INPUT_LIMIT, {
+  message: `残高は ${BALANCE_INPUT_LIMIT} 円以下である必要がある`,
+})
+
+/**
+ * 非アクティブ理由。空文字は許さない（何のために閉じたかが残らないため）。
+ * 上限は口座 payload・イベント payload に恒久的に載る自由入力のため BankName（50）に倣う。
+ */
+export const InactivationReasonSchema = z.string().min(1).max(100)
+
+/**
+ * 手入力の操作者が口座所有者本人であることを検証する（08d §2「入力者ユーザーID = 口座所有者ユーザーID」）。
+ * 配偶者の口座残高を手入力で動かせないようにする不変条件。
+ */
+function assertOperatedByOwner(account: Account, operatorUserId: UserId, operation: string): void {
+  if (account.common.ownerUserId !== operatorUserId) {
+    throw new PermissionDeniedError(`${operation}は口座所有者本人のみ実行できる`)
+  }
+}
+
+function assertActive(account: Account, operation: string): void {
+  if (account.common.activeness.kind === 'inactive') {
+    throw new InvariantViolationError(
+      `非アクティブ口座（${account.common.accountId}）に${operation}は適用できない`,
+    )
+  }
+}
+
+/**
+ * 別銀行貯蓄口座の現在残高を差し替える（本ファイル内の共通処理）。
+ * 最終更新日時と残高鮮度根拠を同じ時刻へ進める。鮮度根拠は家計分析の残高鮮度評価が
+ * 借用する値（08d §1）で、手入力で残高を確認した時点が最新の鮮度になる。
+ */
+function replaceOtherSavingsBalance(
+  account: OtherSavingsAccount,
+  newBalance: Money,
+  at: Date,
+): OtherSavingsAccount {
+  return AccountSchema.parse({
+    ...account,
+    balance: { ...account.balance, currentBalance: newBalance, lastUpdatedAt: at },
+    freshnessSource: { lastUpdatedAt: at },
+  }) as OtherSavingsAccount
+}
+
+/**
+ * behavior 別銀行貯蓄残高をSMBC振込で加算する（08d §2）
+ * 事前: 出金用途 = 別銀行振込用（判別は呼び出し側 = 出金用途判別の責務）。
+ * 事後: 別銀行貯蓄残高の最終更新日時が更新される。
+ *
+ * 振込由来の自動反映のため操作者検証は行わない（手入力ではない）。
+ */
+export function addOtherSavingsBySmbcTransfer(
+  account: OtherSavingsAccount,
+  params: { amount: Money; at: Date },
+): OtherSavingsAccount {
+  assertActive(account, '振込による残高加算')
+  const amount = PositiveMoneySchema.parse(params.amount)
+  return replaceOtherSavingsBalance(
+    account,
+    addMoney(account.balance.currentBalance, amount),
+    params.at,
+  )
+}
+
+/**
+ * behavior 別銀行貯蓄残高を取り崩しで減算する（08d §2）
+ * 事前: 入力者ユーザーID = 口座所有者ユーザーID。
+ *
+ * 不変条件: 取り崩し後の残高は負にならない（口座にある額を超えて取り崩せない）。
+ * 違反は InvariantViolationError（API 層で 409）。
+ */
+export function withdrawOtherSavings(
+  account: OtherSavingsAccount,
+  params: { amount: Money; operatorUserId: UserId; at: Date },
+): OtherSavingsAccount {
+  assertOperatedByOwner(account, params.operatorUserId, '取り崩しの記録')
+  assertActive(account, '取り崩し')
+  const amount = PositiveMoneySchema.parse(params.amount)
+  const newBalance = subtractMoney(account.balance.currentBalance, amount)
+  if (newBalance < 0) {
+    throw new InvariantViolationError(
+      `取り崩し額（${amount}）が現在残高（${account.balance.currentBalance}）を超えている`,
+    )
+  }
+  return replaceOtherSavingsBalance(account, newBalance, params.at)
+}
+
+/**
+ * behavior 別銀行貯蓄残高を手動補正する（08d §2）
+ * 事前: 入力者ユーザーID = 口座所有者ユーザーID。
+ * 補正は差分ではなく「実際の残高」への差し替え（通帳を見て入れ直す操作）。
+ *
+ * 不変条件: 補正後の残高は負にならない。
+ */
+export function correctOtherSavingsBalance(
+  account: OtherSavingsAccount,
+  params: { correctedBalance: Money; operatorUserId: UserId; at: Date },
+): OtherSavingsAccount {
+  assertOperatedByOwner(account, params.operatorUserId, '残高の補正')
+  assertActive(account, '残高の補正')
+  const correctedBalance = BalanceInputSchema.parse(params.correctedBalance)
+  if (correctedBalance < 0) {
+    throw new InvariantViolationError(`別銀行貯蓄残高は負にできない（${correctedBalance}）`)
+  }
+  return replaceOtherSavingsBalance(account, correctedBalance, params.at)
+}
+
+/**
+ * behavior NISA積立累計をSMBC振込で加算する（08d §2）
+ * 事前: 出金用途 = NISA積立用 / 振込先証券会社が出金変動から特定済み（いずれも呼び出し側の責務）。
+ *
+ * 積立は買い付けの累計であり減算されない（時価評価は追わない設計 — 08d §1）。
+ * そのため加算のみを提供し、金額は 1 円以上に限る。
+ */
+export function addNisaContributionBySmbcTransfer(
+  account: NisaAccount,
+  params: { amount: Money; at: Date },
+): NisaAccount {
+  assertActive(account, '振込による積立累計の加算')
+  const amount = PositiveMoneySchema.parse(params.amount)
+  return AccountSchema.parse({
+    ...account,
+    contribution: {
+      ...account.contribution,
+      currentAccumulated: addMoney(account.contribution.currentAccumulated, amount),
+      lastUpdatedAt: params.at,
+    },
+  }) as NisaAccount
+}
+
+/**
+ * behavior 初期残高を後から修正する（08d §2）
+ * 事前: 修正者ユーザーID = 口座所有者ユーザーID。
+ *
+ * 初期残高は現在残高の起点（現在残高 = 初期残高 + 以降の変動）であり、オンボーディング
+ * Phase 2-B の入力ミスを直す操作。したがって現在残高も同じ差分だけずらす（初期値だけ
+ * 直して現在残高を据え置くと、以降の変動を積み上げた現在残高が誤ったままになる）。
+ * 初期残高基準時刻は「いつ時点の残高か」の記録なので巻き直さない（論点9）。
+ *
+ * 三井住友カードは残高ではなく未払金集約が正のため対象外（InvariantViolationError）。
+ * 別銀行貯蓄・NISA は修正後の現在残高が負にならないことを課す。SMBC 残高には課さない
+ * （applySmbcBalanceChange と同じ扱い。冒頭の不変条件コメント参照）。
+ *
+ * 旧初期残高を口座と一緒に返す。初期残高修正イベント（08d §3）は旧新の両方を必要とし、
+ * 呼び出し側が種別ごとに旧値を取り出すと「カードには初期残高が無い」分岐が外へ漏れるため。
+ */
+export function correctInitialBalance(
+  account: Account,
+  params: { initialBalance: Money; operatorUserId: UserId; at: Date },
+): { account: Account; oldInitialBalance: Money } {
+  assertOperatedByOwner(account, params.operatorUserId, '初期残高の修正')
+  assertActive(account, '初期残高の修正')
+  const initialBalance = BalanceInputSchema.parse(params.initialBalance)
+  if (initialBalance < 0) {
+    throw new InvariantViolationError(`初期残高は負にできない（${initialBalance}）`)
+  }
+  switch (account.kind) {
+    case 'mitsui_sumitomo_card':
+      throw new InvariantViolationError(
+        '三井住友カードは初期残高を持たない（未払金は三井住友カード未払金集約が保持する）',
+      )
+    case 'smbc_bank': {
+      const oldInitialBalance = account.balance.initialBalance
+      const delta = subtractMoney(initialBalance, oldInitialBalance)
+      return {
+        oldInitialBalance,
+        account: AccountSchema.parse({
+          ...account,
+          balance: {
+            ...account.balance,
+            initialBalance,
+            currentBalance: addMoney(account.balance.currentBalance, delta),
+            lastUpdatedAt: params.at,
+          },
+        }),
+      }
+    }
+    case 'other_savings': {
+      const oldInitialBalance = account.balance.initialBalance
+      const delta = subtractMoney(initialBalance, oldInitialBalance)
+      const newBalance = addMoney(account.balance.currentBalance, delta)
+      if (newBalance < 0) {
+        throw new InvariantViolationError(
+          `初期残高を ${initialBalance} に修正すると現在残高が負（${newBalance}）になる`,
+        )
+      }
+      return {
+        oldInitialBalance,
+        account: replaceOtherSavingsBalance(
+          AccountSchema.parse({
+            ...account,
+            balance: { ...account.balance, initialBalance },
+          }) as OtherSavingsAccount,
+          newBalance,
+          params.at,
+        ),
+      }
+    }
+    case 'nisa': {
+      const oldInitialBalance = account.contribution.initialAccumulated
+      const delta = subtractMoney(initialBalance, oldInitialBalance)
+      const newAccumulated = addMoney(account.contribution.currentAccumulated, delta)
+      if (newAccumulated < 0) {
+        throw new InvariantViolationError(
+          `初期累計を ${initialBalance} に修正すると積立累計が負（${newAccumulated}）になる`,
+        )
+      }
+      return {
+        oldInitialBalance,
+        account: AccountSchema.parse({
+          ...account,
+          contribution: {
+            ...account.contribution,
+            initialAccumulated: initialBalance,
+            currentAccumulated: newAccumulated,
+            lastUpdatedAt: params.at,
+          },
+        }),
+      }
+    }
+  }
+}
+
+/**
+ * behavior 口座を非アクティブ化する（08d §2）
+ * 事前: 操作者ユーザーID = 口座所有者ユーザーID（他の手動操作と同じ。残高一覧・資産合計から
+ * 口座が外れる影響を配偶者が起こせないようにする）。
+ * 事後: 以降この口座への残高変動は適用されない（09-aggregates #9）。
+ *
+ * 対象は別銀行貯蓄・NISA のみ。三井住友系（SMBC 銀行・カード）は取込基盤が管理する口座で、
+ * 閉じるとメール由来の残高更新・引落消込の反映が毎回 InvariantViolationError で落ち続け、
+ * 「未払金は消込済み・残高は未反映」の状態から回復できなくなる（#388 の回復経路が塞がる）。
+ * 登録エンドポイントが三井住友系を対象外にしているのと対称の制限。
+ *
+ * 既に非アクティブな口座の再実行は InvariantViolationError。非アクティブ化日時と理由は
+ * 「いつ・なぜ閉じたか」の記録であり、上書きすると最初に閉じた事実が失われる。
+ *
+ * 注意（#397 時点）: 元に戻す振る舞い（再アクティブ化）は 08d §2 に定義が無く未実装で、
+ * 「同一ユーザー × 口座種別は一意」の制約により同種別の登録し直しもできない。つまり
+ * この操作は取り消せない。再アクティブ化の要否は判断待ちとして切り出している。
+ */
+export function inactivateAccount(
+  account: Account,
+  params: { reason: string; operatorUserId: UserId; at: Date },
+): Account {
+  assertOperatedByOwner(account, params.operatorUserId, '口座の非アクティブ化')
+  if (account.kind === 'smbc_bank' || account.kind === 'mitsui_sumitomo_card') {
+    throw new InvariantViolationError(
+      `非アクティブ化できるのは別銀行貯蓄・NISA 口座のみ（現種別: ${account.kind}）`,
+    )
+  }
+  if (account.common.activeness.kind === 'inactive') {
+    throw new InvariantViolationError(
+      `口座（${account.common.accountId}）は既に非アクティブ化されている`,
+    )
+  }
+  const reason = InactivationReasonSchema.parse(params.reason)
+  return AccountSchema.parse({
+    ...account,
+    common: {
+      ...account.common,
+      activeness: { kind: 'inactive', inactivatedAt: params.at, reason },
+    },
+  })
 }

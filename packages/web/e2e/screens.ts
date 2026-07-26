@@ -4,6 +4,7 @@ export const SCREENS = [
   { name: 'transactions', path: '/transactions' },
   { name: 'balances', path: '/balances' },
   { name: 'reports', path: '/reports' },
+  { name: 'imports', path: '/imports' },
   { name: 'settings', path: '/settings' },
   // 設定のタブは初期表示が ?section= で決まる。既定タブ（プロフィール）の撮影では
   // 学習ルールの見た目を押さえられないため、別画面として並べる

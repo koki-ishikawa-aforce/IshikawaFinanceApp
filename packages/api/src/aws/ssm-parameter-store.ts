@@ -20,12 +20,22 @@ export function createSsmParameterStore(): SsmParameterStore {
   const client = new SSMClient({})
   return {
     async read(path) {
-      const result = await client.send(
-        new GetParameterCommand({ Name: path, WithDecryption: true }),
-      )
-      const value = result.Parameter?.Value
-      if (value === undefined) throw new NotFoundError('ParameterStoreValue', path)
-      return value
+      try {
+        const result = await client.send(
+          new GetParameterCommand({ Name: path, WithDecryption: true }),
+        )
+        const value = result.Parameter?.Value
+        if (value === undefined) throw new NotFoundError('ParameterStoreValue', path)
+        return value
+      } catch (e) {
+        // 未保管は SDK の ParameterNotFound で届く。呼出し側が「値が無い」と「取得に失敗した」を
+        // 区別できるよう NotFoundError に翻訳する（Gmail メール取得は前者を再認可が要る状態として
+        // 扱い、後者を一時障害として扱う。翻訳しないと未認可のユーザーが一時障害に丸められる）
+        if (e instanceof Error && e.name === 'ParameterNotFound') {
+          throw new NotFoundError('ParameterStoreValue', path)
+        }
+        throw e
+      }
     },
     async write(path, value) {
       await client.send(
