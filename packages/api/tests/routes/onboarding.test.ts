@@ -830,6 +830,40 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
     }
   })
 
+  it('世帯に登録されていない viewer の検知要求では発火しない（否定形）', async () => {
+    const t = createTestApp()
+    const log = subscribeOperationEvents(t)
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      // 共通トークルーム未参加のまま運用開始させ、通知機能の有効化だけが未了の状態を作る
+      for (const viewerId of [VIEWER_ID, SPOUSE_ID]) {
+        await register(t, viewerId)
+        await request(t.app, 'POST', '/api/onboarding/phase1/line-friend', { viewerId })
+      }
+      await completePhase2For(t, VIEWER_ID)
+      await completePhase2For(t, SPOUSE_ID)
+      await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
+        body: { talkRoomId: 'room_test_001' },
+      })
+      expect(log.notificationActivated).toHaveLength(0)
+
+      // 許可リストに無い LINE ユーザー（= アプリユーザー未登録）からの検知要求
+      const stranger = await request(t.app, 'GET', '/api/onboarding/spouse-completion', {
+        viewerId: UserIdSchema.parse('user-stranger'),
+      })
+      expect(stranger.status).toBe(200)
+      expect(log.notificationActivated).toHaveLength(0)
+      expect(log.testMessageSent).toHaveLength(0)
+
+      // 世帯のメンバーからの検知要求では発火する（発火経路そのものが死んでいないことの確認）
+      expect((await request(t.app, 'GET', '/api/onboarding/spouse-completion')).status).toBe(200)
+      expect(log.notificationActivated).toHaveLength(1)
+      expect(log.testMessageSent).toHaveLength(1)
+    } finally {
+      warned.mockRestore()
+    }
+  })
+
   it('運用開始後の通知有効化要求でも、世帯としての有効化は一元発火に委ねられる', async () => {
     const t = createTestApp()
     const log = subscribeOperationEvents(t)

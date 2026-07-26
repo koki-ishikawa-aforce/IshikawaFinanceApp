@@ -445,10 +445,18 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
    * 相方の完了はポーリングしないため、遅れて開いた側のこの画面ロードが運用開始の唯一の検知機会に
    * なる（08f §2「事後: 両者完了済み なら運用開始発火を準備」）。参照系だが発火の副作用を持つのは
    * このため。発火は冪等で、条件が揃っていなければ何も起きない。
+   *
+   * 発火は登録済みの viewer からの要求に限る。ID トークンの検証（lineAuthMiddleware）が保証するのは
+   * 「LINE Login チャネルの正当なユーザーであること」までで、世帯の 2 人であることまでは見ない。
+   * 世帯の状態遷移と LINE への外部送信を起こす副作用を、許可リストを通っていない第三者が
+   * 叩けるままにはしない（参照そのものは従来どおり誰でも 200 を返す）。
    */
   app.get('/spouse-completion', async c => {
-    await fireOperationStartIfReady(deps)
-    const result = await deps.spouseCompletionQuery.check(c.get('viewerId'))
+    const viewerId = c.get('viewerId')
+    if ((await deps.appUserRepository.findById(viewerId)) !== null) {
+      await fireOperationStartIfReady(deps)
+    }
+    const result = await deps.spouseCompletionQuery.check(viewerId)
     return c.json(result)
   })
 

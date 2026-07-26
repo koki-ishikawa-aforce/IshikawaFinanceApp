@@ -89,11 +89,15 @@ export async function fireOperationStartIfReady(
   const activation = decideHouseholdNotificationActivation(decision.household, sharedTalkRoom, at)
   if (activation.kind === 'not_ready') {
     // 運用開始したのにテスト送信が起きない状態は、利用者からは「設定したのに何も来ない」に見える。
-    // 前提が欠けたまま止まったことを追えるようにしておく（回復は前提が揃ったときの再発火）
-    console.warn(
-      `[onboarding] 運用開始したが世帯の通知機能を有効化できない（${activation.blocker}）— ` +
-        '前提が揃った時点の再発火で回復する',
-    )
+    // 前提が欠けたまま止まったことを追えるようにしておく（回復は前提が揃ったときの再発火）。
+    // 記録は発火した回だけに絞る — 前提が欠けたままの再発火は画面ロードのたびに起きるため、
+    // 毎回記録すると本当に見たい警告が埋もれる
+    if (decision.kind === 'start') {
+      console.warn(
+        `[onboarding] 運用開始したが世帯の通知機能を有効化できない（${activation.blocker}）— ` +
+          '前提が揃った時点の再発火で回復する',
+      )
+    }
     return { operation, notification: 'not_ready' }
   }
 
