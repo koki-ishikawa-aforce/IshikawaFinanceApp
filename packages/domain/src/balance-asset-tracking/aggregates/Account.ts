@@ -269,6 +269,38 @@ export function applySmbcBalanceChange(
 }
 
 /**
+ * behavior 別銀行貯蓄残高をSMBC振込で加算する / 取り崩しで減算する（08d §2）
+ * シャドウ口座（実残高を直接取得できない別銀行貯蓄口座）の残高を、SMBC 側の資金移動や
+ * 手入力から間接的に動かす。加算は正の delta、減算は負の delta。
+ *
+ * 事後: 別銀行貯蓄残高の最終更新日時が更新される。残高鮮度の根拠（08d §1 残高鮮度供給）も
+ * 同じ時刻へ進める。家計分析はこの値で「最終更新から N 日」を評価するため、残高だけ動かして
+ * 鮮度を据え置くと、更新されているのに古いと表示される。
+ *
+ * 不変条件: 非アクティブ口座への残高変動は適用しない（09-aggregates #9）。
+ */
+export function applyOtherSavingsBalanceChange(
+  account: OtherSavingsAccount,
+  delta: Money,
+  at: Date,
+): OtherSavingsAccount {
+  if (account.common.activeness.kind === 'inactive') {
+    throw new InvariantViolationError(
+      `非アクティブ口座（${account.common.accountId}）へ残高変動は適用できない`,
+    )
+  }
+  return AccountSchema.parse({
+    ...account,
+    balance: {
+      ...account.balance,
+      currentBalance: addMoney(account.balance.currentBalance, delta),
+      lastUpdatedAt: at,
+    },
+    freshnessSource: { lastUpdatedAt: at },
+  }) as OtherSavingsAccount
+}
+
+/**
  * behavior 引落消込を口座残高へ反映する（08d §2、#388）
  * 事後: 消込合計だけ現在残高を減算し、反映元の引落確定通知IDを記録する。
  *

@@ -11,9 +11,9 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### shared
 
-- ID 型: `TransactionId`, `UserId`, `CategoryId`, `ExpenseTypeId`, `AccountId`, `MitsuiSumitomoUnpaidId`, `UnpaidEntryId`, `MonthlyReportId`, `ExpenseReimbursementId`, `SettlementNoticeId`, `GmailMessageId`,
+- ID 型: `TransactionId`, `UserId`, `CategoryId`, `ExpenseTypeId`, `AccountId`, `BankDepositId`, `MitsuiSumitomoUnpaidId`, `UnpaidEntryId`, `MonthlyReportId`, `ExpenseReimbursementId`, `SettlementNoticeId`, `GmailMessageId`,
   `TransactionCandidateId`, `ImportBatchId`, `ImportJobId`, `UploadFileId`, `PdfConversionJobId`, `AmazonOrderId`, `BulkClassificationSessionId`, `MonthlyExpenseCycleId`, `ChildTransactionId`, `ExpenseTypeAccumulationId`, `TalkRoomId`, `MonthlyLimitId`, `CategoryDeletionRequestId`, `ExpenseTypeDeletionRequestId`, `Phase0ConfigId`, `DeliveryMessageId`, `DeliveryLogId`, `FailsafeEmailId`, `LineMessageId`（および各 Schema）
-- 値オブジェクト: `Money`, `YearMonth`, `ExpenseClass`, `ParameterStorePath`, `AmazonProductKey`, `UserRole`, `PersonalExpenseClass`（別名 `DefaultExpenseClass`。`roleToPersonalExpenseClass` / `assertPersonalExpenseClassMatchesRole` で所有者ロールとの整合を担保）
+- 値オブジェクト: `Money`, `YearMonth`（および JST 暦日ヘルパー `jstCalendarParts` / `jstYearMonthOf`）, `normalizeJapaneseName`（OQ-7 / OQ-23 の名称正規化。加盟店名・振込元名の正規化が委譲する単一実装）, `ExpenseClass`, `ParameterStorePath`, `AmazonProductKey`, `UserRole`, `PersonalExpenseClass`（別名 `DefaultExpenseClass`。`roleToPersonalExpenseClass` / `assertPersonalExpenseClassMatchesRole` で所有者ロールとの整合を担保）
 - 共有カーネル語彙（Phase 5 M-A で household-analysis から移設）: `UnclassifiedReason`, `ClassificationBasis`, `ImportSource`（メンバー schema 個別 export あり）, `UnapprovedExpenseTransfer`
 - イベント基底: `DomainEventBase`
 - イベントバス: `EventBus` / `EventHandler`（同期・インプロセス配信、publish はハンドラー完了を await）+ 実装 `InMemoryEventBus`（#34）
@@ -30,12 +30,13 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### balance-asset-tracking（残高・資産推移管理）
 
-- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`。SMBC 残高更新 `applySmbcBalanceChange`、引落消込の残高反映 `applyUnpaidSettlementToSmbcBalance`（同一 `settlementNoticeId` の再反映を拒否）、口座登録 `registerOtherSavingsAccount` / `registerNisaAccount`、名称変更 `changeBankName` / `changeBrokerageName`、種別絞り込み `asOtherSavingsAccount` / `asNisaAccount` を含む）, `MitsuiSumitomoUnpaid`（未払金計上 `bookUnpaid` / 消込 `settleUnpaid` / 通知別の消込エントリ `settledEntriesForNotice` / 消込合計 `settledTotalForNotice` を含む）
-- 値オブジェクト: `AccountKind`, `BankName`, `BrokerageName`（および `brokerageNameToDisplay`）
-- Repository I/F: `AccountRepository`, `MitsuiSumitomoUnpaidRepository`
+- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`。SMBC 残高更新 `applySmbcBalanceChange`、別銀行貯蓄（シャドウ）残高更新 `applyOtherSavingsBalanceChange`、引落消込の残高反映 `applyUnpaidSettlementToSmbcBalance`（同一 `settlementNoticeId` の再反映を拒否）、口座登録 `registerOtherSavingsAccount` / `registerNisaAccount`、名称変更 `changeBankName` / `changeBrokerageName`、種別絞り込み `asOtherSavingsAccount` / `asNisaAccount` を含む）, `BankDeposit`（入金変動 + 入金用途判別結果。`salary` / `expense_reimbursement` / `other_savings_return` / `unknown`。判別結果の記録 `recordBankDeposit` / 手動確認による確定 `confirmBankDepositPurpose`（本人のみ・用途不明のみの一方向遷移） / 確定判定 `isDeterminedBankDeposit` を含む）, `MitsuiSumitomoUnpaid`（未払金計上 `bookUnpaid` / 消込 `settleUnpaid` / 通知別の消込エントリ `settledEntriesForNotice` / 消込合計 `settledTotalForNotice` を含む）
+- 値オブジェクト: `AccountKind`, `BankName`, `BrokerageName`（および `brokerageNameToDisplay`）, `DepositPurpose` / `DeterminedDepositPurpose` / `ProvisionalHandling`, `WithdrawalPurpose`, `BankDepositPurposeRule`（組立 `bankDepositPurposeRule` + 既定値 `DEFAULT_SALARY_PAYOUT_DAY_WINDOW` / `DEFAULT_SALARY_THRESHOLD_AMOUNT`）, `normalizeRemitterName`
+- ドメインサービス: `determineBankDepositPurpose`（OQ-21 の入金日 + 金額 2 シグナル判別。矛盾時は用途不明 = 手動確認待ち）, `determineWithdrawalPurpose`
+- Repository I/F: `AccountRepository`, `BankDepositRepository`, `MitsuiSumitomoUnpaidRepository`
 - Query I/F: `AccountBalanceQuery`, `BalanceTimeSeriesQuery`
 - View 型: `AccountBalanceListView`, `BalanceTimeSeriesView`, `AssetTotalView`
-- ドメインイベント: `AccountBalanceUpdated`, `AccountRegistered`, `InitialBalanceRegistered`, `BankNameChanged`, `BrokerageNameChanged`, `UnpaidBookkept`, `UnpaidSettled`, `NisaContributionAdded`
+- ドメインイベント: `AccountBalanceUpdated`, `AccountRegistered`, `InitialBalanceRegistered`, `BankNameChanged`, `BrokerageNameChanged`, `UnpaidBookkept`, `UnpaidSettled`, `NisaContributionAdded`, `BankDepositPurposeDetermined`
 
 ### auto-classification（自動分類・学習、08b）
 

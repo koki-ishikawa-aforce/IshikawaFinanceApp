@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   AccountSchema,
+  applyOtherSavingsBalanceChange,
   applySmbcBalanceChange,
   applyUnpaidSettlementToSmbcBalance,
   asNisaAccount,
@@ -552,5 +553,54 @@ describe('applyUnpaidSettlementToSmbcBalance()', () => {
         at,
       }),
     ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('applyOtherSavingsBalanceChange()', () => {
+  const registeredAt = new Date('2026-07-01T00:00:00Z')
+  const at = new Date('2026-07-25T03:00:00Z')
+  const register = () =>
+    registerOtherSavingsAccount({
+      accountId: '01ACC000000000000000000002' as never,
+      ownerUserId: 'user_honey' as never,
+      bankName: '楽天銀行' as never,
+      initialBalance: 500000 as never,
+      at: registeredAt,
+    })
+
+  it('SMBC からの振込（シャドウ残高加算）で現在残高が増える', () => {
+    const updated = applyOtherSavingsBalanceChange(register(), 50000 as never, at)
+    expect(updated.balance.currentBalance).toBe(550000)
+  })
+
+  it('別銀行戻し（負の delta）で現在残高が減る', () => {
+    const updated = applyOtherSavingsBalanceChange(register(), -30000 as never, at)
+    expect(updated.balance.currentBalance).toBe(470000)
+  })
+
+  it('残高鮮度の根拠も同じ時刻へ進む（更新済みなのに古いと表示されないようにする）', () => {
+    const updated = applyOtherSavingsBalanceChange(register(), 50000 as never, at)
+    expect(updated.balance.lastUpdatedAt).toEqual(at)
+    expect(updated.freshnessSource.lastUpdatedAt).toEqual(at)
+  })
+
+  it('初期残高は書き換わらない（初期残高基準時刻も据え置き）', () => {
+    const updated = applyOtherSavingsBalanceChange(register(), 50000 as never, at)
+    expect(updated.balance.initialBalance).toBe(500000)
+    expect(updated.balance.initialBalanceBaselineAt).toEqual(registeredAt)
+  })
+
+  it('非アクティブ口座へは適用できない', () => {
+    const inactive = AccountSchema.parse({
+      ...register(),
+      common: {
+        ...register().common,
+        activeness: { kind: 'inactive', inactivatedAt: new Date('2026-07-10'), reason: '解約済み' },
+      },
+    }) as OtherSavingsAccount
+
+    expect(() => applyOtherSavingsBalanceChange(inactive, 50000 as never, at)).toThrow(
+      InvariantViolationError,
+    )
   })
 })
