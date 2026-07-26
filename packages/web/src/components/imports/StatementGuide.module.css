@@ -4,12 +4,21 @@
   justify-content: space-between;
   gap: var(--space-2);
   width: 100%;
+  /* 片手操作のタップ領域を確保する（usability §4-3）。横は 0 のままカード内の左右揃えを保つ */
+  min-height: var(--tap-target-min);
   background: none;
   border: none;
   padding: var(--space-0);
   cursor: pointer;
   text-align: left;
-  color: var(--text-primary);
+  font: inherit;
+  color: inherit;
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: var(--space-0_5);
+  border-radius: var(--radius-sm);
 }
 
 .chevron {
@@ -27,6 +36,12 @@
   flex-direction: column;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+
+/* hidden 属性の display:none は UA スタイル由来で上の display:flex に負ける。
+   畳んだ状態を実ブラウザでも閉じたままにするため、明示的に打ち消す。 */
+.body[hidden] {
+  display: none;
 }
 
 .note {
@@ -47,12 +62,6 @@
 
 .step {
   line-height: 1.5;
-}
-
-.linkLabel {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1_5);
 }
 
 .linkIcon {
