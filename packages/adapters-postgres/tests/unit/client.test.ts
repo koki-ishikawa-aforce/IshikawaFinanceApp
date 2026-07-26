@@ -101,7 +101,7 @@ describe('createDbConnection の close 契約（#323）', () => {
   // seed スクリプトはこの契約に乗ってプロセスを終える。
   // neon-http は接続を保持しないため close() は何もせず resolve する（実接続なしで確認できる）。
   it('neon-http は db を返し、close() が接続なしで resolve する', async () => {
-    const connection = createDbConnection({ databaseUrl: NEON_URL, isProduction: true })
+    const connection = await createDbConnection({ databaseUrl: NEON_URL, isProduction: true })
 
     expect(connection.db).toBeDefined()
     await expect(connection.close()).resolves.toBeUndefined()

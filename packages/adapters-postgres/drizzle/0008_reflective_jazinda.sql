@@ -1,4 +1,4 @@
--- 1-9 行目の DDL は `pnpm --filter @warimaru/adapters-neon db:generate` の生成物（変更しない）。
+-- 1-9 行目の DDL は `pnpm --filter @warimaru/adapters-postgres db:generate` の生成物（変更しない）。
 -- 11 行目以降は手書きのデータ移行 DML。drizzle-kit は DDL しか生成できないため、
 -- 既存データの移し替えはここに書く（スキーマとスナップショットの乖離は生じない）。
 CREATE TABLE "shared_talk_rooms" (

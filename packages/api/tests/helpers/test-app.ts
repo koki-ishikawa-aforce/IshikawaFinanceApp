@@ -1,13 +1,13 @@
 /**
  * エンドポイントテスト用のアプリ組み立てヘルパー。
- * DATABASE_URL を渡さないことで composition-root がインメモリモックへフォールバックし、
+ * composition-root のモック合成（DATABASE_URL 未設定時に createDeps が委ねる先と同じ関数）を使う。
  * NODE_ENV != production のため X-User-Id ヘッダー認証（devViewerIdMiddleware）が有効になる。
  */
 import type { Hono } from 'hono'
 import type { UserId } from '@warimaru/domain'
 import { UserIdSchema } from '@warimaru/domain'
 import { createApp } from '../../src/app.js'
-import { createDeps, type AppDeps } from '../../src/composition-root.js'
+import { createMockDeps, type AppDeps } from '../../src/composition-root.js'
 import type { AppEnv } from '../../src/env.js'
 
 export const VIEWER_ID: UserId = UserIdSchema.parse('user-honey-test')
@@ -19,7 +19,7 @@ export interface TestApp {
 }
 
 export function createTestApp(overrides: Partial<AppDeps> = {}): TestApp {
-  const deps = { ...createDeps({}), ...overrides }
+  const deps = { ...createMockDeps({}), ...overrides }
   const app = createApp(deps)
   return { app, deps }
 }
