@@ -13,18 +13,18 @@ import {
   type LearningRefsWire,
   type MerchantLearningRuleWire,
 } from '@/lib/api-schemas'
-import { learnedAxisLabels } from '@/lib/labels'
+import { LEARNING_AXIS_LABELS, learnedAxisLabels } from '@/lib/labels'
 import { formatDateTime } from '@/lib/month'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import ui from '@/components/ui/common.module.css'
-import styles from './ClassificationRulesTab.module.css'
+import styles from './LearningRulesTab.module.css'
 
 /**
  * 学習ルールが持つ ID を名前へ解決するためのマスタ。
  *
  * ルール本体とは別の API から来るため、読み込み中・失敗もルール一覧と同じ状態として扱う
- * （名前が引けないまま ID や「（不明）」を先に見せると、直後に本来の名前へ差し替わってちらつく）。
+ * (名前が引けないまま ID や「（不明）」を先に見せると、直後に本来の名前へ差し替わってちらつく)。
  */
 interface MastersState {
   isPending: boolean
@@ -47,12 +47,21 @@ function LoadFailure({ message, onRetry }: { message: string; onRetry: () => voi
   )
 }
 
+/** 取得中であることを支援技術にも伝える(ページ遷移を伴わないため、指定が無いと無音になる) */
+function SectionLoading() {
+  return (
+    <div className={ui.loading} role="status">
+      読み込み中...
+    </div>
+  )
+}
+
 function LearnedAxes({ refs, masters }: { refs: LearningRefsWire; masters: MastersState }) {
   return (
     <dl className={styles.axes}>
       {learnedAxisLabels(refs, masters.categoryNameOf, masters.expenseTypeNameOf).map(axis => (
         <div key={axis.axis} className={styles.axisRow}>
-          <dt className={styles.axisName}>{axis.axis}</dt>
+          <dt className={styles.axisName}>{LEARNING_AXIS_LABELS[axis.axis]}</dt>
           <dd className={axis.learned ? styles.axisValue : styles.axisUnlearned}>{axis.value}</dd>
         </div>
       ))}
@@ -66,19 +75,23 @@ type MerchantAction = 'disable' | 'reenable'
 
 const MERCHANT_ACTION_TEXT: Record<
   MerchantAction,
-  { label: string; pending: string; description: string }
+  { label: string; pending: string; description: string; destructive: boolean; result: string }
 > = {
   disable: {
     label: '学習を止める',
-    pending: '変更中...',
+    pending: '停止中...',
     description:
       'この加盟店について覚えた内容を消し、以後は手動で分類しても覚え直しません。取り込んだ取引は毎回未分類のままになります。あとから学習を再開できますが、消えた内容は戻りません。',
+    destructive: true,
+    result: 'の学習を止めました',
   },
   reenable: {
     label: '学習を再開する',
-    pending: '変更中...',
+    pending: '再開中...',
     description:
       'この加盟店の学習を再開します。覚えている内容が無い状態から始まるため、次にあなたが手動で分類したときの内容を覚え直します。',
+    destructive: false,
+    result: 'の学習を再開しました',
   },
 }
 
@@ -86,10 +99,12 @@ function MerchantActionModal({
   merchantName,
   action,
   onClose,
+  onDone,
 }: {
   merchantName: string
   action: MerchantAction
   onClose: () => void
+  onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
   const text = MERCHANT_ACTION_TEXT[action]
@@ -103,13 +118,13 @@ function MerchantActionModal({
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['classification', 'merchant-rules'] })
-      onClose()
+      onDone(`「${merchantName}」${text.result}`)
     },
   })
 
   return (
     <Modal title={`「${merchantName}」の${text.label}`} onClose={onClose}>
-      <p className={styles.warning}>{text.description}</p>
+      <p className={text.destructive ? styles.warning : styles.note}>{text.description}</p>
       {mutation.error && (
         <div className={ui.error} role="alert">
           {mutation.error.message}
@@ -117,7 +132,7 @@ function MerchantActionModal({
         </div>
       )}
       <button
-        className={action === 'disable' ? ui.buttonDanger : ui.button}
+        className={text.destructive ? ui.buttonDanger : ui.button}
         disabled={mutation.isPending}
         onClick={() => mutation.mutate()}
       >
@@ -140,16 +155,16 @@ function MerchantRuleRow({
     <li className={styles.ruleRow}>
       <div className={ui.rowBetween}>
         <span className={styles.ruleName}>{rule.common.merchantName}</span>
-        <span className={rule.kind === 'active' ? ui.badge : styles.badgeStopped}>
+        <span className={rule.kind === 'active' ? ui.badge : `${ui.badge} ${styles.badgeStopped}`}>
           {rule.kind === 'active' ? '学習中' : '学習を停止中'}
         </span>
       </div>
       {rule.kind === 'active' ? (
         <>
           <LearnedAxes refs={rule} masters={masters} />
-          <span className={styles.ruleMeta}>最終更新: {formatDateTime(rule.lastUpdatedAt)}</span>
+          <span className={styles.ruleMeta}>最終更新日: {formatDateTime(rule.lastUpdatedAt)}</span>
           <button
-            className={styles.linkDanger}
+            className={`${styles.linkButton} ${styles.linkDanger}`}
             onClick={() => onAction('disable')}
             aria-label={`${rule.common.merchantName}の学習を止める`}
           >
@@ -158,7 +173,7 @@ function MerchantRuleRow({
         </>
       ) : (
         <>
-          <span className={styles.ruleMeta}>停止した日時: {formatDateTime(rule.disabledAt)}</span>
+          <span className={styles.ruleMeta}>停止した日: {formatDateTime(rule.disabledAt)}</span>
           <button
             className={styles.linkButton}
             onClick={() => onAction('reenable')}
@@ -176,6 +191,8 @@ function MerchantRulesSection({ masters }: { masters: MastersState }) {
   const [target, setTarget] = useState<{ merchantName: string; action: MerchantAction } | null>(
     null,
   )
+  // 成功はその場の表示更新で示す(トーストは採用しない)。読み上げのために live region に置く
+  const [actionResult, setActionResult] = useState<string | null>(null)
 
   const rulesQuery = useQuery({
     queryKey: ['classification', 'merchant-rules'],
@@ -192,7 +209,12 @@ function MerchantRulesSection({ masters }: { masters: MastersState }) {
       <p className={styles.note}>
         取引を手動で分類すると、その加盟店の分類を覚えて次回から自動で分類します。覚えた内容の確認と、加盟店ごとに学習を止める・再開することができます。ここに出るのはあなたの学習だけで、配偶者の学習とは共有されません。
       </p>
-      {isPending && <div className={ui.loading}>読み込み中...</div>}
+      {actionResult !== null && (
+        <p className={styles.actionResult} role="status">
+          {actionResult}
+        </p>
+      )}
+      {isPending && <SectionLoading />}
       {!isPending && error !== null && (
         <LoadFailure
           message="学習ルールの取得に失敗しました"
@@ -226,6 +248,10 @@ function MerchantRulesSection({ masters }: { masters: MastersState }) {
           merchantName={target.merchantName}
           action={target.action}
           onClose={() => setTarget(null)}
+          onDone={message => {
+            setActionResult(message)
+            setTarget(null)
+          }}
         />
       )}
     </section>
@@ -245,7 +271,7 @@ function AmazonRuleRow({
     <li className={styles.ruleRow}>
       <span className={styles.ruleName}>{rule.amazonProductKey}</span>
       <LearnedAxes refs={rule} masters={masters} />
-      <span className={styles.ruleMeta}>最終更新: {formatDateTime(rule.lastUpdatedAt)}</span>
+      <span className={styles.ruleMeta}>最終更新日: {formatDateTime(rule.lastUpdatedAt)}</span>
     </li>
   )
 }
@@ -267,7 +293,7 @@ function AmazonRulesSection({ masters }: { masters: MastersState }) {
         Amazon
         の支払いは加盟店名がどれも同じになるため、注文した商品ごとに分類を覚えます。商品ごとに学習を止めることはできません。
       </p>
-      {isPending && <div className={ui.loading}>読み込み中...</div>}
+      {isPending && <SectionLoading />}
       {!isPending && error !== null && (
         <LoadFailure
           message="Amazon 商品の学習ルールの取得に失敗しました"
@@ -299,13 +325,13 @@ function AmazonRulesSection({ masters }: { masters: MastersState }) {
 // ---------- タブ ----------
 
 /**
- * 分類学習ルールの管理（#400）。
+ * 学習ルールの管理(#400)。
  *
  * 加盟店学習ルールの一覧・学習の停止 / 再開と、Amazon 商品キー学習ルールの一覧を表示する。
- * API はいずれも閲覧者本人のルールだけを返す（08b F-1）ため、配偶者のルールはここに現れない。
- * 2 つの一覧は別々の取得なので、片方が失敗しても他方はそのまま表示する（部分失敗）。
+ * API はいずれも閲覧者本人のルールだけを返す(08b F-1)ため、配偶者のルールはここに現れない。
+ * 2 つの一覧は別々の取得なので、片方が失敗しても他方はそのまま表示する(部分失敗)。
  */
-export function ClassificationRulesTab() {
+export function LearningRulesTab() {
   const categoriesQuery = useQuery({
     queryKey: ['categories'],
     queryFn: () => apiFetch('/api/categories', CategoryListWireSchema),

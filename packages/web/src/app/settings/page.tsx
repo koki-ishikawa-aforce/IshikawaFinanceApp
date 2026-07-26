@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { ClassificationRulesTab } from '@/components/settings/ClassificationRulesTab'
+import { LearningRulesTab } from '@/components/settings/LearningRulesTab'
 import { apiFetch, apiMutate } from '@/lib/api-client'
 import {
   CategoryListWireSchema,
@@ -1048,7 +1048,7 @@ function SettingsPageContent() {
       {tab === 'categories' && <CategoriesTab />}
       {tab === 'expense-types' && <ExpenseTypesTab />}
       {tab === 'limits' && <LimitsTab />}
-      {tab === 'classification' && <ClassificationRulesTab />}
+      {tab === 'classification' && <LearningRulesTab />}
 
       <Link href="/onboarding" className={styles.onboardingLink}>
         <LuRocket aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}

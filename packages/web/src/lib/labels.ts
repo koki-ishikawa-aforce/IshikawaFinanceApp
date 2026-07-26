@@ -38,9 +38,21 @@ export function brokerageNameLabel(name: BrokerageNameWire): string {
 
 // ---------- 分類学習ルール（#400） ----------
 
+/**
+ * 学習の 3 軸（08b §3 の更新軸。domain の `LearningAxis` と同じ集合）。
+ * 表示名は下の LEARNING_AXIS_LABELS が持ち、識別子と表示文字列を混ぜない。
+ */
+export type LearningAxisKey = 'category' | 'expense_class' | 'expense_type'
+
+export const LEARNING_AXIS_LABELS: Record<LearningAxisKey, string> = {
+  category: 'カテゴリ',
+  expense_class: '費用区分',
+  expense_type: '経費種別',
+}
+
 /** 学習ルールが覚えている 1 軸ぶんの表示。`learned` が false のとき `value` は未学習の案内文 */
 export interface LearnedAxisLabel {
-  axis: string
+  axis: LearningAxisKey
   value: string
   learned: boolean
 }
@@ -65,7 +77,7 @@ export function learnedAxisLabels(
 ): LearnedAxisLabel[] {
   return [
     {
-      axis: 'カテゴリ',
+      axis: 'category',
       ...(refs.categoryRef.kind === 'learned'
         ? {
             value: categoryNameOf(refs.categoryRef.categoryId) ?? UNKNOWN_MASTER_LABEL,
@@ -74,13 +86,13 @@ export function learnedAxisLabels(
         : { value: UNLEARNED_LABEL, learned: false }),
     },
     {
-      axis: '費用区分',
+      axis: 'expense_class',
       ...(refs.expenseClassRef.kind === 'learned'
         ? { value: EXPENSE_CLASS_LABELS[refs.expenseClassRef.expenseClass], learned: true }
         : { value: UNLEARNED_LABEL, learned: false }),
     },
     {
-      axis: '経費種別',
+      axis: 'expense_type',
       ...(refs.expenseTypeRef.kind === 'learned'
         ? {
             value: expenseTypeNameOf(refs.expenseTypeRef.expenseTypeId) ?? UNKNOWN_MASTER_LABEL,

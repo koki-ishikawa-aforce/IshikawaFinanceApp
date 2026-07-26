@@ -81,9 +81,9 @@ export function resolveMock(method: string, path: string): unknown {
       case '/api/imports/status':
         return importStatusFixture()
       case '/api/classification/merchant-rules':
-        return merchantLearningRuleListFixture()
+        return merchantLearningRuleListFixture(getMockRole())
       case '/api/classification/amazon-rules':
-        return amazonProductKeyLearningRuleListFixture()
+        return amazonProductKeyLearningRuleListFixture(getMockRole())
     }
   }
 

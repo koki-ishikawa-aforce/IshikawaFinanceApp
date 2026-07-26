@@ -27,16 +27,16 @@ describe('learnedAxisLabels', () => {
     )
 
     expect(labels).toEqual([
-      { axis: 'カテゴリ', value: '食費', learned: true },
-      { axis: '費用区分', value: '経費(会社)', learned: true },
-      { axis: '経費種別', value: '交通費', learned: true },
+      { axis: 'category', value: '食費', learned: true },
+      { axis: 'expense_class', value: '経費(会社)', learned: true },
+      { axis: 'expense_type', value: '交通費', learned: true },
     ])
   })
 
   it('未学習の軸も落とさず、まだ覚えていないことを示す（3軸すべてを返す）', () => {
     const labels = learnedAxisLabels(refs(), categoryNameOf, expenseTypeNameOf)
 
-    expect(labels.map(l => l.axis)).toEqual(['カテゴリ', '費用区分', '経費種別'])
+    expect(labels.map(l => l.axis)).toEqual(['category', 'expense_class', 'expense_type'])
     expect(labels.every(l => !l.learned)).toBe(true)
     expect(labels.every(l => l.value === 'まだ覚えていません')).toBe(true)
   })
@@ -48,9 +48,9 @@ describe('learnedAxisLabels', () => {
       expenseTypeNameOf,
     )
 
-    expect(labels[0]).toEqual({ axis: 'カテゴリ', value: 'まだ覚えていません', learned: false })
-    expect(labels[1]).toEqual({ axis: '費用区分', value: '世帯', learned: true })
-    expect(labels[2]).toEqual({ axis: '経費種別', value: 'まだ覚えていません', learned: false })
+    expect(labels[0]).toEqual({ axis: 'category', value: 'まだ覚えていません', learned: false })
+    expect(labels[1]).toEqual({ axis: 'expense_class', value: '世帯', learned: true })
+    expect(labels[2]).toEqual({ axis: 'expense_type', value: 'まだ覚えていません', learned: false })
   })
 
   it('名前を引けないマスタ ID は未学習ではなく「（不明）」として学習済みのまま示す', () => {
@@ -63,7 +63,7 @@ describe('learnedAxisLabels', () => {
       expenseTypeNameOf,
     )
 
-    expect(labels[0]).toEqual({ axis: 'カテゴリ', value: '（不明）', learned: true })
-    expect(labels[2]).toEqual({ axis: '経費種別', value: '（不明）', learned: true })
+    expect(labels[0]).toEqual({ axis: 'category', value: '（不明）', learned: true })
+    expect(labels[2]).toEqual({ axis: 'expense_type', value: '（不明）', learned: true })
   })
 })
