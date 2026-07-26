@@ -1,7 +1,9 @@
 -- このコメント直後の CREATE TABLE 文までが `pnpm --filter @warimaru/adapters-postgres db:generate`
--- の生成物（変更しない）。それ以降（--> statement-breakpoint の後）は手書きのデータ移行 DML。
+-- の生成物（変更しない）。次の区切り行から先は手書きのデータ移行 DML。
 -- drizzle-kit は DDL しか生成できないため、既存データの移し替えはここに書く
 -- （スキーマとスナップショットの乖離は生じない）。
+-- 注意: このファイル内のコメントに区切り行の文字列そのものを書かないこと。
+-- drizzle はその文字列でファイルを分割するため、コメントの途中で SQL が切れて構文エラーになる。
 CREATE TABLE "shared_talk_rooms" (
 	"singleton" boolean PRIMARY KEY DEFAULT true NOT NULL,
 	"talk_room_id" text NOT NULL,
