@@ -16,11 +16,17 @@ import {
   AccountIdSchema,
   UserIdSchema,
   MitsuiSumitomoUnpaidIdSchema,
+  SettlementNoticeIdSchema,
   type AccountId,
   type UserId,
+  type SettlementNoticeId,
 } from '../../shared/ids'
-import { MoneySchema, addMoney, type Money } from '../../shared/value-objects/Money'
-import { InvariantViolationError, PermissionDeniedError } from '../../shared/errors/DomainError'
+import { MoneySchema, addMoney, money, type Money } from '../../shared/value-objects/Money'
+import {
+  InvariantViolationError,
+  PermissionDeniedError,
+  UnpaidSettlementAlreadyAppliedError,
+} from '../../shared/errors/DomainError'
 import { BankNameSchema, type BankName } from '../value-objects/BankName'
 import { BrokerageNameSchema, type BrokerageName } from '../value-objects/BrokerageName'
 
@@ -47,6 +53,17 @@ export const SmbcBalanceSchema = z.object({
   initialBalance: MoneySchema,
   initialBalanceBaselineAt: z.date(),
   lastUpdatedAt: z.date(),
+  /**
+   * 残高へ反映済みの引落確定通知IDの集合（#388）。
+   * 未払金消込の残高反映を口座側で冪等にするための記録で、未反映なら空。
+   * 既存データ（この項目を持たない payload）は空配列として読み出される。
+   *
+   * 「最後に反映した1件」ではなく集合で持つ。単数だと A → B と反映した後に A が
+   * 再送された場合（メール再取込によるバックフィル等）にガードを素通りし、
+   * A の消込分が二重に減算されるため。消込済みエントリを恒久保持する未払金集約
+   * （08d §1）と同じく、月に1件ずつしか増えない。
+   */
+  appliedSettlementNoticeIds: z.array(SettlementNoticeIdSchema).default([]),
 })
 export type SmbcBalance = z.infer<typeof SmbcBalanceSchema>
 
@@ -247,6 +264,48 @@ export function applySmbcBalanceChange(
       ...account.balance,
       currentBalance: addMoney(account.balance.currentBalance, delta),
       lastUpdatedAt: at,
+    },
+  }) as SmbcBankAccount
+}
+
+/**
+ * behavior 引落消込を口座残高へ反映する（08d §2、#388）
+ * 事後: 消込合計だけ現在残高を減算し、反映元の引落確定通知IDを記録する。
+ *
+ * 不変条件: 同一の引落確定通知は一度しか残高へ反映しない（09-aggregates #9）。
+ * 反映順に関わらず、過去に反映したどの通知でも二度目は
+ * UnpaidSettlementAlreadyAppliedError を throw する。
+ *
+ * 未払金の消込（settleUnpaid）と本反映は別集約への順次保存であり、その間で
+ * 失敗すると残高だけが未反映で残る。呼び出し側は同一イベントの再実行で必ず
+ * ここまで到達させてよく、二重減算はこのガードが防ぐ（OQ-43「再実行で自己修復」）。
+ *
+ * 事後: 最終更新日時は巻き戻さない。回復は定義上「遅れて古い通知を適用する」ため、
+ * applySmbcBalanceChange の事前条件（変動の発生順に適用する）を満たせない。
+ */
+export function applyUnpaidSettlementToSmbcBalance(
+  account: SmbcBankAccount,
+  params: { settlementNoticeId: SettlementNoticeId; settledTotal: Money; at: Date },
+): SmbcBankAccount {
+  if (account.balance.appliedSettlementNoticeIds.includes(params.settlementNoticeId)) {
+    throw new UnpaidSettlementAlreadyAppliedError(
+      `引落確定通知（${params.settlementNoticeId}）は口座（${account.common.accountId}）の残高へ反映済みのため再反映できない`,
+    )
+  }
+  const applied = applySmbcBalanceChange(account, money(-params.settledTotal), params.at)
+  return AccountSchema.parse({
+    ...applied,
+    balance: {
+      ...applied.balance,
+      // 回復（遅れて古い通知を適用する）で最終更新日時が過去へ巻き戻らないようにする。
+      // この値は家計分析の残高鮮度評価に借用されるため、巻き戻すと残高が実際より
+      // 古い情報に見える（金額は正しいまま）。
+      lastUpdatedAt:
+        params.at > account.balance.lastUpdatedAt ? params.at : account.balance.lastUpdatedAt,
+      appliedSettlementNoticeIds: [
+        ...applied.balance.appliedSettlementNoticeIds,
+        params.settlementNoticeId,
+      ],
     },
   }) as SmbcBankAccount
 }

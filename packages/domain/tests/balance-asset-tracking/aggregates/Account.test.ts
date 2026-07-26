@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   AccountSchema,
   applySmbcBalanceChange,
+  applyUnpaidSettlementToSmbcBalance,
   asNisaAccount,
   asOtherSavingsAccount,
   changeBankName,
@@ -15,6 +16,7 @@ import {
 import {
   InvariantViolationError,
   PermissionDeniedError,
+  UnpaidSettlementAlreadyAppliedError,
 } from '../../../src/shared/errors/DomainError'
 
 const baseCommon = {
@@ -365,5 +367,190 @@ describe('applySmbcBalanceChange()', () => {
     expect(() => applySmbcBalanceChange(inactive, 1000 as never, new Date('2026-05-26'))).toThrow(
       InvariantViolationError,
     )
+  })
+})
+
+// --- #388: 引落消込の残高反映（同一通知の再反映を口座側で拒否する） ---
+
+describe('applyUnpaidSettlementToSmbcBalance()', () => {
+  const smbcAccount = () =>
+    AccountSchema.parse({
+      kind: 'smbc_bank',
+      common: baseCommon,
+      balance: {
+        currentBalance: 100000 as never,
+        initialBalance: 100000 as never,
+        initialBalanceBaselineAt: new Date('2026-04-01'),
+        lastUpdatedAt: new Date('2026-04-01'),
+      },
+    }) as SmbcBankAccount
+
+  const NOTICE = 'notice_202605' as never
+  const at = new Date('2026-05-26')
+
+  it('この項目を持たない既存データは未反映（空）として読み出される', () => {
+    expect(smbcAccount().balance.appliedSettlementNoticeIds).toEqual([])
+  })
+
+  it('消込合計だけ残高を減算し、反映元の引落確定通知IDを記録する', () => {
+    const updated = applyUnpaidSettlementToSmbcBalance(smbcAccount(), {
+      settlementNoticeId: NOTICE,
+      settledTotal: 8000 as never,
+      at,
+    })
+
+    expect(updated.balance.currentBalance).toBe(92000)
+    expect(updated.balance.appliedSettlementNoticeIds).toEqual(['notice_202605'])
+    expect(updated.balance.lastUpdatedAt).toEqual(at)
+  })
+
+  it('同一の引落確定通知で2回目の反映は UnpaidSettlementAlreadyAppliedError（冪等性）', () => {
+    const once = applyUnpaidSettlementToSmbcBalance(smbcAccount(), {
+      settlementNoticeId: NOTICE,
+      settledTotal: 8000 as never,
+      at,
+    })
+
+    expect(() =>
+      applyUnpaidSettlementToSmbcBalance(once, {
+        settlementNoticeId: NOTICE,
+        settledTotal: 8000 as never,
+        at: new Date('2026-05-27'),
+      }),
+    ).toThrow(UnpaidSettlementAlreadyAppliedError)
+  })
+
+  it('3回以上再実行しても残高は1回分しか減らない', () => {
+    const once = applyUnpaidSettlementToSmbcBalance(smbcAccount(), {
+      settlementNoticeId: NOTICE,
+      settledTotal: 8000 as never,
+      at,
+    })
+
+    // 呼び出し側（ハンドラー）が「反映済みなら現状維持」とする挙動を再現する
+    let current = once
+    for (let i = 0; i < 3; i++) {
+      try {
+        current = applyUnpaidSettlementToSmbcBalance(current, {
+          settlementNoticeId: NOTICE,
+          settledTotal: 8000 as never,
+          at: new Date('2026-05-27'),
+        })
+      } catch (e) {
+        if (!(e instanceof UnpaidSettlementAlreadyAppliedError)) throw e
+      }
+    }
+
+    expect(current.balance.currentBalance).toBe(92000)
+  })
+
+  it('別の引落確定通知なら反映でき、記録が最新のものへ更新される', () => {
+    const may = applyUnpaidSettlementToSmbcBalance(smbcAccount(), {
+      settlementNoticeId: NOTICE,
+      settledTotal: 8000 as never,
+      at,
+    })
+    const june = applyUnpaidSettlementToSmbcBalance(may, {
+      settlementNoticeId: 'notice_202606' as never,
+      settledTotal: 2000 as never,
+      at: new Date('2026-06-26'),
+    })
+
+    expect(june.balance.currentBalance).toBe(90000)
+    expect(june.balance.appliedSettlementNoticeIds).toEqual(['notice_202605', 'notice_202606'])
+  })
+
+  it('別の通知を反映した後に古い通知を再実行しても、残高は減らない', () => {
+    // 記録が「最後の1件」だけだとここを素通りし、5月分がもう一度減算される
+    // （メール再取込で過去の通知が古い順に再発行される経路）
+    const may = applyUnpaidSettlementToSmbcBalance(smbcAccount(), {
+      settlementNoticeId: NOTICE,
+      settledTotal: 8000 as never,
+      at,
+    })
+    const june = applyUnpaidSettlementToSmbcBalance(may, {
+      settlementNoticeId: 'notice_202606' as never,
+      settledTotal: 2000 as never,
+      at: new Date('2026-06-26'),
+    })
+
+    expect(() =>
+      applyUnpaidSettlementToSmbcBalance(june, {
+        settlementNoticeId: NOTICE,
+        settledTotal: 8000 as never,
+        at: new Date('2026-06-27'),
+      }),
+    ).toThrow(UnpaidSettlementAlreadyAppliedError)
+  })
+
+  it('通常の入出金反映（applySmbcBalanceChange）を挟んでも反映済みの記録は保たれる', () => {
+    // 記録が落ちると同じ通知を再反映できてしまい、#388 が潰した二重減算が再発する
+    const applied = applyUnpaidSettlementToSmbcBalance(smbcAccount(), {
+      settlementNoticeId: NOTICE,
+      settledTotal: 8000 as never,
+      at,
+    })
+    const afterDeposit = applySmbcBalanceChange(applied, 30000 as never, new Date('2026-05-28'))
+
+    expect(afterDeposit.balance.appliedSettlementNoticeIds).toEqual(['notice_202605'])
+    expect(() =>
+      applyUnpaidSettlementToSmbcBalance(afterDeposit, {
+        settlementNoticeId: NOTICE,
+        settledTotal: 8000 as never,
+        at: new Date('2026-05-29'),
+      }),
+    ).toThrow(UnpaidSettlementAlreadyAppliedError)
+  })
+
+  it('消込合計が 0 円でも通知は反映済みとして記録される（以後この通知では減算しない）', () => {
+    const applied = applyUnpaidSettlementToSmbcBalance(smbcAccount(), {
+      settlementNoticeId: NOTICE,
+      settledTotal: 0 as never,
+      at,
+    })
+
+    expect(applied.balance.currentBalance).toBe(100000)
+    expect(applied.balance.appliedSettlementNoticeIds).toEqual(['notice_202605'])
+  })
+
+  it('回復（遅れて古い通知を適用する）でも最終更新日時は巻き戻さない', () => {
+    // この値は家計分析の残高鮮度評価に借用されるため、巻き戻すと残高が実際より古く見える
+    const recent = applySmbcBalanceChange(
+      smbcAccount(),
+      30000 as never,
+      new Date('2026-06-10T00:00:00Z'),
+    )
+    const recovered = applyUnpaidSettlementToSmbcBalance(recent, {
+      settlementNoticeId: NOTICE,
+      settledTotal: 8000 as never,
+      at: new Date('2026-05-26T00:00:00Z'), // 6月の入金より古い5月の通知
+    })
+
+    expect(recovered.balance.currentBalance).toBe(122000)
+    expect(recovered.balance.lastUpdatedAt).toEqual(new Date('2026-06-10T00:00:00Z'))
+  })
+
+  it('非アクティブ口座へは反映できない（applySmbcBalanceChange の不変条件を引き継ぐ）', () => {
+    const inactive = AccountSchema.parse({
+      kind: 'smbc_bank',
+      common: {
+        ...baseCommon,
+        activeness: { kind: 'inactive', inactivatedAt: new Date('2026-05-01'), reason: '解約済み' },
+      },
+      balance: {
+        currentBalance: 100000 as never,
+        initialBalance: 100000 as never,
+        initialBalanceBaselineAt: new Date('2026-04-01'),
+        lastUpdatedAt: new Date('2026-04-01'),
+      },
+    }) as SmbcBankAccount
+
+    expect(() =>
+      applyUnpaidSettlementToSmbcBalance(inactive, {
+        settlementNoticeId: NOTICE,
+        settledTotal: 8000 as never,
+        at,
+      }),
+    ).toThrow(InvariantViolationError)
   })
 })
