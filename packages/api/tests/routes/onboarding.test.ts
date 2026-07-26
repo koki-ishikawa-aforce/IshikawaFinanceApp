@@ -1,15 +1,23 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   AccountIdSchema,
   AccountSchema,
   BankNameSchema,
   BrokerageNameSchema,
   UserIdSchema,
+  lineOperationSettingsOf,
   money,
   registerNisaAccount,
   registerOtherSavingsAccount,
 } from '@warimaru/domain'
-import type { AppUser, SharedTalkRoom, UserId } from '@warimaru/domain'
+import type {
+  AppUser,
+  LineFriendAdded,
+  LineFriendshipGateway,
+  LineFriendshipStatus,
+  SharedTalkRoom,
+  UserId,
+} from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, SPOUSE_ID, VIEWER_ID } from '../helpers/test-app.js'
 
@@ -34,6 +42,38 @@ async function register(t: TestApp, viewerId = VIEWER_ID, nickname?: string): Pr
     viewerId,
     body: nickname !== undefined ? { nickname } : {},
   })
+}
+
+/** 友だち状態照会のスタブ。呼び出された userId を記録し、照会しないことも検証できるようにする */
+function stubFriendshipGateway(respond: () => Promise<LineFriendshipStatus>): {
+  gateway: LineFriendshipGateway
+  calls: UserId[]
+} {
+  const calls: UserId[] = []
+  return {
+    gateway: {
+      checkFriendship(userId: UserId): Promise<LineFriendshipStatus> {
+        calls.push(userId)
+        return respond()
+      },
+    },
+    calls,
+  }
+}
+
+function subscribeFriendAdded(t: TestApp): LineFriendAdded[] {
+  const log: LineFriendAdded[] = []
+  t.deps.eventBus.subscribe<LineFriendAdded>('LineFriendAdded', e => {
+    log.push(e)
+    return Promise.resolve()
+  })
+  return log
+}
+
+async function friendAddKindOf(t: TestApp, userId: UserId = VIEWER_ID): Promise<string> {
+  const user = await t.deps.appUserRepository.findById(userId)
+  expect(user).not.toBeNull()
+  return lineOperationSettingsOf(user!).friendAdd.kind
 }
 
 /** Phase1 完了 → Phase2 進行中まで進める */
@@ -154,6 +194,152 @@ describe('POST /api/onboarding/register', () => {
     const t = createTestApp()
     const res = await register(t, UserIdSchema.parse('user-stranger'))
     expect(res.status).toBe(403)
+  })
+})
+
+/**
+ * 登録前に友だち追加していた場合、その follow Webhook は宛先ユーザーが未登録のため破棄される
+ * （OQ-55 ③）。自己申告 API も廃止されるため、登録時の照会が唯一の拾い直し経路になる。
+ */
+describe('POST /api/onboarding/register — 登録時の LINE 友だち状態照会（OQ-55 ③）', () => {
+  it('登録前に友だち追加済みなら、登録完了時点で友だち追加として記録される', async () => {
+    const stub = stubFriendshipGateway(() => Promise.resolve({ kind: 'friend' }))
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+
+    const before = Date.now()
+    const res = await register(t)
+    const after = Date.now()
+
+    expect(res.status).toBe(201)
+    const friendAdd = (await json<{ user: AppUser }>(res)).user.common.lineOperationSettings
+      ?.friendAdd
+    expect(friendAdd?.kind).toBe('added')
+    // Webhook 由来ではなく登録時刻が入る（follow を受信していないため）
+    const recordedAt = new Date(
+      friendAdd?.kind === 'added' ? (friendAdd.followWebhookReceivedAt as unknown as string) : 0,
+    ).getTime()
+    expect(recordedAt).toBeGreaterThanOrEqual(before)
+    expect(recordedAt).toBeLessThanOrEqual(after)
+
+    expect(stub.calls).toEqual([VIEWER_ID])
+    expect(await friendAddKindOf(t)).toBe('added')
+    expect(events).toHaveLength(1)
+    expect(events[0]?.userId).toBe(VIEWER_ID)
+  })
+
+  it('友だちでない場合は記録されず、登録は正常に完了する', async () => {
+    const stub = stubFriendshipGateway(() => Promise.resolve({ kind: 'not_friend' }))
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+
+    const res = await register(t)
+    expect(res.status).toBe(201)
+    // 「照会して友だちでなかった」ことを固定する（照会自体をやめても通る形にしない）
+    expect(stub.calls).toEqual([VIEWER_ID])
+    expect(await friendAddKindOf(t)).toBe('not_added')
+    expect(events).toHaveLength(0)
+  })
+
+  it('照会に失敗（unknown）しても登録は成功し、失敗はログに残る', async () => {
+    const stub = stubFriendshipGateway(() =>
+      Promise.resolve({ kind: 'unknown', detail: 'LINE profile API 500' }),
+    )
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const res = await register(t)
+      expect(res.status).toBe(201)
+      expect(await friendAddKindOf(t)).toBe('not_added')
+      expect(events).toHaveLength(0)
+      // 無言の握りつぶしと区別する（失敗の理由がログに出ること）
+      expect(logged).toHaveBeenCalledTimes(1)
+      expect(String(logged.mock.calls[0]?.[0])).toContain('LINE profile API 500')
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('照会が例外を投げても登録は成功する', async () => {
+    const stub = stubFriendshipGateway(() => Promise.reject(new Error('boom')))
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const res = await register(t)
+      expect(res.status).toBe(201)
+      expect((await json<{ user: AppUser }>(res)).user.kind).toBe('phase1_completed')
+      expect(await friendAddKindOf(t)).toBe('not_added')
+      expect(logged).toHaveBeenCalledTimes(1)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('記録の保存に失敗しても登録は成功する（登録は既に永続化されているため巻き戻さない）', async () => {
+    const stub = stubFriendshipGateway(() => Promise.resolve({ kind: 'friend' }))
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+    const original = t.deps.appUserRepository.save.bind(t.deps.appUserRepository)
+    let saves = 0
+    t.deps.appUserRepository.save = (user: AppUser): Promise<void> => {
+      saves += 1
+      // 1 回目 = 登録そのもの、2 回目 = 友だち追加の記録
+      return saves === 1 ? original(user) : Promise.reject(new Error('save failed'))
+    }
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const res = await register(t)
+      expect(res.status).toBe(201)
+      // 記録の保存が実際に試みられて失敗したことを固定する（未実行でも通る形にしない）
+      expect(saves).toBe(2)
+      expect(await friendAddKindOf(t)).toBe('not_added')
+      expect(events).toHaveLength(0)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('照会に失敗した回は、次の登録要求（冪等な 200）で再照会して回復する', async () => {
+    // follow Webhook は友だち追加の瞬間にしか発生しないため、この再照会が唯一の回復経路になる
+    const responses: LineFriendshipStatus[] = [
+      { kind: 'unknown', detail: 'LINE profile API 500' },
+      { kind: 'friend' },
+    ]
+    const stub = stubFriendshipGateway(() =>
+      Promise.resolve(responses.shift() ?? { kind: 'not_friend' }),
+    )
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      expect((await register(t)).status).toBe(201)
+      expect(await friendAddKindOf(t)).toBe('not_added')
+
+      const retry = await register(t)
+      expect(retry.status).toBe(200)
+      expect(
+        (await json<{ user: AppUser }>(retry)).user.common.lineOperationSettings?.friendAdd.kind,
+      ).toBe('added')
+      expect(stub.calls).toEqual([VIEWER_ID, VIEWER_ID])
+      expect(await friendAddKindOf(t)).toBe('added')
+      expect(events).toHaveLength(1)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('友だち追加が記録済みなら、以後の登録要求では照会しない', async () => {
+    const stub = stubFriendshipGateway(() => Promise.resolve({ kind: 'friend' }))
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+
+    expect((await register(t)).status).toBe(201)
+    expect((await register(t)).status).toBe(200)
+    expect(stub.calls).toEqual([VIEWER_ID])
   })
 })
 

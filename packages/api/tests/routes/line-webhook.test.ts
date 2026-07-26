@@ -5,7 +5,12 @@
 import { describe, it, expect } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { UserIdSchema, joinedTalkRoomIdOf, lineOperationSettingsOf } from '@warimaru/domain'
-import type { LineFriendAdded, LineTalkRoomJoined, UserId } from '@warimaru/domain'
+import type {
+  LineFriendAdded,
+  LineFriendshipStatus,
+  LineTalkRoomJoined,
+  UserId,
+} from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp as baseCreateTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
 import type { AppDeps } from '../../src/composition-root.js'
@@ -102,6 +107,14 @@ async function friendAddKindOf(t: TestApp, userId: UserId = VIEWER_ID): Promise<
   const user = await t.deps.appUserRepository.findById(userId)
   expect(user).not.toBeNull()
   return lineOperationSettingsOf(user!).friendAdd.kind
+}
+
+/** 記録された友だち追加日時（未記録なら null）。上書きが起きていないことの確認に使う */
+async function friendAddedAtOf(t: TestApp, userId: UserId = VIEWER_ID): Promise<Date | null> {
+  const user = await t.deps.appUserRepository.findById(userId)
+  expect(user).not.toBeNull()
+  const friendAdd = lineOperationSettingsOf(user!).friendAdd
+  return friendAdd.kind === 'added' ? friendAdd.followWebhookReceivedAt : null
 }
 
 describe('POST /webhook/line — 署名検証', () => {
@@ -207,6 +220,60 @@ describe('POST /webhook/line — follow（友だち追加）', () => {
 
     expect(await friendAddKindOf(t)).toBe('added')
     expect(log).toHaveLength(1)
+  })
+
+  it('登録前の follow は破棄され、登録完了時の友だち状態照会が1回だけ拾い直す（#297 / OQ-55 ③）', async () => {
+    const t = createTestApp({
+      lineFriendshipGateway: {
+        checkFriendship: (): Promise<LineFriendshipStatus> => Promise.resolve({ kind: 'friend' }),
+      },
+    })
+    const log = subscribeFriendAdded(t)
+
+    // 登録前に届いた follow は宛先ユーザーが居らず破棄される
+    expect((await postWebhook(t, followPayload(VIEWER_ID))).status).toBe(200)
+    expect(await t.deps.appUserRepository.findById(VIEWER_ID)).toBeNull()
+    expect(log).toHaveLength(0)
+
+    // 登録完了時の照会で拾い直す
+    await register(t)
+    expect(await friendAddKindOf(t)).toBe('added')
+    expect(log).toHaveLength(1)
+    const recordedAt = await friendAddedAtOf(t)
+
+    // 拾い直した後に follow が再送されても二重記録・二重発行にならない（記録日時も動かない）
+    expect((await postWebhook(t, followPayload(VIEWER_ID))).status).toBe(200)
+    expect(log).toHaveLength(1)
+    expect(await friendAddKindOf(t)).toBe('added')
+    expect(await friendAddedAtOf(t)).toEqual(recordedAt)
+  })
+
+  it('照会の待ち時間中に follow が届いても二重記録・二重発行にならない（#297）', async () => {
+    // 二重記録が実際に起こりうるのはこの順序。照会前に読んだスナップショットへ適用すると
+    // recordLineFriendAdded の冪等判定が効かず、再保存と LineFriendAdded の二重発行になる。
+    // 登録の保存は照会より前に済んでいるため、照会中の follow は宛先を見つけて記録できる
+    const ref: { app?: TestApp } = {}
+    const t = createTestApp({
+      lineFriendshipGateway: {
+        checkFriendship: async (): Promise<LineFriendshipStatus> => {
+          const running = ref.app
+          if (running !== undefined) {
+            expect((await postWebhook(running, followPayload(VIEWER_ID))).status).toBe(200)
+          }
+          return { kind: 'friend' }
+        },
+      },
+    })
+    ref.app = t
+    const log = subscribeFriendAdded(t)
+
+    const res = await request(t.app, 'POST', '/api/onboarding/register', { body: {} })
+
+    expect(res.status).toBe(201)
+    expect(await friendAddKindOf(t)).toBe('added')
+    // Webhook 側が記録した 1 件だけが残り、登録時刻での上書きも起きない
+    expect(log).toHaveLength(1)
+    expect(await friendAddedAtOf(t)).toEqual(log[0]?.receivedAt)
   })
 })
 
