@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import { ZodError } from 'zod'
 import {
   AccountSchema,
+  BALANCE_INPUT_LIMIT,
+  addNisaContributionBySmbcTransfer,
+  addOtherSavingsBySmbcTransfer,
   applyOtherSavingsBalanceChange,
   applyOtherSavingsMovement,
   applySmbcBalanceChange,
@@ -9,8 +13,13 @@ import {
   asOtherSavingsAccount,
   changeBankName,
   changeBrokerageName,
+  correctInitialBalance,
+  correctOtherSavingsBalance,
+  inactivateAccount,
   registerNisaAccount,
   registerOtherSavingsAccount,
+  withdrawOtherSavings,
+  type Account,
   type NisaAccount,
   type OtherSavingsAccount,
   type SmbcBankAccount,
@@ -553,6 +562,524 @@ describe('applyUnpaidSettlementToSmbcBalance()', () => {
         settlementNoticeId: NOTICE,
         settledTotal: 8000 as never,
         at,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+})
+
+// --- #397: 残高の手動操作（取り崩し・手動補正・初期残高の後修正・非アクティブ化） ---
+
+const OWNER = 'user_honey' as never
+const SPOUSE = 'user_darling' as never
+const AT = new Date('2026-07-20T00:00:00Z')
+
+function otherSavings(
+  overrides: { currentBalance?: number; initialBalance?: number; inactive?: boolean } = {},
+): OtherSavingsAccount {
+  return AccountSchema.parse({
+    kind: 'other_savings',
+    common: {
+      ...baseCommon,
+      activeness: overrides.inactive
+        ? { kind: 'inactive', inactivatedAt: new Date('2026-05-01'), reason: '解約済み' }
+        : { kind: 'active' },
+    },
+    bankName: '楽天銀行' as never,
+    balance: {
+      currentBalance: (overrides.currentBalance ?? 500000) as never,
+      initialBalance: (overrides.initialBalance ?? 400000) as never,
+      initialBalanceBaselineAt: new Date('2026-04-01'),
+      lastUpdatedAt: new Date('2026-04-01'),
+    },
+    freshnessSource: { lastUpdatedAt: new Date('2026-04-01') },
+  }) as OtherSavingsAccount
+}
+
+function nisa(
+  overrides: {
+    currentAccumulated?: number
+    initialAccumulated?: number
+    inactive?: boolean
+  } = {},
+): NisaAccount {
+  return AccountSchema.parse({
+    kind: 'nisa',
+    common: {
+      ...baseCommon,
+      activeness: overrides.inactive
+        ? { kind: 'inactive', inactivatedAt: new Date('2026-05-01'), reason: '解約済み' }
+        : { kind: 'active' },
+    },
+    brokerageName: { kind: 'sbi' },
+    contribution: {
+      currentAccumulated: (overrides.currentAccumulated ?? 300000) as never,
+      initialAccumulated: (overrides.initialAccumulated ?? 100000) as never,
+      initialAccumulatedBaselineAt: new Date('2026-04-01'),
+      lastUpdatedAt: new Date('2026-04-01'),
+    },
+  }) as NisaAccount
+}
+
+function smbcBank(
+  overrides: { currentBalance?: number; initialBalance?: number } = {},
+): SmbcBankAccount {
+  return AccountSchema.parse({
+    kind: 'smbc_bank',
+    common: baseCommon,
+    balance: {
+      currentBalance: (overrides.currentBalance ?? 300000) as never,
+      initialBalance: (overrides.initialBalance ?? 250000) as never,
+      initialBalanceBaselineAt: new Date('2026-04-01'),
+      lastUpdatedAt: new Date('2026-04-01'),
+    },
+  }) as SmbcBankAccount
+}
+
+function card(): Account {
+  return AccountSchema.parse({
+    kind: 'mitsui_sumitomo_card',
+    common: baseCommon,
+    unpaidAggregateRef: '01NP0000000000000000000001' as never,
+  })
+}
+
+describe('addOtherSavingsBySmbcTransfer()', () => {
+  it('振込額だけ残高を加算し、最終更新日時・鮮度根拠を進める', () => {
+    const updated = addOtherSavingsBySmbcTransfer(otherSavings(), {
+      amount: 50000 as never,
+      at: AT,
+    })
+    expect(updated.balance.currentBalance).toBe(550000)
+    expect(updated.balance.lastUpdatedAt).toEqual(AT)
+    expect(updated.freshnessSource.lastUpdatedAt).toEqual(AT)
+  })
+
+  it('初期残高・基準時刻は変更されない', () => {
+    const updated = addOtherSavingsBySmbcTransfer(otherSavings(), {
+      amount: 50000 as never,
+      at: AT,
+    })
+    expect(updated.balance.initialBalance).toBe(400000)
+    expect(updated.balance.initialBalanceBaselineAt).toEqual(new Date('2026-04-01'))
+  })
+
+  it('0 円・負の金額は加算できない', () => {
+    expect(() =>
+      addOtherSavingsBySmbcTransfer(otherSavings(), { amount: 0 as never, at: AT }),
+    ).toThrow(ZodError)
+    expect(() =>
+      addOtherSavingsBySmbcTransfer(otherSavings(), { amount: -1 as never, at: AT }),
+    ).toThrow(ZodError)
+  })
+
+  it('非アクティブ口座へは加算できない（09-aggregates #9）', () => {
+    expect(() =>
+      addOtherSavingsBySmbcTransfer(otherSavings({ inactive: true }), {
+        amount: 50000 as never,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('withdrawOtherSavings()', () => {
+  it('取り崩し額だけ残高を減算し、鮮度根拠を進める', () => {
+    const updated = withdrawOtherSavings(otherSavings(), {
+      amount: 120000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.balance.currentBalance).toBe(380000)
+    expect(updated.freshnessSource.lastUpdatedAt).toEqual(AT)
+  })
+
+  it('残高ちょうどまでは取り崩せる（境界値）', () => {
+    const updated = withdrawOtherSavings(otherSavings({ currentBalance: 500000 }), {
+      amount: 500000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.balance.currentBalance).toBe(0)
+  })
+
+  it('残高を 1 円でも超える取り崩しは InvariantViolationError（負残高にしない）', () => {
+    expect(() =>
+      withdrawOtherSavings(otherSavings({ currentBalance: 500000 }), {
+        amount: 500001 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('配偶者は取り崩しを記録できない（PermissionDeniedError）', () => {
+    expect(() =>
+      withdrawOtherSavings(otherSavings(), {
+        amount: 1000 as never,
+        operatorUserId: SPOUSE,
+        at: AT,
+      }),
+    ).toThrow(PermissionDeniedError)
+  })
+
+  it('0 円・負の金額は取り崩せない', () => {
+    expect(() =>
+      withdrawOtherSavings(otherSavings(), { amount: 0 as never, operatorUserId: OWNER, at: AT }),
+    ).toThrow(ZodError)
+    expect(() =>
+      withdrawOtherSavings(otherSavings(), { amount: -1 as never, operatorUserId: OWNER, at: AT }),
+    ).toThrow(ZodError)
+  })
+
+  it('上限を超える金額は取り崩せない', () => {
+    expect(() =>
+      withdrawOtherSavings(otherSavings(), {
+        amount: (BALANCE_INPUT_LIMIT + 1) as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(ZodError)
+  })
+
+  it('非アクティブ口座からは取り崩せない', () => {
+    expect(() =>
+      withdrawOtherSavings(otherSavings({ inactive: true }), {
+        amount: 1000 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('correctOtherSavingsBalance()', () => {
+  it('差分ではなく実際の残高へ差し替える', () => {
+    const updated = correctOtherSavingsBalance(otherSavings({ currentBalance: 500000 }), {
+      correctedBalance: 432100 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.balance.currentBalance).toBe(432100)
+    expect(updated.balance.lastUpdatedAt).toEqual(AT)
+    expect(updated.freshnessSource.lastUpdatedAt).toEqual(AT)
+  })
+
+  it('0 円への補正はできる（口座を使い切った状態、境界値）', () => {
+    const updated = correctOtherSavingsBalance(otherSavings(), {
+      correctedBalance: 0 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.balance.currentBalance).toBe(0)
+  })
+
+  it('負の残高へは補正できない（InvariantViolationError）', () => {
+    expect(() =>
+      correctOtherSavingsBalance(otherSavings(), {
+        correctedBalance: -1 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('上限を超える残高へは補正できない', () => {
+    expect(() =>
+      correctOtherSavingsBalance(otherSavings(), {
+        correctedBalance: (BALANCE_INPUT_LIMIT + 1) as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(ZodError)
+  })
+
+  it('配偶者は補正できない（PermissionDeniedError）', () => {
+    expect(() =>
+      correctOtherSavingsBalance(otherSavings(), {
+        correctedBalance: 1 as never,
+        operatorUserId: SPOUSE,
+        at: AT,
+      }),
+    ).toThrow(PermissionDeniedError)
+  })
+
+  it('非アクティブ口座は補正できない（09-aggregates #9）', () => {
+    expect(() =>
+      correctOtherSavingsBalance(otherSavings({ inactive: true }), {
+        correctedBalance: 1 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('addNisaContributionBySmbcTransfer()', () => {
+  it('積立額だけ累計を加算し、最終更新日時を進める', () => {
+    const updated = addNisaContributionBySmbcTransfer(nisa(), { amount: 33333 as never, at: AT })
+    expect(updated.contribution.currentAccumulated).toBe(333333)
+    expect(updated.contribution.lastUpdatedAt).toEqual(AT)
+    expect(updated.contribution.initialAccumulated).toBe(100000)
+  })
+
+  it('0 円・負の金額は加算できない', () => {
+    expect(() => addNisaContributionBySmbcTransfer(nisa(), { amount: 0 as never, at: AT })).toThrow(
+      ZodError,
+    )
+    expect(() =>
+      addNisaContributionBySmbcTransfer(nisa(), { amount: -1 as never, at: AT }),
+    ).toThrow(ZodError)
+  })
+
+  it('上限を超える金額は加算できない', () => {
+    expect(() =>
+      addNisaContributionBySmbcTransfer(nisa(), {
+        amount: (BALANCE_INPUT_LIMIT + 1) as never,
+        at: AT,
+      }),
+    ).toThrow(ZodError)
+  })
+
+  it('非アクティブ口座へは加算できない（09-aggregates #9）', () => {
+    expect(() =>
+      addNisaContributionBySmbcTransfer(nisa({ inactive: true }), {
+        amount: 1000 as never,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('correctInitialBalance()', () => {
+  it('別銀行貯蓄: 初期残高の差分だけ現在残高もずれる（以降の変動は保たれる）', () => {
+    // 初期 400000 + 以降の変動 +100000 = 現在 500000。初期を 450000 に直すと現在は 550000
+    const { account: updated, oldInitialBalance } = correctInitialBalance(otherSavings(), {
+      initialBalance: 450000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(oldInitialBalance).toBe(400000)
+    if (updated.kind !== 'other_savings') throw new Error('unreachable')
+    expect(updated.balance.initialBalance).toBe(450000)
+    expect(updated.balance.currentBalance).toBe(550000)
+    expect(updated.freshnessSource.lastUpdatedAt).toEqual(AT)
+  })
+
+  it('初期残高基準時刻は巻き直さない（いつ時点の残高かの記録、論点9）', () => {
+    const { account: updated } = correctInitialBalance(otherSavings(), {
+      initialBalance: 450000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    if (updated.kind !== 'other_savings') throw new Error('unreachable')
+    expect(updated.balance.initialBalanceBaselineAt).toEqual(new Date('2026-04-01'))
+  })
+
+  it('NISA: 初期累計の差分だけ現在累計もずれる', () => {
+    const { account: updated, oldInitialBalance } = correctInitialBalance(nisa(), {
+      initialBalance: 80000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(oldInitialBalance).toBe(100000)
+    if (updated.kind !== 'nisa') throw new Error('unreachable')
+    expect(updated.contribution.initialAccumulated).toBe(80000)
+    expect(updated.contribution.currentAccumulated).toBe(280000)
+  })
+
+  it('SMBC 銀行: 初期残高の差分だけ現在残高もずれる', () => {
+    const { account: updated, oldInitialBalance } = correctInitialBalance(smbcBank(), {
+      initialBalance: 200000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(oldInitialBalance).toBe(250000)
+    if (updated.kind !== 'smbc_bank') throw new Error('unreachable')
+    expect(updated.balance.initialBalance).toBe(200000)
+    expect(updated.balance.currentBalance).toBe(250000)
+  })
+
+  it('SMBC 銀行は現在残高が負になる修正も通す（通知由来の変動と同じ扱い）', () => {
+    // 引落が入金より先に届けば一時的に負になりうるため、SMBC だけ非負を課さない。
+    // 「一貫性のため」と非負チェックを足すとこのテストが落ちて意図に気づける
+    const { account: updated } = correctInitialBalance(
+      smbcBank({ currentBalance: 100000, initialBalance: 250000 }),
+      { initialBalance: 0 as never, operatorUserId: OWNER, at: AT },
+    )
+    if (updated.kind !== 'smbc_bank') throw new Error('unreachable')
+    expect(updated.balance.currentBalance).toBe(-150000)
+  })
+
+  it('別銀行貯蓄: 修正で現在残高が負になる場合は InvariantViolationError', () => {
+    // 現在 50000 / 初期 400000 → 初期を 0 にすると現在は -350000
+    expect(() =>
+      correctInitialBalance(otherSavings({ currentBalance: 50000, initialBalance: 400000 }), {
+        initialBalance: 0 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('別銀行貯蓄: 現在残高がちょうど 0 になる修正は通る（境界値）', () => {
+    const { account: updated } = correctInitialBalance(
+      otherSavings({ currentBalance: 50000, initialBalance: 400000 }),
+      { initialBalance: 350000 as never, operatorUserId: OWNER, at: AT },
+    )
+    if (updated.kind !== 'other_savings') throw new Error('unreachable')
+    expect(updated.balance.currentBalance).toBe(0)
+  })
+
+  it('NISA: 修正で積立累計が負になる場合は InvariantViolationError', () => {
+    // 現在 50000 / 初期累計 100000 → 初期を 0 にすると現在は -50000
+    expect(() =>
+      correctInitialBalance(nisa({ currentAccumulated: 50000, initialAccumulated: 100000 }), {
+        initialBalance: 0 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('負の初期残高には修正できない', () => {
+    expect(() =>
+      correctInitialBalance(otherSavings(), {
+        initialBalance: -1 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('上限を超える初期残高には修正できない', () => {
+    expect(() =>
+      correctInitialBalance(otherSavings(), {
+        initialBalance: (BALANCE_INPUT_LIMIT + 1) as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(ZodError)
+  })
+
+  it('配偶者は修正できない（PermissionDeniedError）', () => {
+    expect(() =>
+      correctInitialBalance(otherSavings(), {
+        initialBalance: 1 as never,
+        operatorUserId: SPOUSE,
+        at: AT,
+      }),
+    ).toThrow(PermissionDeniedError)
+  })
+
+  it('三井住友カードは初期残高を持たないため修正できない', () => {
+    expect(() =>
+      correctInitialBalance(card(), { initialBalance: 0 as never, operatorUserId: OWNER, at: AT }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('非アクティブ口座は修正できない', () => {
+    expect(() =>
+      correctInitialBalance(otherSavings({ inactive: true }), {
+        initialBalance: 1 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('inactivateAccount()', () => {
+  it('非アクティブ状態・理由・日時が記録される', () => {
+    const updated = inactivateAccount(otherSavings(), {
+      reason: '解約したため',
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.common.activeness).toEqual({
+      kind: 'inactive',
+      inactivatedAt: AT,
+      reason: '解約したため',
+    })
+  })
+
+  it('NISA 口座も非アクティブ化できる', () => {
+    const updated = inactivateAccount(nisa(), {
+      reason: '口座を移管したため',
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.common.activeness.kind).toBe('inactive')
+  })
+
+  it('残高はそのまま残る（過去の資産推移の根拠を消さない）', () => {
+    const updated = inactivateAccount(otherSavings({ currentBalance: 500000 }), {
+      reason: '解約したため',
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    if (updated.kind !== 'other_savings') throw new Error('unreachable')
+    expect(updated.balance.currentBalance).toBe(500000)
+  })
+
+  it('非アクティブ化後は残高変動を受け付けない', () => {
+    const inactive = inactivateAccount(otherSavings(), {
+      reason: '解約したため',
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    if (inactive.kind !== 'other_savings') throw new Error('unreachable')
+    expect(() =>
+      withdrawOtherSavings(inactive, { amount: 1 as never, operatorUserId: OWNER, at: AT }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('配偶者は非アクティブ化できない（PermissionDeniedError）', () => {
+    expect(() =>
+      inactivateAccount(otherSavings(), {
+        reason: '乗っ取り',
+        operatorUserId: SPOUSE,
+        at: AT,
+      }),
+    ).toThrow(PermissionDeniedError)
+  })
+
+  it('SMBC 銀行・三井住友カードは非アクティブ化できない（取込基盤が管理する口座）', () => {
+    // 閉じると引落消込の残高反映が毎回落ち、消込済み・残高未反映から回復できなくなる
+    expect(() =>
+      inactivateAccount(smbcBank(), { reason: '解約', operatorUserId: OWNER, at: AT }),
+    ).toThrow(InvariantViolationError)
+    expect(() =>
+      inactivateAccount(card(), { reason: '解約', operatorUserId: OWNER, at: AT }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('空の理由では非アクティブ化できない', () => {
+    expect(() =>
+      inactivateAccount(otherSavings(), { reason: '', operatorUserId: OWNER, at: AT }),
+    ).toThrow(ZodError)
+  })
+
+  it('上限を超える長さの理由では非アクティブ化できない', () => {
+    expect(() =>
+      inactivateAccount(otherSavings(), {
+        reason: 'あ'.repeat(101),
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(ZodError)
+  })
+
+  it('既に非アクティブな口座の再実行は InvariantViolationError（最初に閉じた記録を上書きしない）', () => {
+    const inactive = inactivateAccount(otherSavings(), {
+      reason: '解約したため',
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(() =>
+      inactivateAccount(inactive, {
+        reason: '別の理由',
+        operatorUserId: OWNER,
+        at: new Date('2026-08-01'),
       }),
     ).toThrow(InvariantViolationError)
   })
