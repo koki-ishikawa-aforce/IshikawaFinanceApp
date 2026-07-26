@@ -17,7 +17,7 @@ Bash は `git diff` / `git log` / `git show` 等の読み取り用途にのみ�
 
 ## レビュー観点(これ以外は指摘しない)
 
-1. **依存の向き**: `packages/domain` が zod・自パッケージ以外を import していないか。adapters-neon / api / web から domain への依存は正、逆は違反
+1. **依存の向き**: `packages/domain` が zod・自パッケージ以外を import していないか。adapters-postgres / api / web から domain への依存は正、逆は違反
 2. **不変条件の置き場所**: ビジネスルールが Zod スキーマ(`superRefine`)やドメイン関数ではなく adapters / api 層に書かれていないか
 3. **命名規約**: `Neon*Repository` / `Neon*Query` 規約、ドメインイベント名は過去形、`packages/domain/README.md` の規約との整合
 4. **ユビキタス言語**: 新しい型・関数・変数名が該当コンテキストのユビキタス言語(`docs/domain/08*`)と一致しているか。勝手な同義語を作っていないか

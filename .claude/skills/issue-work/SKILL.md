@@ -52,7 +52,7 @@ gh issue edit <番号> --add-label "status:in-progress"
 ## 3. 計画と実装
 
 - 変更対象ファイルを列挙してから着手する
-- 依存の向きに沿って `domain → adapters-neon → api → web` の順に実装する
+- 依存の向きに沿って `domain → adapters-postgres → api → web` の順に実装する
 - テストは実装と同時に書く。**集約の状態遷移・不変条件のテストは必須**
 - 命名は `packages/domain/README.md` とユビキタス言語に従う
 
@@ -60,7 +60,7 @@ gh issue edit <番号> --add-label "status:in-progress"
 
 `/verify` の手順を全 green になるまで繰り返す。green になるまで次工程に進まない。
 
-`/verify` の実行判定に該当する変更(`packages/domain` の振る舞い、または `packages/adapters-neon`)がある場合は、**統合テストまで green にする**(`pnpm test` は統合テストを含まないため、これを省くと CI で初めて赤が判明する)。実行方法とフォールバックは `/verify` の「統合テスト」節に従う。
+`/verify` の実行判定に該当する変更(`packages/domain` の振る舞い、または `packages/adapters-postgres`)がある場合は、**統合テストまで green にする**(`pnpm test` は統合テストを含まないため、これを省くと CI で初めて赤が判明する)。実行方法とフォールバックは `/verify` の「統合テスト」節に従う。
 
 ## 5. DDD レビュー・UI レビュー
 

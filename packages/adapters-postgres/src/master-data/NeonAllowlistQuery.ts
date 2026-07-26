@@ -4,7 +4,7 @@
  *
  * phase0_configs の payload はパス参照のみ保持するため（OQ-27）、
  * 実 LINE userID の解決は注入された ResolveParameterStoreValue が行う
- * （実 SSM 実装は application 層の責務、adapters-neon は AWS SDK 非依存）。
+ * （実 SSM 実装は application 層の責務、adapters-postgres は AWS SDK 非依存）。
  */
 import type { Allowlist, AllowlistQuery } from '@warimaru/domain'
 import { AllowlistSchema, NotFoundError, Phase0ConfigSchema } from '@warimaru/domain'

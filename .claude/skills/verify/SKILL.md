@@ -24,16 +24,16 @@ CI(`.github/workflows/ci.yml`)と同一のチェックをローカルで全 gree
 
 ## 統合テスト(条件付き)
 
-`pnpm test` は各パッケージの `vitest run` で、adapters-neon の統合テスト(`test:integration`・別 config・要 PostgreSQL)を**含まない**。CI(`.github/workflows/ci.yml`)は別ステップで必ず実行するため、ローカル `pnpm test` が全 green でも CI が赤になりうる。以下の実行判定に該当したら、この節の統合テストまで green にして初めて「実装完了」とみなす。
+`pnpm test` は各パッケージの `vitest run` で、adapters-postgres の統合テスト(`test:integration`・別 config・要 PostgreSQL)を**含まない**。CI(`.github/workflows/ci.yml`)は別ステップで必ず実行するため、ローカル `pnpm test` が全 green でも CI が赤になりうる。以下の実行判定に該当したら、この節の統合テストまで green にして初めて「実装完了」とみなす。
 
 ### 実行判定(いつ走らせるか)
 
 次の**いずれか**に変更がある場合に実行する:
 
-- `packages/adapters-neon` の `src/`(特に `src/schema/`)や `drizzle/`
+- `packages/adapters-postgres` の `src/`(特に `src/schema/`)や `drizzle/`
 - `packages/domain`(集約・value object・Query 契約・プライバシーフィルタなどの**振る舞い**)
 
-理由: 統合テストは `NeonTransactionListQuery` などの実装だけでなく、**domain 層のプライバシー/Query 挙動**を通しで検証する。domain の振る舞いを変えると adapters-neon の実装ファイルを一切触らなくても統合テストが壊れることがある(実例: `applyPrivacyFilter` の変更で `transactionListQuery.test.ts` が失敗)。判定を「adapters-neon の変更」だけに閉じると、この種の回帰を取りこぼす。迷ったら実行する。
+理由: 統合テストは `NeonTransactionListQuery` などの実装だけでなく、**domain 層のプライバシー/Query 挙動**を通しで検証する。domain の振る舞いを変えると adapters-postgres の実装ファイルを一切触らなくても統合テストが壊れることがある(実例: `applyPrivacyFilter` の変更で `transactionListQuery.test.ts` が失敗)。判定を「adapters-postgres の変更」だけに閉じると、この種の回帰を取りこぼす。迷ったら実行する。
 
 ### 実行方法
 
@@ -42,7 +42,7 @@ CI(`.github/workflows/ci.yml`)と同一のチェックをローカルで全 gree
 ```bash
 docker compose up -d db
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
-  pnpm --filter @warimaru/adapters-neon test:integration
+  pnpm --filter @warimaru/adapters-postgres test:integration
 ```
 
 DB の状態が怪しいときは `docker compose down && docker compose up -d db` でリセットする。
@@ -60,7 +60,7 @@ sudo -u postgres "$PGBIN/pg_ctl" -D "$PGDATA" -o "-p 5432" -l /tmp/warimaru_pg.l
 sudo -u postgres "$PGBIN/createdb" -p 5432 warimaru_test
 
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
-  pnpm --filter @warimaru/adapters-neon test:integration
+  pnpm --filter @warimaru/adapters-postgres test:integration
 ```
 
 `sudo -u postgres` が使えない/バイナリのパスが違う場合は環境に合わせて読み替える。docker もローカルバイナリも使えず統合テストをどうしても実行できないときは、その事実を隠さず報告する(無人モードでは「CI で初めて検証される未確認の変更」として扱い、手順6 の CI 確認を必須とする)。

@@ -1,5 +1,5 @@
 {
-  "name": "@warimaru/adapters-neon",
+  "name": "@warimaru/adapters-postgres",
   "version": "0.1.0",
   "private": true,
   "type": "module",

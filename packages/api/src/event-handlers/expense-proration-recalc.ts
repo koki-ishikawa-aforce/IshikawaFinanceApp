@@ -26,7 +26,7 @@ import type {
   ExpenseTypeId,
   YearMonth,
 } from '@warimaru/domain'
-import { newUlid } from '@warimaru/adapters-neon'
+import { newUlid } from '@warimaru/adapters-postgres'
 import { safeSubscribe } from './safe-subscribe.js'
 
 export interface ExpenseProrationRecalcHandlerDeps {

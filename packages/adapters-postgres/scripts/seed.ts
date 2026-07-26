@@ -5,8 +5,8 @@
  * --with-dev-fixtures を明示したときだけ投入する。既定を安全側に置くことで、
  * 本番 DB に対して誤って実行してもテスト用の取引が入らない（#322）。
  *
- *   pnpm --filter @warimaru/adapters-neon db:seed       規定マスタのみ
- *   pnpm --filter @warimaru/adapters-neon db:seed:dev   規定マスタ + 開発フィクスチャ
+ *   pnpm --filter @warimaru/adapters-postgres db:seed       規定マスタのみ
+ *   pnpm --filter @warimaru/adapters-postgres db:seed:dev   規定マスタ + 開発フィクスチャ
  *
  * 冪等: どちらのモードも upsert のみで、2 回連続実行しても結果は同じ。
  */
@@ -36,7 +36,8 @@ if (withDevFixtures && isProduction) {
 }
 
 // 接続先が Neon なら neon-http、ローカルの素の PostgreSQL なら node-postgres (#323)
-const connection = createDbConnection({
+// node-postgres を選んだときだけ pg を読み込むため、接続ファクトリは非同期 (#349)
+const connection = await createDbConnection({
   databaseUrl: DATABASE_URL,
   isProduction,
   driverOverride: process.env['DATABASE_DRIVER'],

@@ -23,7 +23,7 @@ function listTypeScriptFiles(dir: string): string[] {
   })
 }
 
-describe('adapters-neon の src は interactive transaction を使わない（#323 / M-B spec §2.5）', () => {
+describe('adapters-postgres の src は interactive transaction を使わない（#323 / M-B spec §2.5）', () => {
   it('src 配下に .transaction( の呼び出しが無い', () => {
     const offenders = listTypeScriptFiles(SRC_DIR).filter(path =>
       readFileSync(path, 'utf8').includes('.transaction('),

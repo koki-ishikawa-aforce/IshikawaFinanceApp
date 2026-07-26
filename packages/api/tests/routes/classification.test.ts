@@ -14,7 +14,7 @@ import type {
   RetroactiveCandidateQuery,
   RetroactiveReclassificationApplied,
 } from '@warimaru/domain'
-import { newUlid } from '@warimaru/adapters-neon'
+import { newUlid } from '@warimaru/adapters-postgres'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, SPOUSE_ID, VIEWER_ID } from '../helpers/test-app.js'
 

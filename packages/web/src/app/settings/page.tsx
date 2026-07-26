@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { apiFetch, apiMutate } from '@/lib/api-client'
 import {
   CategoryListWireSchema,
@@ -408,7 +409,7 @@ function AccountsTab() {
       {accountsQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
       {accountsQuery.error && <div className={ui.error}>口座の取得に失敗しました</div>}
       {!accountsQuery.isLoading && items.length === 0 && (
-        <p className={styles.note}>登録済みの口座はありません。</p>
+        <EmptyState>登録済みの口座はありません。</EmptyState>
       )}
       <ul className={styles.masterList}>
         {items.map(account => (

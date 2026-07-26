@@ -12,7 +12,7 @@ import type {
   RoleJudged,
   UserRole,
 } from '@warimaru/domain'
-import { newUlid } from '@warimaru/adapters-neon'
+import { newUlid } from '@warimaru/adapters-postgres'
 import { createTestApp, type TestApp } from '../helpers/test-app.js'
 import { domainEventBase } from '../../src/event-handlers/event-base.js'
 
