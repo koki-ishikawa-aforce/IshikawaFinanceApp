@@ -237,6 +237,16 @@ export function lineOperationSettingsOf(user: AppUser): LineOperationSettings {
   return user.common.lineOperationSettings ?? EMPTY_LINE_OPERATION_SETTINGS
 }
 
+/**
+ * 通知機能が有効化済みか（08g §2「配信メッセージを送信する」の事前条件）。
+ *
+ * 有効化は per-user の状態で運用開始とは独立に遷移するため、配信の呼出し側が
+ * それぞれ状態を読み解くと経路ごとに判定が割れる。述語をここに一本化する。
+ */
+export function isNotificationActivated(user: AppUser): boolean {
+  return lineOperationSettingsOf(user).notificationActivation.kind === 'activated'
+}
+
 /** LINE 運用設定を差し替える（運用開始済みは集約直下、それ以前は common の事前蓄積へ書く） */
 export function withLineOperationSettings(user: AppUser, settings: LineOperationSettings): AppUser {
   if (user.kind === 'operation_started') {

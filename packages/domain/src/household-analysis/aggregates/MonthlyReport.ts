@@ -194,3 +194,34 @@ export function finalize(
 }
 
 // finalized → csv_confirmed への逆遷移関数は型として存在しない（不変条件で禁止）
+
+/**
+ * 閲覧者本人にだけ見える月次合計（プライバシー3段階ルールの最終段）。
+ *
+ * 個人費用は「相手には合計のみ可視」だが、経費(会社)は本人のみ可視のため、
+ * 本人分の抜き出し方をここに一本化する（`MonthlyReportView` の
+ * `businessExpenseTotalSelf` も LINE の個人サマリもこの関数を通す）。
+ * 射影を呼び出し側で書き分けるとルール変更時に取りこぼしが出る。
+ */
+export const SelfMonthlyTotalsSchema = z.object({
+  personalTotalSelf: MoneySchema,
+  businessExpenseTotalSelf: MoneySchema,
+})
+export type SelfMonthlyTotals = z.infer<typeof SelfMonthlyTotalsSchema>
+
+export function selfTotalsOf(
+  common: CommonMonthlyReportAttrs,
+  viewerRole: UserRole,
+): SelfMonthlyTotals {
+  return SelfMonthlyTotalsSchema.parse(
+    viewerRole === 'honey'
+      ? {
+          personalTotalSelf: common.personalTotalHoney,
+          businessExpenseTotalSelf: common.businessExpenseTotalHoney,
+        }
+      : {
+          personalTotalSelf: common.personalTotalDarling,
+          businessExpenseTotalSelf: common.businessExpenseTotalDarling,
+        },
+  )
+}

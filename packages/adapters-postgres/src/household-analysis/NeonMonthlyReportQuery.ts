@@ -21,6 +21,7 @@ import {
   MonthlyReportSchema,
   MonthlyReportViewSchema,
   roleToPersonalExpenseClass,
+  selfTotalsOf,
 } from '@warimaru/domain'
 import type { Db } from '../client'
 import { monthlyReports } from '../schema'
@@ -32,14 +33,16 @@ export interface NeonMonthlyReportQueryDeps {
 }
 
 function toView(report: MonthlyReport, viewerRole: UserRole): MonthlyReportView {
-  const { businessExpenseTotalHoney, businessExpenseTotalDarling, ...commonRest } = report.common
+  const {
+    businessExpenseTotalHoney: _honey,
+    businessExpenseTotalDarling: _darling,
+    ...commonRest
+  } = report.common
+  // 本人分の抜き出しはドメインの selfTotalsOf に一本化する（LINE の個人サマリも同じ関数を通る）
+  const { businessExpenseTotalSelf } = selfTotalsOf(report.common, viewerRole)
   return MonthlyReportViewSchema.parse({
     status: report.kind,
-    common: {
-      ...commonRest,
-      businessExpenseTotalSelf:
-        viewerRole === 'honey' ? businessExpenseTotalHoney : businessExpenseTotalDarling,
-    },
+    common: { ...commonRest, businessExpenseTotalSelf },
     csvConfirmedAt: report.csvConfirmedAt,
     finalizedAt: report.kind === 'finalized' ? report.finalizedAt : null,
     unapprovedTransfers:

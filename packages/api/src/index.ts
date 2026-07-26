@@ -18,6 +18,7 @@ const deps = await createDeps({
   FAILSAFE_EMAIL_TO: process.env['FAILSAFE_EMAIL_TO'],
   FAILSAFE_FAILURE_THRESHOLD: process.env['FAILSAFE_FAILURE_THRESHOLD'],
   CORS_ALLOWED_ORIGINS: process.env['CORS_ALLOWED_ORIGINS'],
+  WEB_BASE_URL: process.env['WEB_BASE_URL'],
 })
 const app = createApp(deps)
 const port = Number(process.env['PORT'] ?? 3001)

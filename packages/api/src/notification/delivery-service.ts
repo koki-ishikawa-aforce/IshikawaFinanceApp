@@ -18,6 +18,7 @@ import type {
   DeliveryContent,
   DeliveryMessageRepository,
   DeliveryPurpose,
+  DeliverySkipReason,
   DeliveryTarget,
   EventBus,
   FailedDeliveryMessage,
@@ -28,6 +29,7 @@ import type {
   LineDeliveryLogRepository,
   LineMessagingGateway,
   SentDeliveryMessage,
+  SkippedDeliveryMessage,
 } from '@warimaru/domain'
 import {
   counterRefOf,
@@ -51,6 +53,7 @@ import {
   reserveFailsafeEmail,
   resetFailureCounter,
   shouldFireFailsafe,
+  skipDeliveryMessage,
   SingleSendFailureLoggedSchema,
   startSendingFailsafeEmail,
   startSendingMessage,
@@ -61,10 +64,19 @@ import { domainEventBase } from '../event-handlers/event-base.js'
 
 export interface DeliverInput {
   target: DeliveryTarget
-  content: DeliveryContent
+  /**
+   * 配信内容。関数を渡すと冪等性チェックを通過した場合にだけ評価される。
+   * 本文の組み立てが DB 読み取り（カテゴリ名の解決など）を伴う呼出し側では、
+   * 既配信の再実行で不要な往復が走らないよう関数形式を使う。
+   */
+  content: DeliveryContent | (() => DeliveryContent | Promise<DeliveryContent>)
   purpose: DeliveryPurpose
   /** 同一配信の重複防止キー（呼出し側が用途ごとの規約で計算する） */
   idempotencyKey: string
+}
+
+export interface SkipInput extends DeliverInput {
+  skipReason: DeliverySkipReason
 }
 
 export type DeliverOutcome =
@@ -72,8 +84,20 @@ export type DeliverOutcome =
   | { kind: 'failed'; message: FailedDeliveryMessage; log: LineDeliveryLog }
   | { kind: 'already_delivered'; log: LineDeliveryLog }
 
+export type SkipOutcome =
+  | { kind: 'skipped'; message: SkippedDeliveryMessage; log: LineDeliveryLog }
+  | { kind: 'already_delivered'; log: LineDeliveryLog }
+
 export interface NotificationDeliveryService {
   deliver(input: DeliverInput): Promise<DeliverOutcome>
+  /**
+   * 送信せずスキップとして記録する（08g §2「配信メッセージを送信する」の送信スキップ経路）。
+   *
+   * リマインダーの停止のように「配信しなかったこと自体が記録すべき事実」で使う。
+   * deliver と同じ冪等性キーの規約に従うため、同一キーで 2 回目以降は
+   * already_delivered となり、停止イベントの二重発火を呼出し側が避けられる。
+   */
+  skip(input: SkipInput): Promise<SkipOutcome>
 }
 
 export interface NotificationDeliveryServiceDeps {
@@ -90,6 +114,10 @@ export interface NotificationDeliveryServiceDeps {
   now?: (() => Date) | undefined
 }
 
+async function resolveContent(content: DeliverInput['content']): Promise<DeliveryContent> {
+  return typeof content === 'function' ? content() : content
+}
+
 function describeCounterRef(ref: FailureCounterRef): string {
   return ref.kind === 'talk_room' ? `共通トークルーム ${ref.talkRoomId}` : `ユーザー ${ref.userId}`
 }
@@ -101,7 +129,7 @@ export function createNotificationDeliveryService(
   const threshold = deps.failsafeFailureThreshold ?? DEFAULT_FAILSAFE_FAILURE_THRESHOLD
 
   async function saveLogAndPublish(
-    message: SentDeliveryMessage | FailedDeliveryMessage,
+    message: SentDeliveryMessage | FailedDeliveryMessage | SkippedDeliveryMessage,
     sentPayloadJson: string,
     idempotencyKey: string,
   ): Promise<LineDeliveryLog> {
@@ -191,7 +219,7 @@ export function createNotificationDeliveryService(
   }
 
   return {
-    async deliver(input): Promise<DeliverOutcome> {
+    async skip(input): Promise<SkipOutcome> {
       const existing = await deps.lineDeliveryLogRepository.findByIdempotencyKey(
         input.idempotencyKey,
       )
@@ -203,7 +231,43 @@ export function createNotificationDeliveryService(
         {
           deliveryMessageId: DeliveryMessageIdSchema.parse(newUlid()),
           target: input.target,
-          content: input.content,
+          content: await resolveContent(input.content),
+          purpose: input.purpose,
+        },
+        now(),
+      )
+      await deps.deliveryMessageRepository.save(reserved)
+
+      const skipped = skipDeliveryMessage(reserved, input.skipReason, now())
+      await deps.deliveryMessageRepository.save(skipped)
+      // 送信していないため LINE payload は存在しない。配信ログは「送らなかった事実と理由」を凍結する
+      const log = await saveLogAndPublish(
+        skipped,
+        JSON.stringify({
+          skipped: true,
+          skipReason: skipped.skipReason,
+          purpose: input.purpose,
+          target: input.target,
+        }),
+        input.idempotencyKey,
+      )
+      return { kind: 'skipped', message: skipped, log }
+    },
+
+    async deliver(input): Promise<DeliverOutcome> {
+      const existing = await deps.lineDeliveryLogRepository.findByIdempotencyKey(
+        input.idempotencyKey,
+      )
+      if (existing !== null) {
+        return { kind: 'already_delivered', log: existing }
+      }
+
+      const content = await resolveContent(input.content)
+      const reserved = reserveDeliveryMessage(
+        {
+          deliveryMessageId: DeliveryMessageIdSchema.parse(newUlid()),
+          target: input.target,
+          content,
           purpose: input.purpose,
         },
         now(),
@@ -211,7 +275,7 @@ export function createNotificationDeliveryService(
       await deps.deliveryMessageRepository.save(reserved)
 
       const sending = startSendingMessage(reserved, now())
-      const outcome = await deps.lineMessagingGateway.sendPush(input.target, input.content)
+      const outcome = await deps.lineMessagingGateway.sendPush(input.target, content)
 
       if (outcome.result.kind === 'success') {
         const sent = markMessageSent(sending, outcome.result.lineMessageId, now())

@@ -138,6 +138,69 @@ describe('NotificationDeliveryService', () => {
     events = []
   })
 
+  describe('skip（送信せずスキップとして記録する）', () => {
+    it('LINE を呼ばずにスキップを終端記録し、配信ログへ理由を凍結する', async () => {
+      const gateway = stubLineGateway([success])
+      const service = build(gateway)
+      const outcome = await service.skip({
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'csv_import_reminder',
+        idempotencyKey: 'skip-key-1',
+        skipReason: 'reminder_stop_condition_met',
+      })
+
+      expect(outcome.kind).toBe('skipped')
+      expect(gateway.calls).toBe(0)
+      if (outcome.kind !== 'skipped') return
+      const saved = await deps.deliveryMessageRepository.findById(
+        outcome.message.common.deliveryMessageId,
+      )
+      expect(saved?.kind).toBe('skipped')
+      const log = await deps.lineDeliveryLogRepository.findByIdempotencyKey('skip-key-1')
+      expect(log?.resultStatus).toMatchObject({
+        kind: 'skipped',
+        skipReason: 'reminder_stop_condition_met',
+      })
+      expect(log?.timingKind).toBe('reminder')
+      expect(log?.sentPayloadJson).toContain('reminder_stop_condition_met')
+      expect(events.filter(e => e.type === 'DeliveryLogSaved')).toHaveLength(1)
+    })
+
+    it('同一冪等性キーの 2 回目は already_delivered（呼出し側が停止イベントを二重発火しないため）', async () => {
+      const service = build(stubLineGateway([success]))
+      const input = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'csv_import_reminder' as const,
+        idempotencyKey: 'skip-key-2',
+        skipReason: 'reminder_stop_condition_met' as const,
+      }
+      await service.skip(input)
+      const second = await service.skip(input)
+
+      expect(second.kind).toBe('already_delivered')
+      expect(events.filter(e => e.type === 'DeliveryLogSaved')).toHaveLength(1)
+    })
+
+    it('スキップは連続失敗カウンタを進めない（送信失敗ではないため）', async () => {
+      const service = build(stubLineGateway([success]))
+      await service.skip({
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'csv_import_reminder',
+        idempotencyKey: 'skip-key-3',
+        skipReason: 'reminder_stop_condition_met',
+      })
+
+      const counter = await deps.consecutiveFailureCounterRepository.findByRef(
+        FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' }),
+      )
+      expect(counter).toBeNull()
+      expect(events.filter(e => e.type === 'SingleSendFailureLogged')).toHaveLength(0)
+    })
+  })
+
   it('送信成功: メッセージ終端化・配信ログ保存（payload 凍結）・DeliveryLogSaved 発火', async () => {
     const gateway = stubLineGateway([success])
     const service = build(gateway)

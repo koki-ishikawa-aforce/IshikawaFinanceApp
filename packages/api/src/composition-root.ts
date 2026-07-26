@@ -230,6 +230,11 @@ export interface AppDeps {
   failsafeFailureThreshold?: number | undefined
   /** CORS 許可オリジン（CORS_ALLOWED_ORIGINS、カンマ区切り。開発環境の既定は localhost:3000） */
   allowedOrigins: string[]
+  /**
+   * LINE 通知本文の Deep Link の起点 URL（#389 / OQ-54）。
+   * WEB_BASE_URL を優先し、未設定なら許可オリジンの先頭を使う（許可オリジン = web の配信元）。
+   */
+  webBaseUrl: string
 }
 
 export interface CompositionEnv {
@@ -271,6 +276,12 @@ export interface CompositionEnv {
    * 開発環境で未設定の場合のみ localhost:3000 を既定とする。
    */
   CORS_ALLOWED_ORIGINS?: string | undefined
+  /**
+   * LINE 通知本文の Deep Link の起点 URL（#389 / OQ-54）。LIFF の公開 URL を指定する。
+   * 未設定なら CORS 許可オリジンの先頭を使う（許可オリジンは web の配信元そのもののため、
+   * 別々に設定させると片方だけ更新した際に通知のリンクだけ旧環境を指す事故になる）。
+   */
+  WEB_BASE_URL?: string | undefined
 }
 
 /** FAILSAFE_EMAIL_TO（カンマ区切り）→ 宛先リスト */
@@ -314,6 +325,50 @@ function resolveAllowedOrigins(env: CompositionEnv): string[] {
 }
 
 /**
+ * Deep Link の起点 URL として妥当かを検査する。
+ *
+ * `createDeepLinkBuilder` は末尾に `/reports?month=...` を連結するだけなので、
+ * クエリやフラグメントを含む値・スキームの無い値を通すと壊れた URI が Flex の
+ * uri アクションに入り、LINE が 400 を返して配信が丸ごと失敗する。設定事故に
+ * 気づけるのが配信失敗時になるため、起動時に弾く。
+ */
+function assertValidWebBaseUrl(value: string, source: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error(
+      `${source} must be an absolute URL (e.g. https://liff.line.me/<liffId>): ${value}`,
+    )
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(`${source} must use http(s): ${value}`)
+  }
+  if (parsed.search !== '' || parsed.hash !== '') {
+    throw new Error(`${source} must not contain a query string or fragment: ${value}`)
+  }
+  return value
+}
+
+/**
+ * Deep Link の起点 URL。WEB_BASE_URL を優先し、未設定なら許可オリジンの先頭にフォールバックする。
+ *
+ * フォールバック値は web の配信元であって LIFF の公開 URL ではないため、通知のリンクを
+ * タップしても LIFF アプリではなくブラウザが開く。設定漏れに気づけるよう警告を出す
+ * （許可オリジンが複数あるとき、どれが先頭かは運用者のカンマ区切り順に依存する点も含む）。
+ */
+function resolveWebBaseUrl(env: CompositionEnv, allowedOrigins: string[]): string {
+  const configured = (env.WEB_BASE_URL ?? '').trim()
+  if (configured.length > 0) return assertValidWebBaseUrl(configured, 'WEB_BASE_URL')
+
+  const fallback = allowedOrigins[0] ?? DEV_ALLOWED_ORIGIN
+  console.warn(
+    `WEB_BASE_URL が未設定のため LINE 通知の Deep Link に ${fallback} を使う（LIFF の公開 URL を WEB_BASE_URL に設定する）`,
+  )
+  return assertValidWebBaseUrl(fallback, 'CORS_ALLOWED_ORIGINS[0] (WEB_BASE_URL fallback)')
+}
+
+/**
  * 開発モードの合成（インメモリモック）。DB へ接続しない構成を組み立てる。
  *
  * `createDeps` は DATABASE_URL が無いときにここへ委ねるが、この関数自体は DATABASE_URL の
@@ -332,6 +387,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     )
   }
   console.warn('Using in-memory mock data (development only) — not connecting to a database')
+  const mockAllowedOrigins = resolveAllowedOrigins(env)
   // 開発モードの許可リスト（devViewerIdMiddleware / テストの X-User-Id と揃える）
   const devAllowlist = AllowlistSchema.parse({
     honeyLineUserId: 'user-honey-test',
@@ -394,7 +450,8 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     failsafeEmailGateway: createMockFailsafeEmailGateway(),
     failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
     failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
-    allowedOrigins: resolveAllowedOrigins(env),
+    allowedOrigins: mockAllowedOrigins,
+    webBaseUrl: resolveWebBaseUrl(env, mockAllowedOrigins),
   }
 }
 
@@ -544,5 +601,6 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     failsafeEmailRecipients,
     failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
     allowedOrigins,
+    webBaseUrl: resolveWebBaseUrl(env, allowedOrigins),
   }
 }

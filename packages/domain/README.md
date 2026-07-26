@@ -83,7 +83,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 ### notification-delivery（通知配信、08g）
 
 - 集約: `DeliveryMessage`（配信用途 × 配信先マトリクスを superRefine で強制。予約 `reserveDeliveryMessage` / 送信ライフサイクル遷移を含む）, `LineDeliveryLog`（不変監査レコード + 冪等性キー、OQ-34。終端状態からの組立 `createLineDeliveryLog`）, `FailsafeEmail`（予約 `reserveFailsafeEmail` / 送信ライフサイクル遷移を含む）
-- 値オブジェクト: `DeliveryTarget`, `DeliveryContent`（OQ-39 サイズ検証は解決済み: 最大 2.6KB で上限に余裕あり）, `DeliveryPurpose`, `ConsecutiveFailureCounter`（失敗記録 `recordSendFailure` / 成功リセット `resetFailureCounter` / 発火判定 `shouldFireFailsafe` / 発火記録 `markFailsafeFired`。しきい値既定 3 = OQ-14）, `ReminderStopReason`
+- 値オブジェクト: `DeliveryTarget`, `DeliveryContent`（OQ-39 サイズ検証は解決済み: 最大 2.6KB で上限に余裕あり）, `DeliveryPurpose`, `ConsecutiveFailureCounter`（失敗記録 `recordSendFailure` / 成功リセット `resetFailureCounter` / 発火判定 `shouldFireFailsafe` / 発火記録 `markFailsafeFired`。しきい値既定 3 = OQ-14）, `ReminderStopReason`, `ReminderContinuationJudgment`（リマインダー停止判定 `judgeReminderContinuation` / 世帯としての合成 `combineReminderJudgments` / 配信開始日 `REMINDER_START_DAY_OF_MONTH` = 5）
 - Repository I/F: `DeliveryMessageRepository`, `LineDeliveryLogRepository`（append-only）, `FailsafeEmailRepository`, `ConsecutiveFailureCounterRepository`
 - Service I/F（ACL 翻訳層の driven port、実装は api 層）: `LineMessagingGateway`（LINE push、トークン実体は Parameter Store 解決でドメインに持ち込まない）, `FailsafeEmailGateway`（SMTP / SES 等の標準送信プロバイダ、OQ-14）
 - Query I/F: なし（CSV 取込完了状態の読取りは transaction-import 側の `CsvImportStatusQuery`）
