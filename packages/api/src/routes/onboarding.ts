@@ -58,7 +58,7 @@ import type {
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 import { applyLineFriendAdded, applySharedTalkRoomJoined } from '../line-operation-records.js'
-import { fireOperationStartIfReady } from '../operation-start.js'
+import { fireOperationStartIfReady, tryFireOperationStart } from '../operation-start.js'
 
 const RegisterBodySchema = z.object({ nickname: NicknameSchema.optional() })
 const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
@@ -320,7 +320,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const viewerId = c.get('viewerId')
     await getUserOr404(viewerId)
     const now = new Date()
-    await fireOperationStartIfReady(deps, now)
+    await fireOperationStartIfReady(deps, { trigger: 'notification_activation_request', at: now })
     const user = await getUserOr404(viewerId)
     const sharedTalkRoom = await deps.sharedTalkRoomRepository.find()
     const updated = activateNotification(user, sharedTalkRoom, now)
@@ -423,7 +423,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const user = await getUserOr404(viewerId)
     const now = new Date()
     if (user.kind === 'phase2_completed' || user.kind === 'operation_started') {
-      await fireOperationStartIfReady(deps, now)
+      await tryFireOperationStart(deps, { trigger: 'phase2_complete', at: now })
       return c.json({ user: await getUserOr404(viewerId) })
     }
     const updated = completePhase2(asPhase2InProgress(user), now)
@@ -436,7 +436,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
         completedAt: now,
       }),
     )
-    await fireOperationStartIfReady(deps, now)
+    await tryFireOperationStart(deps, { trigger: 'phase2_complete', at: now })
     return c.json({ user: await getUserOr404(viewerId) }, 201)
   })
 
@@ -454,7 +454,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
   app.get('/spouse-completion', async c => {
     const viewerId = c.get('viewerId')
     if ((await deps.appUserRepository.findById(viewerId)) !== null) {
-      await fireOperationStartIfReady(deps)
+      await tryFireOperationStart(deps, { trigger: 'spouse_completion_check' })
     }
     const result = await deps.spouseCompletionQuery.check(viewerId)
     return c.json(result)

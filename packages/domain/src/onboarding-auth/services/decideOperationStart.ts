@@ -13,6 +13,7 @@
  * どの起点から呼んでも同じ結論になるよう判定は純粋関数に閉じ、永続化とイベント発行は
  * application 層が行う。判定は現在の状態のみに依存するため、再実行しても結論は変わらない。
  */
+import { InvariantViolationError } from '../../shared/errors/DomainError'
 import type { TalkRoomId } from '../../shared/ids'
 import {
   isNotificationActivated,
@@ -55,6 +56,10 @@ export type OperationStartDecision =
        * 片方の保存だけが済んだ状態から再実行された場合は、残りの 1 人だけがここに入る。
        */
       transitioned: readonly OperationStartedUser[]
+      /**
+       * 世帯の運用開始日時（遅い方の運用開始日時）。呼出し側の時計ではなく**保存される値**から
+       * 導く — イベントに載る日時が再発火のたびに変わると、下流が日時を冪等性キーに使えない。
+       */
       operationStartedAt: Date
     }
 
@@ -79,6 +84,13 @@ export function decideOperationStart(members: HouseholdMembers, at: Date): Opera
   if (honey === null || darling === null) {
     return { kind: 'not_ready', blocker: 'member_unregistered' }
   }
+  // 運用開始イベントは Honey / Darling の userID を役割ごとに載せる（08f §3）。スロットと集約が
+  // 持つ役割が食い違ったまま発火すると、2 人の identity が入れ替わったイベントが世帯に流れる
+  if (honey.common.role !== 'honey' || darling.common.role !== 'darling') {
+    throw new InvariantViolationError(
+      '世帯のメンバーは Honey / Darling の役割と対応していなければならない',
+    )
+  }
   const startedHoney = ensureOperationStarted(honey, at)
   const startedDarling = ensureOperationStarted(darling, at)
   if (startedHoney === null || startedDarling === null) {
@@ -93,7 +105,20 @@ export function decideOperationStart(members: HouseholdMembers, at: Date): Opera
     .filter(outcome => outcome.transitioned)
     .map(outcome => outcome.user)
   if (transitioned.length === 0) return { kind: 'already_started', household }
-  return { kind: 'start', household, transitioned, operationStartedAt: at }
+  return {
+    kind: 'start',
+    household,
+    transitioned,
+    operationStartedAt: latestOf([
+      household.honey.operationStartedAt,
+      household.darling.operationStartedAt,
+    ]),
+  }
+}
+
+/** 複数の日時のうち最も遅いもの */
+function latestOf(dates: readonly Date[]): Date {
+  return new Date(Math.max(...dates.map(date => date.getTime())))
 }
 
 /** 世帯の通知機能を有効化できない理由 */
@@ -113,6 +138,11 @@ export type HouseholdNotificationDecision =
       talkRoomId: TalkRoomId
       /** 有効化で状態が変わったユーザー（= 保存が要る対象。事前蓄積で有効化済みなら含まれない） */
       changed: readonly AppUser[]
+      /**
+       * 世帯として通知機能が有効になった日時（遅い方の有効化日時）。呼出し側の時計ではなく
+       * **保存される per-user の有効化日時**から導く — 下流（テスト送信）はこの日時を冪等性キーに
+       * 使うため、再発火のたびに変わると同じテストメッセージが何通も届く
+       */
       activatedAt: Date
     }
 
@@ -147,7 +177,21 @@ export function decideHouseholdNotificationActivation(
 
   const activated = before.map(user => activateNotification(user, sharedTalkRoom, at))
   const changed = activated.filter((user, index) => user !== before[index])
-  return { kind: 'activate', talkRoomId, changed, activatedAt: at }
+  return {
+    kind: 'activate',
+    talkRoomId,
+    changed,
+    activatedAt: latestOf(activated.map(activatedAtOf)),
+  }
+}
+
+/** 有効化済みユーザーの有効化日時（有効化直後のみを渡すため、未有効化は起こらない） */
+function activatedAtOf(user: AppUser): Date {
+  const activation = lineOperationSettingsOf(user).notificationActivation
+  if (activation.kind !== 'activated') {
+    throw new InvariantViolationError('有効化済みのユーザーには有効化日時が必要')
+  }
+  return activation.activatedAt
 }
 
 /**
