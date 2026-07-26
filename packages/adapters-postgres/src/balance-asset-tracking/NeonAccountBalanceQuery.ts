@@ -5,6 +5,10 @@
  * 残高・資産推移管理は世帯共有のため viewerId を取らず、両者の全 active 口座を読む
  * （口座数は一桁で全走査に問題なし）。inactive 口座は残高一覧・資産合計に含めない。
  *
+ * 別銀行貯蓄口座の残高鮮度（経過日数・鮮度状態）は本 Query では返さない。08d L244 の
+ * とおり本コンテキストは最終更新日時のみを供給し、閾値判定は家計分析側
+ * （`DashboardQuery.fetchBalanceFreshness`）が担う。
+ *
  * fetchAssetTotal(asOf) の asOf は View にエコーされるスナップショット時刻。
  * データモデル上、過去時点の残高復元（historical as-of）はサポートしない
  * （残高履歴の正は月次レポートに凍結済み — BalanceTimeSeriesQuery が担う）。
@@ -37,22 +41,8 @@ const KIND_ORDER: Record<Account['kind'], number> = {
   nisa: 3,
 }
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000
-
-export interface NeonAccountBalanceQueryOptions {
-  /** 鮮度日数計算用のクロック（テストで固定時刻を注入する） */
-  now?: () => Date
-}
-
 export class NeonAccountBalanceQuery implements AccountBalanceQuery {
-  private readonly now: () => Date
-
-  constructor(
-    private readonly db: Db,
-    options?: NeonAccountBalanceQueryOptions,
-  ) {
-    this.now = options?.now ?? (() => new Date())
-  }
+  constructor(private readonly db: Db) {}
 
   async fetchBalanceList(): Promise<AccountBalanceListView> {
     const rows = await this.db
@@ -141,12 +131,6 @@ export class NeonAccountBalanceQuery implements AccountBalanceQuery {
           displayName: account.bankName,
           currentBalance: account.balance.currentBalance,
           lastUpdatedAt: account.balance.lastUpdatedAt,
-          daysSinceLastUpdate: Math.max(
-            0,
-            Math.floor(
-              (this.now().getTime() - account.freshnessSource.lastUpdatedAt.getTime()) / MS_PER_DAY,
-            ),
-          ),
         }
       case 'nisa':
         return {

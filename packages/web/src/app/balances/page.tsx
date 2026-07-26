@@ -8,10 +8,12 @@ import {
   AssetTotalWireSchema,
   BalanceTimeSeriesWireSchema,
   type AccountBalanceItemWire,
+  type BalanceFreshnessItemWire,
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
 import { formatDateTime, getCurrentMonth, shiftMonth } from '@/lib/month'
 import { TimeSeriesChart, type ChartSeries } from '@/components/balances/TimeSeriesChart'
+import { FreshnessBadge, useBalanceFreshnessQuery } from '@/components/balances/BalanceFreshness'
 import { LuLandmark, LuCreditCard, LuPiggyBank, LuTrendingUp } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import ui from '@/components/ui/common.module.css'
@@ -23,7 +25,13 @@ const RANGE_OPTIONS = [
   { months: 24, label: '2年' },
 ] as const
 
-function BalanceItem({ item }: { item: AccountBalanceItemWire }) {
+function BalanceItem({
+  item,
+  freshness,
+}: {
+  item: AccountBalanceItemWire
+  freshness?: BalanceFreshnessItemWire
+}) {
   switch (item.kind) {
     case 'smbc_bank':
       return (
@@ -58,9 +66,7 @@ function BalanceItem({ item }: { item: AccountBalanceItemWire }) {
           <div className={styles.balanceHead}>
             <LuPiggyBank className={styles.balanceIcon} aria-hidden="true" />
             <span className={styles.balanceName}>{item.displayName}</span>
-            {item.daysSinceLastUpdate >= 30 && (
-              <span className={styles.staleTag}>{item.daysSinceLastUpdate}日未更新</span>
-            )}
+            <FreshnessBadge freshness={freshness} />
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentBalance)}</span>
           <span className={styles.balanceMeta}>更新: {formatDateTime(item.lastUpdatedAt)}</span>
@@ -94,6 +100,15 @@ export default function BalancesPage() {
     queryKey: ['balances', 'total'],
     queryFn: () => apiFetch('/api/balances/total', AssetTotalWireSchema),
   })
+
+  // 鮮度の判定（閾値 35 日 = OQ-44）は家計分析の Query 側で行われる
+  const freshnessQuery = useBalanceFreshnessQuery()
+  const freshnessByAccountId = new Map(
+    (freshnessQuery.data?.items ?? []).map(item => [item.accountId, item]),
+  )
+  // 一覧だけ先に描くと「未更新タグが後から生える」ちらつきになるため、
+  // 鮮度が確定（成功・失敗いずれか）するまで口座行を描かない
+  const balanceListReady = listQuery.data !== undefined && !freshnessQuery.isPending
 
   const to = getCurrentMonth()
   const from = shiftMonth(to, -(rangeMonths - 1))
@@ -144,18 +159,41 @@ export default function BalancesPage() {
 
       <div className={ui.card}>
         <span className={ui.sectionTitle}>口座残高</span>
-        {listQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-        {listQuery.error && <div className={ui.error}>残高一覧の取得に失敗しました</div>}
-        {listQuery.data &&
-          (listQuery.data.items.length === 0 ? (
-            <EmptyState>登録されている口座がありません</EmptyState>
-          ) : (
-            <div className={styles.balanceList}>
-              {listQuery.data.items.map(item => (
-                <BalanceItem key={item.accountId} item={item} />
-              ))}
-            </div>
-          ))}
+        {/* 読み込み中 → 一覧 / 空 / エラー に入れ替わる領域（docs/design/usability.md 8-4） */}
+        <div role="status">
+          {(listQuery.isLoading || (listQuery.data !== undefined && !balanceListReady)) && (
+            <div className={ui.loading}>読み込み中...</div>
+          )}
+          {listQuery.error && <div className={ui.error}>残高一覧の取得に失敗しました</div>}
+          {freshnessQuery.isError && (
+            <>
+              <div className={ui.error}>
+                残高の更新状況を取得できませんでした（未更新のお知らせは出ません）
+              </div>
+              <button
+                type="button"
+                className={ui.buttonGhost}
+                onClick={() => void freshnessQuery.refetch()}
+              >
+                再読み込み
+              </button>
+            </>
+          )}
+          {balanceListReady &&
+            (listQuery.data.items.length === 0 ? (
+              <EmptyState announce={false}>登録されている口座がありません</EmptyState>
+            ) : (
+              <div className={styles.balanceList}>
+                {listQuery.data.items.map(item => (
+                  <BalanceItem
+                    key={item.accountId}
+                    item={item}
+                    freshness={freshnessByAccountId.get(item.accountId)}
+                  />
+                ))}
+              </div>
+            ))}
+        </div>
       </div>
 
       <div className={ui.card}>
