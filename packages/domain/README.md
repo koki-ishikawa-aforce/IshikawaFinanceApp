@@ -142,7 +142,7 @@ pnpm lint        # 全 workspace lint
 
 ## Phase 5 M-B 以降への引き継ぎ
 
-- adapter 層の実装（`packages/adapters-neon/`、Neon PostgreSQL。OQ-41: ID 生成方式の確定と `idSchema` 強化を含む）
+- adapter 層の実装（`packages/adapters-postgres/`、Neon PostgreSQL。OQ-41: ID 生成方式の確定と `idSchema` 強化を含む）
 - LIFF アプリ（`packages/web`）と Hono on Lambda（`packages/api`）の追加
 - ドメインイベントバスの実装（OQ-42）→ #34 で同期・インプロセス配信（`InMemoryEventBus`）と API 層でのハンドラー登録を実装。EventBridge 等での非同期配信は #35 以降で検討
 - ~~OQ-38（SMBC URL 実調査）/ OQ-39（Flex Message サイズ検証）のクローズ~~ → **完了**（#52、2026-07-24）。OQ-44（鮮度アラート閾値 = 35 日）も併せてクローズ済み

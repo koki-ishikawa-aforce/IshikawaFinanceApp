@@ -19,7 +19,7 @@ import type {
   MitsuiSumitomoUnpaidRepository,
   SettlementNoticeReceived,
 } from '@warimaru/domain'
-import { newUlid } from '@warimaru/adapters-neon'
+import { newUlid } from '@warimaru/adapters-postgres'
 import { domainEventBase } from './event-base.js'
 import { safeSubscribe } from './safe-subscribe.js'
 

@@ -15,6 +15,7 @@ import {
 import { formatMoney } from '@/lib/format'
 import { formatDateTime, getCurrentMonth } from '@/lib/month'
 import { LuTriangleAlert } from '@/components/ui/icons'
+import { EmptyState } from '@/components/ui/EmptyState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -75,7 +76,7 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
       <div className={ui.card}>
         <span className={ui.sectionTitle}>世帯支出（カテゴリ別）</span>
         {report.common.householdCategoryTotals.length === 0 ? (
-          <div className={ui.empty}>世帯支出はありません</div>
+          <EmptyState>世帯支出はありません</EmptyState>
         ) : (
           <ul className={styles.totalsList}>
             {report.common.householdCategoryTotals.map(item => (
@@ -127,9 +128,7 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
       <div className={ui.card}>
         <span className={ui.sectionTitle}>未承認振替</span>
         {report.unapprovedTransfers === null || report.unapprovedTransfers.length === 0 ? (
-          <div className={ui.empty}>
-            {finalized ? '未承認振替はありません' : '確定時に確定します'}
-          </div>
+          <EmptyState>{finalized ? '未承認振替はありません' : '確定時に確定します'}</EmptyState>
         ) : (
           <ul className={styles.totalsList}>
             {report.unapprovedTransfers.map(transfer => (
@@ -182,11 +181,11 @@ function ReportsPageContent() {
       {reportQuery.error && <div className={ui.error}>レポートの取得に失敗しました</div>}
       {reportQuery.data === null && (
         <div className={ui.card}>
-          <div className={ui.empty}>
+          <EmptyState>
             この月のレポートはまだ作成されていません。
             <br />
             CSV 取込の完了後に作成されます。
-          </div>
+          </EmptyState>
         </div>
       )}
       {reportQuery.data != null && <ReportDetail report={reportQuery.data} />}

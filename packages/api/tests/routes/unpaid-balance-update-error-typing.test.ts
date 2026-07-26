@@ -81,7 +81,7 @@ type AccountBalanceUpdated = import('@warimaru/domain').AccountBalanceUpdated
 type UnpaidBookkept = import('@warimaru/domain').UnpaidBookkept
 type SmbcBankAccount = import('@warimaru/domain').SmbcBankAccount
 
-const { newUlid } = await import('@warimaru/adapters-neon')
+const { newUlid } = await import('@warimaru/adapters-postgres')
 const { createTestApp } = await import('../helpers/test-app.js')
 const { domainEventBase } = await import('../../src/event-handlers/event-base.js')
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { YearMonthSchema, type PdfToCsvConversion } from '@warimaru/domain'
 import { createApp } from '../../src/app.js'
-import { createDeps } from '../../src/composition-root.js'
+import { createMockDeps } from '../../src/composition-root.js'
 import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
 
 const CSV = '2026/07/05,スーパーA,1200\n2026/07/06,コンビニB,300\n'
@@ -63,7 +63,7 @@ describe('POST /api/imports/csv', () => {
       { length: 15 },
       (_, i) => `2026/07/${String(i + 1).padStart(2, '0')},店舗${i},${(i + 1) * 100}`,
     )
-    const deps = createDeps({})
+    const deps = createMockDeps({})
     const original = deps.statementImportJobRepository
     const saveCalls: { kind: string; processedCount: number | undefined }[] = []
     deps.statementImportJobRepository = {
@@ -108,7 +108,7 @@ describe('POST /api/imports/csv', () => {
 function createTestAppDepsWithFailingCandidateSave(
   failAt: number,
 ): ReturnType<typeof createTestApp> {
-  const deps = createDeps({})
+  const deps = createMockDeps({})
   const original = deps.transactionCandidateRepository
   let saveCount = 0
   deps.transactionCandidateRepository = {
@@ -133,7 +133,7 @@ function pdfFormData(
 
 /** PDF→CSV 変換を固定結果のスタブに差し替えたテストアプリ */
 function createPdfTestApp(conversion: PdfToCsvConversion): ReturnType<typeof createTestApp> {
-  const deps = createDeps({})
+  const deps = createMockDeps({})
   deps.pdfToCsvConverter = { convert: async () => conversion }
   return { app: createApp(deps), deps }
 }

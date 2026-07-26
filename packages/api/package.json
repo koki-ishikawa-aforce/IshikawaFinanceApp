@@ -17,7 +17,7 @@
     "@aws-sdk/client-sesv2": "^3.1092.0",
     "@aws-sdk/client-ssm": "^3.1092.0",
     "@hono/node-server": "^2.0.5",
-    "@warimaru/adapters-neon": "workspace:*",
+    "@warimaru/adapters-postgres": "workspace:*",
     "@warimaru/domain": "workspace:*",
     "hono": "^4.4.0",
     "jose": "^6.2.3",

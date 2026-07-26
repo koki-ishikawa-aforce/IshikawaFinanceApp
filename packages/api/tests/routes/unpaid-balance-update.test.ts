@@ -22,7 +22,7 @@ import type {
   UnpaidBookkept,
   UnpaidSettled,
 } from '@warimaru/domain'
-import { newUlid } from '@warimaru/adapters-neon'
+import { newUlid } from '@warimaru/adapters-postgres'
 import { createTestApp } from '../helpers/test-app.js'
 import { createDeps } from '../../src/composition-root.js'
 import { domainEventBase } from '../../src/event-handlers/event-base.js'
@@ -295,7 +295,7 @@ describe('引落確定通知の再実行による残高反映の回復（#388）
     failAt: 'findById' | 'save' = 'findById',
   ) {
     const accountId = newUlid()
-    const failing = accountRepositoryFailingOnce(createDeps({}).accountRepository, failAt)
+    const failing = accountRepositoryFailingOnce((await createDeps({})).accountRepository, failAt)
     const app = createTestApp({ accountRepository: failing.repository })
 
     const unpaid = makeUnpaidAggregate(undefined, accountId)

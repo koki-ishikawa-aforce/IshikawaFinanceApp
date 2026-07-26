@@ -5,7 +5,7 @@ import type { CategoryBreakdownView } from '@warimaru/domain'
 import { DonutChart } from './DonutChart'
 import { formatMoney } from '@/lib/format'
 import { FALLBACK_CATEGORY_COLORS } from '@/theme/tokens'
-import ui from '@/components/ui/common.module.css'
+import { EmptyState } from '@/components/ui/EmptyState'
 import styles from './CategoryBreakdown.module.css'
 
 interface CategoryBreakdownProps {
@@ -41,15 +41,16 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
       {/*
         月・モードの切り替えでこの領域はドーナツ ⇄ 案内文に入れ替わる。ページ遷移を
         伴わないため、role="status" が無いと支援技術に変化が伝わらない
-        (docs/design/usability.md 8-4)
+        (docs/design/usability.md 8-4)。live region はこの器に常設し、入れ替わる側の
+        EmptyState は announce={false} にして live region の入れ子を避ける
       */}
       <div role="status">
         {isEmpty ? (
-          <div className={ui.empty}>{`この月の${spendingLabel}はありません`}</div>
+          <EmptyState announce={false}>{`この月の${spendingLabel}はありません`}</EmptyState>
         ) : hasZeroTotal ? (
-          <div className={ui.empty}>
+          <EmptyState announce={false}>
             {`この月は返金などで${spendingLabel}の合計が0円になったため、内訳グラフは表示していません`}
-          </div>
+          </EmptyState>
         ) : (
           <DonutChart segments={segments} totalAmount={data.totalAmount} />
         )}

@@ -47,10 +47,3 @@
   height: 8px;
   border-radius: var(--radius-full);
 }
-
-.empty {
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  padding: var(--space-4) 0;
-}
