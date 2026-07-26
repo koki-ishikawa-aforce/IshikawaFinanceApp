@@ -11,6 +11,9 @@ import {
   accountBalanceListFixture,
   assetTotalFixture,
   balanceTimeSeriesFixture,
+  bulkClassificationAbortedFixture,
+  bulkClassificationCompletedFixture,
+  bulkClassificationSessionFixture,
   categoryBreakdownFixture,
   categoryListFixture,
   dashboardKpisFixture,
@@ -21,6 +24,8 @@ import {
   monthlyReportFixture,
   onboardingMeFixture,
   ownAccountListFixture,
+  retroactiveApplyResultFixture,
+  retroactiveCandidatesFixture,
   settingsProfileFixture,
   transactionListFixture,
   unclassifiedSummaryFixture,
@@ -55,7 +60,12 @@ export function resolveMock(method: string, path: string): unknown {
       case '/api/transactions':
         return transactionListFixture(getMockRole())
       case '/api/transactions/unclassified-summary':
-        return unclassifiedSummaryFixture()
+        return unclassifiedSummaryFixture(getMockRole())
+      case '/api/classification/bulk-sessions/current':
+        // 進行中のセッションが無い状態を既定にする（「まとめて分類する」の導線が出る）
+        return { session: null }
+      case '/api/classification/retroactive-candidates':
+        return retroactiveCandidatesFixture(getMockRole(), params.get('merchantName') ?? '')
       case '/api/categories':
         return categoryListFixture()
       case '/api/expense-types':
@@ -78,6 +88,26 @@ export function resolveMock(method: string, path: string): unknown {
         return onboardingMeFixture()
       case '/api/imports/status':
         return importStatusFixture()
+    }
+  }
+
+  // 一括分類・遡及適用は操作して初めて画面が現れるため、モック起動モードでも
+  // 書き込み系を返す（サーバー状態は持たないので、同じ入力には常に同じ応答を返す）
+  if (method === 'POST' || method === 'PUT') {
+    if (pathname === '/api/classification/bulk-sessions') {
+      return bulkClassificationSessionFixture(getMockRole())
+    }
+    if (pathname === '/api/classification/retroactive-candidates/apply') {
+      return retroactiveApplyResultFixture()
+    }
+    if (/^\/api\/classification\/bulk-sessions\/[^/]+\/complete$/.test(pathname)) {
+      return bulkClassificationCompletedFixture(getMockRole())
+    }
+    if (/^\/api\/classification\/bulk-sessions\/[^/]+\/abort$/.test(pathname)) {
+      return bulkClassificationAbortedFixture(getMockRole())
+    }
+    if (/^\/api\/transactions\/[^/]+\/classify$/.test(pathname)) {
+      return {}
     }
   }
 

@@ -1,4 +1,9 @@
-import type { BrokerageNameWire, ExpenseClassWire, OwnAccountWire } from './api-schemas'
+import type {
+  BrokerageNameWire,
+  ExpenseClassWire,
+  OwnAccountWire,
+  UnclassifiedReasonWire,
+} from './api-schemas'
 
 export const EXPENSE_CLASS_LABELS: Record<ExpenseClassWire, string> = {
   household: '世帯',
@@ -9,6 +14,24 @@ export const EXPENSE_CLASS_LABELS: Record<ExpenseClassWire, string> = {
 
 export function expenseClassLabel(expenseClass: ExpenseClassWire): string {
   return EXPENSE_CLASS_LABELS[expenseClass]
+}
+
+// ---------- 自動分類・学習（#402: 一括分類セッション） ----------
+
+/**
+ * 未分類理由の表示文言。「なぜ分類されなかったか」を利用者の言葉で示す
+ * （`docs/domain/08b-ul-自動分類学習.md` の未分類理由に 1:1 対応）。
+ */
+export const UNCLASSIFIED_REASON_LABELS: Record<UnclassifiedReasonWire, string> = {
+  merchant_rule_unlearned: 'この店舗はまだ学習していません',
+  amazon_product_key_unlearned: 'Amazon の商品がまだ学習されていません',
+  amazon_product_info_undecidable: 'Amazon の商品を特定できませんでした',
+  amazon_match_timeout: 'Amazon の注文と結び付けられませんでした',
+  learning_disabled: 'この店舗は学習しない設定です',
+}
+
+export function unclassifiedReasonLabel(reason: UnclassifiedReasonWire): string {
+  return UNCLASSIFIED_REASON_LABELS[reason]
 }
 
 // ---------- 設定（#48: 口座管理） ----------

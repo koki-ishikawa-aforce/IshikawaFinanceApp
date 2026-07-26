@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { YearMonthSchema, type YearMonth } from '@warimaru/domain'
@@ -38,10 +39,11 @@ type FileKind = keyof typeof FILE_KIND_LABELS
 
 interface CandidatesPanelProps {
   importJobId: string
+  month: YearMonth
   onDone: () => void
 }
 
-function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
+function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
   const queryClient = useQueryClient()
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
   const [confirmResult, setConfirmResult] = useState<{
@@ -97,9 +99,17 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
           {confirmResult.confirmedCount} 件を未分類取引として登録しました
           {confirmResult.alreadyConfirmedCount > 0 &&
             `（${confirmResult.alreadyConfirmedCount} 件は確定済みでした）`}
-          。取引一覧ページで分類できます。
+          。取引一覧でまとめて分類できます。
         </p>
-        <button className={ui.button} onClick={onDone}>
+        {/* AT-302: 取込サマリから一括分類へ繋ぐ導線。分類そのものは取引一覧で行う */}
+        <Link
+          className={ui.button}
+          style={{ textAlign: 'center' }}
+          href={`/transactions?month=${month}`}
+        >
+          取引一覧でまとめて分類する
+        </Link>
+        <button className={ui.buttonGhost} onClick={onDone}>
           閉じる
         </button>
       </div>
@@ -295,8 +305,12 @@ function ImportsPageContent() {
             </span>
           </div>
           {job.summary && (
+            // AT-302 手順1: 「新規 N 件 / 自動分類 N 件 / 未分類 N 件」の内訳を出す。
+            // 未分類の件数が、続く一括分類でユーザーが手を入れる件数になる
             <ul className={styles.summaryList}>
               <li>新規候補: {job.summary.newCount} 件</li>
+              <li>自動分類の見込み: {job.summary.autoClassifiedEstimateCount} 件</li>
+              <li>未分類の見込み: {job.summary.unclassifiedEstimateCount} 件</li>
               <li>重複除外: {job.summary.duplicateExcludedCount} 件</li>
             </ul>
           )}
@@ -305,7 +319,11 @@ function ImportsPageContent() {
       )}
 
       {job !== null && job.kind === 'completed' && (
-        <CandidatesPanel importJobId={job.common.importJobId} onDone={() => setJob(null)} />
+        <CandidatesPanel
+          importJobId={job.common.importJobId}
+          month={month}
+          onDone={() => setJob(null)}
+        />
       )}
     </main>
   )

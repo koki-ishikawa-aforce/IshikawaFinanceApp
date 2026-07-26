@@ -1,0 +1,52 @@
+.lead {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1_5);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-2) var(--space-2_5);
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.date {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.amount {
+  font-size: var(--text-sm);
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.result {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.6;
+}

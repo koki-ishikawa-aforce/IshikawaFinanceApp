@@ -142,15 +142,120 @@ export function transactionListFixture(role: UserRole): unknown {
       amount: isHoney ? null : 3980,
       isUnclassified: !isHoney,
     },
+    // 未分類の自分の取引。どちらのロールでも「まとめて分類」の導線と
+    // 一括分類セッション（加盟店 2 件）が両テーマで確認できるように置く
+    {
+      transactionId: 'TXN_MOCK_004',
+      occurredAt: '2026-07-12T08:20:00.000Z',
+      expenseClass: isHoney ? 'personal_honey' : 'personal_darling',
+      categoryId: null,
+      categoryName: null,
+      merchantName: 'ドラッグストアA',
+      amount: 1580,
+      isUnclassified: true,
+    },
+    {
+      transactionId: 'TXN_MOCK_005',
+      occurredAt: '2026-07-08T15:40:00.000Z',
+      expenseClass: isHoney ? 'personal_honey' : 'personal_darling',
+      categoryId: null,
+      categoryName: null,
+      merchantName: 'カフェB',
+      amount: 620,
+      isUnclassified: true,
+    },
   ]
 }
 
+/** 表示中の月の未分類取引（自分の分のみ）。一括分類の対象と件数の土台 */
+function unclassifiedOwnTransactions(
+  role: UserRole,
+): { transactionId: string; merchant: string }[] {
+  const own = [
+    { transactionId: 'TXN_MOCK_004', merchant: 'ドラッグストアA' },
+    { transactionId: 'TXN_MOCK_005', merchant: 'カフェB' },
+  ]
+  return role === 'honey' ? own : [{ transactionId: 'TXN_MOCK_003', merchant: 'Amazon' }, ...own]
+}
+
 /** GET /api/transactions/unclassified-summary */
-export function unclassifiedSummaryFixture(): unknown {
+export function unclassifiedSummaryFixture(role: UserRole): unknown {
+  const own = unclassifiedOwnTransactions(role)
   return {
-    count: 1,
-    recentIds: ['TXN_MOCK_003'],
+    count: own.length,
+    recentIds: own.map(item => item.transactionId),
   }
+}
+
+/** POST /api/classification/bulk-sessions・GET /api/classification/bulk-sessions/:id */
+export function bulkClassificationSessionFixture(role: UserRole): unknown {
+  const own = unclassifiedOwnTransactions(role)
+  return {
+    kind: 'in_progress',
+    common: {
+      bulkClassificationSessionId: 'BCS_MOCK_001',
+      userId: role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK',
+      trigger: {
+        kind: 'single_correction',
+        transactionId: own[0]?.transactionId ?? 'TXN_MOCK_004',
+        startedAt: '2026-07-24T01:00:00.000Z',
+      },
+      targets: own.map(item => ({
+        kind: 'unclassified',
+        transactionId: item.transactionId,
+        merchantName: item.merchant,
+        reason: 'merchant_rule_unlearned',
+        defaultExpenseClass: role === 'honey' ? 'personal_honey' : 'personal_darling',
+      })),
+    },
+    startedAt: '2026-07-24T01:00:00.000Z',
+    remainingCount: own.length,
+  }
+}
+
+/** POST /api/classification/bulk-sessions/:id/complete */
+export function bulkClassificationCompletedFixture(role: UserRole): unknown {
+  const own = unclassifiedOwnTransactions(role)
+  return {
+    kind: 'completed',
+    common: (bulkClassificationSessionFixture(role) as { common: unknown }).common,
+    startedAt: '2026-07-24T01:00:00.000Z',
+    completedAt: '2026-07-24T01:05:00.000Z',
+    processedCount: own.length,
+  }
+}
+
+/** POST /api/classification/bulk-sessions/:id/abort */
+export function bulkClassificationAbortedFixture(role: UserRole): unknown {
+  const own = unclassifiedOwnTransactions(role)
+  return {
+    kind: 'aborted',
+    common: (bulkClassificationSessionFixture(role) as { common: unknown }).common,
+    startedAt: '2026-07-24T01:00:00.000Z',
+    abortedAt: '2026-07-24T01:05:00.000Z',
+    remainingCount: own.length,
+  }
+}
+
+/** GET /api/classification/retroactive-candidates */
+export function retroactiveCandidatesFixture(role: UserRole, merchantName: string): unknown {
+  return {
+    userId: role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK',
+    merchantName,
+    candidates: [
+      { transactionId: 'TXN_MOCK_101', occurredAt: '2026-06-18T09:10:00.000Z', amount: 1420 },
+      { transactionId: 'TXN_MOCK_102', occurredAt: '2026-05-30T12:00:00.000Z', amount: 980 },
+    ],
+    proposedAt: '2026-07-24T01:00:00.000Z',
+  }
+}
+
+/**
+ * POST /api/classification/retroactive-candidates/apply
+ * モックはリクエストボディを見ないため、候補の件数だけ返す（画面が使うのは件数のみ）
+ */
+export function retroactiveApplyResultFixture(): unknown {
+  return { merchantName: 'ドラッグストアA', appliedCount: 2 }
 }
 
 /** GET /api/categories */
