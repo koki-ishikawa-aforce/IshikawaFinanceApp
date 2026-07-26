@@ -29,6 +29,10 @@
  *
  * `detail` には応答ボディ・メール本文・Parameter Store のパス・メールアドレスを載せない
  * （ログに出る前提で、金額・氏名・保管先パス（ユーザーID を含む）を漏らさないため）。
+ *
+ * 送信元は実アドレスの一致で判定する。送信認証（DKIM / SPF）の結果までは見ていないため、
+ * 差出人アドレスそのものを詐称したメールは弾けない。どこまで厳しくするかは実メールの確認が
+ * 要るため判断を分けている（#478）。
  */
 import type {
   AmazonOrderConfirmationMailBody,
@@ -37,9 +41,11 @@ import type {
   MailFetchRequest,
   MailFetchResult,
   MailKindHint,
+  ParameterStorePath,
   SmbcNotificationMailBody,
 } from '@warimaru/domain'
 import { GmailMessageIdSchema, NotFoundError } from '@warimaru/domain'
+import { z } from 'zod'
 import { withTimeout } from '../with-timeout.js'
 
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
@@ -64,8 +70,18 @@ const DEFAULT_TOTAL_TIMEOUT_MS = 120_000
 const DEFAULT_MAX_MESSAGES = 500
 /** Gmail の検索 1 ページあたりの件数 */
 const PAGE_SIZE = 100
+/**
+ * 1 通あたりに読み込む本文の上限バイト数。通知メールは数 KB で、これを大きく超えるのは
+ * 想定外（添付を抱えたメールが対象送信元から届いた等）。上限超過は本文を空として扱い、
+ * パース側の失敗として記録させる（メールごと捨てると Gmail message ID が記録に残らない）
+ */
+const MAX_BODY_BYTES = 256 * 1024
 
-/** 件名による種別ヒント（#415 の実メール調査）。判別できない場合は unknown でパース側に委ねる */
+/**
+ * 件名による種別ヒント（#415 の実メール調査）。判別できない場合は unknown でパース側に委ねる。
+ * 件名文字列は外部表現なので ACL（この層）が持つ。パース（#415）は本文構造で種別を確定させる
+ * ため、同じ件名定数をドメイン側へ複製しない
+ */
 const SUBJECT_HINTS: readonly { readonly subject: string; readonly hint: MailKindHint }[] = [
   { subject: 'ご利用のお知らせ【三井住友カード】', hint: 'card_usage' },
   { subject: '【三井住友銀行】口座引き落としの事前お知らせ', hint: 'card_settlement_confirmed' },
@@ -77,7 +93,7 @@ export interface GmailMailFetchGatewayConfig {
   clientId: string
   clientSecret: string
   /** Parameter Store（KMS）からの OAuth トークン JSON の復号取得 */
-  resolveTokenJson: (path: string) => Promise<string>
+  resolveTokenJson: (path: ParameterStorePath) => Promise<string>
   fetchImpl?: typeof fetch
   /** 外部呼び出し 1 回ごとの上限 */
   timeoutMs?: number
@@ -100,17 +116,36 @@ interface GmailPart {
   parts?: GmailPart[]
 }
 
-interface GmailMessage {
-  id?: string
-  internalDate?: string
-  payload?: GmailPart
-}
+/**
+ * 依存しているフィールドだけを検証する。応答が想定の形でないときに既定値で埋めると、
+ * 「受信日時 1970-01-01」「ID 空」の候補が黙って下流へ流れるため、失敗として返す。
+ * MIME ツリー（payload）は形が開かれているので構造検証の対象にせず、本文を取り出せない
+ * ケースは本文空として扱う。
+ */
+const GmailMessageResponseSchema = z.object({
+  id: z.string().min(1),
+  /** epoch ミリ秒の文字列（Gmail API の仕様） */
+  internalDate: z.string().regex(/^\d+$/),
+  payload: z.unknown().optional(),
+})
+type GmailMessageResponse = z.infer<typeof GmailMessageResponseSchema>
+
+const GmailMessageListResponseSchema = z.object({
+  messages: z.array(z.object({ id: z.string().min(1) })).optional(),
+  nextPageToken: z.string().optional(),
+})
 
 /** Gmail の検索は `after` / `before` に epoch 秒を受け付ける（日付指定より境界が正確） */
 function epochSeconds(at: Date): number {
   return Math.floor(at.getTime() / 1000)
 }
 
+/**
+ * 検索条件を組み立てる。`includeSpamTrash` は付けないため、**迷惑メール・ゴミ箱のメールは
+ * 対象外**になる（Gmail API の既定）。送信元を騙る偽の通知を取り込まない側に倒した既定だが、
+ * 正規の通知が迷惑メール判定されると静かに取りこぼす。どちらに倒すかは実運用の観察が要るため
+ * 判断を分けている（#478）。
+ */
 function buildSearchQuery(from: Date, to: Date): string {
   const senders = [
     `from:${SMBC_CARD_SENDER}`,
@@ -126,11 +161,18 @@ function headerValue(part: GmailPart | undefined, name: string): string {
   return found?.value ?? ''
 }
 
-function decodeBytes(bytes: Uint8Array, charset: string): string {
+function decodeBytes(bytes: Uint8Array, charset: string, context?: string): string {
   try {
     return new TextDecoder(charset).decode(bytes)
   } catch {
-    // 未知の charset ラベル。UTF-8 として読み、パース側の「文字化け」判定に委ねる
+    // 未知の charset ラベル。UTF-8 として読み、パース側の「文字化け」判定に委ねる。
+    // 黙って倒すと「元から壊れた本文」と区別できなくなるため、どのメールで起きたかを残す
+    if (context !== undefined) {
+      console.warn('Gmail メール取得: 未知の charset のため UTF-8 として読んだ', {
+        charset,
+        gmailMessageId: context,
+      })
+    }
     return new TextDecoder('utf-8').decode(bytes)
   }
 }
@@ -140,7 +182,7 @@ function decodeBytes(bytes: Uint8Array, charset: string): string {
  * `=?ISO-2022-JP?B?...?=` の形で届き、そのままでは件名の突き合わせができない。
  * 隣接する encoded-word の間の空白は仕様どおり落とす（分割された 1 語が空白で割れないように）。
  */
-export function decodeEncodedWords(value: string): string {
+function decodeEncodedWords(value: string): string {
   if (!value.includes('=?')) return value
   const pattern = /=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g
   let result = ''
@@ -172,10 +214,24 @@ export function decodeEncodedWords(value: string): string {
   return result + value.slice(lastIndex)
 }
 
-/** `三井住友カード <statement@vpass.ne.jp>` からアドレス部分だけを取り出す */
+/**
+ * `三井住友カード <statement@vpass.ne.jp>` からアドレス部分だけを取り出す。
+ *
+ * **表示名に対象アドレスを埋め込んだ From で送信元判定をすり抜けられないようにする**のが要点。
+ * 表示名は差出人が自由に決められるので、`"attacker@example.com <statement@vpass.ne.jp>"
+ * <evil@example.com>` のような From を素朴に読むと、第三者のメールを SMBC の通知として
+ * 取り込み、家計簿に偽の取引・金額が混入する。
+ *
+ * 実アドレス（RFC 5322 の addr-spec）を得るために、引用符付き表示名とコメントを先に落とす。
+ * それでも `<...>` が複数残る From は正しい形ではないので、判定できないものとして空を返す
+ * （呼出し側が対象外として捨てる = 取り込まない側に倒す）。
+ */
 function addressOf(fromHeader: string): string {
-  const angled = /<([^>]+)>/.exec(fromHeader)
-  return (angled?.[1] ?? fromHeader).trim().toLowerCase()
+  const withoutQuoted = fromHeader.replace(/"(?:[^"\\]|\\.)*"/g, '')
+  const withoutComments = withoutQuoted.replace(/\([^()]*\)/g, '')
+  const angled = [...withoutComments.matchAll(/<([^<>]*)>/g)]
+  if (angled.length > 1) return ''
+  return (angled[0]?.[1] ?? withoutComments).trim().toLowerCase()
 }
 
 function charsetOf(part: GmailPart): string {
@@ -189,13 +245,23 @@ function charsetOf(part: GmailPart): string {
  * `multipart/signed`（銀行通知の S/MIME）の入れ子があるため、深さを問わず text/plain を探し、
  * 無ければ text/html で代替する。添付（filename 付き）は本文ではないので見ない。
  */
-function extractBody(payload: GmailPart | undefined): string {
+function extractBody(payload: GmailPart | undefined, gmailMessageId: string): string {
   if (payload === undefined) return ''
   const plain = findPart(payload, 'text/plain')
   const part = plain ?? findPart(payload, 'text/html')
   const data = part?.body?.data
   if (part === undefined || data === undefined) return ''
-  return decodeBytes(new Uint8Array(Buffer.from(data, 'base64url')), charsetOf(part))
+  const bytes = new Uint8Array(Buffer.from(data, 'base64url'))
+  if (bytes.byteLength > MAX_BODY_BYTES) {
+    // 通知メールとしては明らかに大きい。丸ごと抱えるとバッチのメモリが跳ねるため本文は載せず、
+    // メール自体は（Gmail message ID を残すため）捨てない
+    console.warn('Gmail メール取得: 本文が上限を超えたため本文なしとして扱った', {
+      gmailMessageId,
+      bytes: bytes.byteLength,
+    })
+    return ''
+  }
+  return decodeBytes(bytes, charsetOf(part), gmailMessageId)
 }
 
 function findPart(part: GmailPart, mimeType: string): GmailPart | undefined {
@@ -214,7 +280,11 @@ function hintOf(subject: string): MailKindHint {
 }
 
 function isAmazonSender(address: string): boolean {
-  const domain = address.slice(address.lastIndexOf('@') + 1)
+  const at = address.lastIndexOf('@')
+  // `@` を含まない値はアドレスとして成立していない。ドメインだけの文字列
+  // （`From: amazon.co.jp`）を Amazon と認めない
+  if (at < 0) return false
+  const domain = address.slice(at + 1)
   return domain === AMAZON_SENDER_DOMAIN || domain.endsWith(`.${AMAZON_SENDER_DOMAIN}`)
 }
 
@@ -257,8 +327,16 @@ export function createGmailMailFetchGateway(
       const remaining = (): number => deadline - Date.now()
       const callTimeout = (): number => Math.min(timeoutMs, Math.max(remaining(), 1))
 
-      /** Gmail API を叩き、失敗を MailFetchFailure に翻訳して中断する */
-      const callGmail = async (url: string, accessToken: string): Promise<unknown> => {
+      /**
+       * Gmail API を叩き、失敗を MailFetchFailure に翻訳して中断する。
+       * `target` は失敗がどの呼び出しで起きたかを残すための目印（検索か、どのメールか）。
+       * Gmail message ID は重複除外のため DB にも保持する識別子で、PII ではない。
+       */
+      const callGmail = async (
+        url: string,
+        accessToken: string,
+        target: string,
+      ): Promise<unknown> => {
         if (remaining() <= 0) {
           throw new MailFetchAbort(otherFailure('メール取得が全体の制限時間を超えた', true, now()))
         }
@@ -273,18 +351,26 @@ export function createGmailMailFetchGateway(
           throw new MailFetchAbort(
             otherFailure(
               isTimeoutError(e)
-                ? 'Gmail API がタイムアウトした'
-                : `Gmail API の呼び出しに失敗した（${e instanceof Error ? e.name : 'unknown'}）`,
+                ? `Gmail API がタイムアウトした（${target}）`
+                : `Gmail API の呼び出しに失敗した（${target}: ${e instanceof Error ? e.name : 'unknown'}）`,
               true,
               now(),
             ),
           )
         }
-        if (!response.ok) throw new MailFetchAbort(await translateGmailError(response, now()))
+        if (!response.ok) {
+          throw new MailFetchAbort(await translateGmailError(response, target, now()))
+        }
         try {
           return (await response.json()) as unknown
-        } catch {
-          throw new MailFetchAbort(otherFailure('Gmail API の応答を解釈できなかった', false, now()))
+        } catch (e) {
+          // 応答の受信は本体の読み出し中も中断されうる。回線の遅延を「やり直しても直らない」に
+          // 倒すと、一時障害が設定不備と同じ扱いで記録される
+          throw new MailFetchAbort(
+            isTimeoutError(e)
+              ? otherFailure(`Gmail API の応答の受信が中断された（${target}）`, true, now())
+              : otherFailure(`Gmail API の応答を解釈できなかった（${target}）`, false, now()),
+          )
         }
       }
 
@@ -307,15 +393,42 @@ export function createGmailMailFetchGateway(
 
         const smbcMails: SmbcNotificationMailBody[] = []
         const amazonMails: AmazonOrderConfirmationMailBody[] = []
+        const skipped: string[] = []
         for (const id of messageIds) {
-          const message = (await callGmail(
+          const raw = await callGmail(
             `${GMAIL_API_BASE}/messages/${encodeURIComponent(id)}?format=full`,
             accessToken,
-          )) as GmailMessage
-          const classified = toMailBody(message)
-          if (classified === undefined) continue
+            `message:${id}`,
+          )
+          const parsed = GmailMessageResponseSchema.safeParse(raw)
+          if (!parsed.success) {
+            // 受信日時や ID を既定値で埋めて先へ進めない。1970-01-01 の取引候補や、
+            // Gmail message ID の無い候補が下流に流れると重複除外も追跡もできなくなる
+            throw new MailFetchAbort(
+              otherFailure(
+                `Gmail API のメール応答が想定の構造と異なる（message:${id}）`,
+                false,
+                now(),
+              ),
+            )
+          }
+          const classified = toMailBody(parsed.data)
+          if (classified === undefined) {
+            skipped.push(id)
+            continue
+          }
           if (classified.kind === 'smbc') smbcMails.push(classified.mail)
           else amazonMails.push(classified.mail)
+        }
+
+        // 検索でヒットしたのに対象送信元と判定されなかったメールは捨てている。送信元アドレスの
+        // 形が変わったときに「取得完了」の陰で毎日取りこぼし続けるのを避けるため、件数と ID を残す
+        // （件名は Amazon だと商品名が入るため出さない）
+        if (skipped.length > 0) {
+          console.warn(
+            `Gmail メール取得: 対象送信元と判定されなかったメールを ${skipped.length} 件除外した`,
+            { gmailMessageIds: skipped },
+          )
         }
 
         return { ok: true, smbcMails, amazonMails }
@@ -340,7 +453,11 @@ export function createGmailMailFetchGateway(
  * 401 は資格情報が通らない状態、403 はスコープ不足のときだけ失効に倒す（403 は
  * レート制限でも返るため、本文の理由コードを見て取り違えを避ける）。
  */
-async function translateGmailError(response: Response, at: Date): Promise<MailFetchFailure> {
+async function translateGmailError(
+  response: Response,
+  target: string,
+  at: Date,
+): Promise<MailFetchFailure> {
   if (response.status === 401) {
     return revoked('Gmail API が認可を拒否した（401）', at)
   }
@@ -353,8 +470,13 @@ async function translateGmailError(response: Response, at: Date): Promise<MailFe
       ? revoked('Gmail API のスコープが不足している（403）', at)
       : otherFailure('Gmail API が 403 を返した（レート制限・権限設定を確認する）', true, at)
   }
+  // 検索から本文取得までの間に利用者がメールを削除・ゴミ箱へ移すと 404 になる。翌日の再走査では
+  // そのメールが検索に出ないので自然に回復する = やり直す価値のある失敗
+  if (response.status === 404) {
+    return otherFailure(`Gmail API が 404 を返した（取得前にメールが消えた: ${target}）`, true, at)
+  }
   const retryable = response.status === 429 || response.status >= 500
-  return otherFailure(`Gmail API が ${response.status} を返した`, retryable, at)
+  return otherFailure(`Gmail API が ${response.status} を返した（${target}）`, retryable, at)
 }
 
 /**
@@ -364,7 +486,7 @@ async function translateGmailError(response: Response, at: Date): Promise<MailFe
 async function refreshAccessToken(args: {
   config: GmailMailFetchGatewayConfig
   fetchImpl: typeof fetch
-  tokenStoreRef: string
+  tokenStoreRef: ParameterStorePath
   timeout: () => number
   now: () => Date
 }): Promise<string> {
@@ -374,16 +496,21 @@ async function refreshAccessToken(args: {
   try {
     tokenJson = await withTimeout(config.resolveTokenJson(tokenStoreRef), timeout())
   } catch (e) {
-    if (e instanceof NotFoundError) {
-      // 保管されたトークンが無い = そもそも認可されていない。やり直しても直らず、再認可が要る
+    // 保管されたトークンが無い = そもそも認可されていない（または連携を解除された）。
+    // やり直しても直らず、再認可でしか回復しない。Parameter Store の SDK は未保管を
+    // ParameterNotFound で返すため、翻訳漏れに備えて名前でも拾う
+    if (e instanceof NotFoundError || (e instanceof Error && e.name === 'ParameterNotFound')) {
       throw new MailFetchAbort(revoked('Gmail OAuth トークンが保管されていない', now()))
     }
+    // 通信断・タイムアウトはやり直しで直りうるが、権限不足や未構成は直らない。
+    // 一律 retryable にすると、設定不備が「待てば直る」として記録され誰も追わなくなる
+    const transient = isTimeoutError(e) || e instanceof TypeError
     throw new MailFetchAbort(
       otherFailure(
         isTimeoutError(e)
           ? 'Gmail OAuth トークンの取得がタイムアウトした'
           : `Gmail OAuth トークンの取得に失敗した（${e instanceof Error ? e.name : 'unknown'}）`,
-        true,
+        transient,
         now(),
       ),
     )
@@ -453,7 +580,7 @@ async function refreshAccessToken(args: {
 
 /** 検索結果を全ページ辿って message ID を集める。上限を超えたら黙って切らずに失敗させる */
 async function listMessageIds(args: {
-  callGmail: (url: string, accessToken: string) => Promise<unknown>
+  callGmail: (url: string, accessToken: string, target: string) => Promise<unknown>
   accessToken: string
   query: string
   maxMessages: number
@@ -462,17 +589,27 @@ async function listMessageIds(args: {
   const { callGmail, accessToken, query, maxMessages, now } = args
   const ids: string[] = []
   let pageToken: string | undefined
-  do {
+  // ページ数の上限。件数だけを見ていると、空ページと nextPageToken を返し続ける応答で
+  // 全体の締め切りまで回り続ける
+  const maxPages = Math.ceil(maxMessages / PAGE_SIZE) + 1
+  for (let page = 0; ; page += 1) {
+    if (page >= maxPages) {
+      throw new MailFetchAbort(
+        otherFailure('Gmail の検索結果のページ数が上限を超えた', false, now()),
+      )
+    }
     const url =
       `${GMAIL_API_BASE}/messages?maxResults=${PAGE_SIZE}&q=${encodeURIComponent(query)}` +
       (pageToken === undefined ? '' : `&pageToken=${encodeURIComponent(pageToken)}`)
-    const page = (await callGmail(url, accessToken)) as {
-      messages?: { id?: string }[]
-      nextPageToken?: string
+    const parsed = GmailMessageListResponseSchema.safeParse(
+      await callGmail(url, accessToken, 'list'),
+    )
+    if (!parsed.success) {
+      throw new MailFetchAbort(
+        otherFailure('Gmail API の検索応答が想定の構造と異なる', false, now()),
+      )
     }
-    for (const message of page.messages ?? []) {
-      if (typeof message.id === 'string' && message.id !== '') ids.push(message.id)
-    }
+    for (const message of parsed.data.messages ?? []) ids.push(message.id)
     if (ids.length > maxMessages) {
       throw new MailFetchAbort(
         otherFailure(
@@ -482,9 +619,9 @@ async function listMessageIds(args: {
         ),
       )
     }
-    pageToken = page.nextPageToken
-  } while (pageToken !== undefined && pageToken !== '')
-  return ids
+    pageToken = parsed.data.nextPageToken
+    if (pageToken === undefined || pageToken === '') return ids
+  }
 }
 
 /**
@@ -496,17 +633,18 @@ async function listMessageIds(args: {
  * （`MailParseFailed`）として扱わせる。
  */
 function toMailBody(
-  message: GmailMessage,
+  message: GmailMessageResponse,
 ):
   | { kind: 'smbc'; mail: SmbcNotificationMailBody }
   | { kind: 'amazon'; mail: AmazonOrderConfirmationMailBody }
   | undefined {
   const id = message.id
-  if (typeof id !== 'string' || id === '') return undefined
-  const address = addressOf(decodeEncodedWords(headerValue(message.payload, 'From')))
-  const subject = decodeEncodedWords(headerValue(message.payload, 'Subject'))
-  const receivedAt = new Date(Number(message.internalDate ?? '0'))
-  const body = extractBody(message.payload)
+  // payload の形は開かれているのでここで型を絞る（欠落・想定外は本文空・ヘッダ空として扱う）
+  const payload = message.payload as GmailPart | undefined
+  const address = addressOf(decodeEncodedWords(headerValue(payload, 'From')))
+  const subject = decodeEncodedWords(headerValue(payload, 'Subject'))
+  const receivedAt = new Date(Number(message.internalDate))
+  const body = extractBody(payload, id)
   const gmailMessageId = GmailMessageIdSchema.parse(id)
 
   if (isSmbcSender(address)) {
@@ -529,8 +667,7 @@ export function createUnconfiguredGmailMailFetchGateway(): GmailMailFetchGateway
         ok: false,
         failure: {
           kind: 'other_fetch_failure',
-          detail:
-            'Gmail メール取得が未構成（GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET を設定する）',
+          detail: 'Gmail メール取得が未構成のため取得できない',
           detectedAt: new Date(),
           retryable: false,
         },

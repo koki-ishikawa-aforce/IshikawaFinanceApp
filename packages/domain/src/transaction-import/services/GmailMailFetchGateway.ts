@@ -19,7 +19,7 @@
  * 日次バッチで自然に回復しうる。例外に混ぜると呼出し側がメッセージ文字列で判別することになり、
  * 「一時的な通信断でユーザーに再認可を求める」誤りが起こる。
  */
-import type { GmailMessageId } from '../../shared/ids'
+import type { GmailMessageId, UserId } from '../../shared/ids'
 import type { ParameterStorePath } from '../../shared/value-objects/ParameterStorePath'
 import type { ImportTargetPeriod } from '../aggregates/DailyMailImportBatch'
 
@@ -89,6 +89,13 @@ export type MailFetchFailure =
     }
 
 export interface MailFetchRequest {
+  /**
+   * 誰の受信箱を読むか。08a L20-23 の `data Gmail_OAuth_トークン参照 = ユーザーID` に対応する
+   * 借用形で、`GmailOAuthTokenRef`（オンボーディング・認証）と同じ「ユーザーID + 保管先」の組。
+   * 夫婦 2 人分のバッチが同じ port を使うため、取得結果と持ち主の対応付けを呼出し側の記憶に
+   * 委ねない（取り違えると相手の個人明細が本人の取引候補として取り込まれる）。
+   */
+  userId: UserId
   /** Gmail OAuth トークンの保管先（トークン実体はドメインに持ち込まない） */
   tokenStoreRef: ParameterStorePath
   /** 取込対象期間（過去 5 日再走査、OQ-31。重複は Gmail message ID で除外する） */
