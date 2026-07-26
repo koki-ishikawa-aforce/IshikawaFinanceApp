@@ -11,6 +11,9 @@ test('ダッシュボードが描画され、ナビが表示される', async ({
   await expect(page.getByText('今月支出')).toBeVisible()
   await expect(page.getByText('総資産')).toBeVisible()
 
+  // カテゴリ内訳はカードと見出しの内側にある（見出しの有無は VRT のベースライン更新では守れない）
+  await expect(page.getByText('世帯支出（カテゴリ別）')).toBeVisible()
+
   // 下部ナビゲーションが表示される
   await expect(page.getByRole('navigation')).toBeVisible()
   await expect(page.getByRole('link', { name: 'ホーム' })).toBeVisible()

@@ -98,7 +98,8 @@ describe('CategoryBreakdown', () => {
       <CategoryBreakdown data={emptyData} categoryColors={categoryColors} />,
     )
 
-    expect(screen.getByText('この月の世帯支出はありません')).toBeInTheDocument()
+    // 月・モードの切り替えは画面遷移を伴わないため、読み上げ対象でないとグラフが消えたことが伝わらない
+    expect(screen.getByRole('status')).toHaveTextContent('この月の世帯支出はありません')
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
     expect(screen.queryAllByRole('link')).toHaveLength(0)
     expect(container.querySelector('svg')).toBeNull()
