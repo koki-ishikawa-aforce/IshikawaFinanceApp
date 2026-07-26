@@ -128,6 +128,9 @@
 }
 
 .fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: fixed;
   right: calc(50% - 150px + 12px);
   bottom: 66px;
@@ -137,8 +140,8 @@
   border-radius: var(--radius-full);
   background: var(--accent);
   color: var(--white);
+  /* 中身はアイコンのみ。react-icons の既定サイズ 1em の基準としてこの font-size が効く */
   font-size: var(--text-xl);
-  font-weight: 700;
   cursor: pointer;
   box-shadow: var(--shadow-lg);
   z-index: 90;

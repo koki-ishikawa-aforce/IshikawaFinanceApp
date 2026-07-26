@@ -102,7 +102,7 @@ describe('CategoryBreakdown', () => {
     expect(screen.getByRole('status')).toHaveTextContent('この月の世帯支出はありません')
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
     expect(screen.queryAllByRole('link')).toHaveLength(0)
-    expect(container.querySelector('svg')).toBeNull()
+    expect(container.querySelector('circle')).toBeNull()
   })
 
   it('個人モードの空状態は個人支出の文言になる', () => {
@@ -124,7 +124,7 @@ describe('CategoryBreakdown', () => {
     expect(screen.queryByText(/支出はありません/)).not.toBeInTheDocument()
     expect(screen.getByRole('list')).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
-    expect(container.querySelector('svg')).not.toBeNull()
+    expect(container.querySelector('circle')).not.toBeNull()
   })
 
   it('支出はあるが合計0円の月はドーナツと中央の合計表示を出さない', () => {
@@ -132,7 +132,8 @@ describe('CategoryBreakdown', () => {
       <CategoryBreakdown data={zeroTotalData} categoryColors={categoryColors} />,
     )
 
-    expect(container.querySelector('svg')).toBeNull()
+    // 凡例の送り記号もアイコン(SVG)になったため、ドーナツの有無は svg ではなく弧の circle で見る
+    expect(container.querySelector('circle')).toBeNull()
     // ドーナツ中央の「合計 / ¥0」も一緒に消える（合計は KPI 側に出る）
     expect(screen.queryByText('合計')).not.toBeInTheDocument()
     expect(screen.queryByText('¥0')).not.toBeInTheDocument()
@@ -223,7 +224,7 @@ describe('CategoryBreakdown', () => {
       <CategoryBreakdown data={negativeTotalData} categoryColors={categoryColors} />,
     )
 
-    expect(container.querySelector('svg')).not.toBeNull()
+    expect(container.querySelector('circle')).not.toBeNull()
     expect(screen.getByText('100.0%')).toBeInTheDocument()
     expect(screen.queryByText(/内訳グラフは表示していません/)).not.toBeInTheDocument()
   })

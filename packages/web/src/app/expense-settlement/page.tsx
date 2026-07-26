@@ -18,6 +18,7 @@ import {
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatDateTime, formatMonthLabel, getCurrentMonth } from '@/lib/month'
+import { LuPlus } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -316,8 +317,13 @@ export default function ExpenseSettlementPage() {
       <div className={ui.card}>
         <div className={ui.rowBetween}>
           <span className={ui.sectionTitle}>費用区分別の累計</span>
-          <button className={styles.smallButton} onClick={() => setDepositModal(true)}>
-            ＋入金記録
+          <button
+            className={`${styles.smallButton} ${ui.iconLabel}`}
+            aria-label="入金記録を追加"
+            onClick={() => setDepositModal(true)}
+          >
+            <LuPlus aria-hidden="true" size="1.25em" />
+            入金記録
           </button>
         </div>
         {viewQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}

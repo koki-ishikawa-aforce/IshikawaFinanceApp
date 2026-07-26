@@ -24,7 +24,7 @@ import {
 import { ACCOUNT_KIND_LABELS, EXPENSE_CLASS_LABELS, brokerageNameLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { RoleIcon } from '@/components/ui/RoleIcon'
-import { LuRocket } from '@/components/ui/icons'
+import { LuPlus, LuRocket } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -427,13 +427,23 @@ function AccountsTab() {
       {(!hasOtherSavings || !hasNisa) && (
         <div className={styles.addRow}>
           {!hasOtherSavings && (
-            <button className={ui.button} onClick={() => setAdding('other_savings')}>
-              ＋ 別銀行貯蓄口座
+            <button
+              className={`${ui.button} ${ui.iconLabel}`}
+              aria-label="別銀行貯蓄口座を追加"
+              onClick={() => setAdding('other_savings')}
+            >
+              <LuPlus aria-hidden="true" />
+              別銀行貯蓄口座
             </button>
           )}
           {!hasNisa && (
-            <button className={ui.button} onClick={() => setAdding('nisa')}>
-              ＋ NISA口座
+            <button
+              className={`${ui.button} ${ui.iconLabel}`}
+              aria-label="NISA口座を追加"
+              onClick={() => setAdding('nisa')}
+            >
+              <LuPlus aria-hidden="true" />
+              NISA口座
             </button>
           )}
         </div>
