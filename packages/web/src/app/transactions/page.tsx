@@ -3,11 +3,16 @@
 import { Suspense, useCallback, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CategoryIdSchema, YearMonthSchema, type YearMonth } from '@warimaru/domain'
+import {
+  CategoryIdSchema,
+  ImportJobIdSchema,
+  YearMonthSchema,
+  type YearMonth,
+} from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { BulkClassificationModal } from '@/components/classification/BulkClassificationModal'
+import { BulkClassificationEntry } from '@/components/classification/BulkClassificationEntry'
 import { RetroactivePrompt } from '@/components/classification/RetroactivePrompt'
 import {
   ClassificationFields,
@@ -18,19 +23,16 @@ import {
 import { useMasters } from '@/components/classification/useMasters'
 import { apiFetch, apiMutate } from '@/lib/api-client'
 import {
-  BulkClassificationSessionWireSchema,
-  CurrentBulkSessionWireSchema,
   TransactionListWireSchema,
   UnclassifiedSummaryWireSchema,
   UnknownResponseSchema,
   type ExpenseClassWire,
-  type InProgressBulkClassificationSessionWire,
   type TransactionListItemWire,
 } from '@/lib/api-schemas'
 import { EXPENSE_CLASS_LABELS, expenseClassLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatMonthLabel, getCurrentMonth } from '@/lib/month'
-import { LuPlus, LuTriangleAlert } from '@/components/ui/icons'
+import { LuPlus } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -55,7 +57,7 @@ interface CreateModalProps {
 
 function CreateModal({ month, onClose }: CreateModalProps) {
   const queryClient = useQueryClient()
-  const { categories, expenseTypes } = useMasters()
+  const masters = useMasters()
   const [merchantName, setMerchantName] = useState('')
   const [amount, setAmount] = useState('')
   const [occurredAt, setOccurredAt] = useState(() => defaultOccurredAt(month))
@@ -136,8 +138,7 @@ function CreateModal({ month, onClose }: CreateModalProps) {
         <ClassificationFields
           value={classification}
           onChange={setClassification}
-          categories={categories}
-          expenseTypes={expenseTypes}
+          masters={masters}
         />
       )}
       {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
@@ -159,7 +160,7 @@ interface DetailModalProps {
 
 function DetailModal({ transaction, onClose }: DetailModalProps) {
   const queryClient = useQueryClient()
-  const { categories, expenseTypes } = useMasters()
+  const masters = useMasters()
   const [merchantName, setMerchantName] = useState(transaction.merchantName ?? '')
   const [amount, setAmount] = useState(
     transaction.amount !== null ? String(transaction.amount) : '',
@@ -200,7 +201,9 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['transactions'] })
       // 手動分類はその場で学習ルールになる（I-1 即時反映）。同じ加盟店で未分類の
-      // まま残っている過去の取引があれば、続けて遡及の確認を出す（J-3）
+      // まま残っている過去の取引があれば、続けて遡及の確認を出す（J-3）。
+      // 加盟店名が見えない行（配偶者の個人取引）は下の editable=false で分類自体が
+      // できないため、この分岐は保険
       if (transaction.merchantName === null) {
         onClose()
         return
@@ -292,8 +295,7 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
           <ClassificationFields
             value={classification}
             onChange={setClassification}
-            categories={categories}
-            expenseTypes={expenseTypes}
+            masters={masters}
           />
           <button
             className={ui.button}
@@ -327,6 +329,12 @@ function parseMonthParam(value: string | null): YearMonth {
   return parsed.success ? parsed.data : getCurrentMonth()
 }
 
+/** 取込完了からの Deep Link。ULID として不正なら「取込起因なし」として扱う */
+function parseImportJobParam(value: string | null): string | null {
+  const parsed = ImportJobIdSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
 /** Deep Link の categoryId パラメータ。ULID として不正なら「すべてのカテゴリ」にフォールバック */
 function parseCategoryParam(value: string | null): string {
   const parsed = CategoryIdSchema.safeParse(value)
@@ -345,11 +353,9 @@ function TransactionsPageContent() {
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false)
   const [creating, setCreating] = useState(false)
   const [selected, setSelected] = useState<TransactionListItemWire | null>(null)
-  const [bulkSession, setBulkSession] = useState<InProgressBulkClassificationSessionWire | null>(
-    null,
-  )
+  // CSV 取込完了から来た場合の取込ジョブ ID（一括分類を「CSV取込起因」で始める）
+  const importJobId = parseImportJobParam(searchParams.get('importJobId'))
   const { categories } = useMasters()
-  const queryClient = useQueryClient()
 
   const listQuery = useQuery({
     queryKey: ['transactions', month, classFilter, categoryFilter, unclassifiedOnly],
@@ -371,55 +377,7 @@ function TransactionsPageContent() {
       ),
   })
 
-  /**
-   * 進行中の一括分類セッション。API は 1 ユーザー 1 セッションに限定しているため、
-   * 途中離脱したセッションを拾い直せないと以後まとめて分類を始められなくなる。
-   */
-  const currentSessionQuery = useQuery({
-    queryKey: ['classification', 'bulk-session', 'current'],
-    queryFn: () =>
-      apiFetch('/api/classification/bulk-sessions/current', CurrentBulkSessionWireSchema),
-  })
-  const resumableSession =
-    currentSessionQuery.data?.session?.kind === 'in_progress'
-      ? currentSessionQuery.data.session
-      : null
-
-  const startBulk = useMutation({
-    mutationFn: async () => {
-      // 未分類取引は所有者本人にしかリスト掲載されない（プライバシールール 4）ため、
-      // 表示月の未分類行がそのまま対象になる（配偶者の取引は混ざらない）
-      const unclassified = await apiFetch(
-        `/api/transactions?month=${month}&isUnclassifiedOnly=true`,
-        TransactionListWireSchema,
-      )
-      const transactionIds = unclassified
-        .filter(item => item.isUnclassified)
-        .map(item => item.transactionId)
-      const originId = transactionIds[0]
-      if (originId === undefined) throw new Error('この月に未分類の取引はありません')
-      return apiMutate(
-        '/api/classification/bulk-sessions',
-        {
-          method: 'POST',
-          body: {
-            // 08b の取込起因は「CSV取込起因」か「単発修正起因（取引ID）」の 2 択。
-            // 取引一覧から始めた分類は後者に当たり、起点の取引 ID を記録する
-            trigger: { kind: 'single_correction', transactionId: originId },
-            transactionIds,
-          },
-        },
-        BulkClassificationSessionWireSchema,
-      )
-    },
-    onSuccess: async session => {
-      if (session.kind === 'in_progress') setBulkSession(session)
-      await queryClient.invalidateQueries({ queryKey: ['classification', 'bulk-session'] })
-    },
-  })
-
   const unclassifiedCount = summaryQuery.data?.count ?? 0
-  const showBulkEntry = unclassifiedCount > 0 || resumableSession !== null
 
   const items = listQuery.data ?? []
   const total = items.reduce((sum, item) => sum + (item.amount ?? 0), 0)
@@ -430,46 +388,23 @@ function TransactionsPageContent() {
       <MonthNavigator month={month} onMonthChange={setMonth} />
 
       {summaryQuery.error && (
-        <div className={ui.error} role="alert">
-          未分類の件数を取得できませんでした
+        <>
+          <div className={ui.error} role="alert">
+            未分類の件数を取得できませんでした
+          </div>
           <button className={ui.buttonGhost} onClick={() => void summaryQuery.refetch()}>
             再読み込み
           </button>
-        </div>
+        </>
       )}
 
-      {showBulkEntry && (
-        <div className={styles.unclassifiedSection} role="status">
-          {unclassifiedCount > 0 && (
-            <button className={styles.unclassifiedBanner} onClick={() => setUnclassifiedOnly(true)}>
-              <LuTriangleAlert aria-hidden="true" className={styles.unclassifiedIcon} />
-              未分類の取引が {unclassifiedCount} 件あります
-            </button>
-          )}
-          {resumableSession !== null ? (
-            <>
-              <p className={styles.bulkNote}>
-                まとめて分類が途中のままです（対象 {resumableSession.common.targets.length} 件）
-              </p>
-              <button className={ui.button} onClick={() => setBulkSession(resumableSession)}>
-                まとめて分類を続ける
-              </button>
-            </>
-          ) : (
-            <button
-              className={ui.button}
-              disabled={startBulk.isPending || currentSessionQuery.isPending}
-              onClick={() => startBulk.mutate()}
-            >
-              {startBulk.isPending ? '準備中...' : '未分類をまとめて分類する'}
-            </button>
-          )}
-          {startBulk.error && (
-            <div className={ui.error} role="alert">
-              まとめて分類を始められませんでした。通信状態を確かめて、もう一度お試しください。
-            </div>
-          )}
-        </div>
+      {summaryQuery.data && (
+        <BulkClassificationEntry
+          month={month}
+          unclassifiedCount={unclassifiedCount}
+          importJobId={importJobId}
+          onFilterUnclassified={() => setUnclassifiedOnly(true)}
+        />
       )}
 
       <div className={styles.filters}>
@@ -562,15 +497,6 @@ function TransactionsPageContent() {
 
       {creating && <CreateModal month={month} onClose={() => setCreating(false)} />}
       {selected && <DetailModal transaction={selected} onClose={() => setSelected(null)} />}
-      {bulkSession && (
-        <BulkClassificationModal
-          session={bulkSession}
-          onClose={() => {
-            setBulkSession(null)
-            void queryClient.invalidateQueries({ queryKey: ['classification', 'bulk-session'] })
-          }}
-        />
-      )}
     </main>
   )
 }

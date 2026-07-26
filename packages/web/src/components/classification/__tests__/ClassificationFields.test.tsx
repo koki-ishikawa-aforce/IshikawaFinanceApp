@@ -1,27 +1,32 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   ClassificationFields,
   classificationBody,
   classificationValid,
   type ClassificationInput,
 } from '../ClassificationFields'
+import type { MastersState } from '../useMasters'
 
-const categories = [{ categoryId: 'CAT_FOOD', name: '食費' }]
-const expenseTypes = [{ expenseTypeId: 'ET_GYM', name: 'ジム' }]
+const loadedMasters: MastersState = {
+  categories: [{ categoryId: 'CAT_FOOD', name: '食費' }],
+  expenseTypes: [{ expenseTypeId: 'ET_GYM', name: 'ジム' }],
+  isPending: false,
+  isError: false,
+  refetch: () => {},
+}
 
-function Harness({ initial }: { initial: ClassificationInput }) {
+function Harness({
+  initial,
+  masters = loadedMasters,
+}: {
+  initial: ClassificationInput
+  masters?: MastersState
+}) {
   const [value, setValue] = useState(initial)
-  return (
-    <ClassificationFields
-      value={value}
-      onChange={setValue}
-      categories={categories}
-      expenseTypes={expenseTypes}
-    />
-  )
+  return <ClassificationFields value={value} onChange={setValue} masters={masters} />
 }
 
 describe('ClassificationFields', () => {
@@ -41,6 +46,36 @@ describe('ClassificationFields', () => {
     await user.selectOptions(screen.getByLabelText('費用区分'), 'business_expense')
 
     expect(screen.getByLabelText('経費種別')).toBeInTheDocument()
+  })
+
+  it('マスタ取得中は空のセレクトを見せない', () => {
+    render(
+      <Harness
+        initial={{ categoryId: '', expenseClass: 'household' }}
+        masters={{ ...loadedMasters, categories: [], expenseTypes: [], isPending: true }}
+      />,
+    )
+
+    expect(screen.queryByLabelText('カテゴリ')).not.toBeInTheDocument()
+    expect(screen.getByText('分類の選択肢を読み込み中...')).toBeInTheDocument()
+  })
+
+  it('マスタ取得に失敗したら再試行手段を出す', async () => {
+    const user = userEvent.setup()
+    const refetch = vi.fn()
+    render(
+      <Harness
+        initial={{ categoryId: '', expenseClass: 'household' }}
+        masters={{ ...loadedMasters, categories: [], expenseTypes: [], isError: true, refetch }}
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('カテゴリ・経費種別を読み込めませんでした')
+    expect(screen.queryByLabelText('カテゴリ')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '選択肢を再読み込み' }))
+
+    expect(refetch).toHaveBeenCalled()
   })
 
   it('同じ画面に 2 つ並べても label と input の対応が崩れない', () => {

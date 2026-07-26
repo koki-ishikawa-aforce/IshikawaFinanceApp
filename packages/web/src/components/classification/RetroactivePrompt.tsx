@@ -2,16 +2,29 @@
 
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { apiFetch, apiMutate } from '@/lib/api-client'
+import { ApiError, apiFetch, apiMutate } from '@/lib/api-client'
 import {
   RetroactiveApplyResultWireSchema,
   RetroactiveCandidatesWireSchema,
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
-import { formatDate } from '@/lib/month'
+import { formatDateWithYear } from '@/lib/month'
 import ui from '@/components/ui/common.module.css'
 import styles from './RetroactivePrompt.module.css'
+
+/**
+ * 適用が失敗した理由を次の行動つきで示す（usability 3-6）。
+ *
+ * 遡及適用は加盟店学習ルールを前提にするため（08b J-3）、学習の対象外
+ * （Amazon 商品キー由来）や学習無効化中の加盟店では、通信ではなく前提の側で
+ * 必ず失敗する。サーバーは学習ルール未存在を 404、無効化中を 409 で返す。
+ */
+function applyErrorMessage(error: Error): string {
+  if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
+    return 'この店舗は自動分類の学習の対象外のため、まとめて変更できません。過去の取引は 1 件ずつ分類してください。'
+  }
+  return 'まとめての変更に失敗しました。通信状態を確かめて、もう一度お試しください。'
+}
 
 interface RetroactivePromptProps {
   /** 直前に分類した取引の加盟店名。この加盟店の過去未分類取引が遡及の対象になる */
@@ -112,8 +125,9 @@ export function RetroactivePrompt({ merchantName, onDone }: RetroactivePromptPro
       </p>
       <ul className={styles.list}>
         {candidates.map(candidate => (
-          <li key={candidate.transactionId} className={styles.row}>
-            <label className={styles.label}>
+          <li key={candidate.transactionId}>
+            {/* 日付と金額の両方をラベルに含める（どの取引か音声だけで判別できるように） */}
+            <label className={`${ui.card} ${styles.row}`}>
               <input
                 type="checkbox"
                 checked={!excluded.has(candidate.transactionId)}
@@ -129,22 +143,21 @@ export function RetroactivePrompt({ merchantName, onDone }: RetroactivePromptPro
                   })
                 }
               />
-              <span className={styles.date}>{formatDate(candidate.occurredAt)}</span>
+              {/* 遡及候補は月をまたいで並ぶため年を含めて出す（usability 5-4） */}
+              <span className={styles.date}>{formatDateWithYear(candidate.occurredAt)}</span>
+              <span className={styles.amount}>{formatMoney(candidate.amount)}</span>
             </label>
-            <span className={styles.amount}>{formatMoney(candidate.amount)}</span>
           </li>
         ))}
       </ul>
       {apply.error && (
         <div className={ui.error} role="alert">
-          まとめての変更に失敗しました。通信状態を確かめて、もう一度お試しください。
+          {applyErrorMessage(apply.error)}
         </div>
       )}
       {selectedIds.length === 0 && (
         // 3-5: なぜ押せないかを画面上に出す
-        <EmptyState announce={false}>
-          変更する取引にチェックを入れると、まとめて変更できます。
-        </EmptyState>
+        <p className={styles.hint}>変更する取引にチェックを入れると、まとめて変更できます。</p>
       )}
       <button
         className={ui.button}

@@ -8,6 +8,10 @@ import { mockRoleQuery } from './screens'
  * どちらも操作して初めて開くため、画面単位の VRT（visual-regression.spec.ts）では
  * 写らない。モック起動モードの固定データ上で導線をたどり、開いた状態を撮る。
  */
+
+/** モック fixture の未分類加盟店数（darling は配偶者に見えない Amazon の 1 件を多く持つ） */
+const MERCHANT_COUNT = { darling: 3, honey: 2 } as const
+
 for (const theme of ['darling', 'honey'] as const) {
   test(`bulk classification - ${theme} theme`, async ({ page }) => {
     await page.goto(`/transactions${mockRoleQuery(theme)}`)
@@ -16,8 +20,9 @@ for (const theme of ['darling', 'honey'] as const) {
     await page.getByRole('button', { name: '未分類をまとめて分類する' }).click()
 
     const dialog = page.getByRole('dialog', { name: 'まとめて分類' })
-    // 未分類の加盟店数はロールごとに異なる（darling は配偶者に見えない取引を 1 件多く持つ）
-    await expect(dialog.getByText(/1 \/ \d+ 店舗（分類済み 0 件）/)).toBeVisible()
+    await expect(
+      dialog.getByText(`1 / ${MERCHANT_COUNT[theme]} 店舗（分類済み 0 件）`),
+    ).toBeVisible()
     await page.waitForLoadState('networkidle')
     await waitForAppFonts(page)
     await hideDevOverlay(page)

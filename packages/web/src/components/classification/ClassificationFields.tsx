@@ -3,6 +3,7 @@
 import { useId } from 'react'
 import { EXPENSE_CLASS_LABELS } from '@/lib/labels'
 import type { ExpenseClassWire } from '@/lib/api-schemas'
+import type { MastersState } from './useMasters'
 import ui from '@/components/ui/common.module.css'
 
 /** 3 軸（カテゴリ / 費用区分 / 経費種別）の入力値 */
@@ -33,8 +34,7 @@ export function classificationValid(input: ClassificationInput): boolean {
 interface ClassificationFieldsProps {
   value: ClassificationInput
   onChange: (value: ClassificationInput) => void
-  categories: { categoryId: string; name: string }[]
-  expenseTypes: { expenseTypeId: string; name: string }[]
+  masters: MastersState
 }
 
 /**
@@ -43,17 +43,33 @@ interface ClassificationFieldsProps {
  *
  * `useId` で label と input を関連付ける（usability 8-3）。同一画面に複数個
  * 並んでも id が衝突しない。
+ *
+ * マスタが未取得のうちは空のセレクトを見せない（同 7-2）。取得に失敗したら
+ * 選ぶものが無いままになるため、再試行手段を出す（同 1-3）。
  */
-export function ClassificationFields({
-  value,
-  onChange,
-  categories,
-  expenseTypes,
-}: ClassificationFieldsProps) {
+export function ClassificationFields({ value, onChange, masters }: ClassificationFieldsProps) {
   const idPrefix = useId()
+  const { categories, expenseTypes } = masters
   const categoryId = `${idPrefix}-category`
   const expenseClassId = `${idPrefix}-expense-class`
   const expenseTypeId = `${idPrefix}-expense-type`
+
+  if (masters.isPending) {
+    return <div className={ui.loading}>分類の選択肢を読み込み中...</div>
+  }
+
+  if (masters.isError) {
+    return (
+      <>
+        <div className={ui.error} role="alert">
+          カテゴリ・経費種別を読み込めませんでした。分類にはこの選択肢が必要です。
+        </div>
+        <button className={ui.buttonGhost} onClick={() => masters.refetch()}>
+          選択肢を再読み込み
+        </button>
+      </>
+    )
+  }
 
   return (
     <>

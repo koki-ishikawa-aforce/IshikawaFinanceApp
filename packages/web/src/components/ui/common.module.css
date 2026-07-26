@@ -51,6 +51,13 @@
   cursor: not-allowed;
 }
 
+/** ボタンの見た目のリンク(`&lt;a&gt;`)。`.button` と組み合わせて使う */
+.buttonLink {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+
 .buttonGhost {
   border: 1.5px solid var(--accent);
   border-radius: var(--radius-md);

@@ -12,23 +12,17 @@
   gap: var(--space-1_5);
 }
 
+/* 面（背景・角丸・影）は common の .card を合成して受け取る */
 .row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.7);
-  box-shadow: var(--shadow-sm);
-  padding: var(--space-2) var(--space-2_5);
-}
-
-.label {
-  display: flex;
+  flex-direction: row;
   align-items: center;
   gap: var(--space-1_5);
+  padding: var(--space-2) var(--space-2_5);
   cursor: pointer;
-  min-width: 0;
+}
+
+.row input[type='checkbox'] {
+  accent-color: var(--accent);
 }
 
 .date {
@@ -42,6 +36,13 @@
   font-weight: 800;
   color: var(--text-primary);
   white-space: nowrap;
+  margin-left: auto;
+}
+
+.hint {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .result {

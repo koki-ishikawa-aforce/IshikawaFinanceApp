@@ -103,9 +103,8 @@ function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
         </p>
         {/* AT-302: 取込サマリから一括分類へ繋ぐ導線。分類そのものは取引一覧で行う */}
         <Link
-          className={ui.button}
-          style={{ textAlign: 'center' }}
-          href={`/transactions?month=${month}`}
+          className={`${ui.button} ${ui.buttonLink}`}
+          href={`/transactions?month=${month}&importJobId=${importJobId}`}
         >
           取引一覧でまとめて分類する
         </Link>

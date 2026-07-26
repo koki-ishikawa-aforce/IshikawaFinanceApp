@@ -31,6 +31,16 @@ export function formatDate(date: Date): string {
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
+/**
+ * 年を含む日付（`2026/07/12`）。月ナビゲーションで年月が確定していない一覧
+ * （複数の月をまたいで並ぶ遡及候補など）で使う（usability 5-4）
+ */
+export function formatDateWithYear(date: Date): string {
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}/${m}/${d}`
+}
+
 export function formatDateTime(date: Date): string {
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
 }
