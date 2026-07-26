@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { YearMonthSchema, type UploadFileFormat, type YearMonth } from '@warimaru/domain'
@@ -31,10 +32,11 @@ type FileKind = keyof typeof FILE_KIND_LABELS
 
 interface CandidatesPanelProps {
   importJobId: string
+  month: YearMonth
   onDone: () => void
 }
 
-function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
+function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
   const queryClient = useQueryClient()
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
   const [confirmResult, setConfirmResult] = useState<{
@@ -92,9 +94,16 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
           {confirmResult.confirmedCount} 件を未分類取引として登録しました
           {confirmResult.alreadyConfirmedCount > 0 &&
             `（${confirmResult.alreadyConfirmedCount} 件は確定済みでした）`}
-          。取引一覧ページで分類できます。
+          。取引一覧でまとめて分類できます。
         </p>
-        <button className={ui.button} onClick={onDone}>
+        {/* AT-302: 取込サマリから一括分類へ繋ぐ導線。分類そのものは取引一覧で行う */}
+        <Link
+          className={`${ui.button} ${ui.buttonLink}`}
+          href={`/transactions?month=${month}&importJobId=${importJobId}`}
+        >
+          取引一覧でまとめて分類する
+        </Link>
+        <button className={ui.buttonGhost} onClick={onDone}>
           閉じる
         </button>
       </section>
@@ -379,7 +388,11 @@ function ImportsPageContent() {
       <div aria-live="polite">{job !== null && <ImportJobCard job={job} />}</div>
 
       {job !== null && job.kind === 'completed' && (
-        <CandidatesPanel importJobId={job.common.importJobId} onDone={() => setJob(null)} />
+        <CandidatesPanel
+          importJobId={job.common.importJobId}
+          month={month}
+          onDone={() => setJob(null)}
+        />
       )}
     </main>
   )
