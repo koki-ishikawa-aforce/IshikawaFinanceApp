@@ -178,9 +178,18 @@ jobs:
           # ブランチからのデプロイしか許可されない。本ワークフローは pull_request で
           # 走る(ref は refs/pull/<番号>/merge)ため、この制限が残っているとデプロイが
           # 必ず弾かれる。制限を外せない場合は配信を諦める(PR の検証は止めない)。
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/environments/github-pages" \
-            -F 'deployment_branch_policy=null' >/dev/null 2>&1 \
-            || skip 'github-pages 環境のデプロイ元ブランチ制限を解除できなかったため'
+          #
+          # 先に GET で現状を読み、制限が残っている場合だけ解除を試みる。環境の更新
+          # (PUT)は管理者権限が必要で GITHUB_TOKEN では成功しないため、PUT の成否を
+          # そのまま合格条件にすると、手動で解除済みでも永遠に skip し続けてしまう
+          # (GET は読み取り権限で通り、解除済みなら deployment_branch_policy が null になる)。
+          restricted="$(gh api "repos/${GITHUB_REPOSITORY}/environments/github-pages" \
+            --jq '.deployment_branch_policy != null' 2>/dev/null || echo 'true')"
+          if [ "${restricted}" != 'false' ]; then
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/environments/github-pages" \
+              -F 'deployment_branch_policy=null' >/dev/null 2>&1 \
+              || skip 'github-pages 環境のデプロイ元ブランチ制限を解除できなかったため'
+          fi
 
           echo 'ready=true' >> "${GITHUB_OUTPUT}"
 

@@ -50,6 +50,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       spouseCompletionQuery: deps.spouseCompletionQuery,
       allowlistQuery: deps.allowlistQuery,
       gmailOAuthGateway: deps.gmailOAuthGateway,
+      lineFriendshipGateway: deps.lineFriendshipGateway,
       eventBus: deps.eventBus,
     }),
   )

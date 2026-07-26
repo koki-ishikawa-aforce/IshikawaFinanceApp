@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CategoryIdSchema, YearMonthSchema, type YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { Modal } from '@/components/ui/Modal'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { apiFetch, apiMutate } from '@/lib/api-client'
 import {
   CategoryListWireSchema,
@@ -316,7 +317,11 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
   return (
     <Modal title={transaction.isUnclassified ? '未分類取引' : '取引の編集'} onClose={onClose}>
       {!editable && (
-        <div className={ui.empty}>配偶者の個人取引のため、詳細の閲覧・編集はできません</div>
+        // 権限による制限であることは文言側で伝えている(usability 2-2)。汎用の空文言には落とさない。
+        // モーダルを開いた時点で確定していて切り替わらないため、読み上げは重ねない
+        <EmptyState announce={false}>
+          配偶者の個人取引のため、詳細の閲覧・編集はできません
+        </EmptyState>
       )}
       {editable && (
         <>
@@ -500,7 +505,10 @@ function TransactionsPageContent() {
             <span className={styles.totalAmount}>{formatMoney(total)}</span>
           </div>
           {items.length === 0 ? (
-            <div className={ui.empty}>この条件の取引はありません</div>
+            // 一覧の各行が個別にカード化されているため、空状態にも同じ器を与えて背景に浮かせない
+            <div className={ui.card}>
+              <EmptyState>この条件の取引はありません</EmptyState>
+            </div>
           ) : (
             <ul className={styles.list}>
               {items.map(item => (

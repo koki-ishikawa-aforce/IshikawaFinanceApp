@@ -2,7 +2,7 @@
  * AWS Parameter Store（SSM）アクセス
  *
  * - 読出し: 許可リスト（HUSBAND_LINE_USER_ID / WIFE_LINE_USER_ID）等の実値解決
- *   （adapters-neon の ResolveParameterStoreValue に注入。OQ-27: DB はパス参照のみ保持）
+ *   （adapters-postgres の ResolveParameterStoreValue に注入。OQ-27: DB はパス参照のみ保持）
  * - 書込み: Gmail OAuth トークン実体の保管（KMS SecureString）
  *
  * リージョン・認証情報は AWS SDK の標準解決（環境変数 / IAM ロール）に従う。

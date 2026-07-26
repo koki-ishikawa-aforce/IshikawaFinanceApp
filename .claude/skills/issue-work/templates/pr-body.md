@@ -19,7 +19,7 @@ Closes #<Issue番号>
 
 ## 実装内容
 
-<!-- 技術的な変更点を「何を・なぜ」のセットで書く。パッケージごと(domain / adapters-neon / api / web)に分けると読みやすい。
+<!-- 技術的な変更点を「何を・なぜ」のセットで書く。パッケージごと(domain / adapters-postgres / api / web)に分けると読みやすい。
      専門用語・略語には初出時に括弧で平易な説明を添える。判断に影響しない詳細は書かない。 -->
 
 ## 画面(スクリーンショット)
@@ -45,7 +45,7 @@ Closes #<Issue番号>
 ## 検証
 
 - [ ] `pnpm build && pnpm typecheck && pnpm test && pnpm lint && pnpm format:check` が全て green
-- [ ] adapters-neon の変更、または domain の振る舞い変更あり → 統合テスト(`test:integration`)も green / いずれも該当なし → 不要
+- [ ] adapters-postgres の変更、または domain の振る舞い変更あり → 統合テスト(`test:integration`)も green / いずれも該当なし → 不要
 - [ ] web の変更あり → VRT(`pnpm --filter @warimaru/web test:e2e`)も green / 変更なし → 不要
 - [ ] VRT スナップショットを更新した → 更新理由を「画面」節に記載済み・スクリーンショット添付済み / 更新なし → 不要
 - [ ] DDD レビュー(/ddd-review)を実施し、must-fix を解消済み

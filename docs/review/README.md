@@ -51,7 +51,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | `packages/web/**` | `/ui-review` | ✅ 稼働中 |
 | `packages/web/**` のうち画面・フローの追加変更を含む差分<br>(`src/app/**` のページ・レイアウト、`src/components/**` の表示 / 操作を持つ部品、`src/hooks/**` の状態の扱い、`components/ui/common.module.css` の `.loading` / `.empty` / `.error` / `.button` 系) | `/ux-review` | ✅ 稼働中 |
 | `packages/api/src/routes/**`<br>`packages/api/src/middleware/**`<br>`packages/api/src/gmail-oauth/**`<br>`packages/api/src/aws/**`(シークレット・トークンの取得/保管)<br>認証・外部連携(LINE / Gmail)の変更 | `/security-review` | ✅ 稼働中 |
-| `packages/adapters-neon/drizzle/**`(マイグレーション)<br>`packages/adapters-neon/src/schema/**`(テーブル定義・索引・制約)<br>`packages/adapters-neon/src/**`(Repository / Query 実装)<br>`packages/domain/src/*/events/**`・`packages/api/src/event-handlers/**`(再実行による二重適用の観点のみ) | `/data-review` | ✅ 稼働中 |
+| `packages/adapters-postgres/drizzle/**`(マイグレーション)<br>`packages/adapters-postgres/src/schema/**`(テーブル定義・索引・制約)<br>`packages/adapters-postgres/src/**`(Repository / Query 実装)<br>`packages/domain/src/*/events/**`・`packages/api/src/event-handlers/**`(再実行による二重適用の観点のみ) | `/data-review` | ✅ 稼働中 |
 | `packages/domain/src/*/events/**`<br>`packages/api/src/event-handlers/**`<br>`packages/api/src/notification/**`<br>外部 API 呼び出しの追加・変更(`packages/api/src/gmail-oauth/**`・`pdf-conversion/**`・`aws/**`、その他 `fetch` / SDK 呼び出し) | `/reliability-review` | ✅ 稼働中 |
 | テストファイル(`**/tests/**`・`**/__tests__/**`・`*.test.ts(x)`・`*.spec.ts`)を含む差分<br>`packages/domain/src/**` の振る舞い変更(テストを含まない場合も対象) | `/test-review` | ✅ 稼働中 |
 
@@ -101,7 +101,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | `pnpm --filter @warimaru/web bundle-size` | `code` | 初期表示ペイロードの予算(性能効率)→ [bundle-budget.md](./bundle-budget.md) |
 | `pnpm typecheck` | `code` | 型整合(保守性) |
 | `pnpm test` | `code` | 単体テストの成否(機能適合性) |
-| `pnpm --filter @warimaru/adapters-neon test:integration` | `code` | 実 PostgreSQL に対する永続化層の振る舞い |
+| `pnpm --filter @warimaru/adapters-postgres test:integration` | `code` | 実 PostgreSQL に対する永続化層の振る舞い |
 | `pnpm --filter @warimaru/web test:e2e` | `web` | ビジュアルリグレッション(darling / honey 両テーマ) |
 | `pnpm --filter @warimaru/e2e test:e2e` | `code` | 受入シナリオの E2E(AT-0xx / AT-2xx / AT-3xx) |
 | `pnpm lint` | `code` | lint ルール + stylelint(トークン直値の機械判定) |

@@ -1,5 +1,5 @@
 -- ファイル本体・meta スナップショット・_journal.json は
--- `pnpm --filter @warimaru/adapters-neon db:generate --custom` の生成物。
+-- `pnpm --filter @warimaru/adapters-postgres db:generate --custom` の生成物。
 -- 本 Issue はテーブル定義（DDL）を変えないため生成される DDL は空で、以下は手書きのデータ移行
 -- DML のみ（drizzle-kit は DDL しか生成できない。0008 と同じ形式）。
 --

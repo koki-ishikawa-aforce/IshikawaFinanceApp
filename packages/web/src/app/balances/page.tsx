@@ -13,6 +13,7 @@ import { formatMoney } from '@/lib/format'
 import { formatDateTime, getCurrentMonth, shiftMonth } from '@/lib/month'
 import { TimeSeriesChart, type ChartSeries } from '@/components/balances/TimeSeriesChart'
 import { LuLandmark, LuCreditCard, LuPiggyBank, LuTrendingUp } from '@/components/ui/icons'
+import { EmptyState } from '@/components/ui/EmptyState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -147,7 +148,7 @@ export default function BalancesPage() {
         {listQuery.error && <div className={ui.error}>残高一覧の取得に失敗しました</div>}
         {listQuery.data &&
           (listQuery.data.items.length === 0 ? (
-            <div className={ui.empty}>登録されている口座がありません</div>
+            <EmptyState>登録されている口座がありません</EmptyState>
           ) : (
             <div className={styles.balanceList}>
               {listQuery.data.items.map(item => (

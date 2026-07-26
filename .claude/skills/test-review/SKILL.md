@@ -32,7 +32,7 @@ CI が見ているのは `pnpm test` が green であることだけで、テス
    - 変更ファイル一覧(またはレビュー対象の diff 範囲)
    - 関連する Issue 番号と受け入れ条件(あれば)
    - 振る舞いを変えた実装ファイルと、対応するテストファイルの対応が分かっていれば添える
-3. 統合テスト(`packages/adapters-neon/tests/integration/**`)を要する変更では、実 DB でしか壊れない検証(スキーマ制約・SQL の集計・Query の絞り込み)がインメモリ実装のテストで代替されていないことを確認する
+3. 統合テスト(`packages/adapters-postgres/tests/integration/**`)を要する変更では、実 DB でしか壊れない検証(スキーマ制約・SQL の集計・Query の絞り込み)がインメモリ実装のテストで代替されていないことを確認する
 4. レビュー結果を **must-fix** / **suggestion** に分けてユーザーに提示する
 5. must-fix は必ず修正する。**suggestion も原則その場で修正する(デフォルトは対応)**。修正後は `/verify` を再実行して green を確認する
 6. 例外として、以下のいずれかに該当する suggestion のみ見送ってよい:
