@@ -21,18 +21,15 @@ function getColor(name: string, index: number, colors: Record<string, string>): 
 }
 
 export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownProps) {
-  // 支出が 1 件も無い月は、弧の無いドーナツと空の凡例ではなく空状態の案内を出す
-  if (data.items.length === 0) {
-    return (
-      <div className={styles.container}>
-        <div className={ui.empty}>
-          {data.mode === 'household'
-            ? 'この月の世帯支出はありません'
-            : 'この月の個人支出はありません'}
-        </div>
-      </div>
-    )
-  }
+  const spendingLabel = data.mode === 'household' ? '世帯支出' : '個人支出'
+
+  // 支出が 1 件も無い月
+  const isEmpty = data.items.length === 0
+
+  // 支出の記録はあるが合計が 0 円の月(返金による相殺など)。割合が定義できないため、
+  // 弧の描けないドーナツと全項目 0.0% の割合表示になる。グラフと割合だけを落とし、
+  // 記録されている金額はそのまま見せる(#340)
+  const hasZeroTotal = !isEmpty && data.totalAmount === 0
 
   const segments = data.items.map((item, i) => ({
     label: item.categoryName,
@@ -42,27 +39,46 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
 
   return (
     <div className={styles.container}>
-      <DonutChart segments={segments} totalAmount={data.totalAmount} />
-      <ul className={styles.legend}>
-        {data.items.map((item, i) => (
-          <li key={item.categoryId}>
-            {/* ドリルダウン ⑧: 凡例タップで取引一覧へ（フィルタ: 表示中の月 + そのカテゴリ） */}
-            <Link
-              href={`/transactions?month=${data.yearMonth}&categoryId=${item.categoryId}`}
-              className={styles.legendItem}
-            >
-              <span
-                className={styles.dot}
-                style={{ backgroundColor: getColor(item.categoryName, i, categoryColors) }}
-              />
-              <span className={styles.name}>{item.categoryName}</span>
-              <span className={styles.amount}>{formatMoney(item.total)}</span>
-              <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
-              <LuChevronRight className={styles.chevron} aria-hidden="true" />
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {/*
+        月・モードの切り替えでこの領域はドーナツ ⇄ 案内文に入れ替わる。ページ遷移を
+        伴わないため、role="status" が無いと支援技術に変化が伝わらない
+        (docs/design/usability.md 8-4)
+      */}
+      <div role="status">
+        {isEmpty ? (
+          <div className={ui.empty}>{`この月の${spendingLabel}はありません`}</div>
+        ) : hasZeroTotal ? (
+          <div className={ui.empty}>
+            {`この月は返金などで${spendingLabel}の合計が0円になったため、内訳グラフは表示していません`}
+          </div>
+        ) : (
+          <DonutChart segments={segments} totalAmount={data.totalAmount} />
+        )}
+      </div>
+      {!isEmpty && (
+        <ul className={styles.legend}>
+          {data.items.map((item, i) => (
+            <li key={item.categoryId}>
+              {/* ドリルダウン ⑧: 凡例タップで取引一覧へ（フィルタ: 表示中の月 + そのカテゴリ） */}
+              <Link
+                href={`/transactions?month=${data.yearMonth}&categoryId=${item.categoryId}`}
+                className={styles.legendItem}
+              >
+                <span
+                  className={styles.dot}
+                  style={{ backgroundColor: getColor(item.categoryName, i, categoryColors) }}
+                />
+                <span className={styles.name}>{item.categoryName}</span>
+                <span className={styles.amount}>{formatMoney(item.total)}</span>
+                {!hasZeroTotal && (
+                  <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
+                )}
+                <LuChevronRight className={styles.chevron} aria-hidden="true" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

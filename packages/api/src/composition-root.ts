@@ -23,6 +23,7 @@ import type {
   GmailOAuthGateway,
   GmailOAuthTokenRepository,
   LineDeliveryLogRepository,
+  LineFriendshipGateway,
   LineMessagingGateway,
   MerchantLearningRuleRepository,
   MonthlyExpenseCycleRepository,
@@ -92,6 +93,8 @@ import {
   createMockGmailOAuthGateway,
   createUnconfiguredGmailOAuthGateway,
 } from './gmail-oauth/mock.js'
+import { createLineFriendshipGateway } from './line-friendship/line-friendship-gateway.js'
+import { createMockLineFriendshipGateway } from './line-friendship/mock.js'
 import {
   createSsmParameterStore,
   createUnconfiguredParameterStore,
@@ -194,6 +197,11 @@ export interface AppDeps {
   spouseCompletionQuery: SpouseCompletionQuery
   allowlistQuery: AllowlistQuery
   gmailOAuthGateway: GmailOAuthGateway
+  /**
+   * LINE 友だち状態の照会（#297、OQ-55 ③）。アプリユーザーの新規登録完了時に呼び、
+   * 登録前に友だち追加していた場合の取りこぼし（follow Webhook が破棄される）を拾い直す。
+   */
+  lineFriendshipGateway: LineFriendshipGateway
   /**
    * LINE Webhook 署名検証鍵の解決（#296、OQ-55 ④）。
    * 環境変数 LINE_CHANNEL_SECRET を優先し、未設定なら Phase0Config の保管参照
@@ -322,6 +330,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
       gmailOAuthGateway: createMockGmailOAuthGateway(
         createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
       ),
+      lineFriendshipGateway: createMockLineFriendshipGateway(),
       // 開発モードは Phase0Config も Parameter Store も無いため、環境変数か固定値で署名検証を通す
       // （この分岐自体が本番では起動エラーになるため、固定値は開発環境に閉じている）
       resolveLineChannelSecret: () =>
@@ -422,11 +431,16 @@ export function createDeps(env: CompositionEnv): AppDeps {
         const config = await lineChannelConfigQuery.fetch()
         return parameterStore.read(config.channelSecretRef)
       }
+  const resolveLineChannelAccessToken = async (): Promise<string> => {
+    const config = await lineChannelConfigQuery.fetch()
+    return parameterStore.read(config.channelAccessTokenRef)
+  }
   const lineMessagingGateway = createLineMessagingGateway({
-    resolveChannelAccessToken: async () => {
-      const config = await lineChannelConfigQuery.fetch()
-      return parameterStore.read(config.channelAccessTokenRef)
-    },
+    resolveChannelAccessToken: resolveLineChannelAccessToken,
+  })
+  // 友だち状態の照会も同じ Channel Access Token を使う（#297、OQ-55 ③）
+  const lineFriendshipGateway = createLineFriendshipGateway({
+    resolveChannelAccessToken: resolveLineChannelAccessToken,
   })
   // 送信ゲートウェイ未構成なら宛先も空にして発火自体を保留する（発火は 1 回だけ = OQ-14 のため、
   // 必ず失敗する送信で唯一の発火を消費しない。構成後の後続失敗で改めて発火する）
@@ -492,6 +506,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
     failsafeEmailRepository: new NeonFailsafeEmailRepository(db),
     consecutiveFailureCounterRepository: new NeonConsecutiveFailureCounterRepository(db),
     lineMessagingGateway,
+    lineFriendshipGateway,
     failsafeEmailGateway,
     failsafeEmailRecipients,
     failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
