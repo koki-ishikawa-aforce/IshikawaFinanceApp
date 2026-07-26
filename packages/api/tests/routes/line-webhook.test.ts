@@ -10,7 +10,7 @@ import type {
   LineFriendshipStatus,
   LineTalkRoomJoined,
   LineTalkRoomMembershipGateway,
-  LineTalkRoomMembershipQuery,
+  LineTalkRoomMembershipCheck,
   LineTalkRoomMembershipStatus,
   UserId,
 } from '@warimaru/domain'
@@ -289,8 +289,11 @@ describe('POST /webhook/line — follow（友だち追加）', () => {
 })
 
 describe('POST /webhook/line — join（共通トークルーム参加）', () => {
-  it('join で世帯レベルの共通トークルームIDを記録し LineTalkRoomJoined を発行する', async () => {
-    const t = createTestApp()
+  it('在籍が確認できた join は共通トークルームIDを記録し LineTalkRoomJoined を発行する', async () => {
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: membershipGateway({ kind: 'member' }),
+    })
+    await register(t)
     const log = subscribeTalkRoomJoined(t)
 
     const res = await postWebhook(t, joinPayload(TALK_ROOM_ID))
@@ -305,16 +308,23 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
   // その状態は「夫婦より先に第三者が招待する」取り合いがちょうど成立する場面であり、
   // 照会する相手がいない以上、記録せず見送る側へ倒す
   it('アプリユーザーが 1 人も登録されていないときは在籍を確認できないため記録しない', async () => {
+    // 在籍照会は差し替えず、既定モック（常に member を返す＝素通し）のままにする。
+    // register を呼ばないことでユーザー未登録という条件そのものを route に入力し、
+    // 「照会対象がいないので照会せず見送る」経路を実際に通す
+    let called = 0
     const t = createTestApp({
-      lineTalkRoomMembershipGateway: membershipGateway({
-        kind: 'unknown',
-        detail: '照会対象のアプリユーザーが登録されていない',
-      }),
+      lineTalkRoomMembershipGateway: {
+        checkMembership: () => {
+          called += 1
+          return Promise.resolve({ kind: 'member' } as const)
+        },
+      },
     })
     const log = subscribeTalkRoomJoined(t)
 
     expect((await postWebhook(t, joinPayload(TALK_ROOM_ID))).status).toBe(200)
 
+    expect(called).toBe(0)
     expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBeUndefined()
     expect(log).toHaveLength(0)
   })
@@ -340,7 +350,9 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
     const t = createTestApp({
       lineTalkRoomMembershipGateway: membershipGateway({
         kind: 'unknown',
-        detail: 'LINE member API 500',
+        // やり直しても直らない失敗。記録せずに 200 で終端する
+        retryable: false,
+        detail: 'LINE member API 403',
       }),
     })
     await register(t)
@@ -353,11 +365,11 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
   })
 
   it('在籍照会には登録済みユーザーの LINE_userID と、届いたトークルームの種別・IDを渡す', async () => {
-    const queries: LineTalkRoomMembershipQuery[] = []
+    const checks: LineTalkRoomMembershipCheck[] = []
     const t = createTestApp({
       lineTalkRoomMembershipGateway: {
-        checkMembership: query => {
-          queries.push(query)
+        checkMembership: check => {
+          checks.push(check)
           return Promise.resolve({ kind: 'member' } as const)
         },
       },
@@ -366,19 +378,22 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
 
     await postWebhook(t, joinPayload(TALK_ROOM_ID))
 
-    expect(queries).toHaveLength(1)
-    expect(queries[0]?.talkRoomKind).toBe('group')
-    expect(queries[0]?.talkRoomId).toBe(TALK_ROOM_ID)
-    expect(queries[0]?.userIds).toContain(VIEWER_ID)
+    expect(checks).toHaveLength(1)
+    expect(checks[0]?.talkRoomKind).toBe('group')
+    expect(checks[0]?.talkRoomId).toBe(TALK_ROOM_ID)
+    // 未登録の役割を混ぜない（登録済みの 1 人だけ）。多く渡すと在籍判定が緩くなる
+    expect(checks[0]?.userIds).toEqual([VIEWER_ID])
+    // 在籍ありのときは記録まで進む（照会の引数だけ合っていても意味がない）
+    expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBe(TALK_ROOM_ID)
   })
 
   // 種別を取り違えると LINE 側は常に 404 を返し、正規の招待が「在籍なし」として捨てられる
   it('複数人トークの join では room 種別で在籍を照会する', async () => {
-    const queries: LineTalkRoomMembershipQuery[] = []
+    const checks: LineTalkRoomMembershipCheck[] = []
     const t = createTestApp({
       lineTalkRoomMembershipGateway: {
-        checkMembership: query => {
-          queries.push(query)
+        checkMembership: check => {
+          checks.push(check)
           return Promise.resolve({ kind: 'member' } as const)
         },
       },
@@ -389,7 +404,138 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
       events: [{ type: 'join', source: { type: 'room', roomId: TALK_ROOM_ID } }],
     })
 
-    expect(queries[0]?.talkRoomKind).toBe('room')
+    expect(checks[0]?.talkRoomKind).toBe('room')
+  })
+
+  // join は招待の瞬間にしか発生せず再送されない。一時障害を 200 で終端すると、正しい
+  // トークルームへ招待した夫婦が招待し直すまで配信先が登録されないまま止まる
+  it('在籍照会が一時的に失敗したときは 500 を返して LINE の再送に委ねる', async () => {
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: membershipGateway({
+        kind: 'unknown',
+        retryable: true,
+        detail: 'LINE member API 500',
+      }),
+    })
+    await register(t)
+    const log = subscribeTalkRoomJoined(t)
+
+    const res = await postWebhook(t, joinPayload(TALK_ROOM_ID))
+
+    expect(res.status).toBe(500)
+    expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBeUndefined()
+    expect(log).toHaveLength(0)
+  })
+
+  // やり直しても直らない失敗まで 500 にすると、LINE が再送を繰り返して空振りし続ける
+  it('やり直しても直らない照会失敗は 200 で終端する', async () => {
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: membershipGateway({
+        kind: 'unknown',
+        retryable: false,
+        detail: 'LINE member API 403',
+      }),
+    })
+    await register(t)
+
+    const res = await postWebhook(t, joinPayload(TALK_ROOM_ID))
+
+    expect(res.status).toBe(200)
+    expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBeUndefined()
+  })
+
+  // 在籍照会は join 1 件ごとに LINE を呼ぶ。events の件数に上限が無いため、
+  // 全件処理すると 1 リクエストの処理時間が件数に比例して伸びる
+  it('1 リクエストで在籍照会を行う join には上限がある', async () => {
+    let called = 0
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: {
+        checkMembership: () => {
+          called += 1
+          return Promise.resolve({ kind: 'not_member' } as const)
+        },
+      },
+    })
+    await register(t)
+
+    const res = await postWebhook(t, {
+      events: Array.from({ length: 10 }, () => ({
+        type: 'join',
+        source: { type: 'group', groupId: OTHER_TALK_ROOM_ID },
+      })),
+    })
+
+    expect(res.status).toBe(200)
+    expect(called).toBeLessThanOrEqual(3)
+  })
+
+  // 第三者の招待と正規の招待が同じバッチに混ざっても、正規のものを取りこぼさない
+  it('在籍していない join を見送った後、同じリクエストの次の join は照会する', async () => {
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: {
+        checkMembership: check =>
+          Promise.resolve(
+            check.talkRoomId === TALK_ROOM_ID
+              ? ({ kind: 'member' } as const)
+              : ({ kind: 'not_member' } as const),
+          ),
+      },
+    })
+    await register(t)
+    const log = subscribeTalkRoomJoined(t)
+
+    await postWebhook(t, {
+      events: [
+        { type: 'join', source: { type: 'group', groupId: OTHER_TALK_ROOM_ID } },
+        { type: 'join', source: { type: 'group', groupId: TALK_ROOM_ID } },
+      ],
+    })
+
+    expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBe(TALK_ROOM_ID)
+    expect(log).toHaveLength(1)
+  })
+
+  // 記録できた時点で以降の join は見ない（後続で配信先が差し替わらない）
+  it('記録できた後の join は同じリクエスト内でも処理しない', async () => {
+    let called = 0
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: {
+        checkMembership: () => {
+          called += 1
+          return Promise.resolve({ kind: 'member' } as const)
+        },
+      },
+    })
+    await register(t)
+
+    await postWebhook(t, {
+      events: [
+        { type: 'join', source: { type: 'group', groupId: TALK_ROOM_ID } },
+        { type: 'join', source: { type: 'group', groupId: OTHER_TALK_ROOM_ID } },
+      ],
+    })
+
+    expect(called).toBe(1)
+    expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBe(TALK_ROOM_ID)
+  })
+
+  it('join の処理を打ち切っても同じリクエストの follow は処理する', async () => {
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: membershipGateway({ kind: 'member' }),
+    })
+    await register(t)
+    const friendLog = subscribeFriendAdded(t)
+
+    await postWebhook(t, {
+      events: [
+        { type: 'join', source: { type: 'group', groupId: TALK_ROOM_ID } },
+        { type: 'join', source: { type: 'group', groupId: OTHER_TALK_ROOM_ID } },
+        { type: 'follow', source: { type: 'user', userId: VIEWER_ID } },
+      ],
+    })
+
+    expect(friendLog).toHaveLength(1)
+    expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBe(TALK_ROOM_ID)
   })
 
   // 既存の記録がある場合の上書き禁止（防御 1 段目）は在籍照会より前に効くべきで、
@@ -415,7 +561,10 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
   })
 
   it('同一 join の再送で二重記録・二重発行が起きない（冪等）', async () => {
-    const t = createTestApp()
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: membershipGateway({ kind: 'member' }),
+    })
+    await register(t)
     const log = subscribeTalkRoomJoined(t)
 
     expect((await postWebhook(t, joinPayload(TALK_ROOM_ID))).status).toBe(200)
@@ -427,7 +576,10 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
   // join の source は userId を含まず、届いたトークルームが自世帯のものかは判定できない。
   // 共通トークルームは家計サマリの配信先そのものなので、Webhook からの上書きは許さない
   it('既に参加記録があるとき、別トークルームの join では配信先を差し替えない', async () => {
-    const t = createTestApp()
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: membershipGateway({ kind: 'member' }),
+    })
+    await register(t)
     const log = subscribeTalkRoomJoined(t)
 
     await postWebhook(t, joinPayload(TALK_ROOM_ID))
@@ -454,7 +606,10 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
   })
 
   it('複数人トーク（source.type = room）の join も参加として記録する', async () => {
-    const t = createTestApp()
+    const t = createTestApp({
+      lineTalkRoomMembershipGateway: membershipGateway({ kind: 'member' }),
+    })
+    await register(t)
 
     const res = await postWebhook(t, {
       events: [{ type: 'join', source: { type: 'room', roomId: TALK_ROOM_ID } }],

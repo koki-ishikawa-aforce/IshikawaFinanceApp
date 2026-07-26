@@ -131,6 +131,168 @@ describe('LineTalkRoomMembershipGateway', () => {
     expect(result.kind).toBe('unknown')
   })
 
+  // Test M2: HTTP 呼び出し側の打ち切り。ここが効かないと Webhook の応答が LINE の
+  // タイムアウトまでぶら下がり、しかも userIds の件数だけ待ち時間が積み上がる
+  it('LINE の応答が返らない場合は打ち切って unknown を返す', async () => {
+    // signal の abort を待つ fetch。timeoutMs を過ぎたら AbortError で reject される
+    const fetchImpl = ((_url: string | URL | Request, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const e = new Error('aborted')
+          e.name = 'AbortError'
+          reject(e)
+        })
+      })) as typeof fetch
+
+    const result = await gatewayWith(fetchImpl, 20).checkMembership({
+      talkRoomKind: 'group',
+      talkRoomId: TALK_ROOM_ID,
+      userIds: [HONEY_ID],
+    })
+
+    // タイムアウトはやり直しで直りうる。route はこれを Webhook の再送に回す
+    expect(result).toEqual({
+      kind: 'unknown',
+      retryable: true,
+      detail: 'LINE member API がタイムアウトした',
+    })
+  })
+
+  // 権限・設定不備はやり直しても直らない。retryable にすると LINE の再送が空振りし続ける
+  it('401 / 403 は設定不備として retryable=false を返す', async () => {
+    for (const status of [401, 403]) {
+      const fetchImpl = vi.fn(async () => response(status)) as unknown as typeof fetch
+
+      const result = await gatewayWith(fetchImpl).checkMembership({
+        talkRoomKind: 'group',
+        talkRoomId: TALK_ROOM_ID,
+        userIds: [HONEY_ID],
+      })
+
+      expect(result.kind).toBe('unknown')
+      expect(result.kind === 'unknown' && result.retryable).toBe(false)
+    }
+  })
+
+  it('5xx はやり直しで直りうる失敗として retryable=true を返す', async () => {
+    const fetchImpl = vi.fn(async () => response(503)) as unknown as typeof fetch
+
+    const result = await gatewayWith(fetchImpl).checkMembership({
+      talkRoomKind: 'group',
+      talkRoomId: TALK_ROOM_ID,
+      userIds: [HONEY_ID],
+    })
+
+    expect(result.kind === 'unknown' && result.retryable).toBe(true)
+  })
+
+  it('照会対象が居ない・識別子が異常な場合はやり直しても直らない（retryable=false）', async () => {
+    const fetchImpl = vi.fn(async () => response(200)) as unknown as typeof fetch
+    const gateway = gatewayWith(fetchImpl)
+
+    const noUsers = await gateway.checkMembership({
+      talkRoomKind: 'group',
+      talkRoomId: TALK_ROOM_ID,
+      userIds: [],
+    })
+    const tooLong = await gateway.checkMembership({
+      talkRoomKind: 'group',
+      talkRoomId: TalkRoomIdSchema.parse('C'.repeat(201)),
+      userIds: [HONEY_ID],
+    })
+
+    expect(noUsers.kind === 'unknown' && noUsers.retryable).toBe(false)
+    expect(tooLong.kind === 'unknown' && tooLong.retryable).toBe(false)
+  })
+
+  // 1 回ごとの上限だけでは、人数分の逐次呼び出しで合計時間が伸びる
+  it('照会全体の締め切りを超えたら残りのユーザーを照会せず打ち切る', async () => {
+    const calls: string[] = []
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input))
+      await new Promise(resolve => setTimeout(resolve, 30))
+      return response(404)
+    }) as unknown as typeof fetch
+    const gateway = createLineTalkRoomMembershipGateway({
+      resolveChannelAccessToken: () => Promise.resolve('channel-access-token'),
+      fetchImpl,
+      timeoutMs: 100,
+      totalTimeoutMs: 20,
+    })
+
+    const result = await gateway.checkMembership({
+      talkRoomKind: 'group',
+      talkRoomId: TALK_ROOM_ID,
+      userIds: [HONEY_ID, DARLING_ID],
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(result.kind).toBe('unknown')
+    expect(result.kind === 'unknown' && result.retryable).toBe(true)
+  })
+
+  // Test S3: 早期 return を「全件集めてから失敗を優先する」形に変えると、正規の招待が
+  // unknown として捨てられる（join は再送されないため回復は招待やり直しのみ）
+  it('先に失敗した相手がいても、後の相手が在籍していれば member を返す', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).includes(HONEY_ID) ? response(500) : response(200),
+    ) as unknown as typeof fetch
+
+    const result = await gatewayWith(fetchImpl).checkMembership({
+      talkRoomKind: 'group',
+      talkRoomId: TALK_ROOM_ID,
+      userIds: [HONEY_ID, DARLING_ID],
+    })
+
+    expect(result).toEqual({ kind: 'member' })
+  })
+
+  // Test S4: ID は Webhook 由来の外部入力。エスケープを外すとパスを組み替えられる
+  it('トークルームID・LINE_userID を URL パスへエスケープして埋め込む', async () => {
+    const calls: string[] = []
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input))
+      return response(404)
+    }) as unknown as typeof fetch
+
+    await gatewayWith(fetchImpl).checkMembership({
+      talkRoomKind: 'group',
+      talkRoomId: TalkRoomIdSchema.parse('../../v2/bot/message/push?x=1'),
+      userIds: [UserIdSchema.parse('../u')],
+    })
+
+    expect(calls[0]).toBe(
+      'https://api.line.me/v2/bot/group/..%2F..%2Fv2%2Fbot%2Fmessage%2Fpush%3Fx%3D1/member/..%2Fu',
+    )
+  })
+
+  // Webhook 本文由来の文字列を長さ無制限のまま外部 API の URL へ載せない
+  it('識別子の長さが想定を超えるときは LINE を呼ばず unknown を返す', async () => {
+    const fetchImpl = vi.fn(async () => response(200)) as unknown as typeof fetch
+
+    const result = await gatewayWith(fetchImpl).checkMembership({
+      talkRoomKind: 'group',
+      talkRoomId: TalkRoomIdSchema.parse('C'.repeat(201)),
+      userIds: [HONEY_ID],
+    })
+
+    expect(result.kind).toBe('unknown')
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  // 上限は実在の ID（33 文字程度）から十分に離してあり、正規の招待を弾かない
+  it('通常の長さの識別子は上限に掛からない', async () => {
+    const fetchImpl = vi.fn(async () => response(200)) as unknown as typeof fetch
+
+    const result = await gatewayWith(fetchImpl).checkMembership({
+      talkRoomKind: 'group',
+      talkRoomId: TalkRoomIdSchema.parse(`C${'0'.repeat(32)}`),
+      userIds: [UserIdSchema.parse(`U${'0'.repeat(32)}`)],
+    })
+
+    expect(result).toEqual({ kind: 'member' })
+  })
+
   it('照会対象のユーザーが 1 人もいないときは LINE を呼ばず unknown を返す', async () => {
     const fetchImpl = vi.fn(async () => response(200)) as unknown as typeof fetch
 

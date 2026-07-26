@@ -26,6 +26,8 @@ import type { TalkRoomId, UserId } from '../../shared/ids'
  * トークルームの種別。LINE は グループ（`group`）と複数人トーク（`room`）で在籍照会の
  * エンドポイントが分かれるため、`join` Webhook の source 種別をここまで運ぶ必要がある。
  */
+// 値は UL の「グループ / 複数人トーク」に対応する。LINE Messaging API のパスセグメントと同綴りだが、
+// `line-webhook/events.ts` の ACL が `source.type` をこの語彙で受け取っている既存の並びに揃えている
 export type LineTalkRoomKind = 'group' | 'room'
 
 export type LineTalkRoomMembershipStatus =
@@ -34,14 +36,25 @@ export type LineTalkRoomMembershipStatus =
   /** 照会したユーザーがいずれも在籍していない（＝この世帯のトークルームではない） */
   | { kind: 'not_member' }
   /**
-   * 照会に失敗し、在籍しているかを判定できない（API 障害・通信断・トークン解決失敗）。
+   * 照会に失敗し、在籍しているかを判定できない（API 障害・通信断・トークン解決失敗・設定不備）。
+   *
+   * `retryable` は「同じ照会をやり直せば結果が変わりうるか」。`join` Webhook は招待の瞬間にしか
+   * 発生せず再送されないため、一時障害をそのまま握って 200 で終端すると、正しいトークルームへ
+   * 招待した夫婦が招待し直すまで配信先が登録されないまま止まる。呼出し側は `retryable` のときだけ
+   * Webhook を失敗として返し、LINE 側の再送に回収を委ねる。設定不備（権限不足など）は
+   * やり直しても直らないため `false` にし、再送を空振りさせない。
+   *
    * detail は呼出し側がそのままログへ出すため、実装は**シークレット・PII・例外オブジェクトの
    * 中身を含めない**（LINE の応答ボディには displayName / pictureUrl が、トークン解決の例外には
    * Parameter Store のパスが含まれうる）。障害の種別が分かる短い文言に絞る。
    */
-  | { kind: 'unknown'; detail: string }
+  | { kind: 'unknown'; retryable: boolean; detail: string }
 
-export interface LineTalkRoomMembershipQuery {
+/**
+ * 在籍照会 1 回分の入力。読み取りモデルの `*Query` I/F（ViewerContext を通すもの）とは別物なので
+ * `*Check` としている。
+ */
+export interface LineTalkRoomMembershipCheck {
   talkRoomKind: LineTalkRoomKind
   talkRoomId: TalkRoomId
   /** 世帯に登録済みのアプリユーザーの LINE_userID。1 人でも在籍していれば `member` */
@@ -50,5 +63,5 @@ export interface LineTalkRoomMembershipQuery {
 
 export interface LineTalkRoomMembershipGateway {
   /** 招待されたトークルームに世帯のユーザーが在籍しているかを照会する */
-  checkMembership(query: LineTalkRoomMembershipQuery): Promise<LineTalkRoomMembershipStatus>
+  checkMembership(check: LineTalkRoomMembershipCheck): Promise<LineTalkRoomMembershipStatus>
 }

@@ -20,17 +20,23 @@
  * 記録・保存・イベント発行は `line-operation-records.ts` に一本化しており、状態が
  * 変わったときだけ保存・発行することで二重記録・二重発行を防ぐ。
  *
- * ログ: LINE userID・共通トークルームIDは個人を辿れる識別子のため出力しない。
+ * ログ: LINE userID・共通トークルームIDは個人を辿れる識別子のため出力しない。復元できない
+ * 短縮識別子（ハッシュ先頭 8 桁）だけを添えて、複数の警告が同じトークルームのものか
+ * 判別できるようにする（`routes/onboarding.ts` の traceIdOf と同じ方針）。
  */
+import { createHash } from 'node:crypto'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import type {
   AppUserRepository,
   EventBus,
   LineTalkRoomMembershipGateway,
+  LineTalkRoomMembershipStatus,
+  SharedTalkRoomJoinSkipReason,
   SharedTalkRoomRepository,
 } from '@warimaru/domain'
 import type { LineTalkRoomKind, TalkRoomId, UserId, UserRole } from '@warimaru/domain'
+import { decideSharedTalkRoomJoin, requiresTalkRoomMembershipCheck } from '@warimaru/domain'
 import { readJsonObjectBody } from '../read-json-object-body.js'
 import { LineWebhookRequestSchema, toLineWebhookIntents } from '../line-webhook/events.js'
 import { verifyLineSignature } from '../line-webhook/signature.js'
@@ -44,6 +50,13 @@ import { applyLineFriendAdded, applySharedTalkRoomJoined } from '../line-operati
  */
 const MAX_BODY_BYTES = 1024 * 1024
 
+/**
+ * 1 リクエストで在籍照会まで行う join の上限。共通トークルームは世帯にひとつなので、正規の
+ * 招待を拾うのに多くの試行は要らない。`events` の件数に上限が無いため、ここで頭打ちにしないと
+ * 1 リクエストの処理時間が件数に比例して伸びる。
+ */
+const MAX_JOIN_ATTEMPTS_PER_REQUEST = 3
+
 export interface LineWebhookRoutesDeps {
   appUserRepository: AppUserRepository
   sharedTalkRoomRepository: SharedTalkRoomRepository
@@ -52,6 +65,11 @@ export interface LineWebhookRoutesDeps {
   /** 招待されたトークルームに世帯のユーザーが在籍しているかの照会（#371、OQ-55 ①） */
   lineTalkRoomMembershipGateway: LineTalkRoomMembershipGateway
   eventBus: EventBus
+}
+
+/** ログ用の復元不能な短縮識別子（PII そのものは出さない） */
+function traceIdOf(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 8)
 }
 
 /** 世帯は夫婦 2 人固定（OQ-53 ②）。在籍照会の対象はこの 2 役割の登録済みユーザー */
@@ -77,6 +95,39 @@ async function handleFriendAdded(
     return
   }
   await applyLineFriendAdded(deps, user, receivedAt)
+}
+
+/**
+ * join 1 件を処理した結果。
+ *  - `settled`: 記録した / 既に参加記録がある（以降の join を見る必要はない）
+ *  - `skipped`: 記録しなかった（同じリクエストに正規の join が続いていれば、それは見る）
+ *  - `retry_later`: 一時障害。Webhook を失敗として返し LINE の再送に委ねる
+ */
+type TalkRoomJoinOutcome = 'settled' | 'skipped' | 'retry_later'
+
+const SKIP_LOG_MESSAGE: Record<SharedTalkRoomJoinSkipReason, string> = {
+  already_joined:
+    'LINE Webhook: 既に参加記録があるため、join を記録しない（配信先の差し替えを防ぐ）',
+  not_member:
+    'LINE Webhook: 招待されたトークルームに世帯のユーザーが在籍していないため記録しない（配信先の取り違えを防ぐ）',
+  membership_unverified:
+    'LINE Webhook: 在籍を確認できなかったため join を記録しない（招待のやり直しか自己申告 API で回復する）',
+}
+
+/**
+ * 在籍照会。照会しても記録が変わらない場合（参加済み）と、照会できるアプリユーザーが 1 人も
+ * 登録されていない場合は LINE を呼ばず `'not_checked'` を返す。
+ */
+async function checkTalkRoomMembership(
+  deps: LineWebhookRoutesDeps,
+  current: Awaited<ReturnType<SharedTalkRoomRepository['find']>>,
+  talkRoomKind: LineTalkRoomKind,
+  talkRoomId: TalkRoomId,
+): Promise<LineTalkRoomMembershipStatus | 'not_checked'> {
+  if (!requiresTalkRoomMembershipCheck(current)) return 'not_checked'
+  const userIds = await householdUserIds(deps)
+  if (userIds.length === 0) return 'not_checked'
+  return deps.lineTalkRoomMembershipGateway.checkMembership({ talkRoomKind, talkRoomId, userIds })
 }
 
 /**
@@ -106,38 +157,34 @@ async function handleTalkRoomJoined(
   talkRoomKind: LineTalkRoomKind,
   talkRoomId: TalkRoomId,
   receivedAt: Date,
-): Promise<void> {
+): Promise<TalkRoomJoinOutcome> {
   const current = await deps.sharedTalkRoomRepository.find()
-  if (current.kind === 'joined') {
-    if (current.talkRoomId !== talkRoomId) {
-      console.warn(
-        'LINE Webhook: 既に参加記録があるため、別トークルームの join を記録しない（配信先の差し替えを防ぐ）',
-      )
-    }
-    return
+  const membership = await checkTalkRoomMembership(deps, current, talkRoomKind, talkRoomId)
+  const verdict = decideSharedTalkRoomJoin(current, membership)
+  const trace = `talkRoom=${traceIdOf(talkRoomId)}, kind=${talkRoomKind}`
+
+  if (verdict.kind === 'retry_later') {
+    // detail はゲートウェイが PII・シークレットを含めない短い文言に絞っている
+    const detail =
+      membership !== 'not_checked' && membership.kind === 'unknown' ? membership.detail : ''
+    console.error(
+      `LINE Webhook: 在籍照会が一時的に失敗したため join を記録できない — Webhook を失敗として返し LINE の再送で回収する（${detail}, ${trace}）`,
+    )
+    return 'retry_later'
   }
 
-  const membership = await deps.lineTalkRoomMembershipGateway.checkMembership({
-    talkRoomKind,
-    talkRoomId,
-    userIds: await householdUserIds(deps),
-  })
-  if (membership.kind === 'not_member') {
-    console.warn(
-      'LINE Webhook: 招待されたトークルームに世帯のユーザーが在籍していないため記録しない（配信先の取り違えを防ぐ）',
-    )
-    return
-  }
-  if (membership.kind === 'unknown') {
-    // detail はゲートウェイが PII・シークレットを含めない短い文言に絞っている
-    console.warn(
-      'LINE Webhook: 在籍を確認できなかったため join を記録しない（招待のやり直しか自己申告 API で回復する）',
-      membership.detail,
-    )
-    return
+  if (verdict.kind === 'skip') {
+    const detail =
+      membership !== 'not_checked' && membership.kind === 'unknown' ? membership.detail : ''
+    // 正規の招待を落としうる見送り（設定不備など）は error。第三者の招待を弾いた場合や
+    // 既に参加済みの場合は想定内の動作なので warn に留める
+    const log = verdict.reason === 'not_member' ? console.warn : console.error
+    log(`${SKIP_LOG_MESSAGE[verdict.reason]}（${detail}, ${trace}）`)
+    return verdict.reason === 'already_joined' ? 'settled' : 'skipped'
   }
 
   await applySharedTalkRoomJoined(deps, current, talkRoomId, receivedAt)
+  return 'settled'
 }
 
 export function lineWebhookRoutes(deps: LineWebhookRoutesDeps): Hono {
@@ -178,12 +225,35 @@ export function lineWebhookRoutes(deps: LineWebhookRoutesDeps): Hono {
       readJsonObjectBody(new TextDecoder().decode(rawBody)),
     )
     const receivedAt = new Date()
+    // 在籍照会は join 1 件につき LINE への呼び出しを伴い、本文の件数に上限が無い。全件処理すると
+    // 応答時間が件数に比例して伸びるため、試行回数に上限を設ける。記録できた（または既に参加
+    // 記録がある）時点で以降は見ない一方、見送った join では次の候補を見る（同じリクエストに
+    // 第三者の招待と正規の招待が混ざっていても、正規のものを取りこぼさない）
+    let joinAttempts = 0
+    let settled = false
     for (const intent of toLineWebhookIntents(request)) {
       if (intent.kind === 'friend_added') {
         await handleFriendAdded(deps, intent.userId, receivedAt)
-      } else {
-        await handleTalkRoomJoined(deps, intent.talkRoomKind, intent.talkRoomId, receivedAt)
+        continue
       }
+      if (settled) continue
+      if (joinAttempts >= MAX_JOIN_ATTEMPTS_PER_REQUEST) {
+        console.warn('LINE Webhook: 1 リクエストあたりの join 処理上限に達したため以降は処理しない')
+        continue
+      }
+      joinAttempts += 1
+      const outcome = await handleTalkRoomJoined(
+        deps,
+        intent.talkRoomKind,
+        intent.talkRoomId,
+        receivedAt,
+      )
+      if (outcome === 'retry_later') {
+        // 署名検証鍵を解決できないときと同じ扱い。join は招待の瞬間にしか発生せず再送されない
+        // ため、一時障害を 200 で終端すると正規の招待が永久に登録されないまま残る
+        return c.json({ error: 'Failed to verify talk room membership' }, 500)
+      }
+      if (outcome === 'settled') settled = true
     }
 
     return c.json({ ok: true })

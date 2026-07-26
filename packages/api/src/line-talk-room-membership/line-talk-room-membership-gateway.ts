@@ -20,20 +20,36 @@
  * パス等が落ちうる文字列を持ち込まない。応答ボディ（displayName / pictureUrl は PII）も読まずに
  * 破棄する。トークルームID・LINE_userID も個人を辿れる識別子のため detail に含めない。
  *
- * timeoutMs は LINE への HTTP 呼び出し 1 回ごとと、Channel Access Token の解決に掛ける。
- * 本ゲートウェイは Webhook の応答パスから呼ばれるため、詰まると LINE 側がタイムアウトとみなして
- * 再送を始める。
+ * timeoutMs は LINE への HTTP 呼び出し 1 回ごとと、Channel Access Token の解決に掛ける。さらに
+ * 照会全体に totalTimeoutMs の締め切りを設ける。本ゲートウェイは Webhook の応答パスから呼ばれ、
+ * トークン解決 + 人数分の逐次呼び出しが積み上がるため、1 回ごとの上限だけでは合計が伸びる
+ * （詰まると LINE 側がタイムアウトとみなして再送を始める）。
+ *
+ * `unknown` の `retryable`: やり直せば結果が変わりうるものだけ true にする。
+ *  - 5xx / 429 / タイムアウト / 通信断 / トークン解決失敗 → true（一時障害）
+ *  - 401 / 403 などの権限・設定不備、識別子の異常 → false（やり直しても直らない）
  */
 import type {
   LineTalkRoomKind,
   LineTalkRoomMembershipGateway,
-  LineTalkRoomMembershipQuery,
+  LineTalkRoomMembershipCheck,
   LineTalkRoomMembershipStatus,
 } from '@warimaru/domain'
 import { withTimeout } from '../with-timeout.js'
 
 const LINE_API_BASE = 'https://api.line.me/v2/bot'
-const DEFAULT_TIMEOUT_MS = 10_000
+/** 1 回の外部呼び出しの上限。Webhook の応答パスなので、人が待つ登録パスより短くする */
+const DEFAULT_TIMEOUT_MS = 5_000
+/** 照会全体の締め切り。トークン解決 + 人数分の逐次呼び出しの合計に掛ける */
+const DEFAULT_TOTAL_TIMEOUT_MS = 8_000
+
+/**
+ * URL パスへ載せる識別子の長さの上限。LINE のトークルームID・userID は 33 文字程度で、
+ * `TalkRoomIdSchema` / `UserIdSchema` は長さを縛っていない。`encodeURIComponent` で
+ * エスケープするためパス脱出は成立しないが、Webhook 本文由来の文字列を長さ無制限のまま
+ * 外部 API の URL に載せない（実在の ID から十分に離した値にしてあり、通常は発火しない）。
+ */
+const MAX_LINE_ID_LENGTH = 200
 
 /** グループと複数人トークで在籍照会のパスが分かれる（LINE Messaging API の仕様） */
 function membershipPathOf(kind: LineTalkRoomKind): string {
@@ -44,7 +60,10 @@ export interface LineTalkRoomMembershipGatewayConfig {
   /** Channel Access Token の解決（Phase0Config の保管参照 → Parameter Store 復号） */
   resolveChannelAccessToken: () => Promise<string>
   fetchImpl?: typeof fetch
+  /** 外部呼び出し 1 回ごとの上限 */
   timeoutMs?: number
+  /** 照会全体の締め切り（トークン解決 + 全ユーザー分の照会の合計） */
+  totalTimeoutMs?: number
 }
 
 export function createLineTalkRoomMembershipGateway(
@@ -52,55 +71,95 @@ export function createLineTalkRoomMembershipGateway(
 ): LineTalkRoomMembershipGateway {
   const fetchImpl = config.fetchImpl ?? fetch
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const totalTimeoutMs = config.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS
 
   return {
     async checkMembership(
-      query: LineTalkRoomMembershipQuery,
+      check: LineTalkRoomMembershipCheck,
     ): Promise<LineTalkRoomMembershipStatus> {
-      // 照会先が無ければ在籍を確かめようがない。not_member（＝第三者のトークルーム）と
-      // 断定できる材料も無いため unknown を返し、記録するかの判断は呼出し側に委ねる
-      if (query.userIds.length === 0) {
-        return { kind: 'unknown', detail: '照会対象のアプリユーザーが登録されていない' }
+      // 呼出し側（route）が照会前に弾く経路なので通常は通らない。ここで空配列をそのまま
+      // ループに流すと「1 件も失敗しなかった」= not_member になってしまうため、保険として残す
+      if (check.userIds.length === 0) {
+        return {
+          kind: 'unknown',
+          retryable: false,
+          detail: '照会対象のアプリユーザーが登録されていない',
+        }
       }
+
+      // 長さが外れる ID は在籍を確かめずに見送る。not_member（＝第三者のトークルーム）と
+      // 断定はできないため unknown で返し、記録しない判断は呼出し側に揃える
+      if (
+        check.talkRoomId.length > MAX_LINE_ID_LENGTH ||
+        check.userIds.some(userId => userId.length > MAX_LINE_ID_LENGTH)
+      ) {
+        return { kind: 'unknown', retryable: false, detail: '識別子の長さが想定の範囲を超えている' }
+      }
+
+      // 照会全体の締め切り。以降の各呼び出しには「1 回の上限」と「残り時間」の短い方を掛ける
+      const deadline = Date.now() + totalTimeoutMs
+      const remaining = (): number => deadline - Date.now()
 
       let token: string
       try {
-        token = await withTimeout(config.resolveChannelAccessToken(), timeoutMs)
+        token = await withTimeout(
+          config.resolveChannelAccessToken(),
+          Math.min(timeoutMs, Math.max(remaining(), 1)),
+        )
       } catch (e) {
         const isTimeout = e instanceof Error && e.name === 'TimeoutError'
         return {
           kind: 'unknown',
+          // Parameter Store の遅延・一時障害はやり直しで直りうる
+          retryable: true,
           detail: isTimeout
             ? 'Channel Access Token の解決がタイムアウトした'
             : `Channel Access Token の解決に失敗した（${e instanceof Error ? e.name : 'unknown'}）`,
         }
       }
 
-      const base = `${LINE_API_BASE}/${membershipPathOf(query.talkRoomKind)}/${encodeURIComponent(query.talkRoomId)}/member`
+      const base = `${LINE_API_BASE}/${membershipPathOf(check.talkRoomKind)}/${encodeURIComponent(check.talkRoomId)}/member`
       // 404 以外の失敗を覚えておき、200 が 1 件も無かったときに not_member と区別する
-      let failure: string | undefined
-      for (const userId of query.userIds) {
+      let failure: { retryable: boolean; detail: string } | undefined
+      for (const userId of check.userIds) {
+        if (remaining() <= 0) {
+          failure ??= { retryable: true, detail: '在籍照会が全体の制限時間を超えた' }
+          break
+        }
         try {
           const response = await fetchImpl(`${base}/${encodeURIComponent(userId)}`, {
             method: 'GET',
             headers: { Authorization: `Bearer ${token}` },
-            signal: AbortSignal.timeout(timeoutMs),
+            signal: AbortSignal.timeout(Math.min(timeoutMs, Math.max(remaining(), 1))),
           })
           if (response.ok) return { kind: 'member' }
           // 404 = そのユーザーはこのトークルームに在籍していない（LINE Messaging API の仕様）
           if (response.status === 404) continue
-          failure ??= `LINE member API ${response.status}`
+          // 401 / 403 は Channel Access Token の権限・設定不備。やり直しても直らないので
+          // 再送に回さず、設定を直すべきものとして呼出し側に伝える
+          const isConfigError = response.status === 401 || response.status === 403
+          failure ??= {
+            retryable: !isConfigError,
+            detail: isConfigError
+              ? `LINE member API ${response.status}（Channel Access Token の権限・設定を確認する）`
+              : `LINE member API ${response.status}`,
+          }
         } catch (e) {
           const isTimeout =
             e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
-          failure ??= isTimeout
-            ? 'LINE member API がタイムアウトした'
-            : `LINE member API の呼び出しに失敗した（${e instanceof Error ? e.name : 'unknown'}）`
+          failure ??= {
+            retryable: true,
+            detail: isTimeout
+              ? 'LINE member API がタイムアウトした'
+              : `LINE member API の呼び出しに失敗した（${e instanceof Error ? e.name : 'unknown'}）`,
+          }
         }
       }
 
       // 1 人でも判定できなかったなら「全員いない」とは言えない
-      if (failure !== undefined) return { kind: 'unknown', detail: failure }
+      if (failure !== undefined) {
+        return { kind: 'unknown', retryable: failure.retryable, detail: failure.detail }
+      }
       return { kind: 'not_member' }
     },
   }
