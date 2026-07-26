@@ -15,6 +15,9 @@ import type {
   AppUserRepository,
   AmazonProductKeyLearningRule,
   AmazonProductKeyLearningRuleRepository,
+  BankDeposit,
+  BankDepositId,
+  BankDepositRepository,
   BulkClassificationSession,
   BulkClassificationSessionId,
   BulkClassificationSessionRepository,
@@ -485,6 +488,41 @@ export function createMockAccountRepository(): AccountRepository {
         )
       }
       store.set(account.common.accountId, account)
+    },
+  }
+}
+
+export function createMockBankDepositRepository(): BankDepositRepository {
+  const store = new Map<string, BankDeposit>()
+  return {
+    async findById(id: BankDepositId) {
+      return store.get(id) ?? null
+    },
+    async findByTransactionId(transactionId: TransactionId) {
+      return [...store.values()].find(d => d.common.transactionId === transactionId) ?? null
+    },
+    async findAwaitingManualConfirmationByUser(userId: UserId) {
+      return [...store.values()]
+        .filter(d => d.common.userId === userId && d.kind === 'unknown')
+        .sort(
+          (a, b) =>
+            a.common.occurredAt.getTime() - b.common.occurredAt.getTime() ||
+            a.common.bankDepositId.localeCompare(b.common.bankDepositId),
+        )
+    },
+    async save(deposit: BankDeposit) {
+      // Neon 実装の UNIQUE (transaction_id) と同じ失敗モードを再現する
+      const conflict = [...store.values()].find(
+        d =>
+          d.common.transactionId === deposit.common.transactionId &&
+          d.common.bankDepositId !== deposit.common.bankDepositId,
+      )
+      if (conflict !== undefined) {
+        throw new InvariantViolationError(
+          `取引ID は一意: ${deposit.common.transactionId} の入金は既に存在する`,
+        )
+      }
+      store.set(deposit.common.bankDepositId, deposit)
     },
   }
 }

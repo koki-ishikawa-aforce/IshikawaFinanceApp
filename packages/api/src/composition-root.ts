@@ -2,6 +2,7 @@ import type {
   AccountBalanceQuery,
   AccountRepository,
   AllowlistQuery,
+  BankDepositRepository,
   AmazonProductKeyLearningRuleRepository,
   AppUserRepository,
   BalanceTimeSeriesQuery,
@@ -48,6 +49,7 @@ import { AllowlistSchema, InMemoryEventBus } from '@warimaru/domain'
 import {
   createDb,
   NeonAccountRepository,
+  NeonBankDepositRepository,
   NeonAllowlistQuery,
   NeonAppUserRepository,
   NeonGmailOAuthTokenRepository,
@@ -124,6 +126,7 @@ import {
 } from './mock-queries.js'
 import {
   createMockAccountRepository,
+  createMockBankDepositRepository,
   createMockAppUserRepository,
   createMockGmailOAuthTokenRepository,
   createMockAmazonProductKeyLearningRuleRepository,
@@ -162,6 +165,8 @@ export interface AppDeps {
   balanceTimeSeriesQuery: BalanceTimeSeriesQuery
   // 口座管理 (#48): 設定画面の口座登録・銀行名/証券会社名変更
   accountRepository: AccountRepository
+  // 入金用途判別 (#390): 手動確認待ちの入金の参照・確定
+  bankDepositRepository: BankDepositRepository
   expenseSettlementManagementQuery: ExpenseSettlementManagementQuery
   csvImportStatusQuery: CsvImportStatusQuery
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
@@ -416,6 +421,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     accountBalanceQuery: createMockAccountBalanceQuery(),
     balanceTimeSeriesQuery: createMockBalanceTimeSeriesQuery(),
     accountRepository: createMockAccountRepository(),
+    bankDepositRepository: createMockBankDepositRepository(),
     expenseSettlementManagementQuery: createMockExpenseSettlementManagementQuery(),
     csvImportStatusQuery: createMockCsvImportStatusQuery(),
     // 開発モードの簡易ロール判定（seed の U_HONEY_DEV やテストの user-honey-test を honey に解決する）
@@ -568,6 +574,7 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     accountBalanceQuery: new NeonAccountBalanceQuery(db),
     balanceTimeSeriesQuery: new NeonBalanceTimeSeriesQuery(db),
     accountRepository: new NeonAccountRepository(db),
+    bankDepositRepository: new NeonBankDepositRepository(db),
     expenseSettlementManagementQuery: new NeonExpenseSettlementManagementQuery(db, { now }),
     csvImportStatusQuery: new NeonCsvImportStatusQuery(db),
     resolveViewerRole,
