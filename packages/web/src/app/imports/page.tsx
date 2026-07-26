@@ -3,7 +3,12 @@
 import { Suspense, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { YearMonthSchema, type YearMonth } from '@warimaru/domain'
+import {
+  StatementFileKindSchema,
+  YearMonthSchema,
+  type StatementFileKind,
+  type YearMonth,
+} from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
 import {
@@ -18,6 +23,7 @@ import { formatMoney } from '@/lib/format'
 import { formatDate, formatDateTime, getCurrentMonth } from '@/lib/month'
 import { LuCircleCheck } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { StatementGuide } from '@/components/imports/StatementGuide'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -30,11 +36,10 @@ const JOB_LABELS: Record<ImportJobWire['kind'], string> = {
   failed: '失敗',
 }
 
-const FILE_KIND_LABELS = {
+const FILE_KIND_LABELS: Record<StatementFileKind, string> = {
   card_statement: 'カード利用明細',
   bank_statement: '銀行入出金明細',
-} as const
-type FileKind = keyof typeof FILE_KIND_LABELS
+}
 
 interface CandidatesPanelProps {
   importJobId: string
@@ -182,7 +187,7 @@ function ImportsPageContent() {
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const [month, setMonth] = useState<YearMonth>(() => parseMonthParam(searchParams.get('month')))
-  const [fileKind, setFileKind] = useState<FileKind>('card_statement')
+  const [fileKind, setFileKind] = useState<StatementFileKind>('card_statement')
   const [job, setJob] = useState<ImportJobWire | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -253,6 +258,11 @@ function ImportsPageContent() {
           ))}
       </div>
 
+      {/* spec §10.1 ③「アップロード対象カード（2 種）」。ファイル種別の列挙はドメインを単一ソースにする */}
+      {StatementFileKindSchema.options.map(kind => (
+        <StatementGuide key={kind} fileKind={kind} month={month} />
+      ))}
+
       <div className={ui.card}>
         <span className={ui.sectionTitle}>CSV アップロード</span>
         <div className={ui.field}>
@@ -260,7 +270,7 @@ function ImportsPageContent() {
           <select
             className={ui.select}
             value={fileKind}
-            onChange={e => setFileKind(e.target.value as FileKind)}
+            onChange={e => setFileKind(e.target.value as StatementFileKind)}
           >
             {Object.entries(FILE_KIND_LABELS).map(([key, label]) => (
               <option key={key} value={key}>
