@@ -35,6 +35,7 @@ import { MoneySchema } from '../../shared/value-objects/Money'
 import { InvariantViolationError, PermissionDeniedError } from '../../shared/errors/DomainError'
 import {
   ProvisionalHandlingSchema,
+  type DepositPurpose,
   type DeterminedDepositPurpose,
 } from '../value-objects/DepositPurpose'
 
@@ -51,7 +52,11 @@ export const CommonBankDepositAttrsSchema = z.object({
   userId: UserIdSchema,
   amount: MoneySchema.refine(v => v > 0, '入金金額は正である必要があります'),
   occurredAt: z.date(),
-  /** 正規化済み振込元名。判別の根拠であり、手動確認の画面表示にも使う */
+  /**
+   * 振込元名（明細に載る生の表記）。判別の根拠であり、手動確認の画面表示にも使う。
+   * パターン照合は `determineBankDepositPurpose` が都度正規化して行う（OQ-7）。
+   * 生値のまま保持するのは、利用者が自分の明細で見た文字列と突き合わせられるようにするため。
+   */
   remitterName: z.string().min(1),
   determinedAt: z.date(),
 })
@@ -113,25 +118,26 @@ function buildDetermined(params: {
 
 /**
  * behavior 銀行入金の用途を判別する の出力を集約に組み立てる（08d §2）。
- * 判別そのものは `determineBankDepositPurpose`（services）が行う。
+ * 判別そのものは `determineBankDepositPurpose`（services）が行い、その戻り値
+ * （入金用途判別結果）をそのまま渡す。暫定処理の値を呼び出し側で作らせない。
  *
  * `expenseReimbursementId` は経費精算入金判別のときだけ使う。用途は判別してみるまで
  * 決まらないため、呼び出し側は常に採番して渡す（使われなければ捨てられる）。
  */
 export function recordBankDeposit(params: {
   common: CommonBankDepositAttrs
-  purpose: DeterminedDepositPurpose | 'unknown'
+  purpose: DepositPurpose
   expenseReimbursementId: ExpenseReimbursementId
 }): BankDeposit {
-  if (params.purpose === 'unknown') {
+  if (params.purpose.kind === 'unknown') {
     return BankDepositSchema.parse({
       kind: 'unknown',
       common: params.common,
-      provisionalHandling: 'awaiting_manual_confirmation',
+      provisionalHandling: params.purpose.provisionalHandling,
     })
   }
   return buildDetermined({
-    purpose: params.purpose,
+    purpose: params.purpose.kind,
     common: params.common,
     expenseReimbursementId: params.expenseReimbursementId,
     determinationSource: 'automatic',
@@ -139,11 +145,33 @@ export function recordBankDeposit(params: {
 }
 
 /**
+ * 入金を閲覧できるか（プライバシー3段階ルール: 給与・経費精算入金は個人に閉じる）。
+ *
+ * 一覧は Repository が本人分だけを引く前提だが、判定をドメイン側にも置いて
+ * 呼び出し側の絞り込み漏れが露出にならないようにする。
+ */
+export function canViewBankDeposit(deposit: BankDeposit, viewerId: UserId): boolean {
+  return deposit.common.userId === viewerId
+}
+
+/**
  * 状態遷移: 用途不明 → 確定（手動確認、08d §1 暫定処理 = 手動確認待ち）
  *
  * 事前: 操作者 = 入金の帰属ユーザー本人。配偶者は給与・経費精算入金の内訳を
  * 見ることも確定することもできない（プライバシー3段階ルール）。
- * 事前: 用途不明の入金のみ。確定済みは `InvariantViolationError`（一方向遷移）。
+ *
+ * 用途は一方向にしか動かない。確定済みの入金を**別の**用途で確定し直すことは
+ * `InvariantViolationError` で拒否する。
+ *
+ * ただし**同じ**用途での再確定は、集約を変えずにそのまま返す（冪等）。確定に続く
+ * シャドウ残高の反映と経費精算への到着通知は別集約・別コンテキストへの順次処理で、
+ * その途中で失敗すると「確定済みだが未反映」の状態が残る。ここで一律に拒否すると
+ * 前方回復の入口が無くなり、世帯の資産合計がずれたまま固定される。二重反映は
+ * 反映側のガード（`applyOtherSavingsMovement` の適用済み取引ID・経費精算入金IDの
+ * 冪等な生成）が防ぐ（OQ-43「集約をまたぐ更新は再実行で自己修復する」）。
+ *
+ * 冪等な再確定では確定日時も採番済みの経費精算入金IDも据え置く。振り直すと
+ * 到着通知のたびに別の突合対象が生まれる。
  */
 export function confirmBankDepositPurpose(
   deposit: BankDeposit,
@@ -160,8 +188,9 @@ export function confirmBankDepositPurpose(
     )
   }
   if (isDeterminedBankDeposit(deposit)) {
+    if (deposit.kind === params.purpose) return deposit
     throw new InvariantViolationError(
-      `入金（${deposit.common.bankDepositId}）の用途は確定済み（${deposit.kind}）のため変更できない`,
+      `入金（${deposit.common.bankDepositId}）の用途は確定済み（${deposit.kind}）のため ${params.purpose} へは変更できない`,
     )
   }
   return buildDetermined({

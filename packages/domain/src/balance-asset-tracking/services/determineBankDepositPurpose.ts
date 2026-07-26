@@ -15,12 +15,12 @@ import { jstCalendarParts } from '../../shared/value-objects/JstCalendar'
 import type { Money } from '../../shared/value-objects/Money'
 import type { BankDepositPurposeRule } from '../value-objects/BankDepositPurposeRule'
 import { normalizeRemitterName } from '../value-objects/NormalizedRemitterName'
+import { DepositPurposeSchema, type DepositPurpose } from '../value-objects/DepositPurpose'
 import {
-  DepositPurposeSchema,
   WithdrawalPurposeSchema,
-  type DepositPurpose,
+  type OtherSavingsCounterpartyNames,
   type WithdrawalPurpose,
-} from '../value-objects/DepositPurpose'
+} from '../value-objects/WithdrawalPurpose'
 
 /** 2 シグナルのいずれかが指す用途。一致したときだけ自動確定する（OQ-21 ③） */
 type PurposeSignal = 'salary' | 'expense_reimbursement'
@@ -95,18 +95,16 @@ export function determineBankDepositPurpose(
 /**
  * 出金用途を判別する（08d §1 出金用途）。
  *
- * 別銀行貯蓄口座への振込だけを名前で判別する。カード引落は引落確定通知の消込経路
- * （`applyUnpaidSettlementToSmbcBalance`）が持つため、ここでは扱わない。
- * NISA 積立の判別は積立累計加算の実装（08d §2）と一緒に入れる。
+ * 入金用途判別ルールとは別語彙のため、必要な入力（別銀行貯蓄口座の相手方名パターン）だけを
+ * 受け取る。カード引落は引落確定通知の消込経路（`applyUnpaidSettlementToSmbcBalance`）が
+ * 持つためここでは扱わない。NISA 積立の判別は積立累計加算の実装（08d §2）と一緒に入れる。
  */
 export function determineWithdrawalPurpose(
   input: { counterpartyName: string },
-  rule: BankDepositPurposeRule,
+  otherSavingsCounterpartyNames: OtherSavingsCounterpartyNames,
 ): WithdrawalPurpose {
   const counterpartyName = normalizeRemitterName(input.counterpartyName)
   return WithdrawalPurposeSchema.parse(
-    rule.otherSavingsCounterpartyNames.includes(counterpartyName)
-      ? 'other_savings_transfer'
-      : 'other',
+    otherSavingsCounterpartyNames.includes(counterpartyName) ? 'other_savings_transfer' : 'other',
   )
 }

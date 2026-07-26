@@ -17,7 +17,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - 共有カーネル語彙（Phase 5 M-A で household-analysis から移設）: `UnclassifiedReason`, `ClassificationBasis`, `ImportSource`（メンバー schema 個別 export あり）, `UnapprovedExpenseTransfer`
 - イベント基底: `DomainEventBase`
 - イベントバス: `EventBus` / `EventHandler`（同期・インプロセス配信、publish はハンドラー完了を await）+ 実装 `InMemoryEventBus`（#34）
-- エラー: `DomainError`, `InvariantViolationError`, `NotFoundError`, `PermissionDeniedError`, `UnpaidAlreadyBookedError` / `UnpaidSettlementAlreadyAppliedError`（いずれも `InvariantViolationError` の派生。冪等ガードの「適用済み」をメッセージ文言ではなく型で判別するため、#388）
+- エラー: `DomainError`, `InvariantViolationError`, `NotFoundError`, `PermissionDeniedError`, `UnpaidAlreadyBookedError` / `UnpaidSettlementAlreadyAppliedError` / `OtherSavingsMovementAlreadyAppliedError`（いずれも `InvariantViolationError` の派生。冪等ガードの「適用済み」をメッセージ文言ではなく型で判別するため、#388 / #390）
 
 ### household-analysis（家計分析）
 
@@ -30,13 +30,13 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### balance-asset-tracking（残高・資産推移管理）
 
-- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`。SMBC 残高更新 `applySmbcBalanceChange`、別銀行貯蓄（シャドウ）残高更新 `applyOtherSavingsBalanceChange`、引落消込の残高反映 `applyUnpaidSettlementToSmbcBalance`（同一 `settlementNoticeId` の再反映を拒否）、口座登録 `registerOtherSavingsAccount` / `registerNisaAccount`、名称変更 `changeBankName` / `changeBrokerageName`、種別絞り込み `asOtherSavingsAccount` / `asNisaAccount` を含む）, `BankDeposit`（入金変動 + 入金用途判別結果。`salary` / `expense_reimbursement` / `other_savings_return` / `unknown`。判別結果の記録 `recordBankDeposit` / 手動確認による確定 `confirmBankDepositPurpose`（本人のみ・用途不明のみの一方向遷移） / 確定判定 `isDeterminedBankDeposit` を含む）, `MitsuiSumitomoUnpaid`（未払金計上 `bookUnpaid` / 消込 `settleUnpaid` / 通知別の消込エントリ `settledEntriesForNotice` / 消込合計 `settledTotalForNotice` を含む）
-- 値オブジェクト: `AccountKind`, `BankName`, `BrokerageName`（および `brokerageNameToDisplay`）, `DepositPurpose` / `DeterminedDepositPurpose` / `ProvisionalHandling`, `WithdrawalPurpose`, `BankDepositPurposeRule`（組立 `bankDepositPurposeRule` + 既定値 `DEFAULT_SALARY_PAYOUT_DAY_WINDOW` / `DEFAULT_SALARY_THRESHOLD_AMOUNT`）, `normalizeRemitterName`
-- ドメインサービス: `determineBankDepositPurpose`（OQ-21 の入金日 + 金額 2 シグナル判別。矛盾時は用途不明 = 手動確認待ち）, `determineWithdrawalPurpose`
+- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`。SMBC 残高更新 `applySmbcBalanceChange`、別銀行貯蓄（シャドウ）残高の手入力更新 `applyOtherSavingsBalanceChange` / 取引由来の更新 `applyOtherSavingsMovement`（同一 `transactionId` の再適用を拒否）、引落消込の残高反映 `applyUnpaidSettlementToSmbcBalance`（同一 `settlementNoticeId` の再反映を拒否）、口座登録 `registerOtherSavingsAccount` / `registerNisaAccount`、名称変更 `changeBankName` / `changeBrokerageName`、種別絞り込み `asOtherSavingsAccount` / `asNisaAccount` を含む）, `BankDeposit`（入金変動 + 入金用途判別結果。`salary` / `expense_reimbursement` / `other_savings_return` / `unknown`。判別結果の記録 `recordBankDeposit` / 手動確認による確定 `confirmBankDepositPurpose`（本人のみ・別用途への変更は不可。同じ用途での再確定は冪等で、反映の前方回復の入口） / 確定判定 `isDeterminedBankDeposit` / 可視判定 `canViewBankDeposit` を含む。確定経路 `DeterminationSource`（`automatic` / `manual`）を保持）, `MitsuiSumitomoUnpaid`（未払金計上 `bookUnpaid` / 消込 `settleUnpaid` / 通知別の消込エントリ `settledEntriesForNotice` / 消込合計 `settledTotalForNotice` を含む）
+- 値オブジェクト: `AccountKind`, `BankName`, `BrokerageName`（および `brokerageNameToDisplay`）, `DepositPurpose` / `DeterminedDepositPurpose` / `ProvisionalHandling`, `WithdrawalPurpose` / `OtherSavingsCounterpartyNames`, `BankDepositPurposeRule`（組立 `bankDepositPurposeRule` + 既定値 `DEFAULT_SALARY_PAYOUT_DAY_WINDOW` / `DEFAULT_SALARY_THRESHOLD_AMOUNT`）, `normalizeRemitterName`
+- ドメインサービス: `determineBankDepositPurpose`（OQ-21 の入金日 + 金額 2 シグナル判別。矛盾時は用途不明 = 手動確認待ち）, `determineWithdrawalPurpose`, `applyOtherSavingsReturn` / `applyOtherSavingsTransfer`（シャドウ残高への資金移動。金額は正・向きは関数側が決める）
 - Repository I/F: `AccountRepository`, `BankDepositRepository`, `MitsuiSumitomoUnpaidRepository`
 - Query I/F: `AccountBalanceQuery`, `BalanceTimeSeriesQuery`
 - View 型: `AccountBalanceListView`, `BalanceTimeSeriesView`, `AssetTotalView`
-- ドメインイベント: `AccountBalanceUpdated`, `AccountRegistered`, `InitialBalanceRegistered`, `BankNameChanged`, `BrokerageNameChanged`, `UnpaidBookkept`, `UnpaidSettled`, `NisaContributionAdded`, `BankDepositPurposeDetermined`
+- ドメインイベント: `AccountBalanceUpdated`, `AccountRegistered`, `InitialBalanceRegistered`, `BankNameChanged`, `BrokerageNameChanged`, `UnpaidBookkept`, `UnpaidSettled`, `NisaContributionAdded`, `BankDepositPurposeDetermined`, `ExpenseReimbursementDepositArrived`（08e の「経費精算入金を受信する」を起動する上流トリガー。08e が発行する `ExpenseReimbursementDepositReceived` とは別物）
 
 ### auto-classification（自動分類・学習、08b）
 

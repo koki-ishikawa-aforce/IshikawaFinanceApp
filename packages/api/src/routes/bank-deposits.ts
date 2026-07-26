@@ -5,6 +5,7 @@ import {
   DeterminedDepositPurposeSchema,
   ExpenseReimbursementIdSchema,
   NotFoundError,
+  canViewBankDeposit,
   confirmBankDepositPurpose,
 } from '@warimaru/domain'
 import type { BankDeposit, BankDepositRepository } from '@warimaru/domain'
@@ -55,7 +56,11 @@ export function bankDepositsRoutes(deps: BankDepositsRoutesDeps): Hono<AppEnv> {
   app.get('/awaiting', async c => {
     const viewerId = c.get('viewerId')
     const deposits = await deps.bankDepositRepository.findAwaitingManualConfirmationByUser(viewerId)
-    return c.json({ deposits: deposits.map(toAwaitingView) })
+    // Repository は本人分だけを引くが、絞り込み漏れがそのまま露出にならないよう
+    // ドメイン側の可視判定でも通す（プライバシー3段階ルール）
+    return c.json({
+      deposits: deposits.filter(d => canViewBankDeposit(d, viewerId)).map(toAwaitingView),
+    })
   })
 
   /** 用途を手動で確定する（本人のみ・用途不明の入金のみ） */

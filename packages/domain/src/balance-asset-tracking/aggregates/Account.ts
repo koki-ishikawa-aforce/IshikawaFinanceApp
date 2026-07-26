@@ -17,13 +17,16 @@ import {
   UserIdSchema,
   MitsuiSumitomoUnpaidIdSchema,
   SettlementNoticeIdSchema,
+  TransactionIdSchema,
   type AccountId,
   type UserId,
   type SettlementNoticeId,
+  type TransactionId,
 } from '../../shared/ids'
 import { MoneySchema, addMoney, money, type Money } from '../../shared/value-objects/Money'
 import {
   InvariantViolationError,
+  OtherSavingsMovementAlreadyAppliedError,
   PermissionDeniedError,
   UnpaidSettlementAlreadyAppliedError,
 } from '../../shared/errors/DomainError'
@@ -72,6 +75,17 @@ export const OtherSavingsBalanceSchema = z.object({
   initialBalance: MoneySchema,
   initialBalanceBaselineAt: z.date(),
   lastUpdatedAt: z.date(),
+  /**
+   * シャドウ残高へ反映済みの資金移動の取引IDの集合（#390）。
+   * SMBC 残高側の `appliedSettlementNoticeIds` と同じ役割で、未反映なら空。
+   * 既存データ（この項目を持たない payload）は空配列として読み出される。
+   *
+   * 別銀行貯蓄口座は実残高を取得できないシャドウ口座で、SMBC 側の資金移動から
+   * 差分を積み上げてしか残高を知れない。加減算が二重に走ると実態との差が恒久的に
+   * 残る（引落消込と違って外部の正解と突き合わせて直せない）ため、適用元を記録して
+   * 二度目を拒否する。手入力（取り崩し記録・残高補正）は取引を持たないため対象外。
+   */
+  appliedMovementTransactionIds: z.array(TransactionIdSchema).default([]),
 })
 export type OtherSavingsBalance = z.infer<typeof OtherSavingsBalanceSchema>
 
@@ -269,15 +283,18 @@ export function applySmbcBalanceChange(
 }
 
 /**
- * behavior 別銀行貯蓄残高をSMBC振込で加算する / 取り崩しで減算する（08d §2）
- * シャドウ口座（実残高を直接取得できない別銀行貯蓄口座）の残高を、SMBC 側の資金移動や
- * 手入力から間接的に動かす。加算は正の delta、減算は負の delta。
+ * behavior 別銀行貯蓄残高を手入力で更新する（08d §2、取り崩し記録 / 残高補正）
+ * シャドウ口座（実残高を直接取得できない別銀行貯蓄口座）の残高を動かす基本操作。
+ * 加算は正の delta、減算は負の delta。
  *
  * 事後: 別銀行貯蓄残高の最終更新日時が更新される。残高鮮度の根拠（08d §1 残高鮮度供給）も
  * 同じ時刻へ進める。家計分析はこの値で「最終更新から N 日」を評価するため、残高だけ動かして
  * 鮮度を据え置くと、更新されているのに古いと表示される。
  *
  * 不変条件: 非アクティブ口座への残高変動は適用しない（09-aggregates #9）。
+ *
+ * 取引に由来する資金移動（SMBC 振込・別銀行戻し）には使わないこと。二重適用のガードが
+ * 無いため、再実行で残高が二重に動く。そちらは `applyOtherSavingsMovement` を使う。
  */
 export function applyOtherSavingsBalanceChange(
   account: OtherSavingsAccount,
@@ -297,6 +314,48 @@ export function applyOtherSavingsBalanceChange(
       lastUpdatedAt: at,
     },
     freshnessSource: { lastUpdatedAt: at },
+  }) as OtherSavingsAccount
+}
+
+/**
+ * behavior 別銀行貯蓄残高をSMBC振込で加算する / 別銀行戻しで減算する（08d §2、#390）
+ * SMBC 側の資金移動 1 件（取引）をシャドウ残高へ反映する。加算は正の delta、減算は負の delta。
+ *
+ * 不変条件: 同一の取引は一度しかシャドウ残高へ反映しない（適用済み取引IDの集合で判定）。
+ * 二度目は `OtherSavingsMovementAlreadyAppliedError` を throw する。呼び出し側は
+ * 「反映済みのためスキップ」として扱ってよい。
+ *
+ * 入金の用途確定（`confirmBankDepositPurpose`）とこの反映は別集約への順次保存であり、
+ * その間で失敗するとシャドウ残高だけが未反映で残る。同じ用途での確定は冪等に再実行できる
+ * ため、呼び出し側は再実行でここまで到達させてよく、二重適用はこのガードが防ぐ
+ * （OQ-43「集約をまたぐ更新は再実行で自己修復する」）。
+ *
+ * 事後: 最終更新日時・残高鮮度の根拠は巻き戻さない。回復は定義上「遅れて古い移動を
+ * 適用する」ため、発生順に適用するという前提を満たせない。
+ */
+export function applyOtherSavingsMovement(
+  account: OtherSavingsAccount,
+  params: { transactionId: TransactionId; delta: Money; at: Date },
+): OtherSavingsAccount {
+  if (account.balance.appliedMovementTransactionIds.includes(params.transactionId)) {
+    throw new OtherSavingsMovementAlreadyAppliedError(
+      `資金移動（取引 ${params.transactionId}）は別銀行貯蓄口座（${account.common.accountId}）へ反映済みのため再反映できない`,
+    )
+  }
+  const applied = applyOtherSavingsBalanceChange(account, params.delta, params.at)
+  const lastUpdatedAt =
+    params.at > account.balance.lastUpdatedAt ? params.at : account.balance.lastUpdatedAt
+  return AccountSchema.parse({
+    ...applied,
+    balance: {
+      ...applied.balance,
+      lastUpdatedAt,
+      appliedMovementTransactionIds: [
+        ...applied.balance.appliedMovementTransactionIds,
+        params.transactionId,
+      ],
+    },
+    freshnessSource: { lastUpdatedAt },
   }) as OtherSavingsAccount
 }
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   AccountIdSchema,
   InvariantViolationError,
+  TransactionIdSchema,
   money,
   registerOtherSavingsAccount,
 } from '@warimaru/domain'
@@ -48,7 +49,7 @@ describe('applyOtherSavingsTransferFromWithdrawal', () => {
     await applyOtherSavingsTransferFromWithdrawal(deps(), {
       userId: VIEWER_ID,
       amount: money(50_000),
-      transactionId: newUlid(),
+      transactionId: TransactionIdSchema.parse(newUlid()),
       at,
     })
 
@@ -62,7 +63,7 @@ describe('applyOtherSavingsTransferFromWithdrawal', () => {
     await applyOtherSavingsTransferFromWithdrawal(deps(), {
       userId: VIEWER_ID,
       amount: money(50_000),
-      transactionId: newUlid(),
+      transactionId: TransactionIdSchema.parse(newUlid()),
       at,
     })
 
@@ -81,7 +82,7 @@ describe('applyOtherSavingsTransferFromWithdrawal', () => {
     await applyOtherSavingsTransferFromWithdrawal(deps(), {
       userId: VIEWER_ID,
       amount: money(50_000),
-      transactionId: newUlid(),
+      transactionId: TransactionIdSchema.parse(newUlid()),
       at,
     })
 
@@ -89,12 +90,44 @@ describe('applyOtherSavingsTransferFromWithdrawal', () => {
     expect(events[0]).toMatchObject({ delta: 50_000, newBalance: 550_000 })
   })
 
+  it('同一取引の再処理では二重に加算しない（取込バッチの at-least-once 対策）', async () => {
+    const accountId = await registerSavings(VIEWER_ID, 500_000)
+    const transactionId = TransactionIdSchema.parse(newUlid())
+    const params = { userId: VIEWER_ID, amount: money(50_000), transactionId, at }
+
+    await applyOtherSavingsTransferFromWithdrawal(deps(), params)
+    await applyOtherSavingsTransferFromWithdrawal(deps(), params)
+
+    const account = await t.deps.accountRepository.findById(AccountIdSchema.parse(accountId))
+    expect(account?.kind === 'other_savings' && account.balance.currentBalance).toBe(550_000)
+  })
+
+  it('再処理では口座残高更新イベントも二重に出さない', async () => {
+    await registerSavings(VIEWER_ID, 500_000)
+    const events: AccountBalanceUpdated[] = []
+    t.deps.eventBus.subscribe<AccountBalanceUpdated>(
+      'AccountBalanceUpdated',
+      e => void events.push(e),
+    )
+    const params = {
+      userId: VIEWER_ID,
+      amount: money(50_000),
+      transactionId: TransactionIdSchema.parse(newUlid()),
+      at,
+    }
+
+    await applyOtherSavingsTransferFromWithdrawal(deps(), params)
+    await applyOtherSavingsTransferFromWithdrawal(deps(), params)
+
+    expect(events).toHaveLength(1)
+  })
+
   it('別銀行貯蓄口座が未登録なら失敗する（SMBC 側だけ減った状態を黙認しない）', async () => {
     await expect(
       applyOtherSavingsTransferFromWithdrawal(deps(), {
         userId: VIEWER_ID,
         amount: money(50_000),
-        transactionId: newUlid(),
+        transactionId: TransactionIdSchema.parse(newUlid()),
         at,
       }),
     ).rejects.toThrow(InvariantViolationError)
@@ -107,7 +140,7 @@ describe('applyOtherSavingsTransferFromWithdrawal', () => {
       applyOtherSavingsTransferFromWithdrawal(deps(), {
         userId: VIEWER_ID,
         amount: money(50_000),
-        transactionId: newUlid(),
+        transactionId: TransactionIdSchema.parse(newUlid()),
         at,
       }),
     ).rejects.toThrow(InvariantViolationError)
@@ -127,7 +160,7 @@ describe('applyOtherSavingsTransferFromWithdrawal', () => {
       applyOtherSavingsTransferFromWithdrawal(deps(), {
         userId: VIEWER_ID,
         amount: money(amount),
-        transactionId: newUlid(),
+        transactionId: TransactionIdSchema.parse(newUlid()),
         at,
       }),
     ).rejects.toThrow(InvariantViolationError)

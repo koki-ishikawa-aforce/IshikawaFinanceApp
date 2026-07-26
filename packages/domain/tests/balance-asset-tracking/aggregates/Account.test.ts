@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   AccountSchema,
   applyOtherSavingsBalanceChange,
+  applyOtherSavingsMovement,
   applySmbcBalanceChange,
   applyUnpaidSettlementToSmbcBalance,
   asNisaAccount,
@@ -16,6 +17,7 @@ import {
 } from '../../../src/balance-asset-tracking/aggregates/Account'
 import {
   InvariantViolationError,
+  OtherSavingsMovementAlreadyAppliedError,
   PermissionDeniedError,
   UnpaidSettlementAlreadyAppliedError,
 } from '../../../src/shared/errors/DomainError'
@@ -602,5 +604,135 @@ describe('applyOtherSavingsBalanceChange()', () => {
     expect(() => applyOtherSavingsBalanceChange(inactive, 50000 as never, at)).toThrow(
       InvariantViolationError,
     )
+  })
+})
+
+describe('applyOtherSavingsMovement()', () => {
+  const registeredAt = new Date('2026-07-01T00:00:00Z')
+  const at = new Date('2026-07-25T03:00:00Z')
+  const TX_A = '01TXN000000000000000000001' as never
+  const TX_B = '01TXN000000000000000000002' as never
+  const register = () =>
+    registerOtherSavingsAccount({
+      accountId: '01ACC000000000000000000002' as never,
+      ownerUserId: 'user_honey' as never,
+      bankName: '楽天銀行' as never,
+      initialBalance: 500000 as never,
+      at: registeredAt,
+    })
+
+  it('取引由来の加算が反映され、適用元の取引IDが記録される', () => {
+    const updated = applyOtherSavingsMovement(register(), {
+      transactionId: TX_A,
+      delta: 50000 as never,
+      at,
+    })
+    expect(updated.balance.currentBalance).toBe(550000)
+    expect(updated.balance.appliedMovementTransactionIds).toEqual([TX_A])
+  })
+
+  it('同一取引の二度目は OtherSavingsMovementAlreadyAppliedError（残高が二重に動かない）', () => {
+    const once = applyOtherSavingsMovement(register(), {
+      transactionId: TX_A,
+      delta: -30000 as never,
+      at,
+    })
+    expect(() =>
+      applyOtherSavingsMovement(once, { transactionId: TX_A, delta: -30000 as never, at }),
+    ).toThrow(OtherSavingsMovementAlreadyAppliedError)
+    expect(once.balance.currentBalance).toBe(470000)
+  })
+
+  it('別の取引は続けて反映でき、適用元が積み上がる', () => {
+    const first = applyOtherSavingsMovement(register(), {
+      transactionId: TX_A,
+      delta: 50000 as never,
+      at,
+    })
+    const second = applyOtherSavingsMovement(first, {
+      transactionId: TX_B,
+      delta: -20000 as never,
+      at,
+    })
+    expect(second.balance.currentBalance).toBe(530000)
+    expect(second.balance.appliedMovementTransactionIds).toEqual([TX_A, TX_B])
+  })
+
+  it('先に適用した取引が後から再送されても拒否される（集合で持つため）', () => {
+    const first = applyOtherSavingsMovement(register(), {
+      transactionId: TX_A,
+      delta: 50000 as never,
+      at,
+    })
+    const second = applyOtherSavingsMovement(first, {
+      transactionId: TX_B,
+      delta: -20000 as never,
+      at,
+    })
+    expect(() =>
+      applyOtherSavingsMovement(second, { transactionId: TX_A, delta: 50000 as never, at }),
+    ).toThrow(OtherSavingsMovementAlreadyAppliedError)
+  })
+
+  it('遅れて古い移動を適用しても最終更新日時は巻き戻らない（回復時に残高が古く見えない）', () => {
+    const recent = applyOtherSavingsMovement(register(), {
+      transactionId: TX_A,
+      delta: 50000 as never,
+      at,
+    })
+    const late = applyOtherSavingsMovement(recent, {
+      transactionId: TX_B,
+      delta: 10000 as never,
+      at: new Date('2026-07-10T00:00:00Z'),
+    })
+    expect(late.balance.currentBalance).toBe(560000)
+    expect(late.balance.lastUpdatedAt).toEqual(at)
+    expect(late.freshnessSource.lastUpdatedAt).toEqual(at)
+  })
+
+  it('残高を超える戻しでシャドウ残高は負になる（取込ラグで一時的に起こりうる）', () => {
+    const small = registerOtherSavingsAccount({
+      accountId: '01ACC000000000000000000003' as never,
+      ownerUserId: 'user_honey' as never,
+      bankName: '楽天銀行' as never,
+      initialBalance: 100000 as never,
+      at: registeredAt,
+    })
+    const updated = applyOtherSavingsMovement(small, {
+      transactionId: TX_A,
+      delta: -300000 as never,
+      at,
+    })
+    expect(updated.balance.currentBalance).toBe(-200000)
+  })
+
+  it('非アクティブ口座へは適用できない', () => {
+    const inactive = AccountSchema.parse({
+      ...register(),
+      common: {
+        ...register().common,
+        activeness: { kind: 'inactive', inactivatedAt: new Date('2026-07-10'), reason: '解約済み' },
+      },
+    }) as OtherSavingsAccount
+
+    expect(() =>
+      applyOtherSavingsMovement(inactive, { transactionId: TX_A, delta: 50000 as never, at }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('既存データ（適用元の記録を持たない payload）は空配列として読み出される', () => {
+    const legacy = AccountSchema.parse({
+      kind: 'other_savings',
+      common: register().common,
+      bankName: '楽天銀行',
+      balance: {
+        currentBalance: 500000,
+        initialBalance: 500000,
+        initialBalanceBaselineAt: registeredAt,
+        lastUpdatedAt: registeredAt,
+      },
+      freshnessSource: { lastUpdatedAt: registeredAt },
+    }) as OtherSavingsAccount
+    expect(legacy.balance.appliedMovementTransactionIds).toEqual([])
   })
 })

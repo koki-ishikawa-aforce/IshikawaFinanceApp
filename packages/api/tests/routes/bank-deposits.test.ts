@@ -15,6 +15,7 @@ import type {
   AccountBalanceUpdated,
   BankDeposit,
   BankDepositPurposeDetermined,
+  ExpenseReimbursementDepositArrived,
   ExpenseReimbursementDepositReceived,
   UserId,
 } from '@warimaru/domain'
@@ -66,7 +67,7 @@ async function seedDeposit(
       remitterName: params.remitterName,
       determinedAt: params.occurredAt,
     },
-    purpose: purpose.kind,
+    purpose,
     expenseReimbursementId: ExpenseReimbursementIdSchema.parse(newUlid()),
   })
   await t.deps.bankDepositRepository.save(deposit)
@@ -94,9 +95,11 @@ describe('GET /api/bank-deposits/awaiting', () => {
     expect(res.status).toBe(200)
     const body = await json<AwaitingWire>(res)
     expect(body.deposits).toHaveLength(1)
-    expect(body.deposits[0]).toMatchObject({
+    expect(body.deposits[0]).toEqual({
       bankDepositId: deposit.common.bankDepositId,
       amount: 300_000,
+      // 入金日は用途を判断する主要な手がかりなので応答に必ず載る
+      occurredAt: AMBIGUOUS.occurredAt.toISOString(),
       remitterName: EMPLOYER,
     })
   })
@@ -202,6 +205,92 @@ describe('POST /api/bank-deposits/:id/purpose', () => {
     expect(received[0]?.depositAmount).toBe(300_000)
   })
 
+  it('経費精算入金ID が 集約・判別イベント・到着イベント で同一になる（突合対象が増殖しない）', async () => {
+    const arrived: ExpenseReimbursementDepositArrived[] = []
+    const determined: BankDepositPurposeDetermined[] = []
+    t.deps.eventBus.subscribe<ExpenseReimbursementDepositArrived>(
+      'ExpenseReimbursementDepositArrived',
+      e => void arrived.push(e),
+    )
+    t.deps.eventBus.subscribe<BankDepositPurposeDetermined>(
+      'BankDepositPurposeDetermined',
+      e => void determined.push(e),
+    )
+    const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+
+    await request(t.app, 'POST', `/api/bank-deposits/${deposit.common.bankDepositId}/purpose`, {
+      body: { purpose: 'expense_reimbursement' },
+    })
+
+    const stored = await t.deps.bankDepositRepository.findById(deposit.common.bankDepositId)
+    const storedId =
+      stored?.kind === 'expense_reimbursement' ? stored.expenseReimbursementId : undefined
+    expect(storedId).toBeDefined()
+    expect(arrived[0]?.expenseReimbursementId).toBe(storedId)
+    expect(determined[0]?.expenseReimbursementId).toBe(storedId)
+  })
+
+  it('経費精算入金の確定で突合待ちの経費精算入金が作られる（08e の突合が起動する）', async () => {
+    const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+
+    await request(t.app, 'POST', `/api/bank-deposits/${deposit.common.bankDepositId}/purpose`, {
+      body: { purpose: 'expense_reimbursement' },
+    })
+
+    const awaiting =
+      await t.deps.expenseReimbursementDepositRepository.findAwaitingByUser(VIEWER_ID)
+    expect(awaiting).toHaveLength(1)
+    expect(awaiting[0]?.common.depositAmount).toBe(300_000)
+    expect(awaiting[0]?.common.depositedAt).toEqual(AMBIGUOUS.occurredAt)
+  })
+
+  it('同じ用途で確定し直しても突合待ちの経費精算入金は増えない', async () => {
+    const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+    const path = `/api/bank-deposits/${deposit.common.bankDepositId}/purpose`
+    const body = { body: { purpose: 'expense_reimbursement' } }
+
+    await request(t.app, 'POST', path, body)
+    await request(t.app, 'POST', path, body)
+
+    expect(
+      await t.deps.expenseReimbursementDepositRepository.findAwaitingByUser(VIEWER_ID),
+    ).toHaveLength(1)
+  })
+
+  it.each(['salary', 'expense_reimbursement'] as const)(
+    '%s で確定してもシャドウ残高は動かない（SMBC 側は取引取込で加算済み）',
+    async purpose => {
+      const accountId = AccountIdSchema.parse(newUlid())
+      await t.deps.accountRepository.save(
+        registerOtherSavingsAccount({
+          accountId,
+          ownerUserId: VIEWER_ID,
+          bankName: '楽天銀行' as never,
+          initialBalance: money(500_000),
+          at: new Date('2026-07-01T00:00:00Z'),
+        }),
+      )
+      const balanceEvents: AccountBalanceUpdated[] = []
+      t.deps.eventBus.subscribe<AccountBalanceUpdated>(
+        'AccountBalanceUpdated',
+        e => void balanceEvents.push(e),
+      )
+      const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+
+      const res = await request(
+        t.app,
+        'POST',
+        `/api/bank-deposits/${deposit.common.bankDepositId}/purpose`,
+        { body: { purpose } },
+      )
+      expect(res.status).toBe(200)
+
+      const account = await t.deps.accountRepository.findById(accountId)
+      expect(account?.kind === 'other_savings' && account.balance.currentBalance).toBe(500_000)
+      expect(balanceEvents).toHaveLength(0)
+    },
+  )
+
   it('給与として確定したときは経費精算へは何も伝わらない', async () => {
     const received: ExpenseReimbursementDepositReceived[] = []
     t.deps.eventBus.subscribe<ExpenseReimbursementDepositReceived>(
@@ -275,7 +364,38 @@ describe('POST /api/bank-deposits/:id/purpose', () => {
         `/api/bank-deposits/${deposit.common.bankDepositId}/purpose`,
         { body: { purpose: 'other_savings_return' } },
       )
-      expect(res.status).toBeGreaterThanOrEqual(400)
+      expect(res.status).toBe(409)
+
+      // 確定は保存されるが未反映。同じ用途での再確定が回復の入口になる
+      const stored = await t.deps.bankDepositRepository.findById(deposit.common.bankDepositId)
+      expect(stored?.kind).toBe('other_savings_return')
+    })
+
+    it('口座を登録してから同じ用途で確定し直すと反映まで回復する', async () => {
+      const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+      const path = `/api/bank-deposits/${deposit.common.bankDepositId}/purpose`
+      const body = { body: { purpose: 'other_savings_return' } }
+
+      expect((await request(t.app, 'POST', path, body)).status).toBe(409)
+
+      const accountId = await registerSavings(VIEWER_ID, 500_000)
+      expect((await request(t.app, 'POST', path, body)).status).toBe(200)
+
+      const account = await t.deps.accountRepository.findById(AccountIdSchema.parse(accountId))
+      expect(account?.kind === 'other_savings' && account.balance.currentBalance).toBe(200_000)
+    })
+
+    it('同じ用途で二度確定してもシャドウ残高は一度しか減らない', async () => {
+      const accountId = await registerSavings(VIEWER_ID, 500_000)
+      const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+      const path = `/api/bank-deposits/${deposit.common.bankDepositId}/purpose`
+      const body = { body: { purpose: 'other_savings_return' } }
+
+      expect((await request(t.app, 'POST', path, body)).status).toBe(200)
+      expect((await request(t.app, 'POST', path, body)).status).toBe(200)
+
+      const account = await t.deps.accountRepository.findById(AccountIdSchema.parse(accountId))
+      expect(account?.kind === 'other_savings' && account.balance.currentBalance).toBe(200_000)
     })
   })
 
@@ -302,7 +422,7 @@ describe('POST /api/bank-deposits/:id/purpose', () => {
       await request(t.app, 'POST', path, { body: { purpose: 'salary' } })
 
       const res = await request(t.app, 'POST', path, { body: { purpose: 'expense_reimbursement' } })
-      expect(res.status).toBeGreaterThanOrEqual(400)
+      expect(res.status).toBe(409)
 
       const stored = await t.deps.bankDepositRepository.findById(deposit.common.bankDepositId)
       expect(stored?.kind).toBe('salary')
@@ -327,7 +447,7 @@ describe('POST /api/bank-deposits/:id/purpose', () => {
         `/api/bank-deposits/${deposit.common.bankDepositId}/purpose`,
         { body: { purpose: 'unknown' } },
       )
-      expect(res.status).toBeGreaterThanOrEqual(400)
+      expect(res.status).toBe(400)
     })
 
     it('認証されていないリクエストは受け付けない', async () => {

@@ -5,10 +5,11 @@
  * WHERE kind = 'unknown' が効く形。並び順は発生順（古い入金から確認させる）。
  *
  * save は bank_deposit_id の upsert。取引ID の一意制約は集約の不変条件
- * 「取引ID で一意」の最終保証で、違反は unique 違反として呼び出し側へ伝播する
+ * 「取引ID で一意」の最終保証で、違反は `InvariantViolationError` に翻訳して伝播する
  * （握り潰すと同一入金の二重取込が無言で通る）。
  */
 import { and, asc, eq } from 'drizzle-orm'
+import { InvariantViolationError } from '@warimaru/domain'
 import type {
   BankDeposit,
   BankDepositId,
@@ -20,6 +21,13 @@ import { BankDepositSchema } from '@warimaru/domain'
 import type { Db } from '../client'
 import { bankDeposits } from '../schema'
 import { parsePayload, serializeForPayload } from '../serialize'
+import { isUniqueViolation } from '../pgErrors'
+
+/**
+ * 手動確認待ちの返却上限。自動判別が外れ続けると単調に伸びるため、
+ * 1 レスポンスの転送量を頭打ちにする（画面は古い順に片付ける運用）。
+ */
+const AWAITING_LIMIT = 100
 
 export class NeonBankDepositRepository implements BankDepositRepository {
   constructor(private readonly db: Db) {}
@@ -52,6 +60,7 @@ export class NeonBankDepositRepository implements BankDepositRepository {
       .from(bankDeposits)
       .where(and(eq(bankDeposits.userId, userId), eq(bankDeposits.kind, 'unknown')))
       .orderBy(asc(bankDeposits.occurredAt), asc(bankDeposits.bankDepositId))
+      .limit(AWAITING_LIMIT)
     return rows.map(row => parsePayload(BankDepositSchema, row.payload))
   }
 
@@ -66,12 +75,23 @@ export class NeonBankDepositRepository implements BankDepositRepository {
       payload: serializeForPayload(deposit),
     }
     const { bankDepositId: _pk, ...updateSet } = row
-    await this.db
-      .insert(bankDeposits)
-      .values(row)
-      .onConflictDoUpdate({
-        target: bankDeposits.bankDepositId,
-        set: { ...updateSet, updatedAt: new Date() },
-      })
+    try {
+      await this.db
+        .insert(bankDeposits)
+        .values(row)
+        .onConflictDoUpdate({
+          target: bankDeposits.bankDepositId,
+          set: { ...updateSet, updatedAt: new Date() },
+        })
+    } catch (e) {
+      // 集約の不変条件「取引ID で一意」の最終保証。生の pg エラーのまま投げると
+      // 呼び出し側（取込バッチ）が「取込済みならスキップ」を型で判定できない
+      if (isUniqueViolation(e)) {
+        throw new InvariantViolationError(
+          `取引ID は一意: ${deposit.common.transactionId} の入金は既に存在する`,
+        )
+      }
+      throw e
+    }
   }
 }

@@ -1,5 +1,5 @@
 /**
- * 入金用途判別結果 / 出金用途（08d §1）
+ * 入金用途判別結果（08d §1）
  * @see docs/domain/08d-ul-残高資産推移管理.md §1
  * @see docs/domain/03-open-questions.md OQ-21
  *
@@ -7,7 +7,6 @@
  *   data 入金用途判別結果 = 給与判別 OR 経費精算入金判別 OR 別銀行戻し判別 OR 用途不明
  *   data 用途不明 = 取引ID AND 判別日時 AND 暫定処理
  *   data 暫定処理 = 手動確認待ち
- *   data 出金用途 = カード引落用 OR 別銀行振込用 OR NISA積立用 OR その他出金
  */
 import { z } from 'zod'
 
@@ -43,16 +42,3 @@ export const DepositPurposeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('unknown'), provisionalHandling: ProvisionalHandlingSchema }),
 ])
 export type DepositPurpose = z.infer<typeof DepositPurposeSchema>
-
-/** 出金用途（08d §1）。シャドウ口座更新の事前条件に使う */
-export const WithdrawalPurposeSchema = z.enum([
-  /** カード引落用 */
-  'card_settlement',
-  /** 別銀行振込用（= 別銀行貯蓄残高への加算） */
-  'other_savings_transfer',
-  /** NISA積立用 */
-  'nisa_contribution',
-  /** その他出金 */
-  'other',
-])
-export type WithdrawalPurpose = z.infer<typeof WithdrawalPurposeSchema>

@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
   BankDepositSchema,
+  canViewBankDeposit,
   confirmBankDepositPurpose,
   isDeterminedBankDeposit,
   recordBankDeposit,
   type BankDeposit,
   type CommonBankDepositAttrs,
 } from '../../../src/balance-asset-tracking/aggregates/BankDeposit'
+import type { DepositPurpose } from '../../../src/balance-asset-tracking/value-objects/DepositPurpose'
 import {
   InvariantViolationError,
   PermissionDeniedError,
@@ -30,8 +32,21 @@ const common: CommonBankDepositAttrs = {
   determinedAt,
 }
 
-function record(purpose: Parameters<typeof recordBankDeposit>[0]['purpose']): BankDeposit {
-  return recordBankDeposit({ common, purpose, expenseReimbursementId: REIMBURSEMENT_ID })
+type PurposeKind = DepositPurpose['kind']
+
+/** 判別サービスの戻り値（入金用途判別結果）と同じ形を組み立てる */
+function purposeOf(kind: PurposeKind): DepositPurpose {
+  return kind === 'unknown'
+    ? { kind, provisionalHandling: 'awaiting_manual_confirmation' }
+    : { kind }
+}
+
+function record(kind: PurposeKind): BankDeposit {
+  return recordBankDeposit({
+    common,
+    purpose: purposeOf(kind),
+    expenseReimbursementId: REIMBURSEMENT_ID,
+  })
 }
 
 describe('BankDeposit 集約', () => {
@@ -68,7 +83,7 @@ describe('BankDeposit 集約', () => {
       expect(() =>
         recordBankDeposit({
           common: { ...common, amount: amount as never },
-          purpose: 'salary',
+          purpose: { kind: 'salary' },
           expenseReimbursementId: REIMBURSEMENT_ID,
         }),
       ).toThrow()
@@ -138,30 +153,76 @@ describe('BankDeposit 集約', () => {
     })
 
     describe('否定形: 一方向遷移（確定済みは変更できない）', () => {
-      it.each(['salary', 'expense_reimbursement', 'other_savings_return'] as const)(
-        '%s で確定済みの入金は用途を変更できない',
-        purpose => {
-          expect(() =>
-            confirmBankDepositPurpose(record(purpose), {
-              purpose: 'other_savings_return',
-              operatorUserId: OWNER,
-              expenseReimbursementId: OTHER_REIMBURSEMENT_ID,
-              at: determinedAt,
-            }),
-          ).toThrow(InvariantViolationError)
-        },
-      )
-
-      it('同じ用途で確定し直すこともできない（二重反映の余地を残さない）', () => {
+      it.each([
+        ['salary', 'other_savings_return'],
+        ['expense_reimbursement', 'salary'],
+        ['other_savings_return', 'expense_reimbursement'],
+      ] as const)('%s で確定済みの入金は %s へ変更できない', (confirmed, attempted) => {
         expect(() =>
-          confirmBankDepositPurpose(record('other_savings_return'), {
-            purpose: 'other_savings_return',
+          confirmBankDepositPurpose(record(confirmed), {
+            purpose: attempted,
             operatorUserId: OWNER,
-            expenseReimbursementId: REIMBURSEMENT_ID,
+            expenseReimbursementId: OTHER_REIMBURSEMENT_ID,
             at: determinedAt,
           }),
         ).toThrow(InvariantViolationError)
       })
+    })
+
+    describe('冪等: 同じ用途での再確定は反映のやり直しの入口になる', () => {
+      it('確定済みの入金を同じ用途で確定し直しても拒否されない', () => {
+        const determined = record('other_savings_return')
+        expect(
+          confirmBankDepositPurpose(determined, {
+            purpose: 'other_savings_return',
+            operatorUserId: OWNER,
+            expenseReimbursementId: OTHER_REIMBURSEMENT_ID,
+            at: new Date('2026-08-01T00:00:00Z'),
+          }),
+        ).toEqual(determined)
+      })
+
+      it('再確定でも確定日時・確定経路は据え置く（自動確定を手動に書き換えない）', () => {
+        const determined = record('salary')
+        const again = confirmBankDepositPurpose(determined, {
+          purpose: 'salary',
+          operatorUserId: OWNER,
+          expenseReimbursementId: OTHER_REIMBURSEMENT_ID,
+          at: new Date('2026-08-01T00:00:00Z'),
+        })
+        expect(again.common.determinedAt).toEqual(determinedAt)
+        expect(again.determinationSource).toBe('automatic')
+      })
+
+      it('再確定でも経費精算入金ID は振り直さない（突合対象が増殖しないため）', () => {
+        const determined = record('expense_reimbursement')
+        const again = confirmBankDepositPurpose(determined, {
+          purpose: 'expense_reimbursement',
+          operatorUserId: OWNER,
+          expenseReimbursementId: OTHER_REIMBURSEMENT_ID,
+          at: new Date('2026-08-01T00:00:00Z'),
+        })
+        expect(again).toMatchObject({ expenseReimbursementId: REIMBURSEMENT_ID })
+      })
+
+      it('他人の入金は同じ用途でも再確定できない', () => {
+        expect(() =>
+          confirmBankDepositPurpose(record('salary'), {
+            purpose: 'salary',
+            operatorUserId: SPOUSE,
+            expenseReimbursementId: REIMBURSEMENT_ID,
+            at: determinedAt,
+          }),
+        ).toThrow(PermissionDeniedError)
+      })
+    })
+  })
+
+  describe('canViewBankDeposit', () => {
+    it('本人だけが閲覧できる（プライバシー3段階ルール）', () => {
+      const deposit = record('unknown')
+      expect(canViewBankDeposit(deposit, OWNER)).toBe(true)
+      expect(canViewBankDeposit(deposit, SPOUSE)).toBe(false)
     })
   })
 

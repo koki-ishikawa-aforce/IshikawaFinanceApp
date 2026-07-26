@@ -504,7 +504,11 @@ export function createMockBankDepositRepository(): BankDepositRepository {
     async findAwaitingManualConfirmationByUser(userId: UserId) {
       return [...store.values()]
         .filter(d => d.common.userId === userId && d.kind === 'unknown')
-        .sort((a, b) => a.common.occurredAt.getTime() - b.common.occurredAt.getTime())
+        .sort(
+          (a, b) =>
+            a.common.occurredAt.getTime() - b.common.occurredAt.getTime() ||
+            a.common.bankDepositId.localeCompare(b.common.bankDepositId),
+        )
     },
     async save(deposit: BankDeposit) {
       // Neon 実装の UNIQUE (transaction_id) と同じ失敗モードを再現する

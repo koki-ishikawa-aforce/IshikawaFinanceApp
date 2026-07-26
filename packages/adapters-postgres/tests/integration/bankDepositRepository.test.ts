@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import type { BankDeposit, BankDepositId, TransactionId, UserId } from '@warimaru/domain'
-import { confirmBankDepositPurpose, recordBankDeposit } from '@warimaru/domain'
+import type {
+  BankDeposit,
+  BankDepositId,
+  DepositPurpose,
+  TransactionId,
+  UserId,
+} from '@warimaru/domain'
+import { sql } from 'drizzle-orm'
+import {
+  InvariantViolationError,
+  confirmBankDepositPurpose,
+  recordBankDeposit,
+} from '@warimaru/domain'
 import { db } from './setup'
 import { NeonBankDepositRepository } from '../../src/balance-asset-tracking/NeonBankDepositRepository'
 import { newUlid } from '../../src/newId'
@@ -10,10 +21,19 @@ const repo = new NeonBankDepositRepository(db)
 
 const REIMBURSEMENT_ID = newUlid()
 
+type PurposeKind = DepositPurpose['kind']
+
+/** 判別サービスの戻り値（入金用途判別結果）と同じ形を組み立てる */
+function purposeOf(kind: PurposeKind): DepositPurpose {
+  return kind === 'unknown'
+    ? { kind, provisionalHandling: 'awaiting_manual_confirmation' }
+    : { kind }
+}
+
 function deposit(
   input: {
     userId?: UserId
-    purpose?: Parameters<typeof recordBankDeposit>[0]['purpose']
+    purpose?: PurposeKind
     occurredAt?: Date
     transactionId?: string
   } = {},
@@ -30,15 +50,21 @@ function deposit(
       remitterName: '振込サービス ｶ)ﾜﾘﾏﾙｼｮｳｼﾞ',
       determinedAt: occurredAt,
     } as never,
-    purpose: input.purpose ?? 'unknown',
+    purpose: purposeOf(input.purpose ?? 'unknown'),
     expenseReimbursementId: REIMBURSEMENT_ID as never,
   })
 }
 
 describe('NeonBankDepositRepository', () => {
   it('save → findById の往復同一性（全 4 kind 変種）', async () => {
-    for (const purpose of ['salary', 'expense_reimbursement', 'other_savings_return', 'unknown']) {
-      const saved = deposit({ purpose: purpose as never })
+    const purposes: PurposeKind[] = [
+      'salary',
+      'expense_reimbursement',
+      'other_savings_return',
+      'unknown',
+    ]
+    for (const purpose of purposes) {
+      const saved = deposit({ purpose })
       await repo.save(saved)
       expect(await repo.findById(saved.common.bankDepositId)).toEqual(saved)
     }
@@ -92,9 +118,36 @@ describe('NeonBankDepositRepository', () => {
     expect(await repo.findAwaitingManualConfirmationByUser(HONEY_USER_ID)).toEqual([])
   })
 
-  it('同一取引ID の別入金は一意制約で弾かれる（同じ入金メールの再取込で二重加算しない）', async () => {
+  it('同一取引ID の別入金は一意制約で弾かれ、InvariantViolationError に翻訳される', async () => {
     const transactionId = newUlid()
     await repo.save(deposit({ transactionId }))
-    await expect(repo.save(deposit({ transactionId }))).rejects.toThrow()
+    // 生の pg エラーのままだと、呼び出し側が「取込済みならスキップ」を型で判定できない
+    await expect(repo.save(deposit({ transactionId }))).rejects.toThrow(InvariantViolationError)
+  })
+
+  it('発生日時が同じなら bankDepositId 昇順になる（並び順の第 2 キーが効いている）', async () => {
+    const sameMoment = new Date('2026-07-11T03:00:00.000Z')
+    const a = deposit({ occurredAt: sameMoment })
+    const b = deposit({ occurredAt: sameMoment })
+    await repo.save(a)
+    await repo.save(b)
+    const expected = [a.common.bankDepositId, b.common.bankDepositId].sort()
+    expect(
+      (await repo.findAwaitingManualConfirmationByUser(HONEY_USER_ID)).map(
+        d => d.common.bankDepositId,
+      ),
+    ).toEqual(expected)
+  })
+
+  it('未知の kind は CHECK 制約で拒否される（Repository を経由しない書き込みへの最終防衛）', async () => {
+    await expect(
+      db.execute(sql`
+        INSERT INTO bank_deposits
+          (bank_deposit_id, transaction_id, account_id, user_id, kind, occurred_at, payload)
+        VALUES
+          (${newUlid()}, ${newUlid()}, ${newUlid()}, ${HONEY_USER_ID}, 'auto_salary',
+           ${new Date('2026-07-10T03:00:00.000Z')}, ${'{}'}::jsonb)
+      `),
+    ).rejects.toThrow()
   })
 })

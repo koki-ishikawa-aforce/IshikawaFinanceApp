@@ -33,6 +33,13 @@ export class UnpaidAlreadyBookedError extends InvariantViolationError {}
  */
 export class UnpaidSettlementAlreadyAppliedError extends InvariantViolationError {}
 
+/**
+ * 別銀行貯蓄口座（シャドウ）への同一資金移動の重複適用を拒否した（#390）。
+ * 呼び出し側は「反映済みのためスキップ」として扱ってよい。
+ * `UnpaidSettlementAlreadyAppliedError` と同じく、判別をメッセージ文言ではなく型で行うため専用型にする。
+ */
+export class OtherSavingsMovementAlreadyAppliedError extends InvariantViolationError {}
+
 export class NotFoundError extends DomainError {
   constructor(resource: string, id: string) {
     super(`${resource} not found: ${id}`)

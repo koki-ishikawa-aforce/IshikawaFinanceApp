@@ -74,7 +74,10 @@ describe('determineBankDepositPurpose（OQ-21: 入金日 + 金額の 2 シグナ
         { amount: money(250_000), occurredAt: jstNoon(2026, 7, 5), remitterName: EMPLOYER },
         rule,
       )
-      expect(result.kind).not.toBe('salary')
+      expect(result).toEqual({
+        kind: 'unknown',
+        provisionalHandling: 'awaiting_manual_confirmation',
+      })
     })
   })
 
@@ -206,19 +209,30 @@ describe('determineBankDepositPurpose（OQ-21: 入金日 + 金額の 2 シグナ
 
 describe('determineWithdrawalPurpose', () => {
   it('別銀行貯蓄口座あての振込は別銀行振込用（シャドウ残高加算の対象）', () => {
-    expect(determineWithdrawalPurpose({ counterpartyName: SAVINGS_BANK }, rule)).toBe(
-      'other_savings_transfer',
-    )
+    expect(
+      determineWithdrawalPurpose(
+        { counterpartyName: SAVINGS_BANK },
+        rule.otherSavingsCounterpartyNames,
+      ),
+    ).toBe('other_savings_transfer')
   })
 
   it('表記ゆれがあっても別銀行貯蓄口座として照合できる', () => {
-    expect(determineWithdrawalPurpose({ counterpartyName: 'ヨゾラ銀行 ' }, rule)).toBe(
-      'other_savings_transfer',
-    )
+    expect(
+      determineWithdrawalPurpose(
+        { counterpartyName: 'ヨゾラ銀行 ' },
+        rule.otherSavingsCounterpartyNames,
+      ),
+    ).toBe('other_savings_transfer')
   })
 
   it('それ以外の振込先はその他出金（勝手にシャドウ残高を動かさない）', () => {
-    expect(determineWithdrawalPurpose({ counterpartyName: 'ﾄﾞｺｶﾉｵﾐｾ' }, rule)).toBe('other')
+    expect(
+      determineWithdrawalPurpose(
+        { counterpartyName: 'ﾄﾞｺｶﾉｵﾐｾ' },
+        rule.otherSavingsCounterpartyNames,
+      ),
+    ).toBe('other')
   })
 })
 
@@ -227,9 +241,16 @@ describe('BankDepositPurposeRule のスキーマ制約', () => {
     expect(() => bankDepositPurposeRule({ employerRemitterNames: [] })).toThrow()
   })
 
-  it('月内基準日は 29 日以上を許さない（月末日に依らず全月で成立する範囲に限る）', () => {
+  it.each([1, 28])('月内基準日 %i 日は許容される（全月で成立する範囲）', day => {
+    expect(
+      bankDepositPurposeRule({ employerRemitterNames: [EMPLOYER], salaryPayoutDayWindow: day })
+        .salaryPayoutDayWindow,
+    ).toBe(day)
+  })
+
+  it.each([0, 29])('月内基準日 %i 日は許さない（月末日に依らず全月で成立する範囲に限る）', day => {
     expect(() =>
-      bankDepositPurposeRule({ employerRemitterNames: [EMPLOYER], salaryPayoutDayWindow: 29 }),
+      bankDepositPurposeRule({ employerRemitterNames: [EMPLOYER], salaryPayoutDayWindow: day }),
     ).toThrow()
   })
 
