@@ -14,7 +14,7 @@
  */
 import { z } from 'zod'
 import { TalkRoomIdSchema, UserIdSchema } from '@warimaru/domain'
-import type { TalkRoomId, UserId } from '@warimaru/domain'
+import type { LineTalkRoomKind, TalkRoomId, UserId } from '@warimaru/domain'
 
 const LineWebhookSourceSchema = z.object({
   type: z.string().optional(),
@@ -44,15 +44,21 @@ export type LineWebhookRequest = z.infer<typeof LineWebhookRequestSchema>
 /** Webhook から読み取った、割まるが処理する意図 */
 export type LineWebhookIntent =
   | { kind: 'friend_added'; userId: UserId }
-  | { kind: 'talk_room_joined'; talkRoomId: TalkRoomId }
+  /**
+   * `talkRoomKind` は在籍照会のエンドポイント選択に要る（グループと複数人トークで分かれる）。
+   * ID だけでは種別を判別できないため、source の種別をここで確定させて後段へ渡す（#371）
+   */
+  | { kind: 'talk_room_joined'; talkRoomKind: LineTalkRoomKind; talkRoomId: TalkRoomId }
 
 /**
- * 共通トークルームIDの取り出し。`join` の source は userId を含まず、
+ * 共通トークルームの種別とIDの取り出し。`join` の source は userId を含まず、
  * グループ（`group`）と複数人トーク（`room`）で ID のフィールド名が異なる。
  */
-function talkRoomIdOf(source: z.infer<typeof LineWebhookSourceSchema>): string | undefined {
-  if (source.type === 'group') return source.groupId
-  if (source.type === 'room') return source.roomId
+function talkRoomOf(
+  source: z.infer<typeof LineWebhookSourceSchema>,
+): { kind: LineTalkRoomKind; id: string | undefined } | undefined {
+  if (source.type === 'group') return { kind: 'group', id: source.groupId }
+  if (source.type === 'room') return { kind: 'room', id: source.roomId }
   return undefined
 }
 
@@ -75,9 +81,15 @@ export function toLineWebhookIntents(request: LineWebhookRequest): LineWebhookIn
       continue
     }
     if (event.type === 'join') {
-      const talkRoomId = TalkRoomIdSchema.safeParse(talkRoomIdOf(event.source ?? {}))
+      const talkRoom = talkRoomOf(event.source ?? {})
+      if (talkRoom === undefined) continue
+      const talkRoomId = TalkRoomIdSchema.safeParse(talkRoom.id)
       if (talkRoomId.success)
-        intents.push({ kind: 'talk_room_joined', talkRoomId: talkRoomId.data })
+        intents.push({
+          kind: 'talk_room_joined',
+          talkRoomKind: talkRoom.kind,
+          talkRoomId: talkRoomId.data,
+        })
     }
   }
   return intents

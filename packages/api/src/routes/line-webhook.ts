@@ -12,8 +12,9 @@
  *  - `follow`（友だち追加） → 友達追加済みの記録 + `LineFriendAdded`。
  *    OQ-55 ③: 宛先の AppUser が未登録なら処理せずログのみ残す（登録完了時の
  *    友だち状態照会で拾い直す。実装は C 段 #297）
- *  - `join`（共通トークルーム参加） → 世帯レベルの `SharedTalkRoom` へ記録 +
- *    `LineTalkRoomJoined`（OQ-55 ①: 参加は世帯にひとつの事実）
+ *  - `join`（共通トークルーム参加） → 世帯のいずれかのユーザーがそのトークルームに在籍して
+ *    いることを Messaging API へ照会したうえで、世帯レベルの `SharedTalkRoom` へ記録 +
+ *    `LineTalkRoomJoined`（OQ-55 ①: 参加は世帯にひとつの事実。在籍確認は #371）
  *
  * 冪等性: LINE Webhook は at-least-once であり、同一イベントが再送されうる。
  * 記録・保存・イベント発行は `line-operation-records.ts` に一本化しており、状態が
@@ -23,8 +24,13 @@
  */
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import type { AppUserRepository, EventBus, SharedTalkRoomRepository } from '@warimaru/domain'
-import type { TalkRoomId, UserId } from '@warimaru/domain'
+import type {
+  AppUserRepository,
+  EventBus,
+  LineTalkRoomMembershipGateway,
+  SharedTalkRoomRepository,
+} from '@warimaru/domain'
+import type { LineTalkRoomKind, TalkRoomId, UserId, UserRole } from '@warimaru/domain'
 import { readJsonObjectBody } from '../read-json-object-body.js'
 import { LineWebhookRequestSchema, toLineWebhookIntents } from '../line-webhook/events.js'
 import { verifyLineSignature } from '../line-webhook/signature.js'
@@ -43,7 +49,20 @@ export interface LineWebhookRoutesDeps {
   sharedTalkRoomRepository: SharedTalkRoomRepository
   /** 署名検証鍵の解決（OQ-55 ④: 開発環境の環境変数、または Phase0Config の保管参照 → Parameter Store 復号） */
   resolveLineChannelSecret: () => Promise<string>
+  /** 招待されたトークルームに世帯のユーザーが在籍しているかの照会（#371、OQ-55 ①） */
+  lineTalkRoomMembershipGateway: LineTalkRoomMembershipGateway
   eventBus: EventBus
+}
+
+/** 世帯は夫婦 2 人固定（OQ-53 ②）。在籍照会の対象はこの 2 役割の登録済みユーザー */
+const HOUSEHOLD_ROLES: readonly UserRole[] = ['honey', 'darling']
+
+/** 登録済みのアプリユーザーの LINE_userID を集める（未登録の役割は除く） */
+async function householdUserIds(deps: LineWebhookRoutesDeps): Promise<UserId[]> {
+  const users = await Promise.all(
+    HOUSEHOLD_ROLES.map(role => deps.appUserRepository.findByRole(role)),
+  )
+  return users.filter(user => user !== null).map(user => user.common.userId)
 }
 
 /** follow: 友だち追加を記録する。未登録ユーザー宛ては記録せず握りつぶす（OQ-55 ③） */
@@ -61,22 +80,30 @@ async function handleFriendAdded(
 }
 
 /**
- * join: 世帯レベルの共通トークルーム参加を記録する（OQ-55 ①）
+ * join: 世帯レベルの共通トークルーム参加を記録する（OQ-55 ①、在籍確認は #371）
  *
  * `join` の source は userId を含まないため、届いたトークルームが**この世帯のものか**は
  * イベント単体からは判定できない。署名検証が保証するのは「LINE から来た」ことだけで、
  * 公式アカウントを自分のグループへ招待できる第三者も正規の `join` を発生させられる。
  * 共通トークルームは家計サマリの配信先（`DeliveryTarget.shared_talk_room`）そのものなので、
- * 無条件に上書きすると配信先を差し替えられる。
+ * 取り違えると世帯の金額が第三者に届く。
  *
- * そのため Webhook 由来の記録は**まだ参加記録が無いときだけ**受け付け、既存の記録は
- * 上書きしない。参加先の変更（招待し直し）は LIFF 認証を通る自己申告 API
- * （`POST /api/onboarding/phase1/talk-room`）に残す。
- * 未参加状態での取り違え（初回登録の取り合い）を防ぐ在籍確認（Messaging API の照会）は
- * 外部連携の追加を伴う判断のため、#371 に切り出して判断を仰いでいる。
+ * 防御は 2 段構えになっている。
+ *
+ * 1. **既存の記録は上書きしない**。参加先の変更（招待し直し）は LIFF 認証を通る自己申告 API
+ *    （`POST /api/onboarding/phase1/talk-room`）に残す
+ * 2. **まだ記録が無いときは、在籍を照会してから記録する**（#371 で A を選択）。世帯の
+ *    いずれかのユーザーがそのトークルームに在籍していなければ記録しない。1 だけでは
+ *    「未参加のうちに第三者が先に招待する」初回の取り合いを防げないため
+ *
+ * 在籍を確認できない場合（照会の失敗・アプリユーザーが 1 人も登録されていない）は記録しない。
+ * 記録してしまうと 1 の上書き禁止によって誤った配信先が固定され、以後は自己申告 API でしか
+ * 直せなくなるため、確証が無いときは見送る側へ倒す。`join` は招待の瞬間にしか発生せず再送
+ * されないので、見送った回の回復は招待のやり直しか自己申告 API による。
  */
 async function handleTalkRoomJoined(
   deps: LineWebhookRoutesDeps,
+  talkRoomKind: LineTalkRoomKind,
   talkRoomId: TalkRoomId,
   receivedAt: Date,
 ): Promise<void> {
@@ -89,6 +116,27 @@ async function handleTalkRoomJoined(
     }
     return
   }
+
+  const membership = await deps.lineTalkRoomMembershipGateway.checkMembership({
+    talkRoomKind,
+    talkRoomId,
+    userIds: await householdUserIds(deps),
+  })
+  if (membership.kind === 'not_member') {
+    console.warn(
+      'LINE Webhook: 招待されたトークルームに世帯のユーザーが在籍していないため記録しない（配信先の取り違えを防ぐ）',
+    )
+    return
+  }
+  if (membership.kind === 'unknown') {
+    // detail はゲートウェイが PII・シークレットを含めない短い文言に絞っている
+    console.warn(
+      'LINE Webhook: 在籍を確認できなかったため join を記録しない（招待のやり直しか自己申告 API で回復する）',
+      membership.detail,
+    )
+    return
+  }
+
   await applySharedTalkRoomJoined(deps, current, talkRoomId, receivedAt)
 }
 
@@ -134,7 +182,7 @@ export function lineWebhookRoutes(deps: LineWebhookRoutesDeps): Hono {
       if (intent.kind === 'friend_added') {
         await handleFriendAdded(deps, intent.userId, receivedAt)
       } else {
-        await handleTalkRoomJoined(deps, intent.talkRoomId, receivedAt)
+        await handleTalkRoomJoined(deps, intent.talkRoomKind, intent.talkRoomId, receivedAt)
       }
     }
 

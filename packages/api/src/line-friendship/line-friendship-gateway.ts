@@ -23,28 +23,12 @@
  * 利用者の待ち時間が無制限に伸びる。
  */
 import type { LineFriendshipGateway, LineFriendshipStatus, UserId } from '@warimaru/domain'
+// トークン解決（Phase0Config の取得 → Parameter Store 復号）は自前のタイムアウトを持たず、
+// 本ゲートウェイは利用者が待っている登録リクエストの同期パスに乗るため、上限を掛ける
+import { withTimeout } from '../with-timeout.js'
 
 const LINE_PROFILE_ENDPOINT = 'https://api.line.me/v2/bot/profile'
 const DEFAULT_TIMEOUT_MS = 10_000
-
-/**
- * トークン解決（Phase0Config の取得 → Parameter Store 復号）に上限を掛ける。
- * これらのクライアントは自前のタイムアウトを持たず、本ゲートウェイは利用者が待っている
- * 登録リクエストの同期パスに乗るため、応答が返らないと画面が待ち続けることになる。
- */
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      const e = new Error('timed out')
-      e.name = 'TimeoutError'
-      reject(e)
-    }, ms)
-  })
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timer !== undefined) clearTimeout(timer)
-  })
-}
 
 export interface LineFriendshipGatewayConfig {
   /** Channel Access Token の解決（Phase0Config の保管参照 → Parameter Store 復号） */

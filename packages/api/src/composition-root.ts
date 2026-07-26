@@ -24,6 +24,7 @@ import type {
   GmailOAuthTokenRepository,
   LineDeliveryLogRepository,
   LineFriendshipGateway,
+  LineTalkRoomMembershipGateway,
   LineMessagingGateway,
   MerchantLearningRuleRepository,
   MonthlyExpenseCycleRepository,
@@ -95,6 +96,8 @@ import {
 } from './gmail-oauth/mock.js'
 import { createLineFriendshipGateway } from './line-friendship/line-friendship-gateway.js'
 import { createMockLineFriendshipGateway } from './line-friendship/mock.js'
+import { createLineTalkRoomMembershipGateway } from './line-talk-room-membership/line-talk-room-membership-gateway.js'
+import { createMockLineTalkRoomMembershipGateway } from './line-talk-room-membership/mock.js'
 import {
   createSsmParameterStore,
   createUnconfiguredParameterStore,
@@ -202,6 +205,11 @@ export interface AppDeps {
    * 登録前に友だち追加していた場合の取りこぼし（follow Webhook が破棄される）を拾い直す。
    */
   lineFriendshipGateway: LineFriendshipGateway
+  /**
+   * 招待された共通トークルームの在籍照会（#371、OQ-55 ①）。join Webhook は誰が招待したかを
+   * 含まないため、世帯のユーザーがそのトークルームに在籍しているかを確かめてから記録する。
+   */
+  lineTalkRoomMembershipGateway: LineTalkRoomMembershipGateway
   /**
    * LINE Webhook 署名検証鍵の解決（#296、OQ-55 ④）。
    * 環境変数 LINE_CHANNEL_SECRET を優先し、未設定なら Phase0Config の保管参照
@@ -331,6 +339,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
         createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
       ),
       lineFriendshipGateway: createMockLineFriendshipGateway(),
+      lineTalkRoomMembershipGateway: createMockLineTalkRoomMembershipGateway(),
       // 開発モードは Phase0Config も Parameter Store も無いため、環境変数か固定値で署名検証を通す
       // （この分岐自体が本番では起動エラーになるため、固定値は開発環境に閉じている）
       resolveLineChannelSecret: () =>
@@ -442,6 +451,10 @@ export function createDeps(env: CompositionEnv): AppDeps {
   const lineFriendshipGateway = createLineFriendshipGateway({
     resolveChannelAccessToken: resolveLineChannelAccessToken,
   })
+  // 共通トークルームの在籍照会も同じ Channel Access Token を使う（#371、OQ-55 ①）
+  const lineTalkRoomMembershipGateway = createLineTalkRoomMembershipGateway({
+    resolveChannelAccessToken: resolveLineChannelAccessToken,
+  })
   // 送信ゲートウェイ未構成なら宛先も空にして発火自体を保留する（発火は 1 回だけ = OQ-14 のため、
   // 必ず失敗する送信で唯一の発火を消費しない。構成後の後続失敗で改めて発火する）
   const failsafeConfigured = Boolean(env.AWS_REGION && env.FAILSAFE_EMAIL_FROM)
@@ -507,6 +520,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
     consecutiveFailureCounterRepository: new NeonConsecutiveFailureCounterRepository(db),
     lineMessagingGateway,
     lineFriendshipGateway,
+    lineTalkRoomMembershipGateway,
     failsafeEmailGateway,
     failsafeEmailRecipients,
     failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
