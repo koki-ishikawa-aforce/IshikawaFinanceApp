@@ -421,3 +421,52 @@ export function onboardingMeFixture(): unknown {
 export function importStatusFixture(): unknown {
   return { completion: null }
 }
+
+/**
+ * GET /api/classification/merchant-rules
+ * 学習中（3 軸学習済み / 一部未学習）と学習停止中を 1 件ずつ含め、行の見え方を一覧で確認できるようにする。
+ * categoryId / expenseTypeId は categoryListFixture / expenseTypeListFixture の値と揃える。
+ */
+export function merchantLearningRuleListFixture(): unknown {
+  return {
+    items: [
+      {
+        kind: 'active',
+        common: { userId: 'U_DARLING_MOCK', merchantName: 'ライフ 中目黒店' },
+        categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWY' },
+        expenseClassRef: { kind: 'learned', expenseClass: 'household' },
+        expenseTypeRef: { kind: 'unlearned' },
+        lastUpdatedAt: '2026-07-18T04:20:00.000Z',
+      },
+      {
+        kind: 'active',
+        common: { userId: 'U_DARLING_MOCK', merchantName: 'メトロ 定期券' },
+        categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VW0' },
+        expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+        expenseTypeRef: { kind: 'learned', expenseTypeId: 'ET_MOCK_001' },
+        lastUpdatedAt: '2026-07-05T23:10:00.000Z',
+      },
+      {
+        kind: 'disabled',
+        common: { userId: 'U_DARLING_MOCK', merchantName: 'セブンイレブン' },
+        disabledAt: '2026-06-30T12:00:00.000Z',
+      },
+    ],
+  }
+}
+
+/** GET /api/classification/amazon-rules */
+export function amazonProductKeyLearningRuleListFixture(): unknown {
+  return {
+    items: [
+      {
+        userId: 'U_DARLING_MOCK',
+        amazonProductKey: '技術書 / プログラミング',
+        categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VW0' },
+        expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+        expenseTypeRef: { kind: 'learned', expenseTypeId: 'ET_MOCK_002' },
+        lastUpdatedAt: '2026-07-12T09:00:00.000Z',
+      },
+    ],
+  }
+}

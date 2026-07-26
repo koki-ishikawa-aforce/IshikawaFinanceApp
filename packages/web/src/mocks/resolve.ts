@@ -9,6 +9,7 @@ import type { DashboardMode } from '@warimaru/domain'
 import { getMockRole } from './role'
 import {
   accountBalanceListFixture,
+  amazonProductKeyLearningRuleListFixture,
   assetTotalFixture,
   balanceTimeSeriesFixture,
   categoryBreakdownFixture,
@@ -17,6 +18,7 @@ import {
   expenseTypeListFixture,
   importStatusFixture,
   meFixture,
+  merchantLearningRuleListFixture,
   monthlyLimitListFixture,
   monthlyReportFixture,
   onboardingMeFixture,
@@ -78,6 +80,10 @@ export function resolveMock(method: string, path: string): unknown {
         return onboardingMeFixture()
       case '/api/imports/status':
         return importStatusFixture()
+      case '/api/classification/merchant-rules':
+        return merchantLearningRuleListFixture()
+      case '/api/classification/amazon-rules':
+        return amazonProductKeyLearningRuleListFixture()
     }
   }
 
