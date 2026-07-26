@@ -222,6 +222,11 @@ export interface AppDeps {
   failsafeFailureThreshold?: number | undefined
   /** CORS 許可オリジン（CORS_ALLOWED_ORIGINS、カンマ区切り。開発環境の既定は localhost:3000） */
   allowedOrigins: string[]
+  /**
+   * LINE 通知本文の Deep Link の起点 URL（#389 / OQ-54）。
+   * WEB_BASE_URL を優先し、未設定なら許可オリジンの先頭を使う（許可オリジン = web の配信元）。
+   */
+  webBaseUrl: string
 }
 
 export interface CompositionEnv {
@@ -263,6 +268,12 @@ export interface CompositionEnv {
    * 開発環境で未設定の場合のみ localhost:3000 を既定とする。
    */
   CORS_ALLOWED_ORIGINS?: string | undefined
+  /**
+   * LINE 通知本文の Deep Link の起点 URL（#389 / OQ-54）。LIFF の公開 URL を指定する。
+   * 未設定なら CORS 許可オリジンの先頭を使う（許可オリジンは web の配信元そのもののため、
+   * 別々に設定させると片方だけ更新した際に通知のリンクだけ旧環境を指す事故になる）。
+   */
+  WEB_BASE_URL?: string | undefined
 }
 
 /** FAILSAFE_EMAIL_TO（カンマ区切り）→ 宛先リスト */
@@ -303,6 +314,17 @@ function resolveAllowedOrigins(env: CompositionEnv): string[] {
     )
   }
   return [DEV_ALLOWED_ORIGIN]
+}
+
+/**
+ * Deep Link の起点 URL。WEB_BASE_URL を優先し、未設定なら許可オリジンの先頭にフォールバックする。
+ * 許可オリジンは本番で必須（未設定なら resolveAllowedOrigins が起動エラーにする）ため、
+ * ここで本番の設定漏れを二重に検査する必要はない。
+ */
+function resolveWebBaseUrl(env: CompositionEnv, allowedOrigins: string[]): string {
+  const configured = (env.WEB_BASE_URL ?? '').trim()
+  if (configured.length > 0) return configured
+  return allowedOrigins[0] ?? DEV_ALLOWED_ORIGIN
 }
 
 export function createDeps(env: CompositionEnv): AppDeps {
@@ -377,6 +399,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
       failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
       failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
       allowedOrigins: resolveAllowedOrigins(env),
+      webBaseUrl: resolveWebBaseUrl(env, resolveAllowedOrigins(env)),
     }
   }
 
@@ -511,5 +534,6 @@ export function createDeps(env: CompositionEnv): AppDeps {
     failsafeEmailRecipients,
     failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
     allowedOrigins,
+    webBaseUrl: resolveWebBaseUrl(env, allowedOrigins),
   }
 }

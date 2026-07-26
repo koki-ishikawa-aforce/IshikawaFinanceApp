@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | AT-901 | Gmail OAuth 連携 | オンボーディング Section A のバックエンド(OAuth フロー・Parameter Store 保存・LIFF 外部ブラウザ切り出し) | 02-onboarding |
 | AT-902 | 日次メール取込バッチ | Gmail API 取得・SMBC/Amazon メールパース・EventBridge スケジュール(`POST /api/imports/mail-batch` の本稼働) | 04-monthly-cycle |
-| AT-903 | LINE 通知配信 | LINE Messaging API 連携(CSV リマインダー/月次レポート Flex 配信/配信ログ保存/フェイルセーフメール) | 04-monthly-cycle |
+| AT-903 | LINE 通知配信 | CSV リマインダーの定時起動(EventBridge → Lambda。#35 / #416)。配信処理・本文生成・月次レポートサマリ配信の発火元は #389 で実装済み | 04-monthly-cycle |
 | AT-904 | Amazon 注文突合・商品キー学習 | Amazon 注文確認メール取込・SMBC 通知との突合(3日タイムアウト双方向) | 03-classification |
 | AT-905 | PDF 明細の取込(PDF→CSV 変換) | Lambda 内 Claude API による PDF→CSV 変換 | 04-monthly-cycle |
 | AT-906 | 引落予定・約定整合チェック | 事前お知らせ/約定メールの取込と整合検証・カード引落確定通知の整合チェック | 06-balances |
@@ -34,6 +34,11 @@
 - バッチ完了サマリ(処理件数・成功・失敗・未分類)が確認できる
 
 ## AT-903: LINE 通知配信(シナリオA 5/5・5/10)
+
+残るブロッカーはリマインダーの定時起動のみ(#35 / #416)。配信処理・本文生成・停止判定と、
+月次レポートサマリの配信(CSV 確定イベントで発火)は #389 で実装済みで、
+リマインダーも `createCsvImportReminderRunnerFromDeps` を手動起動すれば実機で確認できる。
+本番相当の「毎日届く」の確認にはスケジューラの配線が要るため、昇格は #416 の完了後に行う。
 
 昇格時の骨子:
 

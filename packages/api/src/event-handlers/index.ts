@@ -19,7 +19,9 @@ import { registerMonthlyReportCsvConfirmationEventHandlers } from './monthly-rep
 import { registerMonthlyReportFinalizationEventHandlers } from './monthly-report-finalization.js'
 import { registerExpenseProrationRecalcEventHandlers } from './expense-proration-recalc.js'
 import { registerMonthlyLimitSeedEventHandlers } from './monthly-limit-seed.js'
+import { registerMonthlyReportDeliveryEventHandlers } from './monthly-report-delivery.js'
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
+import { createDeepLinkBuilder } from '../notification/deep-links.js'
 import { registerUnpaidBalanceUpdateEventHandlers } from './unpaid-balance-update.js'
 
 export { domainEventBase } from './event-base.js'
@@ -77,7 +79,16 @@ export function registerEventHandlers(deps: AppDeps): void {
     accountRepository: deps.accountRepository,
   })
   // 通知配信 (#36): AppDeps の Repository / Gateway から配信サービスを組み立てて購読する
-  registerNotificationDeliveryEventHandlers(deps.eventBus, {
-    notificationDeliveryService: createNotificationDeliveryService(deps),
+  const notificationDeliveryService = createNotificationDeliveryService(deps)
+  registerNotificationDeliveryEventHandlers(deps.eventBus, { notificationDeliveryService })
+  // 月次レポートCSV確定 → 世帯サマリ / 個人サマリの LINE 配信 (#389)
+  registerMonthlyReportDeliveryEventHandlers(deps.eventBus, {
+    notificationDeliveryService,
+    monthlyReportRepository: deps.monthlyReportRepository,
+    appUserRepository: deps.appUserRepository,
+    sharedTalkRoomRepository: deps.sharedTalkRoomRepository,
+    csvImportStatusQuery: deps.csvImportStatusQuery,
+    categoryMasterRepository: deps.categoryMasterRepository,
+    deepLinks: createDeepLinkBuilder(deps.webBaseUrl),
   })
 }
