@@ -7,11 +7,22 @@ import {
   recordExpenseTypeRemapContextCompletion,
   requestExpenseTypeRemap,
 } from '@warimaru/domain'
+import { eq } from 'drizzle-orm'
 import { db } from './setup'
+import { expenseTypeDeletionRequests } from '../../src/schema'
 import { NeonExpenseTypeDeletionRequestRepository } from '../../src/master-data/NeonExpenseTypeDeletionRequestRepository'
 import { expenseTypeDeletionRequest } from '../helpers/masterDataFixtures'
 
 const repo = new NeonExpenseTypeDeletionRequestRepository(db)
+
+/** 昇格列 state_kind は findById の select に含まれないため、テーブルから直接読む */
+async function selectStateKind(id: ExpenseTypeDeletionRequestId): Promise<string | undefined> {
+  const rows = await db
+    .select({ stateKind: expenseTypeDeletionRequests.stateKind })
+    .from(expenseTypeDeletionRequests)
+    .where(eq(expenseTypeDeletionRequests.expenseTypeDeletionRequestId, id))
+  return rows[0]?.stateKind
+}
 
 describe('NeonExpenseTypeDeletionRequestRepository', () => {
   it('save → findById の往復同一性（pending_remap）', async () => {
@@ -55,9 +66,13 @@ describe('NeonExpenseTypeDeletionRequestRepository', () => {
     await repo.save(afterAuto)
     expect(await repo.findById(pending.expenseTypeDeletionRequestId)).toEqual(afterAuto)
 
+    // findById は payload しか読まないため、昇格列 state_kind の追随は直接確認する
+    expect(await selectStateKind(pending.expenseTypeDeletionRequestId)).toBe('remap_requested')
+
     const completed = completeExpenseTypeRemap(afterAuto, at)
     await repo.save(completed)
     expect(await repo.findById(pending.expenseTypeDeletionRequestId)).toEqual(completed)
+    expect(await selectStateKind(pending.expenseTypeDeletionRequestId)).toBe('remap_completed')
   })
 
   it('状態遷移の再 save で上書きされる（remap_failed も保存できる）', async () => {

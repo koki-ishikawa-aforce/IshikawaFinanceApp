@@ -32,6 +32,7 @@ describe('ExpenseTypeDeletionRequest 状態遷移', () => {
     )
     expect(requested.state.kind).toBe('remap_requested')
     expect(requested.state.completedContexts).toEqual([])
+    expect(isExpenseTypeRemapFullyCompleted(requested)).toBe(false)
 
     const afterSettlement = recordExpenseTypeRemapContextCompletion(
       requested,
@@ -64,12 +65,15 @@ describe('ExpenseTypeDeletionRequest 状態遷移', () => {
       { context: 'expense_settlement', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
       at,
     )
+    // 再配信時は対象 ID の取引が既に存在せず 0 件で通知される（master-data-remap の再配信規則）。
+    // 上書きではなく無視であることを、件数の異なる再通知で区別する。
     const twice = recordExpenseTypeRemapContextCompletion(
       once,
-      { context: 'expense_settlement', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
+      { context: 'expense_settlement', affectedTransactionCount: 0, affectedLearningRuleCount: 0 },
       at,
     )
     expect(twice.state.completedContexts).toHaveLength(1)
+    expect(twice.state.completedContexts[0]?.affectedTransactionCount).toBe(3)
     // 再通知だけでは残りのコンテキストが埋まらない（物理削除の前提条件を満たさない）
     expect(isExpenseTypeRemapFullyCompleted(twice)).toBe(false)
 
@@ -79,25 +83,9 @@ describe('ExpenseTypeDeletionRequest 状態遷移', () => {
       at,
     )
     const completed = completeExpenseTypeRemap(afterAuto, at)
-    // 合算値が再通知の分だけ増えていない（6 / 4 にならない）
+    // 初回の通知が再通知に上書きされていない（3 / 2 のまま）
     expect(completed.state.affectedTransactionCount).toBe(3)
     expect(completed.state.affectedLearningRuleCount).toBe(2)
-  })
-
-  it('未完了のコンテキストが残るかぎり全完了と判定しない', () => {
-    const requested = requestExpenseTypeRemap(
-      pendingRequest(),
-      ['expense_settlement', 'auto_classification'],
-      at,
-    )
-    expect(isExpenseTypeRemapFullyCompleted(requested)).toBe(false)
-
-    const afterAuto = recordExpenseTypeRemapContextCompletion(
-      requested,
-      { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 2 },
-      at,
-    )
-    expect(isExpenseTypeRemapFullyCompleted(afterAuto)).toBe(false)
   })
 
   it('pending_remap → remap_requested → remap_failed', () => {

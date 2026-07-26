@@ -6,11 +6,22 @@ import {
   recordCategoryRemapContextCompletion,
   requestCategoryRemap,
 } from '@warimaru/domain'
+import { eq } from 'drizzle-orm'
 import { db } from './setup'
+import { categoryDeletionRequests } from '../../src/schema'
 import { NeonCategoryDeletionRequestRepository } from '../../src/master-data/NeonCategoryDeletionRequestRepository'
 import { categoryDeletionRequest } from '../helpers/masterDataFixtures'
 
 const repo = new NeonCategoryDeletionRequestRepository(db)
+
+/** 昇格列 state_kind は findById の select に含まれないため、テーブルから直接読む */
+async function selectStateKind(id: CategoryDeletionRequestId): Promise<string | undefined> {
+  const rows = await db
+    .select({ stateKind: categoryDeletionRequests.stateKind })
+    .from(categoryDeletionRequests)
+    .where(eq(categoryDeletionRequests.categoryDeletionRequestId, id))
+  return rows[0]?.stateKind
+}
 
 describe('NeonCategoryDeletionRequestRepository', () => {
   it('save → findById の往復同一性（pending_remap）', async () => {
@@ -51,9 +62,15 @@ describe('NeonCategoryDeletionRequestRepository', () => {
       { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 1 },
       at,
     )
+    // 完了記録が2件並んだ状態の往復（jsonb 配列の永続化）
+    await repo.save(afterAuto)
+    expect(await repo.findById(pending.categoryDeletionRequestId)).toEqual(afterAuto)
+    // findById は payload しか読まないため、昇格列 state_kind の追随は直接確認する
+    expect(await selectStateKind(pending.categoryDeletionRequestId)).toBe('remap_requested')
 
     const completed = completeCategoryRemap(afterAuto, at)
     await repo.save(completed)
     expect(await repo.findById(pending.categoryDeletionRequestId)).toEqual(completed)
+    expect(await selectStateKind(pending.categoryDeletionRequestId)).toBe('remap_completed')
   })
 })

@@ -101,12 +101,15 @@ describe('CategoryDeletionRequest 状態遷移', () => {
       { context: 'household_analysis', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
       at,
     )
+    // 再配信時は対象 ID の取引が既に存在せず 0 件で通知される（master-data-remap の再配信規則）。
+    // 上書きではなく無視であることを、件数の異なる再通知で区別する。
     const twice = recordCategoryRemapContextCompletion(
       once,
-      { context: 'household_analysis', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
+      { context: 'household_analysis', affectedTransactionCount: 0, affectedLearningRuleCount: 0 },
       at,
     )
     expect(twice.state.completedContexts).toHaveLength(1)
+    expect(twice.state.completedContexts[0]?.affectedTransactionCount).toBe(3)
     expect(isCategoryRemapFullyCompleted(twice)).toBe(false)
 
     const afterAuto = recordCategoryRemapContextCompletion(
@@ -115,7 +118,7 @@ describe('CategoryDeletionRequest 状態遷移', () => {
       at,
     )
     const completed = completeCategoryRemap(afterAuto, at)
-    // 合算値が再通知の分だけ増えていない（6 / 4 にならない）
+    // 初回の通知が再通知に上書きされていない（3 / 2 のまま）
     expect(completed.state.affectedTransactionCount).toBe(3)
     expect(completed.state.affectedLearningRuleCount).toBe(2)
   })
@@ -125,5 +128,10 @@ describe('CategoryDeletionRequest 状態遷移', () => {
     const failed = failCategoryRemap(requested, 'DB接続断', at)
     expect(failed.state.kind).toBe('remap_failed')
     expect(failed.state.failureDetail).toBe('DB接続断')
+  })
+
+  it('remap_failed 状態は失敗詳細が必須', () => {
+    const requested = requestCategoryRemap(pendingRequest(), ['household_analysis'], at)
+    expect(() => failCategoryRemap(requested, '', at)).toThrow()
   })
 })
