@@ -29,6 +29,9 @@ const unpaidRepo = new NeonMitsuiSumitomoUnpaidRepository(db)
 
 const query = new NeonAccountBalanceQuery(db)
 
+/** fetchAssetTotal(asOf) に渡すスナップショット時刻。テスト内の日付コメントの基準でもある */
+const FIXED_NOW = new Date('2026-07-06T00:00:00.000Z')
+
 describe('NeonAccountBalanceQuery.fetchBalanceList', () => {
   it('世帯共有: 両者の active 口座を kind 固定順で返す（inactive 除外）', async () => {
     const nisa = nisaAccount({ ownerUserId: DARLING_USER_ID })
@@ -138,7 +141,7 @@ describe('残高の手動操作の反映', () => {
     expect(total.total).toBe(850000)
   })
 
-  it('手動補正は残高鮮度（最終確認からの経過日数）も更新する', async () => {
+  it('手動補正は残高鮮度の根拠（最終更新日時）も更新する', async () => {
     // 鮮度根拠を更新しないと、補正で最新化した残高が「古い情報」として表示され続ける
     const stale = asOtherSavingsAccount(
       otherSavingsAccount({
@@ -159,7 +162,7 @@ describe('残高の手動操作の反映', () => {
       expect.objectContaining({
         kind: 'other_savings',
         currentBalance: 432100,
-        daysSinceLastUpdate: 2,
+        lastUpdatedAt: new Date('2026-07-04T00:00:00.000Z'),
       }),
     )
   })
