@@ -1,3 +1,5 @@
 export * from './activateNotification'
 export * from './GmailOAuthGateway'
 export * from './LineFriendshipGateway'
+export * from './LineTalkRoomMembershipGateway'
+export * from './decideSharedTalkRoomJoin'

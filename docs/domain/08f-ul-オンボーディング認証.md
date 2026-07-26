@@ -292,9 +292,32 @@ data 照会失敗詳細 = 文字列
 // 登録前の友達追加は follow Webhook が破棄される（上記）ため、この照会が唯一の拾い直し経路
 // （自己申告 API は廃止予定。OQ-55 ②③）
 
-behavior join Webhook を受信する = 共通トークルームID AND Webhook受信日時 -> 参加済み AND join_イベント
-// 事前: LINE 公式アカウントが夫婦共通トークルームに招待された
+behavior join Webhook を受信する = 共通トークルームID AND トークルーム種別 AND Webhook受信日時 -> 参加済み AND join_イベント
+// 事前: LINE 公式アカウントがトークルームに招待された
+// 事前: 未参加である（参加済みなら上書きしない。参加先の変更は自己申告 API に残す）
+// 事前: 在籍照会結果 = 在籍あり（#371 で A を選択。下の照会を通ってから記録する）
 // 事後: 共通トークルームID を DB に保存し、通知配信が以後参照する
+data トークルーム種別 = グループ OR 複数人トーク
+
+behavior 共通トークルーム在籍を照会する = 共通トークルームID AND トークルーム種別 AND 世帯のLINE_userID -> 在籍照会結果
+data 在籍照会結果 = 在籍あり OR 在籍なし OR 在籍照会不能
+data 在籍あり = なし
+data 在籍なし = なし
+data 在籍照会不能 = 再試行可否 AND 照会失敗詳細
+data 再試行可否 = 一時障害 OR 恒久的
+// 事前: join Webhook を受信し、まだ参加記録が無い
+// 事後: 世帯のいずれかのユーザーが在籍していれば 在籍あり（1 人でも在籍すれば足りる）
+// 事後: 在籍照会不能 は 在籍なし と区別する（API 障害を根拠に「夫婦のトークルームではない」を確定させない）
+// 事後: 在籍あり 以外では参加を記録しない
+// 事後: 在籍照会不能 かつ 一時障害（LINE の 5xx・通信断・タイムアウト・鍵の解決失敗）なら
+//       Webhook 自体を失敗として返し、LINE の再送で回収する（署名検証鍵を解決できないときと同じ扱い）。
+//       join は招待の瞬間にしか発生せず再送されないため、一時障害をここで終端すると
+//       正しいトークルームへ招待した夫婦の配信先が登録されないまま止まる
+// 事後: 在籍照会不能 かつ 恒久的（権限・設定不備、照会対象のアプリユーザーが未登録）は
+//       やり直しても直らないため再送に回さない。回復は招待のやり直しか自己申告 API による
+// join の source は userID を含まず、公式アカウントを自分のグループへ招待できる第三者も
+// 正規の join を発生させられる。共通トークルームは家計サマリの配信先そのものなので、
+// 在籍を確かめずに記録すると世帯の金額が第三者に届く（#371、OQ-55 ①）
 
 behavior 通知機能を有効化する = 運用開始済みユーザー(Honey) AND 運用開始済みユーザー(Darling) AND 共通トークルーム参加状態 -> 有効化済み AND 通知機能有効化イベント
 // 事前: 両者ともに友達追加済み・世帯が共通トークルーム参加済み
@@ -340,7 +363,7 @@ data 検知結果 = 配偶者待ち OR 両者完了済み
 |---|---|---|
 | LINE Login（外部システム） | ACL（Anti-Corruption Layer） | `behavior LIFFを初期化する`／`behavior LINE_userIDを取得する` |
 | Gmail OAuth（外部システム） | ACL（Anti-Corruption Layer） | `behavior Gmail OAuth認可を開始する`／`behavior Gmail OAuth認可を完了する`／`behavior Gmail OAuth トークンの失効を検知する`／`behavior Gmail OAuth を再認可する` |
-| LINE Messaging API（外部、Webhook 受信／友達状態照会） | ACL | `behavior follow Webhook を受信する`／`behavior join Webhook を受信する`／`behavior LINE友達状態を照会する` |
+| LINE Messaging API（外部、Webhook 受信／友達状態照会／共通トークルーム在籍照会） | ACL | `behavior follow Webhook を受信する`／`behavior join Webhook を受信する`／`behavior LINE友達状態を照会する`／`behavior 共通トークルーム在籍を照会する` |
 | AWS Parameter Store（外部システム） | Conformist（順応者） | （Gmail OAuth トークン保管・許可リスト読出。実装は Parameter Store の API に従う） |
 | マスタ管理 | 顧客-供給者（上流: 許可リスト・LINE Channel 設定値を供給） | `behavior 役割を判定する`（許可リスト参照） |
 | 残高・資産推移管理 | 顧客-供給者（下流: 初期残高登録を依頼） | `behavior Phase2 SectionB を完了する` の事前条件として残高・資産推移管理の `behavior 初期残高を登録する` を呼出 |

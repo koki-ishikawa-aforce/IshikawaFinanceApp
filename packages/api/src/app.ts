@@ -72,6 +72,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       appUserRepository: deps.appUserRepository,
       sharedTalkRoomRepository: deps.sharedTalkRoomRepository,
       resolveLineChannelSecret: deps.resolveLineChannelSecret,
+      lineTalkRoomMembershipGateway: deps.lineTalkRoomMembershipGateway,
       eventBus: deps.eventBus,
     }),
   )

@@ -54,14 +54,19 @@ describe('toLineWebhookIntents — join', () => {
     const intents = intentsOf({
       events: [{ type: 'join', source: { type: 'group', groupId: 'C0001' } }],
     })
-    expect(intents).toEqual([{ kind: 'talk_room_joined', talkRoomId: 'C0001' }])
+    expect(intents).toEqual([
+      { kind: 'talk_room_joined', talkRoomKind: 'group', talkRoomId: 'C0001' },
+    ])
   })
 
   it('複数人トーク（source.type = room）の join を roomId から翻訳する', () => {
     const intents = intentsOf({
       events: [{ type: 'join', source: { type: 'room', roomId: 'R0001' } }],
     })
-    expect(intents).toEqual([{ kind: 'talk_room_joined', talkRoomId: 'R0001' }])
+    // 種別は在籍照会のエンドポイント選択に使う（#371）。ID だけでは判別できない
+    expect(intents).toEqual([
+      { kind: 'talk_room_joined', talkRoomKind: 'room', talkRoomId: 'R0001' },
+    ])
   })
 
   it('ID フィールドが source.type と食い違う join は意図にしない', () => {
@@ -112,7 +117,7 @@ describe('toLineWebhookIntents — 対象外と混在', () => {
       ],
     })
     expect(intents).toEqual([
-      { kind: 'talk_room_joined', talkRoomId: 'C0001' },
+      { kind: 'talk_room_joined', talkRoomKind: 'group', talkRoomId: 'C0001' },
       { kind: 'friend_added', userId: 'U0001' },
     ])
   })
