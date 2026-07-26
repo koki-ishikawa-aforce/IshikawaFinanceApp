@@ -247,7 +247,19 @@ export const DepositListWireSchema = z.object({
   items: z.array(DepositWireSchema),
 })
 
-// ---------- CSV 取込（#30） ----------
+// ---------- CSV / PDF 取込（#30・#403） ----------
+
+/**
+ * 取込ジョブの失敗理由。`reason` は PDF 変換失敗のみが持つ構造化理由（#61）で、
+ * 形式検証失敗・取込中エラーには存在しない。
+ * @see packages/domain/src/transaction-import/value-objects/ImportJobFailureReason.ts
+ */
+export const ImportJobFailureWireSchema = z.object({
+  kind: z.string(),
+  failureDetail: z.string(),
+  reason: z.string().optional(),
+})
+export type ImportJobFailureWire = z.infer<typeof ImportJobFailureWireSchema>
 
 export const ImportJobWireSchema = z.object({
   kind: z.enum([
@@ -273,11 +285,13 @@ export const ImportJobWireSchema = z.object({
       duplicateExcludedCount: z.number().int(),
     })
     .optional(),
-  failure: z.object({ kind: z.string(), failureDetail: z.string() }).passthrough().optional(),
+  // サーバーの失敗ジョブは `failureReason` で返す（domain の FailedJob と同名）
+  failureReason: ImportJobFailureWireSchema.optional(),
 })
 export type ImportJobWire = z.infer<typeof ImportJobWireSchema>
 
-export const CsvUploadResponseSchema = z.object({ job: ImportJobWireSchema })
+/** CSV(`POST /api/imports/csv`)・PDF(`POST /api/imports/pdf`)共通のアップロード応答 */
+export const ImportUploadResponseSchema = z.object({ job: ImportJobWireSchema })
 
 export const CandidateWireSchema = z.object({
   kind: z.enum(['normal', 'amazon_matched', 'match_timeout', 'confirmed']),

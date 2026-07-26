@@ -9,7 +9,6 @@
 | AT-902 | 日次メール取込バッチ | Gmail API 取得・SMBC/Amazon メールパース・EventBridge スケジュール(`POST /api/imports/mail-batch` の本稼働) | 04-monthly-cycle |
 | AT-903 | LINE 通知配信 | CSV リマインダーの定時起動(EventBridge → Lambda。#35 / #416)。配信処理・本文生成・月次レポートサマリ配信の発火元は #389 で実装済み | 04-monthly-cycle |
 | AT-904 | Amazon 注文突合・商品キー学習 | Amazon 注文確認メール取込・SMBC 通知との突合(3日タイムアウト双方向) | 03-classification |
-| AT-905 | PDF 明細の取込(PDF→CSV 変換) | Lambda 内 Claude API による PDF→CSV 変換 | 04-monthly-cycle |
 | AT-906 | 引落予定・約定整合チェック | 事前お知らせ/約定メールの取込と整合検証・カード引落確定通知の整合チェック | 06-balances |
 
 ---
@@ -56,13 +55,6 @@
 - Amazon 注文確認メールと SMBC カード利用通知が金額・タイミングで突合される
 - 商品カテゴリキーで学習・自動分類される(加盟店名 AMAZON.CO.JP は学習対象外)
 - 突合タイムアウト 3 日(双方向): SMBC 先行なら「Amazon 注文不明」で未分類確定、Amazon 先行なら注文情報破棄
-
-## AT-905: PDF 明細の取込(シナリオB Section F / シナリオA CSV 取込)
-
-昇格時の骨子:
-
-- PDF 明細をアップロードすると Claude API で CSV 変換され、以降は CSV 取込フロー(AT-301)に合流する
-- 変換失敗時にユーザーへ通知され、ジョブが失敗状態になる
 
 ## AT-906: 引落予定・約定整合チェック(シナリオA 5/11・NISA)
 

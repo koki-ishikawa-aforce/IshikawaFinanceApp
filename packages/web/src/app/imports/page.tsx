@@ -9,26 +9,25 @@ import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
 import {
   CandidatesResponseSchema,
   ConfirmResponseSchema,
-  CsvUploadResponseSchema,
   ImportStatusResponseSchema,
+  ImportUploadResponseSchema,
   UnknownResponseSchema,
   type ImportJobWire,
 } from '@/lib/api-schemas'
+import {
+  NOT_A_PDF_MESSAGE,
+  UNSUPPORTED_FILE_MESSAGE,
+  detectUploadFormat,
+  uploadPath,
+  type UploadFormat,
+} from '@/lib/import-upload'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatDateTime, getCurrentMonth } from '@/lib/month'
 import { LuCircleCheck } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { ImportJobCard } from '@/components/imports/ImportJobCard'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
-
-const JOB_LABELS: Record<ImportJobWire['kind'], string> = {
-  upload_accepted: '受付済み',
-  pdf_converting: 'PDF変換中',
-  format_validating: '形式検証中',
-  importing: '取込中',
-  completed: '取込完了',
-  failed: '失敗',
-}
 
 const FILE_KIND_LABELS = {
   card_statement: 'カード利用明細',
@@ -91,8 +90,10 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
 
   if (confirmResult !== null) {
     return (
-      <div className={ui.card}>
-        <span className={ui.sectionTitle}>確定完了</span>
+      <section className={ui.card} aria-labelledby="import-confirm-title">
+        <h2 id="import-confirm-title" className={ui.sectionTitle}>
+          確定完了
+        </h2>
         <p className={styles.note}>
           {confirmResult.confirmedCount} 件を未分類取引として登録しました
           {confirmResult.alreadyConfirmedCount > 0 &&
@@ -102,14 +103,16 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
         <button className={ui.button} onClick={onDone}>
           閉じる
         </button>
-      </div>
+      </section>
     )
   }
 
   return (
-    <div className={ui.card}>
+    <section className={ui.card} aria-labelledby="import-candidates-title">
       <div className={ui.rowBetween}>
-        <span className={ui.sectionTitle}>取込候補の確認</span>
+        <h2 id="import-candidates-title" className={ui.sectionTitle}>
+          取込候補の確認
+        </h2>
         <button className={styles.smallGhost} onClick={onDone}>
           閉じる
         </button>
@@ -169,7 +172,7 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
           </button>
         </>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -184,6 +187,9 @@ function ImportsPageContent() {
   const [month, setMonth] = useState<YearMonth>(() => parseMonthParam(searchParams.get('month')))
   const [fileKind, setFileKind] = useState<FileKind>('card_statement')
   const [job, setJob] = useState<ImportJobWire | null>(null)
+  /** アップロードせずに拒否した選択（対応外の拡張子）の文言 */
+  const [selectionError, setSelectionError] = useState<string | null>(null)
+  const [uploadingFormat, setUploadingFormat] = useState<UploadFormat | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const statusQuery = useQuery({
@@ -192,15 +198,15 @@ function ImportsPageContent() {
   })
 
   const upload = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, format }: { file: File; format: UploadFormat }) => {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('targetMonth', month)
       formData.append('fileKind', fileKind)
       return apiMutate(
-        '/api/imports/csv',
+        uploadPath(format),
         { method: 'POST', body: formData },
-        CsvUploadResponseSchema,
+        ImportUploadResponseSchema,
       )
     },
     onSuccess: async response => {
@@ -208,10 +214,10 @@ function ImportsPageContent() {
       await queryClient.invalidateQueries({ queryKey: ['imports'] })
     },
     onError: (error: Error) => {
-      // 形式検証エラー（422）はジョブ情報付きで返る
+      // 形式検証エラー・PDF 変換失敗（422）はジョブ情報付きで返る
       if (error instanceof ApiError && error.status === 422) {
         try {
-          const parsed = CsvUploadResponseSchema.parse(JSON.parse(error.body))
+          const parsed = ImportUploadResponseSchema.parse(JSON.parse(error.body))
           setJob(parsed.job)
         } catch {
           // ジョブ形式でないエラーボディは通常のエラー表示に任せる
@@ -223,25 +229,58 @@ function ImportsPageContent() {
   const handleFileChange = (files: FileList | null) => {
     const file = files?.[0]
     if (file !== undefined) {
-      setJob(null)
-      upload.mutate(file)
+      const format = detectUploadFormat(file)
+      if (format === null) {
+        // 対応外の拡張子はアップロードせずにその場で伝える（無駄な待ち時間を作らない）
+        setJob(null)
+        setSelectionError(UNSUPPORTED_FILE_MESSAGE)
+      } else {
+        setJob(null)
+        setSelectionError(null)
+        setUploadingFormat(format)
+        upload.mutate({ file, format })
+      }
     }
     if (fileInputRef.current !== null) {
       fileInputRef.current.value = ''
     }
   }
 
+  /** 通信・サーバーエラー（ジョブが返らないケース）の文言。次の行動まで示す */
+  const uploadErrorMessage = (): string | null => {
+    if (selectionError !== null) return selectionError
+    if (upload.error === null || job !== null) return null
+    if (
+      upload.error instanceof ApiError &&
+      upload.error.status === 400 &&
+      uploadingFormat === 'pdf'
+    ) {
+      return NOT_A_PDF_MESSAGE
+    }
+    return upload.error.message
+  }
+  const errorMessage = uploadErrorMessage()
+
   const completion = statusQuery.data?.completion ?? null
 
   return (
     <main className={styles.main}>
-      <h1 className={ui.pageTitle}>CSV 取込</h1>
+      <h1 className={ui.pageTitle}>明細取込</h1>
       <MonthNavigator month={month} onMonthChange={setMonth} />
 
-      <div className={ui.card}>
-        <span className={ui.sectionTitle}>この月の取込状況</span>
+      <section className={ui.card} aria-labelledby="import-status-title">
+        <h2 id="import-status-title" className={ui.sectionTitle}>
+          この月の取込状況
+        </h2>
         {statusQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-        {statusQuery.error && <div className={ui.error}>取込状況の取得に失敗しました</div>}
+        {statusQuery.error && (
+          <div className={ui.error}>
+            取込状況の取得に失敗しました
+            <button className={ui.buttonGhost} onClick={() => void statusQuery.refetch()}>
+              再読み込み
+            </button>
+          </div>
+        )}
         {statusQuery.data &&
           (completion !== null ? (
             <div className={styles.statusDone}>
@@ -249,15 +288,23 @@ function ImportsPageContent() {
               取込完了（{formatDateTime(completion.completedAt)}）
             </div>
           ) : (
-            <EmptyState>この月の CSV 取込はまだ完了していません</EmptyState>
+            <EmptyState>
+              この月の明細取込はまだ完了していません。下のアップロードから CSV か明細 PDF
+              を取り込んでください。
+            </EmptyState>
           ))}
-      </div>
+      </section>
 
-      <div className={ui.card}>
-        <span className={ui.sectionTitle}>CSV アップロード</span>
+      <section className={ui.card} aria-labelledby="import-upload-title">
+        <h2 id="import-upload-title" className={ui.sectionTitle}>
+          明細ファイルのアップロード
+        </h2>
         <div className={ui.field}>
-          <label className={ui.fieldLabel}>ファイル種別</label>
+          <label className={ui.fieldLabel} htmlFor="import-file-kind">
+            ファイル種別
+          </label>
           <select
+            id="import-file-kind"
             className={ui.select}
             value={fileKind}
             onChange={e => setFileKind(e.target.value as FileKind)}
@@ -272,7 +319,7 @@ function ImportsPageContent() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,text/csv"
+          accept=".csv,text/csv,.pdf,application/pdf"
           className={styles.hiddenInput}
           onChange={e => handleFileChange(e.target.files)}
         />
@@ -281,28 +328,24 @@ function ImportsPageContent() {
           disabled={upload.isPending}
           onClick={() => fileInputRef.current?.click()}
         >
-          {upload.isPending ? 'アップロード中...' : 'CSV ファイルを選択して取込'}
+          {upload.isPending
+            ? uploadingFormat === 'pdf'
+              ? 'PDF を変換中...'
+              : 'アップロード中...'
+            : 'CSV / PDF ファイルを選択して取込'}
         </button>
-        {upload.error && job === null && <div className={ui.error}>{upload.error.message}</div>}
-      </div>
-
-      {job !== null && (
-        <div className={ui.card}>
-          <div className={ui.rowBetween}>
-            <span className={ui.sectionTitle}>取込ジョブ</span>
-            <span className={job.kind === 'failed' ? styles.failedBadge : ui.badgeAccent}>
-              {JOB_LABELS[job.kind]}
-            </span>
+        <p className={styles.note}>
+          CSV(.csv)と明細 PDF(.pdf)を取り込めます。PDF
+          はアップロード後に明細を読み取るため、完了まで 1 分ほどかかることがあります。
+        </p>
+        {errorMessage !== null && (
+          <div className={ui.error} role="alert">
+            {errorMessage}
           </div>
-          {job.summary && (
-            <ul className={styles.summaryList}>
-              <li>新規候補: {job.summary.newCount} 件</li>
-              <li>重複除外: {job.summary.duplicateExcludedCount} 件</li>
-            </ul>
-          )}
-          {job.failure && <div className={ui.error}>{job.failure.failureDetail}</div>}
-        </div>
-      )}
+        )}
+      </section>
+
+      {job !== null && <ImportJobCard job={job} />}
 
       {job !== null && job.kind === 'completed' && (
         <CandidatesPanel importJobId={job.common.importJobId} onDone={() => setJob(null)} />
