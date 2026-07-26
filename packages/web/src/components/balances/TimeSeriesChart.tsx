@@ -1,6 +1,7 @@
 'use client'
 
 import type { BalancePointWire } from '@/lib/api-schemas'
+import { EmptyState } from '@/components/ui/EmptyState'
 import styles from './TimeSeriesChart.module.css'
 
 export interface ChartSeries {
@@ -22,7 +23,7 @@ const PAD_Y = 10
 export function TimeSeriesChart({ series }: TimeSeriesChartProps) {
   const allPoints = series.flatMap(s => s.points)
   if (allPoints.length === 0) {
-    return <div className={styles.empty}>表示できるデータがありません</div>
+    return <EmptyState>表示できるデータがありません</EmptyState>
   }
 
   const times = allPoints.map(p => p.date.getTime())

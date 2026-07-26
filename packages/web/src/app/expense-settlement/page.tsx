@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { Modal } from '@/components/ui/Modal'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { apiFetch, apiMutate } from '@/lib/api-client'
 import {
   CurrentCycleResponseSchema,
@@ -145,9 +146,7 @@ function FinalizeModal({ cycle, onClose }: { cycle: CycleWire; onClose: () => vo
       </p>
       {depositsQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
       {deposits.length === 0 && !depositsQuery.isLoading && (
-        <div className={ui.empty}>
-          突合待ちの入金がありません。先に「精算入金を記録」してください。
-        </div>
+        <EmptyState>突合待ちの入金がありません。先に「精算入金を記録」してください。</EmptyState>
       )}
       {deposits.length > 0 && (
         <div className={ui.field}>
@@ -263,7 +262,7 @@ export default function ExpenseSettlementPage() {
         {cycleQuery.error && <div className={ui.error}>サイクルの取得に失敗しました</div>}
         {!cycleQuery.isLoading && !cycleQuery.error && cycle === null && (
           <>
-            <div className={ui.empty}>この月のサイクルは未開始です</div>
+            <EmptyState>この月のサイクルは未開始です</EmptyState>
             <button
               className={ui.button}
               disabled={startCycle.isPending}
@@ -323,7 +322,7 @@ export default function ExpenseSettlementPage() {
         {viewQuery.error && <div className={ui.error}>精算情報の取得に失敗しました</div>}
         {view &&
           (view.currentAccumulations.length === 0 ? (
-            <div className={ui.empty}>当月の経費累計はまだありません</div>
+            <EmptyState>当月の経費累計はまだありません</EmptyState>
           ) : (
             <div className={styles.accumulationList}>
               {view.currentAccumulations.map(accumulation => (
@@ -343,7 +342,7 @@ export default function ExpenseSettlementPage() {
         <span className={ui.sectionTitle}>按分子取引</span>
         {view &&
           (view.currentChildTransactions.length === 0 ? (
-            <div className={ui.empty}>当月の按分子取引はありません</div>
+            <EmptyState>当月の按分子取引はありません</EmptyState>
           ) : (
             <ul className={styles.childList}>
               {view.currentChildTransactions.map(child => (

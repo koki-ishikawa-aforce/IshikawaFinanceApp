@@ -5,7 +5,7 @@ import type { CategoryBreakdownView } from '@warimaru/domain'
 import { DonutChart } from './DonutChart'
 import { formatMoney } from '@/lib/format'
 import { FALLBACK_CATEGORY_COLORS } from '@/theme/tokens'
-import ui from '@/components/ui/common.module.css'
+import { EmptyState } from '@/components/ui/EmptyState'
 import styles from './CategoryBreakdown.module.css'
 
 interface CategoryBreakdownProps {
@@ -24,11 +24,11 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
   if (data.items.length === 0) {
     return (
       <div className={styles.container}>
-        <div className={ui.empty}>
+        <EmptyState>
           {data.mode === 'household'
             ? 'この月の世帯支出はありません'
             : 'この月の個人支出はありません'}
-        </div>
+        </EmptyState>
       </div>
     )
   }

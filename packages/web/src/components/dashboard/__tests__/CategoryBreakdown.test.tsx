@@ -81,6 +81,13 @@ describe('CategoryBreakdown', () => {
     expect(container.querySelector('svg')).toBeNull()
   })
 
+  it('空状態への切り替わりが読み上げ対象になっている', () => {
+    // 月・モードの切り替えは画面遷移を伴わないため、通知が無いとグラフが消えたことが伝わらない
+    render(<CategoryBreakdown data={emptyData} categoryColors={categoryColors} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('この月の世帯支出はありません')
+  })
+
   it('個人モードの空状態は個人支出の文言になる', () => {
     const personalEmptyData = CategoryBreakdownViewSchema.parse({
       mode: 'personal',

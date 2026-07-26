@@ -11,6 +11,7 @@ import { useDashboardKpis } from '@/hooks/useDashboardKpis'
 import { useCategoryBreakdown } from '@/hooks/useCategoryBreakdown'
 import { useTheme } from '@/theme/ThemeProvider'
 import { getCategoryColors } from '@/theme/tokens'
+import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
 function getCurrentMonth(): YearMonth {
@@ -41,8 +42,15 @@ export default function DashboardPage() {
       {kpis.error && <div className={styles.error}>KPI の取得に失敗しました</div>}
       {kpis.data && <KpiGrid kpis={kpis.data} />}
 
+      {/*
+        カテゴリ内訳だけカードと見出しの外に置くと、空状態の案内が背景の上に 1 行浮いて
+        他画面と揃わない(#311 のレビュー指摘)。他画面のセクションと同じ器に載せる
+      */}
       {breakdown.data && (
-        <CategoryBreakdown data={breakdown.data} categoryColors={categoryColors} />
+        <div className={ui.card}>
+          <span className={ui.sectionTitle}>カテゴリ別支出</span>
+          <CategoryBreakdown data={breakdown.data} categoryColors={categoryColors} />
+        </div>
       )}
 
       {mode === 'household' && kpis.data && (
