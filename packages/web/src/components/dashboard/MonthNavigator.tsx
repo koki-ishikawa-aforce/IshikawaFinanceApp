@@ -1,6 +1,7 @@
 'use client'
 
 import type { YearMonth } from '@warimaru/domain'
+import { LuChevronLeft, LuChevronRight } from '@/components/ui/icons'
 import styles from './MonthNavigator.module.css'
 
 interface MonthNavigatorProps {
@@ -35,7 +36,7 @@ export function MonthNavigator({ month, onMonthChange }: MonthNavigatorProps) {
         onClick={() => onMonthChange(shiftMonth(month, -1))}
         aria-label="前月"
       >
-        ◀
+        <LuChevronLeft aria-hidden="true" size="1.5em" />
       </button>
       <span className={styles.label}>{formatMonthLabel(month)}</span>
       <button
@@ -43,7 +44,7 @@ export function MonthNavigator({ month, onMonthChange }: MonthNavigatorProps) {
         onClick={() => onMonthChange(shiftMonth(month, 1))}
         aria-label="次月"
       >
-        ▶
+        <LuChevronRight aria-hidden="true" size="1.5em" />
       </button>
     </div>
   )

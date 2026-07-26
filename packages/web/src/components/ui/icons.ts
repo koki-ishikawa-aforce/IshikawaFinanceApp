@@ -20,6 +20,9 @@ export {
   LuPartyPopper,
   LuCheck,
   LuHourglass,
+  LuChevronLeft,
+  LuChevronRight,
+  LuPlus,
 } from 'react-icons/lu'
 
 export type { IconType } from 'react-icons'

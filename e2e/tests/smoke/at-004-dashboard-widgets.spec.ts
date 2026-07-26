@@ -23,12 +23,16 @@ test.describe('AT-004: ダッシュボードの KPI・カテゴリ内訳・未�
     await page.goto('/')
     await expect(page.getByText('今月支出')).toBeVisible()
 
-    const prevButton = page.getByRole('button').filter({ hasText: /◀|←|前/ })
-    if (await prevButton.count()) {
-      await prevButton.first().click()
-      await expect(page.locator('body')).not.toBeEmpty()
-      const visibleText = await page.locator('body').innerText()
-      expect(visibleText).not.toContain('NaN')
-    }
+    // 月送りはアイコンボタンで可視テキストを持たないため、読み上げ名で引く。
+    // テキスト一致で引くと、ボタンが見つからないまま緑になり検証が空振りする
+    const monthLabel = page.getByText(/^\d{4}年\d{1,2}月$/)
+    await expect(monthLabel).toBeVisible()
+    const before = await monthLabel.innerText()
+
+    await page.getByRole('button', { name: '前月' }).click()
+
+    await expect(monthLabel).not.toHaveText(before)
+    const visibleText = await page.locator('body').innerText()
+    expect(visibleText).not.toContain('NaN')
   })
 })

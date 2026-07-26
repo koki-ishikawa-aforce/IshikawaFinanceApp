@@ -5,6 +5,7 @@ import type { CategoryBreakdownView } from '@warimaru/domain'
 import { DonutChart } from './DonutChart'
 import { formatMoney } from '@/lib/format'
 import { FALLBACK_CATEGORY_COLORS } from '@/theme/tokens'
+import { LuChevronRight } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './CategoryBreakdown.module.css'
 
@@ -57,9 +58,7 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
               <span className={styles.name}>{item.categoryName}</span>
               <span className={styles.amount}>{formatMoney(item.total)}</span>
               <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
-              <span className={styles.chevron} aria-hidden="true">
-                ›
-              </span>
+              <LuChevronRight className={styles.chevron} aria-hidden="true" />
             </Link>
           </li>
         ))}

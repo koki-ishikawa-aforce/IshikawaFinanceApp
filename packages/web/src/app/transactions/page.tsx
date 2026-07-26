@@ -19,7 +19,7 @@ import {
 import { EXPENSE_CLASS_LABELS, expenseClassLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatMonthLabel, getCurrentMonth } from '@/lib/month'
-import { LuTriangleAlert } from '@/components/ui/icons'
+import { LuPlus, LuTriangleAlert } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -532,7 +532,7 @@ function TransactionsPageContent() {
       )}
 
       <button className={styles.fab} onClick={() => setCreating(true)} aria-label="取引を追加">
-        ＋
+        <LuPlus aria-hidden="true" />
       </button>
 
       {creating && <CreateModal month={month} onClose={() => setCreating(false)} />}

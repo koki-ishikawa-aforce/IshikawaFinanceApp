@@ -52,4 +52,25 @@ describe('MonthNavigator', () => {
 
     expect(onMonthChange).toHaveBeenCalledWith('2027-01')
   })
+
+  it('月送りは記号文字ではなくSVGアイコンで描画される', () => {
+    const { container } = render(<MonthNavigator month={ym('2026-07')} onMonthChange={() => {}} />)
+
+    expect(container.querySelectorAll('svg')).toHaveLength(2)
+    // 記号文字(◀ ▶)は端末の書体まかせで描画され豆腐化しうるため、UI テキストとして残さない
+    expect(container.textContent).not.toMatch(/[◀▶]/)
+  })
+
+  it('アイコンは装飾扱いで、読み上げ名はボタンの aria-label のままになる', () => {
+    const { container } = render(<MonthNavigator month={ym('2026-07')} onMonthChange={() => {}} />)
+
+    const icons = container.querySelectorAll('svg')
+    expect(icons).toHaveLength(2)
+    icons.forEach(svg => {
+      expect(svg).toHaveAttribute('aria-hidden', 'true')
+    })
+    // アイコン化でボタンの読み上げ名が変わっていないこと
+    expect(screen.getByRole('button', { name: '前月' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '次月' })).toBeInTheDocument()
+  })
 })
