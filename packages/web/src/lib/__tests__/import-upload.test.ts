@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { PdfConversionFailureReasonSchema } from '@warimaru/domain'
 import {
   NOT_A_PDF_MESSAGE,
-  UNSUPPORTED_FILE_MESSAGE,
+  checkUploadFile,
   describeImportFailure,
+  describeUploadError,
   detectUploadFormat,
   uploadPath,
 } from '../import-upload'
 
-function file(name: string, type = ''): File {
-  return new File(['dummy'], name, { type })
+function file(name: string, type = '', size = 10): File {
+  return new File(['x'.repeat(size)], name, { type })
 }
 
 describe('detectUploadFormat', () => {
@@ -42,21 +43,64 @@ describe('uploadPath', () => {
   })
 })
 
+describe('checkUploadFile', () => {
+  it('対応形式・上限内のファイルは形式つきで通す', () => {
+    expect(checkUploadFile(file('statement.csv', 'text/csv', 1_000_000))).toEqual({
+      ok: true,
+      format: 'csv',
+    })
+    expect(checkUploadFile(file('statement.pdf', 'application/pdf', 10_000_000))).toEqual({
+      ok: true,
+      format: 'pdf',
+    })
+  })
+
+  it('対応外の拡張子は理由つきで拒否する', () => {
+    const result = checkUploadFile(file('statement.txt', 'text/plain'))
+
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.message).toContain('.pdf')
+  })
+
+  // API の上限（CSV 1MB / PDF 10MB）を 1 バイト超えたところで拒否されること
+  it('上限を超えたファイルは送らずにサイズを理由に拒否する', () => {
+    const csv = checkUploadFile(file('statement.csv', 'text/csv', 1_000_001))
+    const pdf = checkUploadFile(file('statement.pdf', 'application/pdf', 10_000_001))
+
+    expect(csv.ok).toBe(false)
+    expect(csv.ok === false && csv.message).toContain('1MB')
+    expect(pdf.ok).toBe(false)
+    expect(pdf.ok === false && pdf.message).toContain('10MB')
+  })
+})
+
 describe('describeImportFailure', () => {
-  it('PDF 変換失敗の理由ごとに異なる文言を返す', () => {
-    const messages = PdfConversionFailureReasonSchema.options.map(reason =>
-      describeImportFailure({
+  it.each([
+    ['api_call_failed', '変換サービスに繋がりませんでした'],
+    ['invalid_response_structure', '明細のページだけを含む PDF'],
+    ['row_count_mismatch', '件数が PDF の記載と一致しませんでした'],
+    ['total_amount_mismatch', '合計金額が PDF の記載と一致しませんでした'],
+    ['timeout', '時間内に終わりませんでした'],
+  ] as const)('PDF 変換失敗 %s は固有の案内を出す', (reason, expected) => {
+    const message = describeImportFailure({
+      kind: 'pdf_conversion_failed',
+      reason,
+      failureDetail: '詳細',
+    })
+
+    expect(message).toContain(expected)
+    // 次の行動を示す（usability §3-6）
+    expect(message).toMatch(/ください/)
+  })
+
+  it('ドメインの変換失敗理由をすべて網羅している', () => {
+    for (const reason of PdfConversionFailureReasonSchema.options) {
+      const message = describeImportFailure({
         kind: 'pdf_conversion_failed',
         reason,
         failureDetail: '詳細',
-      }),
-    )
-
-    expect(new Set(messages).size).toBe(PdfConversionFailureReasonSchema.options.length)
-    for (const message of messages) {
-      expect(message.length).toBeGreaterThan(0)
-      // 次の行動を示す（usability §3-6）
-      expect(message).toMatch(/ください/)
+      })
+      expect(message).not.toContain('詳細')
     }
   })
 
@@ -105,21 +149,72 @@ describe('describeImportFailure', () => {
     expect(message).toContain('CSV')
   })
 
-  it('取込中エラーは再アップロードを促す', () => {
+  it('取込中エラーは内部例外の文言を出さずに再試行を促す', () => {
     const message = describeImportFailure({
       kind: 'import_error',
-      failureDetail: 'DB 接続に失敗',
+      failureDetail: 'connect ECONNREFUSED 10.0.0.1:5432',
     })
 
-    expect(message).toContain('DB 接続に失敗')
+    expect(message).not.toContain('ECONNREFUSED')
     expect(message).toContain('もう一度')
   })
 })
 
-describe('選択・送信を拒否したときの文言', () => {
-  it('対応外ファイルと PDF 不正はそれぞれ別の案内を出す', () => {
-    expect(UNSUPPORTED_FILE_MESSAGE).toContain('.pdf')
-    expect(NOT_A_PDF_MESSAGE).toContain('PDF')
-    expect(UNSUPPORTED_FILE_MESSAGE).not.toBe(NOT_A_PDF_MESSAGE)
+describe('describeUploadError', () => {
+  it('送信前に拒否した理由は他のエラーより優先する', () => {
+    const message = describeUploadError({
+      selectionError: 'この形式は取り込めません',
+      error: { status: 500, message: 'Internal server error' },
+      hasJob: false,
+    })
+
+    expect(message).toBe('この形式は取り込めません')
+  })
+
+  it('PDF として読み取れない場合は選び直しを促す', () => {
+    const message = describeUploadError({
+      selectionError: null,
+      error: { status: 400, message: 'file が PDF ではない', reason: 'not_a_pdf' },
+      hasJob: false,
+    })
+
+    expect(message).toBe(NOT_A_PDF_MESSAGE)
+  })
+
+  it('理由の無い 400 は PDF の中身のせいだと決めつけない', () => {
+    const message = describeUploadError({
+      selectionError: null,
+      error: { status: 400, message: '{"error":"Validation error"}' },
+      hasJob: false,
+    })
+
+    expect(message).not.toBe(NOT_A_PDF_MESSAGE)
+    expect(message).not.toContain('Validation error')
+    expect(message).toContain('もう一度')
+  })
+
+  it('失敗ジョブが返っている場合は取込ジョブカードに任せて何も出さない', () => {
+    const message = describeUploadError({
+      selectionError: null,
+      error: { status: 422, message: '{"job":{}}' },
+      hasJob: true,
+    })
+
+    expect(message).toBeNull()
+  })
+
+  it('エラーが無ければ何も出さない', () => {
+    expect(describeUploadError({ selectionError: null, error: null, hasJob: false })).toBeNull()
+  })
+
+  it('通信エラーは原因の文言を添えて再試行を促す', () => {
+    const message = describeUploadError({
+      selectionError: null,
+      error: { message: 'Failed to fetch' },
+      hasJob: false,
+    })
+
+    expect(message).toContain('Failed to fetch')
+    expect(message).toContain('通信状況')
   })
 })

@@ -12,7 +12,8 @@ import styles from './ImportJobCard.module.css'
 const JOB_LABELS: Record<ImportJobWire['kind'], string> = {
   upload_accepted: '受付済み',
   pdf_converting: 'PDF変換中',
-  format_validating: '形式検証中',
+  // ラベルはユビキタス言語（08a「フォーマット検証中ジョブ」）に合わせる
+  format_validating: 'フォーマット検証中',
   importing: '取込中',
   completed: '取込完了',
   failed: '失敗',
@@ -25,13 +26,12 @@ export interface ImportJobCardProps {
 export function ImportJobCard({ job }: ImportJobCardProps) {
   const failed = job.kind === 'failed'
   return (
-    // 取込の進行・結果は操作後に差し替わるため支援技術へ通知する（usability §8-4）
-    <section className={ui.card} aria-labelledby="import-job-title" aria-live="polite">
+    <section className={ui.card} aria-labelledby="import-job-title">
       <div className={ui.rowBetween}>
         <h2 id="import-job-title" className={ui.sectionTitle}>
           取込ジョブ
         </h2>
-        <span className={failed ? styles.failedBadge : ui.badgeAccent}>{JOB_LABELS[job.kind]}</span>
+        <span className={failed ? ui.badgeError : ui.badgeAccent}>{JOB_LABELS[job.kind]}</span>
       </div>
       {job.summary && (
         <ul className={styles.summaryList}>
@@ -40,7 +40,10 @@ export function ImportJobCard({ job }: ImportJobCardProps) {
         </ul>
       )}
       {job.failureReason && (
-        <div className={ui.error}>{describeImportFailure(job.failureReason)}</div>
+        // 失敗は挿入時にも読み上げられるよう alert にする（外側の polite リージョンとは別扱い）
+        <div className={ui.error} role="alert">
+          {describeImportFailure(job.failureReason)}
+        </div>
       )}
     </section>
   )

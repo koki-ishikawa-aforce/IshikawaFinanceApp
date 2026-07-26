@@ -4,6 +4,7 @@ export const SCREENS = [
   { name: 'transactions', path: '/transactions' },
   { name: 'balances', path: '/balances' },
   { name: 'reports', path: '/reports' },
+  { name: 'imports', path: '/imports' },
   { name: 'settings', path: '/settings' },
   { name: 'onboarding', path: '/onboarding' },
 ] as const

@@ -255,8 +255,12 @@ export const DepositListWireSchema = z.object({
  * @see packages/domain/src/transaction-import/value-objects/ImportJobFailureReason.ts
  */
 export const ImportJobFailureWireSchema = z.object({
-  kind: z.string(),
+  // 未知の種別（サーバー先行デプロイ）でも画面が落ちないようフォールバックする
+  kind: z
+    .enum(['pdf_conversion_failed', 'format_validation_failed', 'import_error'])
+    .catch('import_error'),
   failureDetail: z.string(),
+  /** PDF 変換失敗のみが持つ。未知の値も落とさず受けて文言側でフォールバックする */
   reason: z.string().optional(),
 })
 export type ImportJobFailureWire = z.infer<typeof ImportJobFailureWireSchema>

@@ -3,7 +3,7 @@
 import { Suspense, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { YearMonthSchema, type YearMonth } from '@warimaru/domain'
+import { YearMonthSchema, type UploadFileFormat, type YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
 import {
@@ -14,13 +14,7 @@ import {
   UnknownResponseSchema,
   type ImportJobWire,
 } from '@/lib/api-schemas'
-import {
-  NOT_A_PDF_MESSAGE,
-  UNSUPPORTED_FILE_MESSAGE,
-  detectUploadFormat,
-  uploadPath,
-  type UploadFormat,
-} from '@/lib/import-upload'
+import { checkUploadFile, describeUploadError, uploadPath } from '@/lib/import-upload'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatDateTime, getCurrentMonth } from '@/lib/month'
 import { LuCircleCheck } from '@/components/ui/icons'
@@ -117,8 +111,21 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
           閉じる
         </button>
       </div>
-      {candidatesQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-      {candidatesQuery.error && <div className={ui.error}>候補の取得に失敗しました</div>}
+      {candidatesQuery.isLoading && (
+        <div className={ui.loading} role="status">
+          読み込み中...
+        </div>
+      )}
+      {candidatesQuery.error && (
+        <>
+          <div className={ui.error} role="alert">
+            候補の取得に失敗しました
+          </div>
+          <button className={ui.buttonGhost} onClick={() => void candidatesQuery.refetch()}>
+            再読み込み
+          </button>
+        </>
+      )}
       {!candidatesQuery.isLoading && candidates.length === 0 && (
         <EmptyState>候補がありません（すべて重複除外された可能性があります）</EmptyState>
       )}
@@ -158,7 +165,11 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
               )
             })}
           </ul>
-          {confirm.error && <div className={ui.error}>{confirm.error.message}</div>}
+          {confirm.error && (
+            <div className={ui.error} role="alert">
+              確定できませんでした（{confirm.error.message}）。もう一度お試しください。
+            </div>
+          )}
           <button
             className={ui.button}
             disabled={selectedIds.length === 0 || confirm.isPending}
@@ -176,6 +187,20 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
   )
 }
 
+/** エラー応答の機械可読な理由（`{ error, reason }`）を取り出す。理由が無ければ空 */
+function parseErrorReason(body: string): { reason?: string } {
+  try {
+    const parsed: unknown = JSON.parse(body)
+    if (parsed !== null && typeof parsed === 'object' && 'reason' in parsed) {
+      const reason = (parsed as { reason: unknown }).reason
+      if (typeof reason === 'string') return { reason }
+    }
+  } catch {
+    // JSON でないボディは理由なしとして扱う
+  }
+  return {}
+}
+
 function parseMonthParam(value: string | null): YearMonth {
   const parsed = YearMonthSchema.safeParse(value)
   return parsed.success ? parsed.data : getCurrentMonth()
@@ -189,7 +214,7 @@ function ImportsPageContent() {
   const [job, setJob] = useState<ImportJobWire | null>(null)
   /** アップロードせずに拒否した選択（対応外の拡張子）の文言 */
   const [selectionError, setSelectionError] = useState<string | null>(null)
-  const [uploadingFormat, setUploadingFormat] = useState<UploadFormat | null>(null)
+  const [uploadingFormat, setUploadingFormat] = useState<UploadFileFormat | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const statusQuery = useQuery({
@@ -198,7 +223,7 @@ function ImportsPageContent() {
   })
 
   const upload = useMutation({
-    mutationFn: async ({ file, format }: { file: File; format: UploadFormat }) => {
+    mutationFn: async ({ file, format }: { file: File; format: UploadFileFormat }) => {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('targetMonth', month)
@@ -229,16 +254,15 @@ function ImportsPageContent() {
   const handleFileChange = (files: FileList | null) => {
     const file = files?.[0]
     if (file !== undefined) {
-      const format = detectUploadFormat(file)
-      if (format === null) {
-        // 対応外の拡張子はアップロードせずにその場で伝える（無駄な待ち時間を作らない）
-        setJob(null)
-        setSelectionError(UNSUPPORTED_FILE_MESSAGE)
-      } else {
-        setJob(null)
+      setJob(null)
+      const checked = checkUploadFile(file)
+      if (checked.ok) {
         setSelectionError(null)
-        setUploadingFormat(format)
-        upload.mutate({ file, format })
+        setUploadingFormat(checked.format)
+        upload.mutate({ file, format: checked.format })
+      } else {
+        // 対応外・サイズ超過はアップロードせずにその場で伝える（無駄な待ち時間を作らない）
+        setSelectionError(checked.message)
       }
     }
     if (fileInputRef.current !== null) {
@@ -246,20 +270,19 @@ function ImportsPageContent() {
     }
   }
 
-  /** 通信・サーバーエラー（ジョブが返らないケース）の文言。次の行動まで示す */
-  const uploadErrorMessage = (): string | null => {
-    if (selectionError !== null) return selectionError
-    if (upload.error === null || job !== null) return null
-    if (
-      upload.error instanceof ApiError &&
-      upload.error.status === 400 &&
-      uploadingFormat === 'pdf'
-    ) {
-      return NOT_A_PDF_MESSAGE
-    }
-    return upload.error.message
-  }
-  const errorMessage = uploadErrorMessage()
+  const errorMessage = describeUploadError({
+    selectionError,
+    error:
+      upload.error === null
+        ? null
+        : {
+            message: upload.error.message,
+            ...(upload.error instanceof ApiError
+              ? { status: upload.error.status, ...parseErrorReason(upload.error.body) }
+              : {}),
+          },
+    hasJob: job !== null,
+  })
 
   const completion = statusQuery.data?.completion ?? null
 
@@ -272,14 +295,20 @@ function ImportsPageContent() {
         <h2 id="import-status-title" className={ui.sectionTitle}>
           この月の取込状況
         </h2>
-        {statusQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
+        {statusQuery.isLoading && (
+          <div className={ui.loading} role="status">
+            読み込み中...
+          </div>
+        )}
         {statusQuery.error && (
-          <div className={ui.error}>
-            取込状況の取得に失敗しました
+          <>
+            <div className={ui.error} role="alert">
+              取込状況の取得に失敗しました
+            </div>
             <button className={ui.buttonGhost} onClick={() => void statusQuery.refetch()}>
               再読み込み
             </button>
-          </div>
+          </>
         )}
         {statusQuery.data &&
           (completion !== null ? (
@@ -345,7 +374,9 @@ function ImportsPageContent() {
         )}
       </section>
 
-      {job !== null && <ImportJobCard job={job} />}
+      {/* 取込の進行・結果は操作後に差し替わる。ライブリージョンは常時マウントしておかないと
+          挿入が検出されないため、カードではなくこの入れ物に置く（usability §8-4） */}
+      <div aria-live="polite">{job !== null && <ImportJobCard job={job} />}</div>
 
       {job !== null && job.kind === 'completed' && (
         <CandidatesPanel importJobId={job.common.importJobId} onDone={() => setJob(null)} />
