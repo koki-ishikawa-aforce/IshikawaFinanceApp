@@ -23,8 +23,9 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 - 集約: `Transaction`（`unclassified` / `classified` / `deleted`。未分類→分類 `classify` / 分類済み生成 `createClassifiedTransaction` / 削除 `deleteTransaction` を含む）, `MonthlyReport`（`csv_confirmed` / `finalized`。CSV確定昇格 `confirmCsv` / 再集計 `refreshCsvConfirmed` / 最終確定昇格 `finalize` / 取引集計 `aggregateMonthlyReportTotals`（`MonthlyReportTotals`）を含む）
 - Repository I/F: `TransactionRepository`, `MonthlyReportRepository`
-- Query I/F: `DashboardQuery`, `MonthlyReportQuery`, `TransactionListQuery`
-- View 型: `DashboardKpisView`, `CategoryBreakdownView`, `MonthlyReportView`, `TransactionListItem`
+- 値オブジェクト: `BalanceFreshness`（残高鮮度評価。`BalanceFreshnessStatus` = `ok` / `alert`、閾値の単一ソース `BALANCE_FRESHNESS_THRESHOLD_DAYS` = 35（OQ-44）、評価関数 `evaluateBalanceFreshness`。根拠の最終更新日時は残高・資産推移管理から借用し、判定は本コンテキストが持つ — 08c / 08d L244）
+- Query I/F: `DashboardQuery`（KPI・カテゴリ内訳に加え、残高鮮度評価リスト `fetchBalanceFreshness` を提供。残高は世帯フルオープンのため viewerId を取らない）, `MonthlyReportQuery`, `TransactionListQuery`
+- View 型: `DashboardKpisView`, `CategoryBreakdownView`, `BalanceFreshnessListView`（+ `BalanceFreshnessItem`）, `MonthlyReportView`, `TransactionListItem`
 - プライバシー: `ViewerContext`, `ViewerRole`（`applyPrivacyFilter` 関数群は内部実装、Query 実装層からのみ使用）
 - ドメインイベント: `MonthlyReportCsvConfirmed`, `MonthlyReportFinalized`, `TransactionDeleted`, `TransactionManuallyClassified`（`ConfirmedClassification` + `amazonProductKey?`（X-1 商品キー。下流の自動分類・学習が消費）を含む）, `CategoryTransactionsRemapped`（マスタ削除リマップの家計分析完了通知）
 
@@ -35,7 +36,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - ドメインサービス: `determineBankDepositPurpose`（OQ-21 の入金日 + 金額 2 シグナル判別。矛盾時は用途不明 = 手動確認待ち）, `determineWithdrawalPurpose`, `applyOtherSavingsReturn` / `applyOtherSavingsTransfer`（シャドウ残高への資金移動。金額は正・向きは関数側が決める）
 - Repository I/F: `AccountRepository`, `BankDepositRepository`, `MitsuiSumitomoUnpaidRepository`
 - Query I/F: `AccountBalanceQuery`, `BalanceTimeSeriesQuery`
-- View 型: `AccountBalanceListView`, `BalanceTimeSeriesView`, `AssetTotalView`
+- View 型: `AccountBalanceListView`（`other_savings` は最終更新日時までを供給し、鮮度の経過日数・状態は持たない — 08d L244）, `BalanceTimeSeriesView`, `AssetTotalView`
 - ドメインイベント: `AccountBalanceUpdated`, `AccountRegistered`, `InitialBalanceRegistered`, `BankNameChanged`, `BrokerageNameChanged`, `UnpaidBookkept`, `UnpaidSettled`, `NisaContributionAdded`, `BankDepositPurposeDetermined`, `ExpenseReimbursementDepositArrived`（08e の「経費精算入金を受信する」を起動する上流トリガー。08e が発行する `ExpenseReimbursementDepositReceived` とは別物）
 
 ### auto-classification（自動分類・学習、08b）

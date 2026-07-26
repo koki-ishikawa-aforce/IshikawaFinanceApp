@@ -203,25 +203,34 @@ export function cardAccount(input: { ownerUserId?: UserId; unpaidRef?: string } 
 }
 
 export function otherSavingsAccount(
-  input: { ownerUserId?: UserId; currentBalance?: number; lastUpdatedAt?: Date } = {},
+  input: {
+    ownerUserId?: UserId
+    currentBalance?: number
+    lastUpdatedAt?: Date
+    /** 鮮度根拠の最終更新日時（08d L60）。省略時は残高の最終更新日時と同値 */
+    freshnessLastUpdatedAt?: Date
+    registeredAt?: Date
+    bankName?: string
+  } = {},
 ): Account {
   const lastUpdatedAt = input.lastUpdatedAt ?? new Date('2026-07-01T00:00:00.000Z')
+  const freshnessLastUpdatedAt = input.freshnessLastUpdatedAt ?? lastUpdatedAt
   return AccountSchema.parse({
     kind: 'other_savings',
     common: {
       accountId: newUlid(),
       ownerUserId: input.ownerUserId ?? DARLING_USER_ID,
-      registeredAt: new Date('2026-01-03T00:00:00.000Z'),
+      registeredAt: input.registeredAt ?? new Date('2026-01-03T00:00:00.000Z'),
       activeness: { kind: 'active' },
     },
-    bankName: 'ゆうちょ銀行',
+    bankName: input.bankName ?? 'ゆうちょ銀行',
     balance: {
       currentBalance: input.currentBalance ?? 800000,
       initialBalance: 500000,
       initialBalanceBaselineAt: new Date('2026-01-03T00:00:00.000Z'),
       lastUpdatedAt,
     },
-    freshnessSource: { lastUpdatedAt },
+    freshnessSource: { lastUpdatedAt: freshnessLastUpdatedAt },
   })
 }
 

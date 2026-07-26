@@ -22,6 +22,14 @@ export function dashboardRoutes(dashboardQuery: DashboardQuery): Hono<AppEnv> {
     return c.json(result)
   })
 
+  // 残高鮮度は現在時点の評価のため month / mode を取らない。口座単位の残高情報は
+  // 本人のみ可視（P2-B5 / AT-404）なので viewer で絞り込む
+  app.get('/balance-freshness', async c => {
+    const viewerId = c.get('viewerId')
+    const result = await dashboardQuery.fetchBalanceFreshness(viewerId)
+    return c.json(result)
+  })
+
   app.get('/category-breakdown', async c => {
     const params = QueryParamsSchema.parse({
       month: c.req.query('month'),
