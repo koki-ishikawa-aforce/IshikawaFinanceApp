@@ -317,14 +317,47 @@ function resolveAllowedOrigins(env: CompositionEnv): string[] {
 }
 
 /**
+ * Deep Link の起点 URL として妥当かを検査する。
+ *
+ * `createDeepLinkBuilder` は末尾に `/reports?month=...` を連結するだけなので、
+ * クエリやフラグメントを含む値・スキームの無い値を通すと壊れた URI が Flex の
+ * uri アクションに入り、LINE が 400 を返して配信が丸ごと失敗する。設定事故に
+ * 気づけるのが配信失敗時になるため、起動時に弾く。
+ */
+function assertValidWebBaseUrl(value: string, source: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error(
+      `${source} must be an absolute URL (e.g. https://liff.line.me/<liffId>): ${value}`,
+    )
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(`${source} must use http(s): ${value}`)
+  }
+  if (parsed.search !== '' || parsed.hash !== '') {
+    throw new Error(`${source} must not contain a query string or fragment: ${value}`)
+  }
+  return value
+}
+
+/**
  * Deep Link の起点 URL。WEB_BASE_URL を優先し、未設定なら許可オリジンの先頭にフォールバックする。
- * 許可オリジンは本番で必須（未設定なら resolveAllowedOrigins が起動エラーにする）ため、
- * ここで本番の設定漏れを二重に検査する必要はない。
+ *
+ * フォールバック値は web の配信元であって LIFF の公開 URL ではないため、通知のリンクを
+ * タップしても LIFF アプリではなくブラウザが開く。設定漏れに気づけるよう警告を出す
+ * （許可オリジンが複数あるとき、どれが先頭かは運用者のカンマ区切り順に依存する点も含む）。
  */
 function resolveWebBaseUrl(env: CompositionEnv, allowedOrigins: string[]): string {
   const configured = (env.WEB_BASE_URL ?? '').trim()
-  if (configured.length > 0) return configured
-  return allowedOrigins[0] ?? DEV_ALLOWED_ORIGIN
+  if (configured.length > 0) return assertValidWebBaseUrl(configured, 'WEB_BASE_URL')
+
+  const fallback = allowedOrigins[0] ?? DEV_ALLOWED_ORIGIN
+  console.warn(
+    `WEB_BASE_URL が未設定のため LINE 通知の Deep Link に ${fallback} を使う（LIFF の公開 URL を WEB_BASE_URL に設定する）`,
+  )
+  return assertValidWebBaseUrl(fallback, 'CORS_ALLOWED_ORIGINS[0] (WEB_BASE_URL fallback)')
 }
 
 export function createDeps(env: CompositionEnv): AppDeps {
@@ -337,6 +370,7 @@ export function createDeps(env: CompositionEnv): AppDeps {
       )
     }
     console.warn('DATABASE_URL not set — using mock data (development only)')
+    const mockAllowedOrigins = resolveAllowedOrigins(env)
     // 開発モードの許可リスト（devViewerIdMiddleware / テストの X-User-Id と揃える）
     const devAllowlist = AllowlistSchema.parse({
       honeyLineUserId: 'user-honey-test',
@@ -398,8 +432,8 @@ export function createDeps(env: CompositionEnv): AppDeps {
       failsafeEmailGateway: createMockFailsafeEmailGateway(),
       failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
       failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
-      allowedOrigins: resolveAllowedOrigins(env),
-      webBaseUrl: resolveWebBaseUrl(env, resolveAllowedOrigins(env)),
+      allowedOrigins: mockAllowedOrigins,
+      webBaseUrl: resolveWebBaseUrl(env, mockAllowedOrigins),
     }
   }
 

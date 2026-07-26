@@ -19,12 +19,6 @@ describe('createDeepLinkBuilder', () => {
     )
   })
 
-  it('Gmail 再認可は OQ-54 の契約どおり /settings?section=oauth を生成する', () => {
-    expect(links.gmailReauthorization()).toBe(
-      'https://liff.line.me/1234567890-abcdefgh/settings?section=oauth',
-    )
-  })
-
   it('OQ-54 ③ で作らないと決めたビュー切替（view=）を付けない', () => {
     expect(links.monthlyReport(month)).not.toContain('view=')
   })

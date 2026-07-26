@@ -5,6 +5,8 @@ import {
   confirmCsv,
   refreshCsvConfirmed,
   aggregateMonthlyReportTotals,
+  selfTotalsOf,
+  CommonMonthlyReportAttrsSchema,
   type CsvConfirmedReport,
 } from '../../../src/household-analysis/aggregates/MonthlyReport'
 import {
@@ -260,5 +262,34 @@ describe('confirmCsv() / refreshCsvConfirmed()', () => {
     expect(refreshed.common.personalTotalHoney).toBe(1200)
     expect(refreshed.causingTransactionIds).toHaveLength(2)
     expect(refreshed.csvConfirmedAt).toEqual(new Date('2026-05-01'))
+  })
+})
+
+describe('selfTotalsOf', () => {
+  const common = {
+    ...baseCommon,
+    personalTotalHoney: 31000,
+    personalTotalDarling: 27500,
+    businessExpenseTotalHoney: 12000,
+    businessExpenseTotalDarling: 4500,
+  }
+
+  it('honey には honey の個人費用と経費(会社)だけを返す', () => {
+    expect(selfTotalsOf(CommonMonthlyReportAttrsSchema.parse(common), 'honey')).toEqual({
+      personalTotalSelf: 31000,
+      businessExpenseTotalSelf: 12000,
+    })
+  })
+
+  it('darling には darling の値だけを返す', () => {
+    expect(selfTotalsOf(CommonMonthlyReportAttrsSchema.parse(common), 'darling')).toEqual({
+      personalTotalSelf: 27500,
+      businessExpenseTotalSelf: 4500,
+    })
+  })
+
+  it('配偶者側のキー（Honey / Darling 別の項目）を返り値に含めない', () => {
+    const totals = selfTotalsOf(CommonMonthlyReportAttrsSchema.parse(common), 'honey')
+    expect(Object.keys(totals).sort()).toEqual(['businessExpenseTotalSelf', 'personalTotalSelf'])
   })
 })

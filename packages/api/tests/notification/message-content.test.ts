@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { MonthlyReport } from '@warimaru/domain'
-import { MonthlyReportSchema, YearMonthSchema } from '@warimaru/domain'
+import { CategoryIdSchema, MonthlyReportSchema, YearMonthSchema, money } from '@warimaru/domain'
 import { createDeepLinkBuilder } from '../../src/notification/deep-links.js'
 import {
   buildCsvImportReminderContent,
@@ -86,8 +86,11 @@ describe('buildCsvImportReminderContent', () => {
 
   it('明細のダウンロード元（カード・銀行）の URL を本文に含める（OQ-12）', () => {
     if (content.kind !== 'plain_text') throw new Error('unreachable')
-    expect(content.textBody).toContain(links.smbcCardStatement(month))
-    expect(content.textBody).toContain(links.smbcBankStatement())
+    // 対象月が端から端まで伝わることを固定するため、期待値はリテラルで書く
+    expect(content.textBody).toContain(
+      'https://www.smbc-card.com/memx/web_meisai/top/index.html?p01=202607',
+    )
+    expect(content.textBody).toContain('https://direct3.smbc.co.jp/sp/web/')
   })
 
   it('アップロード先はアプリの取込画面の Deep Link を linkUrl に置く', () => {
@@ -157,6 +160,61 @@ describe('buildHouseholdSummaryContent', () => {
     expect(emptyTexts).not.toContain('SMBC 残高')
     expect(emptyTexts).not.toContain('別銀行貯蓄 残高')
     expect(emptyTexts).not.toContain('カード未払金')
+  })
+
+  it('カテゴリが 1 件も無い月は合計 0 円だけを出す', () => {
+    const empty = buildHouseholdSummaryContent(
+      report({ householdCategoryTotals: [] }),
+      nameOf,
+      links,
+    )
+    if (empty.kind !== 'flex_message') throw new Error('unreachable')
+    const emptyTexts = flexTexts(empty.flexPayloadJson)
+    expect(emptyTexts).toContain('0円')
+    expect(emptyTexts.filter(t => t.startsWith('・'))).toHaveLength(0)
+  })
+
+  it('返金過多などで負の合計になる月もそのまま表示する', () => {
+    const negative = buildHouseholdSummaryContent(
+      report({
+        householdCategoryTotals: [
+          { categoryId: CategoryIdSchema.parse(CATEGORY_FOOD), total: money(-5000) },
+        ],
+      }),
+      nameOf,
+      links,
+    )
+    if (negative.kind !== 'flex_message') throw new Error('unreachable')
+    expect(flexTexts(negative.flexPayloadJson)).toContain('-5,000円')
+  })
+
+  it('カテゴリが多い月は上位 12 件までを個別表示し、残りは 1 行に合算する', () => {
+    // 上限が無いと Flex payload が LINE のサイズ上限を超え、その月のサマリが失われる
+    const many = Array.from({ length: 15 }, (_, i) => ({
+      categoryId: CategoryIdSchema.parse(ulid(`CAT${String(i).padStart(2, '0')}`)),
+      total: money((i + 1) * 1000),
+    }))
+    const content = buildHouseholdSummaryContent(
+      report({ householdCategoryTotals: many }),
+      () => undefined,
+      links,
+    )
+    if (content.kind !== 'flex_message') throw new Error('unreachable')
+    const texts = flexTexts(content.flexPayloadJson)
+    const rows = texts.filter(t => t.startsWith('・'))
+    expect(rows).toHaveLength(13) // 個別 12 行 + 合算 1 行
+    expect(rows.at(-1)).toBe('・ほか 3 件')
+    // 合算されるのは金額の小さい 3 件（1000 + 2000 + 3000）
+    expect(texts).toContain('6,000円')
+  })
+
+  it('長すぎるカテゴリ名は切り詰める', () => {
+    const longName = 'あ'.repeat(50)
+    const content = buildHouseholdSummaryContent(report(), () => longName, links)
+    if (content.kind !== 'flex_message') throw new Error('unreachable')
+    const label = flexTexts(content.flexPayloadJson).find(t => t.startsWith('・')) ?? ''
+    expect(label.length).toBeLessThanOrEqual(25) // 先頭の「・」+ 24 文字
+    expect(label.endsWith('…')).toBe(true)
   })
 
   it('名前を解決できないカテゴリは ID を露出させず「その他」に丸める', () => {

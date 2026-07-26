@@ -128,3 +128,76 @@ describe('CORS 許可オリジンの解決 (#309)', () => {
     expect(deps.allowedOrigins).toEqual(['https://example.cloudfront.net'])
   })
 })
+
+describe('Deep Link の起点 URL の解決 (#389)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  /** モックフォールバック・WEB_BASE_URL 未設定の警告で出力が埋まらないように黙らせる */
+  function silenceWarn(): void {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  }
+
+  it('WEB_BASE_URL が設定されていればそれを使う', () => {
+    silenceWarn()
+    const deps = createDeps({
+      CORS_ALLOWED_ORIGINS: 'https://example.cloudfront.net',
+      WEB_BASE_URL: 'https://liff.line.me/1234567890-abcdefgh',
+    })
+
+    expect(deps.webBaseUrl).toBe('https://liff.line.me/1234567890-abcdefgh')
+  })
+
+  it('WEB_BASE_URL 未設定なら CORS 許可オリジンの先頭にフォールバックする', () => {
+    silenceWarn()
+    const deps = createDeps({
+      CORS_ALLOWED_ORIGINS: 'https://example.cloudfront.net,https://preview.example.net',
+    })
+
+    expect(deps.webBaseUrl).toBe('https://example.cloudfront.net')
+  })
+
+  it('フォールバック時は設定漏れに気づけるよう警告を出す', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    createDeps({ CORS_ALLOWED_ORIGINS: 'https://example.cloudfront.net' })
+
+    expect(warn.mock.calls.flat().join('\n')).toContain('WEB_BASE_URL')
+  })
+
+  it('空白のみの WEB_BASE_URL は未設定として扱う', () => {
+    silenceWarn()
+    const deps = createDeps({
+      CORS_ALLOWED_ORIGINS: 'https://example.cloudfront.net',
+      WEB_BASE_URL: '   ',
+    })
+
+    expect(deps.webBaseUrl).toBe('https://example.cloudfront.net')
+  })
+
+  it('開発環境で両方未設定なら localhost:3000 になる', () => {
+    silenceWarn()
+    expect(createDeps({}).webBaseUrl).toBe('http://localhost:3000')
+  })
+
+  it('スキームの無い WEB_BASE_URL は起動エラーにする（壊れた URI で全配信が失敗するため）', () => {
+    silenceWarn()
+    expect(() => createDeps({ WEB_BASE_URL: 'liff.line.me/1234567890-abcdefgh' })).toThrowError(
+      /must be an absolute URL/,
+    )
+  })
+
+  it('クエリ付きの WEB_BASE_URL は起動エラーにする', () => {
+    silenceWarn()
+    expect(() => createDeps({ WEB_BASE_URL: 'https://liff.line.me/app?a=b' })).toThrowError(
+      /must not contain a query string or fragment/,
+    )
+  })
+
+  it('http(s) 以外のスキームは起動エラーにする', () => {
+    silenceWarn()
+    expect(() => createDeps({ WEB_BASE_URL: 'javascript:alert(1)' })).toThrowError(
+      /must use http\(s\)/,
+    )
+  })
+})

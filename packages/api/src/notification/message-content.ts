@@ -16,8 +16,17 @@
  * 世帯サマリは共通トークルーム宛で、世帯費用と資産のみを載せる（個人・経費は載せない）。
  */
 import type { DeliveryContent, MonthlyReport, UserRole, YearMonth } from '@warimaru/domain'
-import { DeliveryContentSchema } from '@warimaru/domain'
+import { DeliveryContentSchema, selfTotalsOf } from '@warimaru/domain'
 import type { DeepLinkBuilder } from './deep-links.js'
+
+/**
+ * 世帯サマリに個別表示するカテゴリ行の上限。超過分は「その他」に合算する。
+ * カテゴリ数もカテゴリ名の長さも利用者が自由に増やせるため、上限が無いと
+ * Flex payload が LINE のサイズ上限を超えて 400 になり、その月のサマリが失われる。
+ */
+const MAX_CATEGORY_ROWS = 12
+/** カテゴリ名の表示上限（超過分は末尾を省略記号に置き換える） */
+const MAX_CATEGORY_LABEL_LENGTH = 24
 
 /** 金額表示（円・3 桁区切り） */
 function formatYen(amount: number): string {
@@ -115,6 +124,17 @@ export function buildCsvImportReminderContent(
   })
 }
 
+/**
+ * カテゴリの表示ラベル。名前を解決できないカテゴリは ID をそのまま出さず「その他」に丸め、
+ * 長すぎる名前は切り詰める（削除済みカテゴリの ID 露出と payload 肥大の両方を防ぐ）。
+ */
+function categoryLabel(name: string | undefined): string {
+  if (name === undefined) return 'その他'
+  return name.length <= MAX_CATEGORY_LABEL_LENGTH
+    ? name
+    : `${name.slice(0, MAX_CATEGORY_LABEL_LENGTH - 1)}…`
+}
+
 /** 残高推移の最終値（系列が空なら undefined） */
 function latestOf<T>(series: readonly T[]): T | undefined {
   return series.length === 0 ? undefined : series[series.length - 1]
@@ -136,8 +156,19 @@ export function buildHouseholdSummaryContent(
   const householdTotal = householdCategoryTotals.reduce((sum, c) => sum + c.total, 0)
 
   const rows: Record<string, unknown>[] = [keyValueRow('世帯費用 合計', formatYen(householdTotal))]
-  for (const { categoryId, total } of householdCategoryTotals) {
-    rows.push(keyValueRow(`・${categoryNameOf(categoryId) ?? 'その他'}`, formatYen(total)))
+  // 金額の大きい順に上位のみ個別表示し、残りは 1 行に合算する（上限の根拠は MAX_CATEGORY_ROWS）
+  const sorted = [...householdCategoryTotals].sort((a, b) => b.total - a.total)
+  for (const { categoryId, total } of sorted.slice(0, MAX_CATEGORY_ROWS)) {
+    rows.push(keyValueRow(`・${categoryLabel(categoryNameOf(categoryId))}`, formatYen(total)))
+  }
+  const overflow = sorted.slice(MAX_CATEGORY_ROWS)
+  if (overflow.length > 0) {
+    rows.push(
+      keyValueRow(
+        `・ほか ${overflow.length} 件`,
+        formatYen(overflow.reduce((sum, c) => sum + c.total, 0)),
+      ),
+    )
   }
   rows.push({ type: 'separator', margin: 'md' })
   rows.push(keyValueRow('NISA 積立累計', formatYen(nisaContributionAccumulated)))
@@ -181,16 +212,9 @@ export function buildPersonalSummaryContent(
   role: UserRole,
   links: DeepLinkBuilder,
 ): DeliveryContent {
-  const {
-    targetYearMonth,
-    personalTotalHoney,
-    personalTotalDarling,
-    businessExpenseTotalHoney,
-    businessExpenseTotalDarling,
-  } = report.common
-  const personalTotal = role === 'honey' ? personalTotalHoney : personalTotalDarling
-  const businessExpenseTotal =
-    role === 'honey' ? businessExpenseTotalHoney : businessExpenseTotalDarling
+  const { targetYearMonth } = report.common
+  // 本人分の抜き出しはドメインの selfTotalsOf が単一ソース（MonthlyReportView と同じ関数）
+  const { personalTotalSelf, businessExpenseTotalSelf } = selfTotalsOf(report.common, role)
 
   return DeliveryContentSchema.parse({
     kind: 'flex_message',
@@ -199,8 +223,8 @@ export function buildPersonalSummaryContent(
         title: `${formatMonthLabel(targetYearMonth)}のあなたのサマリ`,
         subtitle: 'このメッセージはあなたにだけ届いています',
         rows: [
-          keyValueRow('個人費用 合計', formatYen(personalTotal)),
-          keyValueRow('経費(会社) 合計', formatYen(businessExpenseTotal)),
+          keyValueRow('個人費用 合計', formatYen(personalTotalSelf)),
+          keyValueRow('経費(会社) 合計', formatYen(businessExpenseTotalSelf)),
         ],
         linkLabel: 'レポートを開く',
         linkUrl: links.monthlyReport(targetYearMonth),

@@ -64,7 +64,12 @@ import { domainEventBase } from '../event-handlers/event-base.js'
 
 export interface DeliverInput {
   target: DeliveryTarget
-  content: DeliveryContent
+  /**
+   * 配信内容。関数を渡すと冪等性チェックを通過した場合にだけ評価される。
+   * 本文の組み立てが DB 読み取り（カテゴリ名の解決など）を伴う呼出し側では、
+   * 既配信の再実行で不要な往復が走らないよう関数形式を使う。
+   */
+  content: DeliveryContent | (() => DeliveryContent | Promise<DeliveryContent>)
   purpose: DeliveryPurpose
   /** 同一配信の重複防止キー（呼出し側が用途ごとの規約で計算する） */
   idempotencyKey: string
@@ -107,6 +112,10 @@ export interface NotificationDeliveryServiceDeps {
   failsafeEmailRecipients: string[]
   failsafeFailureThreshold?: number | undefined
   now?: (() => Date) | undefined
+}
+
+async function resolveContent(content: DeliverInput['content']): Promise<DeliveryContent> {
+  return typeof content === 'function' ? content() : content
 }
 
 function describeCounterRef(ref: FailureCounterRef): string {
@@ -222,7 +231,7 @@ export function createNotificationDeliveryService(
         {
           deliveryMessageId: DeliveryMessageIdSchema.parse(newUlid()),
           target: input.target,
-          content: input.content,
+          content: await resolveContent(input.content),
           purpose: input.purpose,
         },
         now(),
@@ -253,11 +262,12 @@ export function createNotificationDeliveryService(
         return { kind: 'already_delivered', log: existing }
       }
 
+      const content = await resolveContent(input.content)
       const reserved = reserveDeliveryMessage(
         {
           deliveryMessageId: DeliveryMessageIdSchema.parse(newUlid()),
           target: input.target,
-          content: input.content,
+          content,
           purpose: input.purpose,
         },
         now(),
@@ -265,7 +275,7 @@ export function createNotificationDeliveryService(
       await deps.deliveryMessageRepository.save(reserved)
 
       const sending = startSendingMessage(reserved, now())
-      const outcome = await deps.lineMessagingGateway.sendPush(input.target, input.content)
+      const outcome = await deps.lineMessagingGateway.sendPush(input.target, content)
 
       if (outcome.result.kind === 'success') {
         const sent = markMessageSent(sending, outcome.result.lineMessageId, now())

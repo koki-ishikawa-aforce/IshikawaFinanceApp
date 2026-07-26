@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { YearMonthSchema, type YearMonth } from '../../shared/value-objects/YearMonth'
 import { ReminderStopReasonSchema, type ReminderStopReason } from './ReminderStopReason'
 
 /**
@@ -22,6 +23,56 @@ import { ReminderStopReasonSchema, type ReminderStopReason } from './ReminderSto
  * 「起動はするが常に対象外」という無言の停止を招くため、ドメインの単一ソースとして置く。
  */
 export const REMINDER_START_DAY_OF_MONTH = 5
+
+/** JST は UTC+9 固定（サマータイムが無いためオフセットで表現できる） */
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000
+
+/**
+ * JST の暦日（年・月・日）。`Date` は UTC 基準のため +9h してから UTC 部品を読む。
+ *
+ * 08g の「当月 5 日」は利用者から見た JST の暦日であり、UTC で判定すると
+ * 毎月 9 時間ぶん前倒しで発火する。日付規約が呼出し側ごとに割れないようここに置く。
+ */
+export function jstCalendarParts(at: Date): { year: number; month: number; day: number } {
+  const jst = new Date(at.getTime() + JST_OFFSET_MS)
+  return { year: jst.getUTCFullYear(), month: jst.getUTCMonth() + 1, day: jst.getUTCDate() }
+}
+
+/** JST 暦日の年月（"YYYY-MM"）。対象月との一致判定に使う */
+export function jstYearMonthOf(at: Date): YearMonth {
+  const { year, month } = jstCalendarParts(at)
+  return YearMonthSchema.parse(`${year}-${String(month).padStart(2, '0')}`)
+}
+
+/** リマインダーの配信期間の判定結果 */
+export const ReminderWindowSchema = z.discriminatedUnion('kind', [
+  /** 配信期間内（当月かつ 5 日以降） */
+  z.object({ kind: z.literal('open') }),
+  /** 当月だが 5 日より前 */
+  z.object({ kind: z.literal('before_start_day'), dayOfMonth: z.number().int() }),
+  /** 対象月が「当月」ではない（過去月・未来月の取り違え） */
+  z.object({ kind: z.literal('not_current_month'), currentMonth: YearMonthSchema }),
+])
+export type ReminderWindow = z.infer<typeof ReminderWindowSchema>
+
+/**
+ * 対象月と判定時刻から、リマインダーを配信してよい期間かを判定する（08g §2 の事前条件）。
+ *
+ * 「当月 5 日以降」という規則を定数と一緒にドメインへ置き、対象月の取り違え
+ * （スケジューラから別月が渡る）もここで弾く。
+ */
+export function judgeReminderWindow(targetMonth: YearMonth, at: Date): ReminderWindow {
+  const currentMonth = jstYearMonthOf(at)
+  if (currentMonth !== targetMonth) {
+    return ReminderWindowSchema.parse({ kind: 'not_current_month', currentMonth })
+  }
+  const { day } = jstCalendarParts(at)
+  return ReminderWindowSchema.parse(
+    day < REMINDER_START_DAY_OF_MONTH
+      ? { kind: 'before_start_day', dayOfMonth: day }
+      : { kind: 'open' },
+  )
+}
 
 export const ReminderContinuationJudgmentSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('continue'), judgedAt: z.date() }),
@@ -69,18 +120,13 @@ export function judgeReminderContinuation(
  *
  * 配信先は世帯にひとつの共通トークルームで、宛先を個人単位に分けられない。片方だけが
  * 取込済みでも、もう片方への催促はまだ必要なため「1 人でも継続なら継続」とする。
- * 判定が 1 件も無い場合（メンバー未登録）は停止扱い（催促する相手が居ない）。
+ *
+ * 判定が 1 件も無い場合（メンバー未登録）は `undefined` を返す。08g の停止理由は
+ * 「CSV 取込完了」「通知機能無効化中」の 2 値しかなく、どちらも実態に反するため、
+ * 事実と異なる理由で停止を記録するより「配信対象が存在しない」を呼出し側へ返す。
  */
 export function combineReminderJudgments(
   judgments: readonly ReminderContinuationJudgment[],
-  judgedAt: Date,
-): ReminderContinuationJudgment {
-  const firstContinue = judgments.find(j => j.kind === 'continue')
-  if (firstContinue !== undefined) return firstContinue
-
-  const firstStop = judgments.find(j => j.kind === 'stop')
-  return (
-    firstStop ??
-    judgeReminderContinuation({ csvImportCompleted: false, notificationEnabled: false }, judgedAt)
-  )
+): ReminderContinuationJudgment | undefined {
+  return judgments.find(j => j.kind === 'continue') ?? judgments[0]
 }

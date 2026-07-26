@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import type {
   AppUser,
   CsvImportCompletionView,
+  DeliveryContent,
   DomainEvent,
   LineMessagingGateway,
   LinePushResult,
@@ -22,7 +23,6 @@ import { createNotificationDeliveryService } from '../../src/notification/delive
 import { createDeepLinkBuilder } from '../../src/notification/deep-links.js'
 import {
   createCsvImportReminderRunner,
-  jstCalendarParts,
   type CsvImportReminderRunner,
 } from '../../src/notification/csv-import-reminder.js'
 import {
@@ -70,12 +70,21 @@ const pushFailure: LinePushResult = {
   detail: 'stub failure',
 }
 
-function stubLineGateway(result: LinePushResult): LineMessagingGateway & { calls: number } {
+/** 送信本文を記録するスタブ（本文が検証されないと対象月の取り違えを検出できない） */
+function stubLineGateway(
+  result: LinePushResult,
+): LineMessagingGateway & { calls: number; sentTexts: string[] } {
   const gateway = {
     calls: 0,
-    sendPush() {
+    sentTexts: [] as string[],
+    sendPush(_target: unknown, content: DeliveryContent) {
       gateway.calls += 1
-      return Promise.resolve({ sentPayloadJson: '{"stub":true}', result })
+      gateway.sentTexts.push(
+        content.kind === 'plain_text'
+          ? `${content.textBody}\n${content.linkUrl ?? ''}`
+          : content.flexPayloadJson,
+      )
+      return Promise.resolve({ sentPayloadJson: JSON.stringify(content), result })
     },
   }
   return gateway
@@ -84,7 +93,7 @@ function stubLineGateway(result: LinePushResult): LineMessagingGateway & { calls
 interface Harness {
   runner: CsvImportReminderRunner
   events: DomainEvent[]
-  lineGateway: LineMessagingGateway & { calls: number }
+  lineGateway: LineMessagingGateway & { calls: number; sentTexts: string[] }
   logRepository: ReturnType<typeof createMockLineDeliveryLogRepository>
 }
 
@@ -154,21 +163,6 @@ async function buildHarness(options: {
   return { runner, events, lineGateway, logRepository }
 }
 
-describe('jstCalendarParts', () => {
-  it('UTC の深夜は JST では翌日の午前 9 時として扱われる', () => {
-    // UTC 2026-07-04T20:00 = JST 2026-07-05T05:00（= リマインダー開始日）
-    expect(jstCalendarParts(new Date('2026-07-04T20:00:00Z'))).toEqual({
-      year: 2026,
-      month: 7,
-      day: 5,
-    })
-  })
-
-  it('UTC 基準ではまだ 5 日でも JST で 5 日なら 5 日と判定する', () => {
-    expect(jstCalendarParts(new Date('2026-07-05T00:00:00Z')).day).toBe(5)
-  })
-})
-
 describe('CSV 取込リマインダー', () => {
   let harness: Harness
 
@@ -214,6 +208,16 @@ describe('CSV 取込リマインダー', () => {
       })
     })
 
+    it('送信本文が対象月の催促になっている（月の取り違えを検出する）', async () => {
+      await harness.runner.run({ targetMonth: month, at: day10 })
+      const sent = harness.lineGateway.sentTexts[0] ?? ''
+      expect(sent).toContain('2026年7月')
+      // アップロード先（アプリ）と明細のダウンロード元（カード）の両方に対象月が伝わる
+      expect(sent).toContain('https://liff.example/app/imports?month=2026-07')
+      expect(sent).toContain('https://www.smbc-card.com/memx/web_meisai/top/index.html?p01=202607')
+      expect(sent).toContain('https://direct3.smbc.co.jp/sp/web/')
+    })
+
     it('配信ログに送信 payload が凍結される（OQ-34）', async () => {
       await harness.runner.run({ targetMonth: month, at: day10 })
       const log = await harness.logRepository.findByIdempotencyKey(
@@ -221,7 +225,7 @@ describe('CSV 取込リマインダー', () => {
       )
       expect(log?.resultStatus.kind).toBe('success')
       expect(log?.timingKind).toBe('reminder')
-      expect(log?.sentPayloadJson).toBe('{"stub":true}')
+      expect(log?.sentPayloadJson).toContain('2026年7月')
     })
 
     it('同じ JST 暦日に再実行しても二重配信しない（冪等）', async () => {
@@ -272,7 +276,7 @@ describe('CSV 取込リマインダー', () => {
     it('停止はスキップとして配信ログに記録される', async () => {
       await harness.runner.run({ targetMonth: month, at: day10 })
       const log = await harness.logRepository.findByIdempotencyKey(
-        `csv_import_reminder:stop:${TALK_ROOM_ID}:${month}`,
+        `csv_import_reminder:stop:${TALK_ROOM_ID}:${month}:csv_import_completed`,
       )
       expect(log?.resultStatus).toMatchObject({
         kind: 'skipped',
@@ -288,7 +292,7 @@ describe('CSV 取込リマインダー', () => {
       expect(harness.lineGateway.calls).toBe(0)
     })
 
-    it('通知機能が無効なら notification_disabled を理由に停止する', async () => {
+    it('通知機能が無効なら notification_disabled を理由に停止し、配信ログにも同じ理由が残る', async () => {
       const disabled = await buildHarness({
         users: [appUser('honey', 'user-honey', false), appUser('darling', 'user-darling', false)],
       })
@@ -298,6 +302,63 @@ describe('CSV 取込リマインダー', () => {
         type: 'ReminderStopped',
         stopReason: 'notification_disabled',
       })
+      // 停止理由 → スキップ理由の写像（08g §1 は両者を別語彙として持つ）
+      const log = await disabled.logRepository.findByIdempotencyKey(
+        `csv_import_reminder:stop:${TALK_ROOM_ID}:${month}:notification_disabled`,
+      )
+      expect(log?.resultStatus).toMatchObject({
+        kind: 'skipped',
+        skipReason: 'notification_disabled',
+      })
+    })
+
+    it('停止条件が解けたら配信を再開する（取込のやり直し・通知の再有効化）', async () => {
+      await harness.runner.run({ targetMonth: month, at: day10 })
+      // 取込が取り消された状態を作る: 完了していない世帯として組み直す
+      const resumed = await buildHarness({})
+      const outcome = await resumed.runner.run({ targetMonth: month, at: day11 })
+      expect(outcome.kind).toBe('sent')
+    })
+
+    it('別の理由で停止が成立したら、その理由でも 1 度だけ ReminderStopped を発行する', async () => {
+      const disabled = await buildHarness({
+        users: [appUser('honey', 'user-honey', false), appUser('darling', 'user-darling', false)],
+        completedUserIds: ['user-honey', 'user-darling'],
+      })
+      // 取込完了が優先されるので csv_import_completed で停止する
+      await disabled.runner.run({ targetMonth: month, at: day10 })
+      expect(disabled.events).toHaveLength(1)
+      expect(disabled.events[0]).toMatchObject({ stopReason: 'csv_import_completed' })
+    })
+  })
+
+  describe('対象月・世帯の前提が満たされない', () => {
+    it('対象月が当月でなければ配信しない（スケジューラの指定ミス）', async () => {
+      const h = await buildHarness({})
+      const outcome = await h.runner.run({
+        targetMonth: month,
+        at: new Date('2026-08-10T00:00:00Z'),
+      })
+      expect(outcome).toEqual({ kind: 'not_current_month', currentMonth: '2026-08' })
+      expect(h.lineGateway.calls).toBe(0)
+      expect(h.events).toHaveLength(0)
+    })
+
+    it('メンバーが 1 人も登録されていなければ、停止も記録せずイベントも出さない', async () => {
+      const h = await buildHarness({ users: [] })
+      const outcome = await h.runner.run({ targetMonth: month, at: day10 })
+      expect(outcome).toEqual({ kind: 'no_members' })
+      expect(h.lineGateway.calls).toBe(0)
+      // 08g の停止理由 2 値はどちらも実態に合わないため ReminderStopped を出さない
+      expect(h.events).toHaveLength(0)
+    })
+
+    it('不正な対象月は受け付けない（スケジューラ payload は外部入力）', async () => {
+      const h = await buildHarness({})
+      await expect(
+        h.runner.run({ targetMonth: '2026-13' as YearMonth, at: day10 }),
+      ).rejects.toThrow()
+      expect(h.lineGateway.calls).toBe(0)
     })
   })
 

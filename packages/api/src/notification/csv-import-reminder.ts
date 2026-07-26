@@ -12,27 +12,31 @@
  *  - 停止は「共通トークルーム × 対象月」の冪等性キーで 1 回に固定する。これにより
  *    取込完了後に毎日実行されても ReminderStopped は 1 度しか発火しない
  *
- * 日付は JST で判定する（利用者の「5 日」は JST の暦日であり、UTC で判定すると
- * 毎月 9 時間ぶんだけ前倒しで発火する）。
+ * 日付は JST で判定する（利用者の「5 日」は JST の暦日）。判定規則と定数はドメインの
+ * `judgeReminderWindow` / `jstCalendarParts` に置き、ここでは呼ぶだけにする。
  */
 import type {
   AppUserRepository,
   CsvImportStatusQuery,
+  DeliverySkipReason,
   EventBus,
   ReminderContinuationJudgment,
+  ReminderStopReason,
   SharedTalkRoomRepository,
   TalkRoomId,
   YearMonth,
 } from '@warimaru/domain'
 import {
   DeliveryTargetSchema,
-  REMINDER_START_DAY_OF_MONTH,
   ReminderSentSchema,
   ReminderStoppedSchema,
+  YearMonthSchema,
   combineReminderJudgments,
+  isNotificationActivated,
   joinedTalkRoomIdOf,
+  jstCalendarParts,
   judgeReminderContinuation,
-  lineOperationSettingsOf,
+  judgeReminderWindow,
 } from '@warimaru/domain'
 import type { AppDeps } from '../composition-root.js'
 import type { NotificationDeliveryService } from './delivery-service.js'
@@ -41,14 +45,6 @@ import type { DeepLinkBuilder } from './deep-links.js'
 import { createDeepLinkBuilder } from './deep-links.js'
 import { buildCsvImportReminderContent } from './message-content.js'
 import { domainEventBase } from '../event-handlers/event-base.js'
-
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000
-
-/** JST の暦日（年・月・日）。Date は UTC 基準のため +9h してから UTC 部品を読む */
-export function jstCalendarParts(at: Date): { year: number; month: number; day: number } {
-  const jst = new Date(at.getTime() + JST_OFFSET_MS)
-  return { year: jst.getUTCFullYear(), month: jst.getUTCMonth() + 1, day: jst.getUTCDate() }
-}
 
 /** JST 暦日のキー（YYYY-MM-DD）。1 日 1 通の冪等性キーに使う */
 function jstDateKey(at: Date): string {
@@ -59,6 +55,10 @@ function jstDateKey(at: Date): string {
 export type CsvImportReminderOutcome =
   /** 当月 5 日より前のため対象外（08g §2 の事前条件） */
   | { kind: 'before_start_day'; dayOfMonth: number }
+  /** 対象月が当月ではない（スケジューラの指定ミス） */
+  | { kind: 'not_current_month'; currentMonth: YearMonth }
+  /** 世帯にメンバーが 1 人も登録されていない（催促する相手が居ない） */
+  | { kind: 'no_members' }
   /** 共通トークルームが未参加で配信先を決められない */
   | { kind: 'target_unresolved' }
   /** 既に停止済み（この月のリマインダーは終了している） */
@@ -85,9 +85,25 @@ export interface CsvImportReminderRunner {
   run(params: { targetMonth: YearMonth; at?: Date }): Promise<CsvImportReminderOutcome>
 }
 
-/** 停止の冪等性キー（対象月に 1 回だけ停止を記録する） */
-function stopIdempotencyKey(talkRoomId: TalkRoomId, targetMonth: YearMonth): string {
-  return `csv_import_reminder:stop:${talkRoomId}:${targetMonth}`
+/**
+ * 停止の冪等性キー（対象月 × 停止理由ごとに 1 回だけ記録する）。
+ *
+ * 理由を含めるのは、月の前半に通知無効化で停止したあと再有効化して配信が再開し、
+ * 後半に本来の「CSV 取込完了」で停止したときに、実態と異なる停止理由だけが
+ * 監査ログに凍結されるのを避けるため。同じ理由での二重発火は従来どおり防げる。
+ */
+function stopIdempotencyKey(
+  talkRoomId: TalkRoomId,
+  targetMonth: YearMonth,
+  stopReason: ReminderStopReason,
+): string {
+  return `csv_import_reminder:stop:${talkRoomId}:${targetMonth}:${stopReason}`
+}
+
+/** 停止理由 → 配信ログのスキップ理由（08g §1 は両者を別語彙として持つ） */
+const SKIP_REASON_BY_STOP_REASON: Record<ReminderStopReason, DeliverySkipReason> = {
+  csv_import_completed: 'reminder_stop_condition_met',
+  notification_disabled: 'notification_disabled',
 }
 
 /** 配信の冪等性キー（対象月 × JST 暦日で 1 日 1 通） */
@@ -100,7 +116,7 @@ export function createCsvImportReminderRunner(
 ): CsvImportReminderRunner {
   const now = deps.now ?? ((): Date => new Date())
 
-  /** 夫婦それぞれについて、対象月のリマインダー継続可否を判定する */
+  /** 夫婦それぞれについて、対象月のリマインダー継続可否を判定する（未登録は含めない） */
   async function judgeForMembers(
     targetMonth: YearMonth,
     at: Date,
@@ -121,8 +137,7 @@ export function createCsvImportReminderRunner(
         return judgeReminderContinuation(
           {
             csvImportCompleted: completion !== null,
-            notificationEnabled:
-              lineOperationSettingsOf(user).notificationActivation.kind === 'activated',
+            notificationEnabled: isNotificationActivated(user),
           },
           at,
         )
@@ -131,10 +146,19 @@ export function createCsvImportReminderRunner(
   }
 
   return {
-    async run({ targetMonth, at = now() }): Promise<CsvImportReminderOutcome> {
-      const { day } = jstCalendarParts(at)
-      if (day < REMINDER_START_DAY_OF_MONTH) {
-        return { kind: 'before_start_day', dayOfMonth: day }
+    async run(params): Promise<CsvImportReminderOutcome> {
+      // 呼出し元はスケジューラのイベント payload（外部入力）になるため、型だけに頼らず検証する
+      const targetMonth = YearMonthSchema.parse(params.targetMonth)
+      const at = params.at ?? now()
+
+      const window = judgeReminderWindow(targetMonth, at)
+      if (window.kind !== 'open') {
+        console.warn(
+          `[notification] CSV 取込リマインダーは配信期間外のためスキップする（${targetMonth}: ${window.kind}）`,
+        )
+        return window.kind === 'before_start_day'
+          ? { kind: 'before_start_day', dayOfMonth: window.dayOfMonth }
+          : { kind: 'not_current_month', currentMonth: window.currentMonth }
       }
 
       const talkRoomId = joinedTalkRoomIdOf(await deps.sharedTalkRoomRepository.find())
@@ -147,17 +171,25 @@ export function createCsvImportReminderRunner(
         return { kind: 'target_unresolved' }
       }
 
+      const judgment = combineReminderJudgments(await judgeForMembers(targetMonth, at))
+      if (judgment === undefined) {
+        // 08g の停止理由 2 値はどちらも実態に合わないため、停止として記録もイベント発行もしない
+        console.warn(
+          `[notification] 世帯にメンバーが未登録のため CSV 取込リマインダーを送れない: ${targetMonth}`,
+        )
+        return { kind: 'no_members' }
+      }
+
       const target = DeliveryTargetSchema.parse({ kind: 'shared_talk_room', talkRoomId })
       const content = buildCsvImportReminderContent(targetMonth, deps.deepLinks)
-      const judgment = combineReminderJudgments(await judgeForMembers(targetMonth, at), at)
 
       if (judgment.kind === 'stop') {
         const outcome = await deps.notificationDeliveryService.skip({
           target,
           content,
           purpose: 'csv_import_reminder',
-          idempotencyKey: stopIdempotencyKey(talkRoomId, targetMonth),
-          skipReason: 'reminder_stop_condition_met',
+          idempotencyKey: stopIdempotencyKey(talkRoomId, targetMonth, judgment.stopReason),
+          skipReason: SKIP_REASON_BY_STOP_REASON[judgment.stopReason],
         })
         if (outcome.kind === 'already_delivered') return { kind: 'already_stopped' }
 
@@ -180,7 +212,12 @@ export function createCsvImportReminderRunner(
         idempotencyKey: sendIdempotencyKey(talkRoomId, targetMonth, at),
       })
       if (outcome.kind === 'already_delivered') return { kind: 'already_sent_today' }
-      if (outcome.kind === 'failed') return { kind: 'send_failed' }
+      if (outcome.kind === 'failed') {
+        console.error(
+          `[notification] CSV 取込リマインダーの送信に失敗した（翌日の実行で再送される）: ${targetMonth}`,
+        )
+        return { kind: 'send_failed' }
+      }
 
       await deps.eventBus.publish(
         ReminderSentSchema.parse({

@@ -45,10 +45,20 @@ const TALK_ROOM_ID = TalkRoomIdSchema.parse('room_household_001')
 const month: YearMonth = YearMonthSchema.parse('2026-07')
 const at = new Date('2026-08-01T00:00:00Z')
 
-function appUser(role: UserRole, userId: string): AppUser {
+function appUser(role: UserRole, userId: string, notificationActivated = true): AppUser {
   return AppUserSchema.parse({
     kind: 'phase1_completed',
-    common: { userId, role, firstRegisteredAt: new Date('2026-01-01T00:00:00Z') },
+    common: {
+      userId,
+      role,
+      firstRegisteredAt: new Date('2026-01-01T00:00:00Z'),
+      lineOperationSettings: {
+        friendAdd: { kind: 'added', followWebhookReceivedAt: new Date('2026-01-01T00:00:00Z') },
+        notificationActivation: notificationActivated
+          ? { kind: 'activated', activatedAt: new Date('2026-01-02T00:00:00Z') }
+          : { kind: 'not_activated' },
+      },
+    },
   })
 }
 
@@ -102,6 +112,9 @@ async function buildHarness(options: {
   joined?: boolean
   savedReport?: MonthlyReport | null
   pushResult?: LinePushResult
+  users?: AppUser[]
+  /** 世帯サマリ配信の途中で例外を起こす（配信先の解決を失敗させる） */
+  failHouseholdSummary?: boolean
 }) {
   const eventBus = new InMemoryEventBus()
   const events: DomainEvent[] = []
@@ -116,14 +129,21 @@ async function buildHarness(options: {
   }
 
   const appUserRepository = createMockAppUserRepository()
-  await appUserRepository.save(appUser('honey', 'user-honey'))
-  await appUserRepository.save(appUser('darling', 'user-darling'))
+  for (const user of options.users ?? [
+    appUser('honey', 'user-honey'),
+    appUser('darling', 'user-darling'),
+  ]) {
+    await appUserRepository.save(user)
+  }
 
   const sharedTalkRoomRepository = createMockSharedTalkRoomRepository()
   if (options.joined ?? true) {
     await sharedTalkRoomRepository.save(
       recordSharedTalkRoomJoined(NOT_JOINED_SHARED_TALK_ROOM, TALK_ROOM_ID, at),
     )
+  }
+  if (options.failHouseholdSummary === true) {
+    sharedTalkRoomRepository.find = () => Promise.reject(new Error('injected talk room failure'))
   }
 
   const monthlyReportRepository = createMockMonthlyReportRepository()
@@ -231,6 +251,8 @@ describe('月次レポートCSV確定 → サマリ配信', () => {
     const toTalkRoom = h.lineGateway.sends.find(s => s.to === TALK_ROOM_ID)
     expect(toTalkRoom?.payload).not.toContain('31,000円')
     expect(toTalkRoom?.payload).not.toContain('12,000円')
+    expect(toTalkRoom?.payload).not.toContain('27,500円')
+    expect(toTalkRoom?.payload).not.toContain('4,500円')
   })
 
   it('片方が未取込なら 1 通も配信しない', async () => {
@@ -284,6 +306,51 @@ describe('月次レポートCSV確定 → サマリ配信', () => {
 
     expect(h.lineGateway.sends).toHaveLength(0)
     expect(h.events).toHaveLength(0)
+  })
+
+  it('夫婦の片方が未登録なら 1 通も配信しない（過少な世帯費用を確定値として流さない）', async () => {
+    const h = await buildHarness({
+      users: [appUser('honey', 'user-honey')],
+      completedUserIds: ['user-honey'],
+    })
+    await h.publishConfirmed()
+
+    expect(h.lineGateway.sends).toHaveLength(0)
+    expect(h.events).toHaveLength(0)
+  })
+
+  it('通知機能が未有効化の相手がいる世帯には世帯サマリを送らず、スキップとして記録する', async () => {
+    const h = await buildHarness({
+      users: [appUser('honey', 'user-honey'), appUser('darling', 'user-darling', false)],
+    })
+    await h.publishConfirmed()
+
+    // 世帯サマリは送らない。有効化済みの honey への個人 DM は送る
+    expect(h.lineGateway.sends.map(s => s.to)).toEqual(['user-honey'])
+    const householdLog = await h.logRepository.findByIdempotencyKey(
+      `monthly_report_household_summary:${REPORT_ID}`,
+    )
+    expect(householdLog?.resultStatus).toMatchObject({
+      kind: 'skipped',
+      skipReason: 'notification_disabled',
+    })
+    const darlingLog = await h.logRepository.findByIdempotencyKey(
+      `monthly_report_personal_summary:${REPORT_ID}:user-darling`,
+    )
+    expect(darlingLog?.resultStatus).toMatchObject({
+      kind: 'skipped',
+      skipReason: 'notification_disabled',
+    })
+    expect(h.events).toHaveLength(1)
+    expect(h.events[0]).toMatchObject({ type: 'MonthlyReportPersonalSummaryDelivered' })
+  })
+
+  it('世帯サマリの配信が例外で落ちても個人サマリは配信される', async () => {
+    const h = await buildHarness({ failHouseholdSummary: true })
+    await h.publishConfirmed()
+
+    expect(h.lineGateway.sends.map(s => s.to)).toEqual(['user-honey', 'user-darling'])
+    expect(h.events.filter(e => e.type === 'MonthlyReportPersonalSummaryDelivered')).toHaveLength(2)
   })
 
   it('LINE 送信に失敗した宛先の配信イベントは発行しない', async () => {
