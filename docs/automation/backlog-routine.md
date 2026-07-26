@@ -29,7 +29,7 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 
 - **1 fire = 最大1 PR = 1 fresh session** — セッションの長時間化によるコンテキスト劣化を避ける。複数件の消化は fire の回数で稼ぐ(毎時 fire なら1日最大〜24件)。ただし撤退・スキップが発生した場合は候補ループで次の Issue へ進み、1件 PR 作成に到達するまで試行する(最大5候補)
 - **人間の承認は「着手前のラベル付け」に前倒し** — `ready-to-implement` を付ける行為が着手承認。無人モードは承認済みの Issue にしか触れない
-- **「完了」は PR の CI が green であること** — 1 fire は PR 作成では終わらない。作成した PR の CI(統合テストを含む)が green になるのを同一 fire 内で確認して初めて完了とする。`pnpm test` は adapters-neon の統合テストを含まないため「ローカル `/verify` 全 green」＝「CI green」ではない。CI が赤なら同一 fire 内で修正 → 再 push し、直せなければ(同一エラーで3回失敗)マージ判断 Issue に状況を記録して撤退する(赤い PR を「完了」として放置しない)。詳細は `.claude/skills/issue-work/SKILL.md` 無人モード手順7
+- **「完了」は PR の CI が green であること** — 1 fire は PR 作成では終わらない。作成した PR の CI(統合テストを含む)が green になるのを同一 fire 内で確認して初めて完了とする。`pnpm test` は adapters-postgres の統合テストを含まないため「ローカル `/verify` 全 green」＝「CI green」ではない。CI が赤なら同一 fire 内で修正 → 再 push し、直せなければ(同一エラーで3回失敗)マージ判断 Issue に状況を記録して撤退する(赤い PR を「完了」として放置しない)。詳細は `.claude/skills/issue-work/SKILL.md` 無人モード手順7
 - **PR 作成で止める(自動マージはしない)** — PR は通常(non-Draft)で作成するが、マージ判断は必ず人間が行う(`/decide` セッション内の明示承認を含む)。Routine 自身による自動マージはしない
 - **ready 化と実装は分離する** — 無人消化 Routine 自身は `/backlog-ready` を実行しない(候補が尽きても自分でラベルを付けて補充しない)。ready 化は人間が起点のセッション(`/issue-create` の手順4、または `/backlog-ready` の明示的な実行)でのみ行う。これを崩すと承認ゲートが消える。**例外: `/docs-drift`** — 無人・週次 Routine の `/docs-drift` は、docs とコードのどちらが正かが自明で修正が機械的な乖離に限り、起票した Issue へ自分で `ready-to-implement` を付ける(出典: `.claude/skills/docs-drift/SKILL.md` 手順5-3)。無人 Routine の起票 → 別 fire の `/issue-work` による実装まで人間が介在しないパスになるが、判断が必要な乖離には `needs-decision` を付けて承認ゲートに乗せるため、この例外に乗るのは自明・機械的な修正だけに限られる。かつマージ判断のゲート(`needs-decision` の追認)は残るため実害は小さい
 
@@ -121,9 +121,9 @@ mergeable は GitHub が照会して初めて計算するため直後は `unknow
 
 ## 統合テストの実行(無人環境)
 
-CI は `.github/workflows/ci.yml` の専用ステップで adapters-neon の統合テスト(`test:integration`・要 PostgreSQL)を必ず実行する。`pnpm test` はこれを含まないため、無人モードが「ローカル全 green」で止まると CI で初めて赤が判明する。これを防ぐため、無人モードは次の2点を守る(手順の本体は `.claude/skills/verify/SKILL.md`「統合テスト」節):
+CI は `.github/workflows/ci.yml` の専用ステップで adapters-postgres の統合テスト(`test:integration`・要 PostgreSQL)を必ず実行する。`pnpm test` はこれを含まないため、無人モードが「ローカル全 green」で止まると CI で初めて赤が判明する。これを防ぐため、無人モードは次の2点を守る(手順の本体は `.claude/skills/verify/SKILL.md`「統合テスト」節):
 
-- **実行判定を広げる(P1 の再発防止)** — 統合テストは「`packages/adapters-neon` の変更時のみ」ではなく、**`packages/domain` の振る舞い変更または `packages/adapters-neon` の変更があれば実行**する。統合テストは domain 層のプライバシー/Query 挙動を通しで検証するため、adapters-neon の実装を一切触らない domain 変更でも統合テストが壊れることがある(実例: `applyPrivacyFilter` の変更で `transactionListQuery.test.ts` が失敗)。
+- **実行判定を広げる(P1 の再発防止)** — 統合テストは「`packages/adapters-postgres` の変更時のみ」ではなく、**`packages/domain` の振る舞い変更または `packages/adapters-postgres` の変更があれば実行**する。統合テストは domain 層のプライバシー/Query 挙動を通しで検証するため、adapters-postgres の実装を一切触らない domain 変更でも統合テストが壊れることがある(実例: `applyPrivacyFilter` の変更で `transactionListQuery.test.ts` が失敗)。
 - **イメージ pull 不可時のフォールバック(P2)** — Routine 相当の環境ではネットワークポリシーにより `postgres:16` イメージの pull が 403 になり `docker compose up -d db` が失敗する。その場合はインストール済みの PostgreSQL 16 バイナリ(例: `/usr/lib/postgresql/16/bin`)を `postgres` ユーザーで直接 `initdb`/起動してテストする(具体コマンドは verify スキルに記載)。docker もローカルバイナリも使えないときは、統合テストは「CI で初めて検証される未確認の変更」となるため、手順7 の **CI green 確認**が最後の砦になる。
 
 ## パラメータ(チューニングポイント)

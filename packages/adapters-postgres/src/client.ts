@@ -13,11 +13,17 @@
  * ローカルで node-postgres を使うと db.transaction が動いてしまい、本番でのみ壊れる
  * コードを書けてしまう点に注意する。interactive transaction を要する save が必要になった時点で、
  * WebSocket `Pool`（@neondatabase/serverless + drizzle-orm/neon-serverless）のファクトリを追加する。
+ *
+ * `pg` はローカル開発と統合テストでしか使わないため、**動的 import で node-postgres を選んだ時だけ
+ * 読み込む**（#349）。本番（neon-http）の Lambda 起動でこのモジュールを評価しない分だけ、
+ * 読み込むコードと初期化時間を減らす。この遅延読み込みのために接続ファクトリは非同期になっている。
+ *
+ * 遅延させる対象は `pg` だけでなく `drizzle-orm/node-postgres` も含む。こちらが `pg` を
+ * 静的に import しているため、ドライバ側だけを動的にしても `pg` は結局読み込まれる。
+ * 静的 import に戻していないことは noStaticNodePgImport.test.ts が機械的に検出する。
  */
 import { neon } from '@neondatabase/serverless'
 import { drizzle as drizzleNeonHttp } from 'drizzle-orm/neon-http'
-import { drizzle as drizzleNodePg } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 import * as schema from './schema'
 
@@ -115,7 +121,13 @@ function createNeonHttpConnection(databaseUrl: string): DbConnection {
   return { db: drizzleNeonHttp(client, { schema }), close: () => Promise.resolve() }
 }
 
-function createNodePgConnection(databaseUrl: string): DbConnection {
+async function createNodePgConnection(databaseUrl: string): Promise<DbConnection> {
+  // ローカル開発 / 統合テスト専用のドライバ。ここで初めて読み込む（本番は評価しない、#349）。
+  // drizzle-orm/node-postgres が pg を静的に import しているため、両方まとめて遅延させる。
+  const [{ drizzle: drizzleNodePg }, { Pool }] = await Promise.all([
+    import('drizzle-orm/node-postgres'),
+    import('pg'),
+  ])
   const pool = new Pool({ connectionString: databaseUrl })
   // アイドル接続のエラー（DB 再起動・docker compose down 等）は 'error' で通知される。
   // リスナーが無いと Node が unhandled 'error' としてプロセスごと落とすため、
@@ -124,14 +136,17 @@ function createNodePgConnection(databaseUrl: string): DbConnection {
   return { db: drizzleNodePg(pool, { schema }), close: () => pool.end() }
 }
 
-/** 接続先に応じたドライバで DB 接続を開く（close() が必要な短命プロセス向け） */
-export function createDbConnection(config: DbDriverConfig): DbConnection {
+/**
+ * 接続先に応じたドライバで DB 接続を開く（close() が必要な短命プロセス向け）。
+ * `pg` の遅延読み込みのため非同期。ドライバ判定そのものは同期の `resolveDbDriver` に分かれている。
+ */
+export function createDbConnection(config: DbDriverConfig): Promise<DbConnection> {
   return resolveDbDriver(config) === 'neon-http'
-    ? createNeonHttpConnection(config.databaseUrl)
+    ? Promise.resolve(createNeonHttpConnection(config.databaseUrl))
     : createNodePgConnection(config.databaseUrl)
 }
 
 /** 接続先に応じたドライバで DB を組み立てる（プロセスと寿命を共にする API 本体向け） */
-export function createDb(config: DbDriverConfig): Db {
-  return createDbConnection(config).db
+export async function createDb(config: DbDriverConfig): Promise<Db> {
+  return (await createDbConnection(config)).db
 }

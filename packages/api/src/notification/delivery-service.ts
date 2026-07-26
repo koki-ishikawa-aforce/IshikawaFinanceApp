@@ -59,7 +59,7 @@ import {
   startSendingMessage,
   DEFAULT_FAILSAFE_FAILURE_THRESHOLD,
 } from '@warimaru/domain'
-import { newUlid } from '@warimaru/adapters-neon'
+import { newUlid } from '@warimaru/adapters-postgres'
 import { domainEventBase } from '../event-handlers/event-base.js'
 
 export interface DeliverInput {

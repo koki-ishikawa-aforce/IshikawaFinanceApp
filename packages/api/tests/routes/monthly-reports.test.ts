@@ -6,7 +6,7 @@ import {
   YearMonthSchema,
 } from '@warimaru/domain'
 import type { MonthlyReportQuery, MonthlyReportView } from '@warimaru/domain'
-import { newUlid } from '@warimaru/adapters-neon'
+import { newUlid } from '@warimaru/adapters-postgres'
 import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
 
 function buildView(month: string): MonthlyReportView {

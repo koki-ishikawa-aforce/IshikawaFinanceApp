@@ -3,7 +3,8 @@ import { serve } from '@hono/node-server'
 import { createDeps } from './composition-root.js'
 import { createApp } from './app.js'
 
-const deps = createDeps({
+// DB ドライバの選択で pg を遅延読み込みするため合成は非同期（#349）
+const deps = await createDeps({
   NODE_ENV: process.env['NODE_ENV'],
   DATABASE_URL: process.env['DATABASE_URL'],
   DATABASE_DRIVER: process.env['DATABASE_DRIVER'],
