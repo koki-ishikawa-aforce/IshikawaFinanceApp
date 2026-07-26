@@ -85,7 +85,7 @@ import {
   NeonCsvImportStatusQuery,
   createDbResolveCategoryNames,
   createDbResolveViewerRole,
-} from '@warimaru/adapters-neon'
+} from '@warimaru/adapters-postgres'
 import { isProduction } from './env.js'
 import { AnthropicPdfToCsvConverter } from './pdf-conversion/AnthropicPdfToCsvConverter.js'
 import { createGmailOAuthStateCodec } from './gmail-oauth/state.js'
@@ -313,87 +313,106 @@ function resolveAllowedOrigins(env: CompositionEnv): string[] {
   return [DEV_ALLOWED_ORIGIN]
 }
 
-export function createDeps(env: CompositionEnv): AppDeps {
-  if (!env.DATABASE_URL) {
-    // 本番では DATABASE_URL 未設定を致命的な設定漏れとして扱い、モックへ黙ってフォールバックしない。
-    // モックフォールバックは開発環境専用（#47 / #14 と同じ方針）。
-    if (isProduction(env.NODE_ENV)) {
-      throw new Error(
-        'DATABASE_URL is required in production. Refusing to start with mock data — set DATABASE_URL.',
-      )
-    }
-    console.warn('DATABASE_URL not set — using mock data (development only)')
-    // 開発モードの許可リスト（devViewerIdMiddleware / テストの X-User-Id と揃える）
-    const devAllowlist = AllowlistSchema.parse({
-      honeyLineUserId: 'user-honey-test',
-      darlingLineUserId: 'user-darling-test',
-    })
-    const appUserRepository = createMockAppUserRepository()
-    return {
-      appUserRepository,
-      gmailOAuthTokenRepository: createMockGmailOAuthTokenRepository(),
-      sharedTalkRoomRepository: createMockSharedTalkRoomRepository(),
-      allowlistQuery: createMockAllowlistQuery(devAllowlist),
-      spouseCompletionQuery: createMockSpouseCompletionQuery(appUserRepository, devAllowlist),
-      gmailOAuthGateway: createMockGmailOAuthGateway(
-        createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
+/**
+ * 開発モードの合成（インメモリモック）。DB へ接続しない構成を組み立てる。
+ *
+ * `createDeps` は DATABASE_URL が無いときにここへ委ねるが、この関数自体は DATABASE_URL の
+ * 有無を判定しない（DB を使わない構成を作る、というのが契約）。DB 接続を持たないため同期で
+ * 組み立てられる。実 DB 経路（`createDeps`）は `pg` の遅延読み込みのため非同期になった（#349）が、
+ * DB を使わないこの経路まで非同期にする必要はないので分けている。
+ * エンドポイントテストのアプリ組み立てもこの関数を直接使う。
+ */
+export function createMockDeps(env: CompositionEnv): AppDeps {
+  // 本番では DATABASE_URL 未設定を致命的な設定漏れとして扱い、モックへ黙ってフォールバックしない。
+  // モックフォールバックは開発環境専用（#47 / #14 と同じ方針）。
+  // ガードはこの関数側に置く（createDeps 経由でも直接呼んでも素通りしない）。
+  if (isProduction(env.NODE_ENV)) {
+    throw new Error(
+      'DATABASE_URL is required in production. Refusing to start with mock data — set DATABASE_URL.',
+    )
+  }
+  console.warn('Using in-memory mock data (development only) — not connecting to a database')
+  // 開発モードの許可リスト（devViewerIdMiddleware / テストの X-User-Id と揃える）
+  const devAllowlist = AllowlistSchema.parse({
+    honeyLineUserId: 'user-honey-test',
+    darlingLineUserId: 'user-darling-test',
+  })
+  const appUserRepository = createMockAppUserRepository()
+  return {
+    appUserRepository,
+    gmailOAuthTokenRepository: createMockGmailOAuthTokenRepository(),
+    sharedTalkRoomRepository: createMockSharedTalkRoomRepository(),
+    allowlistQuery: createMockAllowlistQuery(devAllowlist),
+    spouseCompletionQuery: createMockSpouseCompletionQuery(appUserRepository, devAllowlist),
+    gmailOAuthGateway: createMockGmailOAuthGateway(
+      createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
+    ),
+    lineFriendshipGateway: createMockLineFriendshipGateway(),
+    lineTalkRoomMembershipGateway: createMockLineTalkRoomMembershipGateway(),
+    // 開発モードは Phase0Config も Parameter Store も無いため、環境変数か固定値で署名検証を通す
+    // （この分岐自体が本番では起動エラーになるため、固定値は開発環境に閉じている）
+    resolveLineChannelSecret: () =>
+      Promise.resolve(env.LINE_CHANNEL_SECRET ?? 'dev-line-channel-secret'),
+    eventBus: new InMemoryEventBus(),
+    dashboardQuery: createMockDashboardQuery(),
+    transactionListQuery: createMockTransactionListQuery(),
+    monthlyReportQuery: createMockMonthlyReportQuery(),
+    accountBalanceQuery: createMockAccountBalanceQuery(),
+    balanceTimeSeriesQuery: createMockBalanceTimeSeriesQuery(),
+    accountRepository: createMockAccountRepository(),
+    expenseSettlementManagementQuery: createMockExpenseSettlementManagementQuery(),
+    csvImportStatusQuery: createMockCsvImportStatusQuery(),
+    // 開発モードの簡易ロール判定（seed の U_HONEY_DEV やテストの user-honey-test を honey に解決する）
+    resolveViewerRole: (viewerId: UserId) =>
+      Promise.resolve(
+        viewerId.toLowerCase().includes('honey') ? ('honey' as const) : ('darling' as const),
       ),
-      lineFriendshipGateway: createMockLineFriendshipGateway(),
-      lineTalkRoomMembershipGateway: createMockLineTalkRoomMembershipGateway(),
-      // 開発モードは Phase0Config も Parameter Store も無いため、環境変数か固定値で署名検証を通す
-      // （この分岐自体が本番では起動エラーになるため、固定値は開発環境に閉じている）
-      resolveLineChannelSecret: () =>
-        Promise.resolve(env.LINE_CHANNEL_SECRET ?? 'dev-line-channel-secret'),
-      eventBus: new InMemoryEventBus(),
-      dashboardQuery: createMockDashboardQuery(),
-      transactionListQuery: createMockTransactionListQuery(),
-      monthlyReportQuery: createMockMonthlyReportQuery(),
-      accountBalanceQuery: createMockAccountBalanceQuery(),
-      balanceTimeSeriesQuery: createMockBalanceTimeSeriesQuery(),
-      accountRepository: createMockAccountRepository(),
-      expenseSettlementManagementQuery: createMockExpenseSettlementManagementQuery(),
-      csvImportStatusQuery: createMockCsvImportStatusQuery(),
-      // 開発モードの簡易ロール判定（seed の U_HONEY_DEV やテストの user-honey-test を honey に解決する）
-      resolveViewerRole: (viewerId: UserId) =>
-        Promise.resolve(
-          viewerId.toLowerCase().includes('honey') ? ('honey' as const) : ('darling' as const),
-        ),
-      categoryMasterRepository: createMockCategoryMasterRepository(),
-      expenseTypeMasterRepository: createMockExpenseTypeMasterRepository(),
-      monthlyLimitRepository: createMockMonthlyLimitRepository(),
-      categoryDeletionRequestRepository: createMockCategoryDeletionRequestRepository(),
-      expenseTypeDeletionRequestRepository: createMockExpenseTypeDeletionRequestRepository(),
-      transactionRepository: createMockTransactionRepository(),
-      statementImportJobRepository: createMockStatementImportJobRepository(),
-      transactionCandidateRepository: createMockTransactionCandidateRepository(),
-      dailyMailImportBatchRepository: createMockDailyMailImportBatchRepository(),
-      pdfToCsvConverter: createMockPdfToCsvConverter(),
-      retroactiveCandidateQuery: createMockRetroactiveCandidateQuery(),
-      merchantLearningRuleRepository: createMockMerchantLearningRuleRepository(),
-      amazonProductKeyLearningRuleRepository: createMockAmazonProductKeyLearningRuleRepository(),
-      bulkClassificationSessionRepository: createMockBulkClassificationSessionRepository(),
-      monthlyExpenseCycleRepository: createMockMonthlyExpenseCycleRepository(),
-      proratedChildTransactionRepository: createMockProratedChildTransactionRepository(),
-      expenseReimbursementDepositRepository: createMockExpenseReimbursementDepositRepository(),
-      monthlyReportRepository: createMockMonthlyReportRepository(),
-      mitsuiSumitomoUnpaidRepository: createMockMitsuiSumitomoUnpaidRepository(),
-      deliveryMessageRepository: createMockDeliveryMessageRepository(),
-      lineDeliveryLogRepository: createMockLineDeliveryLogRepository(),
-      failsafeEmailRepository: createMockFailsafeEmailRepository(),
-      consecutiveFailureCounterRepository: createMockConsecutiveFailureCounterRepository(),
-      lineMessagingGateway: createMockLineMessagingGateway(),
-      failsafeEmailGateway: createMockFailsafeEmailGateway(),
-      failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
-      failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
-      allowedOrigins: resolveAllowedOrigins(env),
-    }
+    categoryMasterRepository: createMockCategoryMasterRepository(),
+    expenseTypeMasterRepository: createMockExpenseTypeMasterRepository(),
+    monthlyLimitRepository: createMockMonthlyLimitRepository(),
+    categoryDeletionRequestRepository: createMockCategoryDeletionRequestRepository(),
+    expenseTypeDeletionRequestRepository: createMockExpenseTypeDeletionRequestRepository(),
+    transactionRepository: createMockTransactionRepository(),
+    statementImportJobRepository: createMockStatementImportJobRepository(),
+    transactionCandidateRepository: createMockTransactionCandidateRepository(),
+    dailyMailImportBatchRepository: createMockDailyMailImportBatchRepository(),
+    pdfToCsvConverter: createMockPdfToCsvConverter(),
+    retroactiveCandidateQuery: createMockRetroactiveCandidateQuery(),
+    merchantLearningRuleRepository: createMockMerchantLearningRuleRepository(),
+    amazonProductKeyLearningRuleRepository: createMockAmazonProductKeyLearningRuleRepository(),
+    bulkClassificationSessionRepository: createMockBulkClassificationSessionRepository(),
+    monthlyExpenseCycleRepository: createMockMonthlyExpenseCycleRepository(),
+    proratedChildTransactionRepository: createMockProratedChildTransactionRepository(),
+    expenseReimbursementDepositRepository: createMockExpenseReimbursementDepositRepository(),
+    monthlyReportRepository: createMockMonthlyReportRepository(),
+    mitsuiSumitomoUnpaidRepository: createMockMitsuiSumitomoUnpaidRepository(),
+    deliveryMessageRepository: createMockDeliveryMessageRepository(),
+    lineDeliveryLogRepository: createMockLineDeliveryLogRepository(),
+    failsafeEmailRepository: createMockFailsafeEmailRepository(),
+    consecutiveFailureCounterRepository: createMockConsecutiveFailureCounterRepository(),
+    lineMessagingGateway: createMockLineMessagingGateway(),
+    failsafeEmailGateway: createMockFailsafeEmailGateway(),
+    failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
+    failsafeFailureThreshold: parseFailsafeThreshold(env.FAILSAFE_FAILURE_THRESHOLD),
+    allowedOrigins: resolveAllowedOrigins(env),
+  }
+}
+
+/**
+ * アプリケーションの依存を合成する。
+ * DATABASE_URL が無ければ開発モードのモック合成（`createMockDeps`）へ委ねる。
+ * `pg` を node-postgres 選択時にだけ読み込むため（#349）、DB 接続の生成が非同期になっている。
+ */
+export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
+  if (!env.DATABASE_URL) {
+    return createMockDeps(env)
   }
 
   // 設定の検証は DB クライアント等を組み立てる前に済ませる（本番の設定漏れは即起動エラー）
   const allowedOrigins = resolveAllowedOrigins(env)
 
   // 接続先に応じて neon-http（本番の Neon）/ node-postgres（ローカルの素の PostgreSQL）を選ぶ (#323)
-  const db = createDb({
+  const db = await createDb({
     databaseUrl: env.DATABASE_URL,
     isProduction: isProduction(env.NODE_ENV),
     driverOverride: env.DATABASE_DRIVER,

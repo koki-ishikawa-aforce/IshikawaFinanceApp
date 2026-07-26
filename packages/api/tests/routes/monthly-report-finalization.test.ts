@@ -16,9 +16,9 @@ import type {
   MonthlyReportFinalized,
   YearMonth,
 } from '@warimaru/domain'
-import { newUlid } from '@warimaru/adapters-neon'
+import { newUlid } from '@warimaru/adapters-postgres'
 import { createApp } from '../../src/app.js'
-import { createDeps } from '../../src/composition-root.js'
+import { createMockDeps } from '../../src/composition-root.js'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
 
@@ -225,7 +225,7 @@ describe('サイクル最終確定 → 月次レポート最終確定（#43）',
 
   it('復旧パス: 突合のみ完了する再実行でもレポートが最終確定に昇格する', async () => {
     // 入金 save が 1 回目だけ失敗する（= サイクル確定と入金突合の間のクラッシュを再現）
-    const deps = createDeps({})
+    const deps = createMockDeps({})
     const original = deps.expenseReimbursementDepositRepository
     let failNextMatchedSave = true
     deps.expenseReimbursementDepositRepository = {

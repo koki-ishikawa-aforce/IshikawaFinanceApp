@@ -17,6 +17,7 @@ import {
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatDateTime, getCurrentMonth } from '@/lib/month'
 import { LuCircleCheck } from '@/components/ui/icons'
+import { EmptyState } from '@/components/ui/EmptyState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -116,7 +117,7 @@ function CandidatesPanel({ importJobId, onDone }: CandidatesPanelProps) {
       {candidatesQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
       {candidatesQuery.error && <div className={ui.error}>候補の取得に失敗しました</div>}
       {!candidatesQuery.isLoading && candidates.length === 0 && (
-        <div className={ui.empty}>候補がありません（すべて重複除外された可能性があります）</div>
+        <EmptyState>候補がありません（すべて重複除外された可能性があります）</EmptyState>
       )}
       {candidates.length > 0 && (
         <>
@@ -248,7 +249,7 @@ function ImportsPageContent() {
               取込完了（{formatDateTime(completion.completedAt)}）
             </div>
           ) : (
-            <div className={ui.empty}>この月の CSV 取込はまだ完了していません</div>
+            <EmptyState>この月の CSV 取込はまだ完了していません</EmptyState>
           ))}
       </div>
 

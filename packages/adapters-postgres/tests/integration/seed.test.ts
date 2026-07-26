@@ -8,7 +8,7 @@
  * （#321）が反復対象を得られるための前提になる。ハンドラー自身の振る舞いは
  * packages/api/tests/routes/monthly-limit-seed.test.ts で検証済みのため、
  * ここでは「リポジトリが規定 5 種を返す」ところまでを繋いで確認する
- * （adapters-neon から api のハンドラーを import するのは依存の向き違反になる）。
+ * （adapters-postgres から api のハンドラーを import するのは依存の向き違反になる）。
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { asc } from 'drizzle-orm'

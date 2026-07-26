@@ -11,6 +11,7 @@ import { useDashboardKpis } from '@/hooks/useDashboardKpis'
 import { useCategoryBreakdown } from '@/hooks/useCategoryBreakdown'
 import { useTheme } from '@/theme/ThemeProvider'
 import { getCategoryColors } from '@/theme/tokens'
+import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
 function getCurrentMonth(): YearMonth {
@@ -41,9 +42,22 @@ export default function DashboardPage() {
       {kpis.error && <div className={styles.error}>KPI の取得に失敗しました</div>}
       {kpis.data && <KpiGrid kpis={kpis.data} />}
 
-      {breakdown.data && (
-        <CategoryBreakdown data={breakdown.data} categoryColors={categoryColors} />
-      )}
+      {/*
+        カテゴリ内訳だけカードと見出しの外に置くと、空状態の案内が背景の上に 1 行浮いて
+        他画面と揃わない(#311 のレビュー指摘)。他画面のセクションと同じ器に載せる。
+        器は取得状態によらず出す — 月・モードを切り替えるたびカードごと消えると、
+        何のセクションが消えたのか分からなくなるため(usability 1-1)
+      */}
+      <div className={ui.card}>
+        <span className={ui.sectionTitle}>
+          {mode === 'household' ? '世帯支出（カテゴリ別）' : '個人支出（カテゴリ別）'}
+        </span>
+        {breakdown.isLoading && <div className={ui.loading}>読み込み中...</div>}
+        {breakdown.error && <div className={ui.error}>カテゴリ内訳の取得に失敗しました</div>}
+        {breakdown.data && (
+          <CategoryBreakdown data={breakdown.data} categoryColors={categoryColors} />
+        )}
+      </div>
 
       {mode === 'household' && kpis.data && (
         <SpousePersonalNote amount={kpis.data.spousePersonalTotal} theme={theme} />

@@ -19,10 +19,10 @@ Bash は `git diff` / `git log` / `git show` 等の読み取り用途にのみ�
 
 ## 環境の前提(レビュー時に必ず踏まえる)
 
-1. **マイグレーションの適用とコードのデプロイは別操作**。`pnpm --filter @warimaru/adapters-neon db:migrate`(drizzle-kit)を人が実行する。自動デプロイパイプラインは無く、down マイグレーションも生成されない。つまり **新旧が混在する瞬間が必ず存在し、巻き戻しは前方の追加マイグレーションでしか行えない**
-2. **本番ドライバでは interactive transaction が使えない**。本番は `neon-http`(SQL over HTTP)で、`db.transaction` は実行時に throw する(`packages/adapters-neon/src/client.ts` 冒頭)。ローカル・統合テストは `node-postgres` なので **`db.transaction` はテストでは動き、本番でのみ壊れる**。1 集約の保存は単文 upsert(`INSERT ... ON CONFLICT DO UPDATE`)で完結させるのが規約
+1. **マイグレーションの適用とコードのデプロイは別操作**。`pnpm --filter @warimaru/adapters-postgres db:migrate`(drizzle-kit)を人が実行する。自動デプロイパイプラインは無く、down マイグレーションも生成されない。つまり **新旧が混在する瞬間が必ず存在し、巻き戻しは前方の追加マイグレーションでしか行えない**
+2. **本番ドライバでは interactive transaction が使えない**。本番は `neon-http`(SQL over HTTP)で、`db.transaction` は実行時に throw する(`packages/adapters-postgres/src/client.ts` 冒頭)。ローカル・統合テストは `node-postgres` なので **`db.transaction` はテストでは動き、本番でのみ壊れる**。1 集約の保存は単文 upsert(`INSERT ... ON CONFLICT DO UPDATE`)で完結させるのが規約
 3. **ドメインイベントは同期・インプロセス・at-least-once**。`safeSubscribe`(`packages/api/src/event-handlers/safe-subscribe.ts`)はハンドラー例外をログに留めて継続し、取りこぼしは同一操作の再実行(イベントの再発行)で回復する前提(#34)。したがって **ハンドラーは再実行されうる**
-4. **集約は jsonb `payload` + 昇格カラムで保存される**。検索・集計に使う値だけを列に昇格させ、残りは `payload` に入る(例: `packages/adapters-neon/src/schema/transactions.ts`)。読み出しは Zod スキーマの `parse` を通るため、**payload の形を変えると旧形式で書かれた既存行が読めなくなる**
+4. **集約は jsonb `payload` + 昇格カラムで保存される**。検索・集計に使う値だけを列に昇格させ、残りは `payload` に入る(例: `packages/adapters-postgres/src/schema/transactions.ts`)。読み出しは Zod スキーマの `parse` を通るため、**payload の形を変えると旧形式で書かれた既存行が読めなくなる**
 5. **索引はスキーマ定義に、使う Query 名のコメント付きで宣言する**慣習がある(`transactions.ts` の `idx_transactions_owner_occurred` など)
 
 ## 責務分担(重複して指摘しない)
@@ -37,7 +37,7 @@ Bash は `git diff` / `git log` / `git show` 等の読み取り用途にのみ�
 ## レビュー手順
 
 1. 指示された範囲(通常 `git diff main...HEAD`)の差分を取得する
-2. 差分の性質を分類する: マイグレーション(`packages/adapters-neon/drizzle/**`)/ スキーマ定義(`src/schema/**`)/ Repository・Query 実装 / ドメインイベントとハンドラー
+2. 差分の性質を分類する: マイグレーション(`packages/adapters-postgres/drizzle/**`)/ スキーマ定義(`src/schema/**`)/ Repository・Query 実装 / ドメインイベントとハンドラー
 3. マイグレーションがある場合は、生成された SQL を読み、**対象テーブルに既存行がある前提**で各文の挙動を評価する。既存の保存形式は `src/schema/` の該当ファイルと、対応する集約の Zod スキーマで確認する
 4. 直近のマイグレーションと比較して逸脱が無いか確認する(手書き DML の書き方の先例は `drizzle/0008_reflective_jazinda.sql`)
 5. 下記の観点で差分をチェックする
@@ -85,7 +85,7 @@ Bash は `git diff` / `git log` / `git show` 等の読み取り用途にのみ�
    - 新しいイベントを購読するとき、`safeSubscribe` を使うか例外を伝播させるかの選択が意図的か(呼び出し元で状態遷移させる必要があるハンドラーは伝播させる。`master-data-remap.ts` の判断が先例)
 
 6. **マイグレーションが `db:generate` の生成物か**
-   - DDL が手書きで書かれていないか(`pnpm --filter @warimaru/adapters-neon db:generate` の生成物のみ。CLAUDE.md「してはいけないこと」)
+   - DDL が手書きで書かれていないか(`pnpm --filter @warimaru/adapters-postgres db:generate` の生成物のみ。CLAUDE.md「してはいけないこと」)
    - 既存データの移し替え(DML)は生成できないため手書きになる。その場合、**生成された DDL を改変せず、ファイル末尾に追記**し、**どこまでが生成物・どこからが手書きかとその理由をコメントで明記**しているか(`drizzle/0008_reflective_jazinda.sql` の形式。この例外は CLAUDE.md「してはいけないこと」に明文化されている)
    - `drizzle/meta/_journal.json` と `drizzle/meta/NNNN_snapshot.json` が同じコミットに含まれているか(欠けると次の `db:generate` が壊れた差分を吐く)
    - **既に適用済みの過去のマイグレーションファイルを編集していないか**(drizzle はファイルのハッシュで管理するため、適用済み環境と乖離する。修正は新しいマイグレーションで行う)

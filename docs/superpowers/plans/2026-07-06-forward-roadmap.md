@@ -77,7 +77,7 @@ discriminated union 集約 + Zod superRefine 不変条件 + branded ID + Reposit
 永続化バックエンドは **Neon (PostgreSQL)** で確定済み（OQ-27 / OQ-46）。
 
 - [x] Neon 前提の DB スキーマ設計 spec を作成（テーブル設計、マイグレーション方式の選定）→ [2026-07-06-phase5-m-b-db-schema-design.md](../specs/2026-07-06-phase5-m-b-db-schema-design.md)
-- [x] `packages/adapters-neon/` に Repository / Query の実装
+- [x] `packages/adapters-postgres/` に Repository / Query の実装
   - 第 1 波（2026-07-06）: 家計分析 + 残高資産推移の 4 Repository / 5 Query
   - 第 2 波（2026-07-07）: 残り 6 コンテキストの 19 Repository / 6 Query + 19 テーブル
     （migration 0001〜0006、**全 8 コンテキスト = 23/23 Repository・11/11 Query 完了**）

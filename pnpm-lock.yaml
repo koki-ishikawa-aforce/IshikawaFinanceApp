@@ -57,7 +57,7 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/adapters-neon:
+  packages/adapters-postgres:
     dependencies:
       '@neondatabase/serverless':
         specifier: ^1.1.0
@@ -111,9 +111,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.0.5
         version: 2.0.11(hono@4.12.31)
-      '@warimaru/adapters-neon':
+      '@warimaru/adapters-postgres':
         specifier: workspace:*
-        version: link:../adapters-neon
+        version: link:../adapters-postgres
       '@warimaru/domain':
         specifier: workspace:*
         version: link:../domain

@@ -5,9 +5,9 @@ import type {
   MonthlyExpenseCycleFinalized,
 } from '@warimaru/domain'
 import { MonthlyExpenseCycleSchema } from '@warimaru/domain'
-import { newUlid } from '@warimaru/adapters-neon'
+import { newUlid } from '@warimaru/adapters-postgres'
 import { createApp } from '../../src/app.js'
-import { createDeps } from '../../src/composition-root.js'
+import { createMockDeps } from '../../src/composition-root.js'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
 
@@ -127,7 +127,7 @@ describe('PUT /api/expense-settlement/cycles/:id/finalize', () => {
 
   it('復旧: サイクル保存後に入金保存が失敗しても、再実行で突合が完了する', async () => {
     // 入金 save が 1 回目だけ失敗する（= サイクル確定と入金突合の間のクラッシュを再現）
-    const deps = createDeps({})
+    const deps = createMockDeps({})
     const original = deps.expenseReimbursementDepositRepository
     let failNextMatchedSave = true
     deps.expenseReimbursementDepositRepository = {
@@ -239,7 +239,7 @@ describe('サイクル最終確定のイベント発行（#34 チェーン5）',
   })
 
   it('復旧パス（突合のみ完了）でも at-least-once でイベントを発行する', async () => {
-    const deps = createDeps({})
+    const deps = createMockDeps({})
     const original = deps.expenseReimbursementDepositRepository
     let failNextMatchedSave = true
     deps.expenseReimbursementDepositRepository = {

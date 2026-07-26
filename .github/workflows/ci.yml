@@ -124,9 +124,9 @@ jobs:
         if: steps.scope.outputs.code == 'true'
         run: pnpm test
 
-      - name: Integration test (adapters-neon)
+      - name: Integration test (adapters-postgres)
         if: steps.scope.outputs.code == 'true'
-        run: pnpm --filter @warimaru/adapters-neon test:integration
+        run: pnpm --filter @warimaru/adapters-postgres test:integration
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/warimaru_test
 

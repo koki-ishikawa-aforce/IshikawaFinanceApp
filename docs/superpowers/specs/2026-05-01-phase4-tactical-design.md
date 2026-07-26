@@ -1787,7 +1787,7 @@ module.exports = {
 1. **残り 6 コンテキストの型化**:
    - 取引取込（Supporting）/ 自動分類・学習（Core）/ 経費精算（Core）/ オンボーディング・認証（Supporting）/ 通知配信（Generic）/ マスタ管理（Supporting）
    - Phase 4 と同じパターン（discriminated union + Zod refine + Repository/Query 分離）で展開
-2. **adapter 層の実装**: `packages/adapters-neon/` に Neon (PostgreSQL) 前提で実装（~~DynamoDB vs RDS を Phase 5 で選定~~ → 2026-07-06 OQ-46 で OQ-27 の確定スタックを正とした）
+2. **adapter 層の実装**: `packages/adapters-postgres/` に Neon (PostgreSQL) 前提で実装（~~DynamoDB vs RDS を Phase 5 で選定~~ → 2026-07-06 OQ-46 で OQ-27 の確定スタックを正とした）
 3. **LIFF アプリ**: `packages/web/` に Next.js (TS) Static Export + LIFF SDK で実装（~~React + Vite~~ → 同上）、TanStack Query で `@warimaru/domain` の Query I/F を消費
 4. **Hono on Lambda**: `packages/api/` に Hono ベースの Lambda エントリポイント、Repository / Query の adapter 実装をワイヤリング
 5. **状態管理 / フォーム**: TanStack Query / React Hook Form + Zod resolvers の導入

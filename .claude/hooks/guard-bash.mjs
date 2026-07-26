@@ -19,7 +19,7 @@ const violations = [
     // migration ファイルを経由しない schema 反映
     pattern: /drizzle-kit\s+push\b/,
     message:
-      'drizzle-kit push は禁止です。`pnpm --filter @warimaru/adapters-neon db:generate` でマイグレーションを生成してください。',
+      'drizzle-kit push は禁止です。`pnpm --filter @warimaru/adapters-postgres db:generate` でマイグレーションを生成してください。',
   },
   {
     // .env の中身を読み出すコマンド(.env.example は対象外)。
