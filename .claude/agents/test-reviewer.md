@@ -19,15 +19,15 @@ CI が確認するのは `pnpm test` が green であることだけで、**テ�
 
 観点4(テストピラミッド)と観点5(置き場所)の判定は、この表を基準に行う。
 
-| 層            | 置き場所                                                                                                                    | 実行コマンド                                             | その層で検証すべきこと                                                                  |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| domain 単体   | `packages/domain/tests/<BC>/{aggregates,value-objects,services,queries}/*.test.ts`                                          | `pnpm test`                                              | 不変条件・状態遷移・計算(金額・按分・比率)・Zod スキーマの拒否                          |
-| adapters 単体 | `packages/adapters-neon/tests/unit/**/*.test.ts`                                                                            | `pnpm test`                                              | DB を必要としない変換・組み立て                                                         |
-| adapters 統合 | `packages/adapters-neon/tests/integration/**/*.test.ts`(実 PostgreSQL 必須)                                                 | `pnpm --filter @warimaru/adapters-neon test:integration` | 永続化の往復・スキーマ制約(NOT NULL・一意・CHECK)・SQL の集計・Query の絞り込みと可視性 |
-| api           | `packages/api/tests/**/*.test.ts`(`tests/helpers/test-app.ts` は `DATABASE_URL` を渡さずインメモリ実装へフォールバックする) | `pnpm test`                                              | ルートの入出力・HTTP ステータス・リクエスト検証・認証の分岐                             |
-| web 単体      | `packages/web/src/**/__tests__/*.test.tsx`(Testing Library)                                                                 | `pnpm test`                                              | 表示の分岐・状態(ローディング / 空 / エラー)・入力の挙動                                |
-| web VRT       | `packages/web/e2e/*.spec.ts`                                                                                                | `pnpm --filter @warimaru/web test:e2e`                   | 見た目の回帰(darling / honey 両テーマ)                                                  |
-| 受入 E2E      | `e2e/tests/<領域>/at-<番号>-*.spec.ts`                                                                                      | `pnpm --filter @warimaru/e2e test:e2e`                   | 受入シナリオ(`docs/acceptance/`)の通し                                                  |
+| 層            | 置き場所                                                                                                                                                | 実行コマンド                                                 | その層で検証すべきこと                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| domain 単体   | `packages/domain/tests/<BC>/{aggregates,value-objects,services,queries}/*.test.ts`                                                                      | `pnpm test`                                                  | 不変条件・状態遷移・計算(金額・按分・比率)・Zod スキーマの拒否                          |
+| adapters 単体 | `packages/adapters-postgres/tests/unit/**/*.test.ts`                                                                                                    | `pnpm test`                                                  | DB を必要としない変換・組み立て                                                         |
+| adapters 統合 | `packages/adapters-postgres/tests/integration/**/*.test.ts`(実 PostgreSQL 必須)                                                                         | `pnpm --filter @warimaru/adapters-postgres test:integration` | 永続化の往復・スキーマ制約(NOT NULL・一意・CHECK)・SQL の集計・Query の絞り込みと可視性 |
+| api           | `packages/api/tests/**/*.test.ts`(`tests/helpers/test-app.ts` は composition-root のモック合成 `createMockDeps` を直接呼び、インメモリ実装で組み立てる) | `pnpm test`                                                  | ルートの入出力・HTTP ステータス・リクエスト検証・認証の分岐                             |
+| web 単体      | `packages/web/src/**/__tests__/*.test.tsx`(Testing Library)                                                                                             | `pnpm test`                                                  | 表示の分岐・状態(ローディング / 空 / エラー)・入力の挙動                                |
+| web VRT       | `packages/web/e2e/*.spec.ts`                                                                                                                            | `pnpm --filter @warimaru/web test:e2e`                       | 見た目の回帰(darling / honey 両テーマ)                                                  |
+| 受入 E2E      | `e2e/tests/<領域>/at-<番号>-*.spec.ts`                                                                                                                  | `pnpm --filter @warimaru/e2e test:e2e`                       | 受入シナリオ(`docs/acceptance/`)の通し                                                  |
 
 ## 責務分担(重複して指摘しない)
 
@@ -67,7 +67,7 @@ CI が確認するのは `pnpm test` が green であることだけで、**テ�
 
 4. **テストピラミッドのバランス**
    - domain の関数で検証できる計算を、api のエンドポイントテストや E2E に寄せていないか(遅く、落ちやすく、失敗しても原因が読めない)
-   - 逆に、**実 DB でしか壊れないもの**(スキーマ制約・一意制約・NOT NULL・SQL の集計・Query の絞り込み)をインメモリ実装のテストで済ませていないか。これらは `packages/adapters-neon/tests/integration/**` に置く
+   - 逆に、**実 DB でしか壊れないもの**(スキーマ制約・一意制約・NOT NULL・SQL の集計・Query の絞り込み)をインメモリ実装のテストで済ませていないか。これらは `packages/adapters-postgres/tests/integration/**` に置く
    - api のエンドポイントテストが、インメモリ実装の都合(常に空配列が返る等)を期待値として固定していないか(実装を差し替えた瞬間に意味を失う)
    - 受入 E2E(AT)を増やす差分で、同じ検証が下位層に無いまま E2E だけに依存していないか
 

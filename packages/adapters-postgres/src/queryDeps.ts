@@ -18,6 +18,6 @@ export type ResolveViewerRole = (viewerId: UserId) => Promise<UserRole>
  *
  * phase0_configs の payload はパス参照のみ保持する（OQ-27）ため、
  * 実 LINE userID 等の解決は DB 外。実 SSM 実装は application 層の責務で、
- * adapters-neon は AWS SDK に依存しない。
+ * adapters-postgres は AWS SDK に依存しない。
  */
 export type ResolveParameterStoreValue = (path: ParameterStorePath) => Promise<string>

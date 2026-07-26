@@ -32,7 +32,7 @@ OQ-43（トランザクション境界）に回答する。
 
 **Out of scope:**
 
-- `packages/adapters-neon/` の実装そのもの（本 spec 確定後の実装 plan で分割）
+- `packages/adapters-postgres/` の実装そのもの（本 spec 確定後の実装 plan で分割）
 - 第 2 波以降（残り 6 コンテキスト）の詳細 DDL — §5 のカタログとパターンに従い実装時に確定
 - デプロイ IaC（OQ-28、Phase 6）
 - LINE 配信ログの保持期間ポリシー（OQ-34、実装フェーズ論点として §5 に注記のみ）
@@ -123,7 +123,7 @@ adapters 実装と同一 PR ではなく**独立コミットで先行**させる
 
 ### §2.4 マイグレーション方式: Drizzle ORM + drizzle-kit
 
-**決定**: `packages/adapters-neon/` に **Drizzle ORM** でテーブル定義（TS）を書き、
+**決定**: `packages/adapters-postgres/` に **Drizzle ORM** でテーブル定義（TS）を書き、
 **drizzle-kit generate** で SQL マイグレーションファイルを生成・コミットする。
 適用は `drizzle-kit migrate`（ローカル/CI から Neon へ）。
 
@@ -133,7 +133,7 @@ adapters 実装と同一 PR ではなく**独立コミットで先行**させる
 | Prisma | No | Lambda でのエンジンバイナリ/コールドスタートの重さ、スキーマ定義の二重管理（.prisma と Zod）が §2.1 の方針と衝突 |
 | node-pg-migrate / 素 SQL | No（次点） | 最小依存だが、テーブル定義の型が TS に現れず Query 実装の型安全が手作業になる。Drizzle が過剰と判明した場合の撤退先として温存 |
 
-マイグレーションファイルは `packages/adapters-neon/drizzle/` にコミットし、
+マイグレーションファイルは `packages/adapters-postgres/drizzle/` にコミットし、
 適用履歴は Drizzle 標準の `__drizzle_migrations` テーブルで管理する。
 
 ### §2.5 接続方式とトランザクション境界（OQ-43 確定）
@@ -153,13 +153,21 @@ adapters 実装と同一 PR ではなく**独立コミットで先行**させる
 
 **ドライバの切り替え（#323 で追記）**: 上記は本番（Neon）の接続方式。ローカル開発では実 Neon を必須にせず、
 素の PostgreSQL（`docker compose up -d db`）に `node-postgres`（pg）ドライバで接続できる。
-`packages/adapters-neon/src/client.ts` の `createDb()` が接続先ホストから選択する
+`packages/adapters-postgres/src/client.ts` の `createDb()` が接続先ホストから選択する
 （`*.neon.tech` → neon-http、それ以外 → node-postgres。`DATABASE_DRIVER` で明示指定も可）。
 本番（`NODE_ENV=production`）はホストの綴りに関わらず neon-http に固定し、node-postgres の明示指定は起動エラーにする。
 
 adapter 実装はドライバ横断の `Db` 型にのみ依存するため実装差分は無いが、
 **`db.transaction`（interactive transaction）は neon-http では実行時に throw する**点は変わらない。
 ローカルの node-postgres では動いてしまい本番でのみ壊れるため、save は引き続き単文 upsert で完結させる。
+
+**ローカル専用ドライバの遅延読み込み（#349 で追記）**: `pg` と `drizzle-orm/node-postgres` は
+node-postgres を選んだときだけ動的 import する（本番の neon-http では読み込まない）。
+`drizzle-orm/node-postgres` が `pg` を静的 import しているため、遅延させる対象は両方で、
+片方だけでは `pg` が結局読み込まれる。この遅延のため `createDbConnection()` / `createDb()` は
+非同期であり、api の DI 合成（`createDeps()`）も非同期になる。静的 import へ戻す回帰は
+`tests/unit/noStaticNodePgImport.test.ts` が src の静的解析で検出する。
+あわせて、パッケージ名は Neon 専用でなくなった実態に合わせて `@warimaru/adapters-postgres` に改めた。
 
 ### §2.6 イベント永続化: 行わない（OQ-42 確定）
 
@@ -169,7 +177,7 @@ DB へは永続化しない。
 - 根拠: 家計内 2 ユーザー規模でリプレイ要件・外部購読者が存在しない。
   監査が必要な領域は集約側で監査レコードとして既にモデル化済み
   （LINE配信ログ = 不変監査レコード、取引の削除済み状態、按分子取引の履歴等）
-- イベントバスは `packages/adapters-neon/` ではなく application 層（M-B 後半）の
+- イベントバスは `packages/adapters-postgres/` ではなく application 層（M-B 後半）の
   同期 pub/sub 実装とし、ハンドラ失敗はログ + 前述の自己修復で吸収する
 - 将来、外部連携やリプレイ要件が出た場合は outbox テーブル 1 本の追加で
   §2.5 のトランザクション内に相乗りできる（設計上の撤退線）
@@ -353,10 +361,10 @@ gmail_oauth_tokens / consecutive_failure_counters の 2 本で、**計 23 テー
 
 ## §6. パッケージ構成とテスト戦略
 
-### §6.1 packages/adapters-neon/
+### §6.1 packages/adapters-postgres/
 
 ```
-packages/adapters-neon/
+packages/adapters-postgres/
 ├── drizzle/                  # drizzle-kit generate の SQL マイグレーション（コミット対象）
 ├── src/
 │   ├── schema/               # Drizzle テーブル定義（§4–§5 の DDL に対応）
@@ -367,14 +375,14 @@ packages/adapters-neon/
 └── tests/                    # 統合テスト（実 PostgreSQL に接続）
 ```
 
-依存方向は `adapters-neon → domain` の一方向のみ（domain は adapter を知らない）。
+依存方向は `adapters-postgres → domain` の一方向のみ（domain は adapter を知らない）。
 
 ### §6.2 統合テスト
 
 - **CI**: GitHub Actions の `services: postgres:16` コンテナに対して vitest の統合テストを実行
   （Neon は PostgreSQL 互換であり、本プロジェクトは Neon 固有機能を使わないため
   素の PostgreSQL で等価に検証できる）。既存 ci.yml の verify ジョブに
-  `pnpm --filter @warimaru/adapters-neon test:integration` を追加
+  `pnpm --filter @warimaru/adapters-postgres test:integration` を追加
 - **ローカル**: `docker compose up db`（postgres:16）+ 同一テストを実行
 - **実 Neon への疎通**: マイグレーション適用と smoke テストを手動実行
   （Free Tier の接続情報はローカル `.env` のみ。CI には持ち込まない）
@@ -405,10 +413,10 @@ OQ-38（SMBC URL）/ OQ-39（Flex Message サイズ）/ OQ-44（鮮度閾値 30 
 以下すべてが green であること:
 
 - [x] D-1: 本 spec がレビュー確定し、03-open-questions.md §B の OQ-41/42/43 が解決済みに更新されている
-- [x] D-2: `packages/adapters-neon/` が §6.1 の構成で作成され、drizzle マイグレーションで §4 の 4 テーブルが生成できる（2026-07-06 第 1 波で達成。第 2 波で全 23 テーブル = migration 0000〜0006 に拡大）
+- [x] D-2: `packages/adapters-postgres/` が §6.1 の構成で作成され、drizzle マイグレーションで §4 の 4 テーブルが生成できる（2026-07-06 第 1 波で達成。第 2 波で全 23 テーブル = migration 0000〜0006 に拡大）
 - [x] D-3: 第 1 波 4 Repository / 5 Query の実装が完了し、§6.2 の統合テストが CI で green（2026-07-06。第 2 波で残り 19 Repository / 6 Query も実装済み = 全 23 Repository / 11 Query）
 - [x] D-4: `shared/ids.ts` の内部発番 ID が ULID regex に強化され、domain のテストが green
-- [x] D-5: ルートの `pnpm build / typecheck / test / lint / format:check` が adapters-neon を含めて green（2026-07-07 第 2 波完了時に再確認）
+- [x] D-5: ルートの `pnpm build / typecheck / test / lint / format:check` が adapters-postgres を含めて green（2026-07-07 第 2 波完了時に再確認）
 
 ---
 

@@ -7,15 +7,15 @@ description: 変更差分をデータ・マイグレーション互換性の観�
 
 変更差分が **既存データとデプロイに対して安全か** をレビューする。実際のレビューは `data-reviewer` サブエージェントが行う。
 
-マイグレーションは `pnpm --filter @warimaru/adapters-neon db:generate` で生成するため構文的な正しさは保証され、CI の統合テストが実 PostgreSQL への適用可能性まで確認する。しかし **CI が適用するのは空の DB** であり、既存データがある本番で失敗する変更・データが失われる変更は green のまま通過する。そこを見るのが本レビューの役割。
+マイグレーションは `pnpm --filter @warimaru/adapters-postgres db:generate` で生成するため構文的な正しさは保証され、CI の統合テストが実 PostgreSQL への適用可能性まで確認する。しかし **CI が適用するのは空の DB** であり、既存データがある本番で失敗する変更・データが失われる変更は green のまま通過する。そこを見るのが本レビューの役割。
 
 ## 起動条件
 
 `docs/review/README.md` §3 のトリガー表に従い、差分が以下を含む場合に起動する:
 
-- `packages/adapters-neon/drizzle/**`(マイグレーション・meta スナップショット)
-- `packages/adapters-neon/src/schema/**`(テーブル定義・索引・制約)
-- `packages/adapters-neon/src/**`(Repository / Query 実装)
+- `packages/adapters-postgres/drizzle/**`(マイグレーション・meta スナップショット)
+- `packages/adapters-postgres/src/schema/**`(テーブル定義・索引・制約)
+- `packages/adapters-postgres/src/**`(Repository / Query 実装)
 - `packages/domain/src/*/events/**`、`packages/api/src/event-handlers/**`(再実行時の二重適用の観点のみ。失敗時挙動・可観測性は信頼性・可観測性レビュー #331)
 
 ## 責務分担
@@ -53,4 +53,4 @@ description: 変更差分をデータ・マイグレーション互換性の観�
 
 ## マイグレーションの手書き部分について
 
-DDL は `db:generate` の生成物のみ(CLAUDE.md「してはいけないこと」)。既存データの移し替え(DML)は drizzle-kit が生成できないため手書きになるが、その場合は **生成された DDL を改変せず、ファイル末尾に追記**し、**どこまでが生成物・どこからが手書きかとその理由をコメントで明記**する。先例は `packages/adapters-neon/drizzle/0008_reflective_jazinda.sql`(この例外は CLAUDE.md「してはいけないこと」に明文化されている)。
+DDL は `db:generate` の生成物のみ(CLAUDE.md「してはいけないこと」)。既存データの移し替え(DML)は drizzle-kit が生成できないため手書きになるが、その場合は **生成された DDL を改変せず、ファイル末尾に追記**し、**どこまでが生成物・どこからが手書きかとその理由をコメントで明記**する。先例は `packages/adapters-postgres/drizzle/0008_reflective_jazinda.sql`(この例外は CLAUDE.md「してはいけないこと」に明文化されている)。

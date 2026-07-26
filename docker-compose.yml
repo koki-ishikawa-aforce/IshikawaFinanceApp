@@ -2,13 +2,13 @@
 # 使い方（統合テスト）:
 #   docker compose up -d db
 #   DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_test \
-#     pnpm --filter @warimaru/adapters-neon test:integration
+#     pnpm --filter @warimaru/adapters-postgres test:integration
 #
 # 使い方（ローカル開発 — 実 Neon なしで API を動かす、#323）:
 #   docker compose exec db createdb -U postgres warimaru_dev   # コンテナを作り直すたびに実行
 #   export DATABASE_URL=postgres://postgres:postgres@localhost:5432/warimaru_dev
-#   pnpm --filter @warimaru/adapters-neon db:migrate
-#   pnpm --filter @warimaru/adapters-neon db:seed
+#   pnpm --filter @warimaru/adapters-postgres db:migrate
+#   pnpm --filter @warimaru/adapters-postgres db:seed
 #   pnpm --filter @warimaru/api dev
 # 開発用は warimaru_test と別 DB にする（統合テストは warimaru_test を毎回 TRUNCATE するため）。
 # Neon 以外のホストでは自動的に node-postgres ドライバへ切り替わる（DATABASE_DRIVER で明示指定も可）。

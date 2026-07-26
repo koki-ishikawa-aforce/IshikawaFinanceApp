@@ -16,7 +16,7 @@ export default async function globalSetup(): Promise<void> {
   try {
     const migrationsFolder = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      '../packages/adapters-neon/drizzle',
+      '../packages/adapters-postgres/drizzle',
     )
     await migrate(drizzle(pool), { migrationsFolder })
 
