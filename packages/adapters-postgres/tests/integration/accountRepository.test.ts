@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { InvariantViolationError } from '@warimaru/domain'
+import {
+  AccountIdSchema,
+  InvariantViolationError,
+  SettlementNoticeIdSchema,
+  applyUnpaidSettlementToSmbcBalance,
+  money,
+} from '@warimaru/domain'
 import { NeonAccountRepository } from '../../src/balance-asset-tracking/NeonAccountRepository'
+import { accounts } from '../../src/schema'
+import { newUlid } from '../../src/newId'
 import { db } from './setup'
 import {
   HONEY_USER_ID,
@@ -65,5 +73,65 @@ describe('NeonAccountRepository', () => {
     const found = await repo.findById(account.common.accountId)
     if (found?.kind !== 'smbc_bank') throw new Error('unreachable')
     expect(found.balance.currentBalance).toBe(1600000)
+  })
+
+  // --- #388: 引落確定通知IDの記録（既存行との後方互換） ---
+
+  it('この項目を持たない既存行も読み出せ、未反映（null）として復元される', async () => {
+    // 本番に既に存在する payload の形（appliedSettlementNoticeIds が無い）を直接 INSERT する。
+    // 集約経由で作ると新項目が必ず入ってしまい、既存行の読み出しを検証できない。
+    const accountId = newUlid()
+    const legacyPayload = {
+      kind: 'smbc_bank',
+      common: {
+        accountId,
+        ownerUserId: HONEY_USER_ID,
+        registeredAt: '2026-01-01T00:00:00.000Z',
+        activeness: { kind: 'active' },
+      },
+      balance: {
+        currentBalance: 1500000,
+        initialBalance: 1000000,
+        initialBalanceBaselineAt: '2026-01-01T00:00:00.000Z',
+        lastUpdatedAt: '2026-07-01T00:00:00.000Z',
+      },
+    }
+    await db.insert(accounts).values({
+      accountId,
+      ownerUserId: HONEY_USER_ID,
+      kind: 'smbc_bank',
+      isActive: true,
+      payload: legacyPayload,
+    })
+
+    const found = await repo.findById(AccountIdSchema.parse(accountId))
+    if (found?.kind !== 'smbc_bank') throw new Error('unreachable')
+    expect(found.balance.appliedSettlementNoticeIds).toEqual([])
+
+    // 既存行に対して消込を反映して保存し直せる（読み書きの両方が成立する）
+    const applied = applyUnpaidSettlementToSmbcBalance(found, {
+      settlementNoticeId: SettlementNoticeIdSchema.parse('sn-2026-07-25-legacy'),
+      settledTotal: money(8000),
+      at: new Date('2026-07-25T00:00:00.000Z'),
+    })
+    await repo.save(applied)
+
+    const reloaded = await repo.findById(AccountIdSchema.parse(accountId))
+    if (reloaded?.kind !== 'smbc_bank') throw new Error('unreachable')
+    expect(reloaded.balance.currentBalance).toBe(1492000)
+    expect(reloaded.balance.appliedSettlementNoticeIds).toEqual(['sn-2026-07-25-legacy'])
+  })
+
+  it('引落確定通知IDが payload に永続化され、往復で保たれる', async () => {
+    const account = smbcAccount()
+    if (account.kind !== 'smbc_bank') throw new Error('unreachable')
+    const applied = applyUnpaidSettlementToSmbcBalance(account, {
+      settlementNoticeId: SettlementNoticeIdSchema.parse('sn-2026-07-25-roundtrip'),
+      settledTotal: money(3000),
+      at: new Date('2026-07-25T00:00:00.000Z'),
+    })
+    await repo.save(applied)
+
+    expect(await repo.findById(applied.common.accountId)).toEqual(applied)
   })
 })

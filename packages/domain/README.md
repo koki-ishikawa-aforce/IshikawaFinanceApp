@@ -17,7 +17,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - 共有カーネル語彙（Phase 5 M-A で household-analysis から移設）: `UnclassifiedReason`, `ClassificationBasis`, `ImportSource`（メンバー schema 個別 export あり）, `UnapprovedExpenseTransfer`
 - イベント基底: `DomainEventBase`
 - イベントバス: `EventBus` / `EventHandler`（同期・インプロセス配信、publish はハンドラー完了を await）+ 実装 `InMemoryEventBus`（#34）
-- エラー: `DomainError`, `InvariantViolationError`, `NotFoundError`, `PermissionDeniedError`
+- エラー: `DomainError`, `InvariantViolationError`, `NotFoundError`, `PermissionDeniedError`, `UnpaidAlreadyBookedError` / `UnpaidSettlementAlreadyAppliedError`（いずれも `InvariantViolationError` の派生。冪等ガードの「適用済み」をメッセージ文言ではなく型で判別するため、#388）
 
 ### household-analysis（家計分析）
 
@@ -30,7 +30,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### balance-asset-tracking（残高・資産推移管理）
 
-- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`。SMBC 残高更新 `applySmbcBalanceChange`、口座登録 `registerOtherSavingsAccount` / `registerNisaAccount`、名称変更 `changeBankName` / `changeBrokerageName`、種別絞り込み `asOtherSavingsAccount` / `asNisaAccount` を含む）, `MitsuiSumitomoUnpaid`（未払金計上 `bookUnpaid` / 消込 `settleUnpaid` を含む）
+- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`。SMBC 残高更新 `applySmbcBalanceChange`、引落消込の残高反映 `applyUnpaidSettlementToSmbcBalance`（同一 `settlementNoticeId` の再反映を拒否）、口座登録 `registerOtherSavingsAccount` / `registerNisaAccount`、名称変更 `changeBankName` / `changeBrokerageName`、種別絞り込み `asOtherSavingsAccount` / `asNisaAccount` を含む）, `MitsuiSumitomoUnpaid`（未払金計上 `bookUnpaid` / 消込 `settleUnpaid` / 通知別の消込エントリ `settledEntriesForNotice` / 消込合計 `settledTotalForNotice` を含む）
 - 値オブジェクト: `AccountKind`, `BankName`, `BrokerageName`（および `brokerageNameToDisplay`）
 - Repository I/F: `AccountRepository`, `MitsuiSumitomoUnpaidRepository`
 - Query I/F: `AccountBalanceQuery`, `BalanceTimeSeriesQuery`

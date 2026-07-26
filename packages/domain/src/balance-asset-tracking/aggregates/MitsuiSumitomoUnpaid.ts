@@ -20,7 +20,11 @@ import {
   type SettlementNoticeId,
 } from '../../shared/ids'
 import { MoneySchema, money, addMoney, type Money } from '../../shared/value-objects/Money'
-import { InvariantViolationError } from '../../shared/errors/DomainError'
+import {
+  UnpaidAlreadyBookedError,
+  InvariantViolationError,
+  UnpaidSettlementAlreadyAppliedError,
+} from '../../shared/errors/DomainError'
 
 export const UnpaidEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -71,14 +75,15 @@ export type SettledUnpaidEntry = Extract<UnpaidEntry, { kind: 'settled' }>
  * behavior 取引で未払金を計上する（08d §2）
  * 事前: 取引種別 = カード利用（呼び出し側で保証）
  * 事後: 計上中エントリとして追加され、当月未払金合計に加算される
- * 同一取引IDの二重計上は InvariantViolationError で拒否する。
+ * 同一取引IDの二重計上は UnpaidAlreadyBookedError（InvariantViolationError の派生）で拒否する。
+ * 呼び出し側はメッセージ文言ではなく型でスキップ判定すること。
  */
 export function bookUnpaid(
   unpaid: MitsuiSumitomoUnpaid,
   entry: { entryId: UnpaidEntryId; transactionId: TransactionId; amount: Money; bookedAt: Date },
 ): MitsuiSumitomoUnpaid {
   if (unpaid.entries.some(e => e.transactionId === entry.transactionId)) {
-    throw new InvariantViolationError(
+    throw new UnpaidAlreadyBookedError(
       `取引（${entry.transactionId}）は計上済みのため二重計上できない`,
     )
   }
@@ -95,9 +100,16 @@ export function bookUnpaid(
  * behavior 引落確定通知で未払金を消込する（08d §2）
  * 事後: 全計上中エントリが引落消込済みに遷移し、当月未払金合計は 0 になる。
  *       戻り値の settledTotal が SMBC 残高から減算すべき引落消込変動。
- * 同一 settlementNoticeId の重複適用は InvariantViolationError で拒否する。
- * 契約: 同一通知の再受信（リトライ）時、呼び出し側はこのエラーを「適用済みのため
- * スキップ」として扱ってよい（残高減算などの後続処理も再実行しないこと）。
+ * 同一 settlementNoticeId の重複適用は UnpaidSettlementAlreadyAppliedError
+ * （InvariantViolationError の派生）で拒否する。呼び出し側はメッセージ文言ではなく
+ * 型でスキップ判定すること。
+ *
+ * 契約（#388 で改訂）: 同一通知の再受信（リトライ）時、呼び出し側はこのエラーを
+ * 「消込は適用済み」として扱い、**後続の残高反映まで処理を進めること**。
+ * 消込の保存と残高反映は別集約への順次保存であり、その間で失敗すると残高だけが
+ * 未反映で残る。再反映の二重適用は口座側（applyUnpaidSettlementToSmbcBalance が
+ * appliedSettlementNoticeIds で判定）が拒否するため、進めても安全である。
+ * 再実行時に減算すべき金額は settledTotalForNotice で再計算する。
  */
 export function settleUnpaid(
   unpaid: MitsuiSumitomoUnpaid,
@@ -107,7 +119,7 @@ export function settleUnpaid(
   if (
     unpaid.entries.some(e => e.kind === 'settled' && e.settlementNoticeId === settlementNoticeId)
   ) {
-    throw new InvariantViolationError(
+    throw new UnpaidSettlementAlreadyAppliedError(
       `引落確定通知（${settlementNoticeId}）は消込適用済みのため重複適用できない`,
     )
   }
@@ -135,4 +147,34 @@ export function settleUnpaid(
     lastSettledAt: settledAt,
   })
   return { unpaid: next, settledEntries, settledTotal }
+}
+
+/**
+ * 指定の引落確定通知で消し込まれたエントリを抽出する（08d §2、#388）
+ * settleUnpaid が「消込適用済み」で拒否した後、再実行時に残高へ反映すべき対象を
+ * 集約から引き直すために使う。
+ */
+export function settledEntriesForNotice(
+  unpaid: MitsuiSumitomoUnpaid,
+  settlementNoticeId: SettlementNoticeId,
+): SettledUnpaidEntry[] {
+  return unpaid.entries.filter(
+    (e): e is SettledUnpaidEntry =>
+      e.kind === 'settled' && e.settlementNoticeId === settlementNoticeId,
+  )
+}
+
+/**
+ * 指定の引落確定通知で消し込まれた金額の合計（08d §2、#388）
+ * = その通知の受信時に SMBC 残高から減算すべき引落消込変動。
+ * 消込が未適用（該当エントリなし）の場合は 0 を返す。
+ */
+export function settledTotalForNotice(
+  unpaid: MitsuiSumitomoUnpaid,
+  settlementNoticeId: SettlementNoticeId,
+): Money {
+  return settledEntriesForNotice(unpaid, settlementNoticeId).reduce(
+    (acc, e) => addMoney(acc, e.amount),
+    money(0),
+  )
 }

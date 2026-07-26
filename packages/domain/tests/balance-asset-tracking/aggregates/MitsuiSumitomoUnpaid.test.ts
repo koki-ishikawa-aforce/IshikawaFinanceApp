@@ -3,8 +3,14 @@ import {
   MitsuiSumitomoUnpaidSchema,
   bookUnpaid,
   settleUnpaid,
+  settledEntriesForNotice,
+  settledTotalForNotice,
 } from '../../../src/balance-asset-tracking/aggregates/MitsuiSumitomoUnpaid'
-import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
+import {
+  UnpaidAlreadyBookedError,
+  InvariantViolationError,
+  UnpaidSettlementAlreadyAppliedError,
+} from '../../../src/shared/errors/DomainError'
 
 describe('MitsuiSumitomoUnpaid 集約', () => {
   it('当月未払金合計 = Σ 計上中エントリ金額が一致すれば parse 成功', () => {
@@ -143,6 +149,23 @@ describe('bookUnpaid()', () => {
       }),
     ).toThrow(InvariantViolationError)
   })
+
+  it('二重計上のエラーは専用型 UnpaidAlreadyBookedError で判別できる（#388）', () => {
+    const booked = bookUnpaid(emptyUnpaid(), {
+      entryId: '01ENT000000000000000000001' as never,
+      transactionId: '01TX0000000000000000000001' as never,
+      amount: 3000 as never,
+      bookedAt: new Date('2026-04-10'),
+    })
+    expect(() =>
+      bookUnpaid(booked, {
+        entryId: '01ENT000000000000000000002' as never,
+        transactionId: '01TX0000000000000000000001' as never,
+        amount: 3000 as never,
+        bookedAt: new Date('2026-04-11'),
+      }),
+    ).toThrow(UnpaidAlreadyBookedError)
+  })
 })
 
 describe('settleUnpaid()', () => {
@@ -211,5 +234,76 @@ describe('settleUnpaid()', () => {
     expect(() => settleUnpaid(emptyUnpaid(), 'notice_202605' as never, new Date())).toThrow(
       InvariantViolationError,
     )
+  })
+
+  it('重複適用のエラーは専用型 UnpaidSettlementAlreadyAppliedError で判別できる（#388）', () => {
+    const first = settleUnpaid(bookedTwo(), 'notice_202605' as never, new Date('2026-05-26'))
+    const rebooked = bookUnpaid(first.unpaid, {
+      entryId: '01ENT000000000000000000003' as never,
+      transactionId: '01TX0000000000000000000003' as never,
+      amount: 2000 as never,
+      bookedAt: new Date('2026-06-01'),
+    })
+    expect(() => settleUnpaid(rebooked, 'notice_202605' as never, new Date('2026-06-26'))).toThrow(
+      UnpaidSettlementAlreadyAppliedError,
+    )
+  })
+
+  it('計上中エントリ 0 件のエラーは「適用済み」と別型（スキップ扱いにしてはいけない）', () => {
+    // `.not.toThrow(Class)` は何も throw しなくても通るため、捕捉した例外そのものを見る
+    let caught: unknown
+    try {
+      settleUnpaid(emptyUnpaid(), 'notice_202605' as never, new Date())
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(InvariantViolationError)
+    expect(caught).not.toBeInstanceOf(UnpaidSettlementAlreadyAppliedError)
+  })
+})
+
+// --- #388: 通知IDから消込対象を引き直す（再実行時の残高反映に使う） ---
+
+describe('settledEntriesForNotice() / settledTotalForNotice()', () => {
+  const bookedTwo = () =>
+    bookUnpaid(
+      bookUnpaid(emptyUnpaid(), {
+        entryId: '01ENT000000000000000000001' as never,
+        transactionId: '01TX0000000000000000000001' as never,
+        amount: 3000 as never,
+        bookedAt: new Date('2026-04-10'),
+      }),
+      {
+        entryId: '01ENT000000000000000000002' as never,
+        transactionId: '01TX0000000000000000000002' as never,
+        amount: 5000 as never,
+        bookedAt: new Date('2026-04-12'),
+      },
+    )
+
+  it('消込済み集約から、その通知で消し込んだ合計を再計算できる', () => {
+    const { unpaid } = settleUnpaid(bookedTwo(), 'notice_202605' as never, new Date('2026-05-26'))
+
+    expect(settledTotalForNotice(unpaid, 'notice_202605' as never)).toBe(8000)
+    expect(settledEntriesForNotice(unpaid, 'notice_202605' as never)).toHaveLength(2)
+  })
+
+  it('複数月ぶんが混在しても、指定した通知のぶんだけを合計する', () => {
+    const may = settleUnpaid(bookedTwo(), 'notice_202605' as never, new Date('2026-05-26'))
+    const rebooked = bookUnpaid(may.unpaid, {
+      entryId: '01ENT000000000000000000003' as never,
+      transactionId: '01TX0000000000000000000003' as never,
+      amount: 2000 as never,
+      bookedAt: new Date('2026-06-01'),
+    })
+    const june = settleUnpaid(rebooked, 'notice_202606' as never, new Date('2026-06-26'))
+
+    expect(settledTotalForNotice(june.unpaid, 'notice_202605' as never)).toBe(8000)
+    expect(settledTotalForNotice(june.unpaid, 'notice_202606' as never)).toBe(2000)
+  })
+
+  it('未知の通知IDでは 0 を返す（計上中エントリを巻き込まない）', () => {
+    expect(settledTotalForNotice(bookedTwo(), 'notice_999999' as never)).toBe(0)
+    expect(settledEntriesForNotice(bookedTwo(), 'notice_999999' as never)).toHaveLength(0)
   })
 })
