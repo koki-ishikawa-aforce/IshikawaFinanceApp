@@ -145,7 +145,9 @@ function FinalizeModal({ cycle, onClose }: { cycle: CycleWire; onClose: () => vo
         のサイクルを、突合する精算入金を選んで確定します。
       </p>
       {depositsQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-      {deposits.length === 0 && !depositsQuery.isLoading && (
+      {/* 取得失敗を空状態に落とすと、存在しない入金を記録しに行かせる誤った案内になる */}
+      {depositsQuery.error && <div className={ui.error}>突合待ちの入金の取得に失敗しました</div>}
+      {deposits.length === 0 && !depositsQuery.isLoading && !depositsQuery.error && (
         <EmptyState>突合待ちの入金がありません。先に「精算入金を記録」してください。</EmptyState>
       )}
       {deposits.length > 0 && (
@@ -340,6 +342,9 @@ export default function ExpenseSettlementPage() {
 
       <div className={ui.card}>
         <span className={ui.sectionTitle}>按分子取引</span>
+        {/* 直上の「費用区分別の累計」と同じ 3 状態を出す(同一画面で扱いを混在させない) */}
+        {viewQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
+        {viewQuery.error && <div className={ui.error}>精算情報の取得に失敗しました</div>}
         {view &&
           (view.currentChildTransactions.length === 0 ? (
             <EmptyState>当月の按分子取引はありません</EmptyState>

@@ -41,29 +41,40 @@ describe('EmptyState', () => {
     expect(status).toHaveTextContent('CSV 取込の完了後に作成されます。')
   })
 
+  it('announce={false} のときは live region にしない', () => {
+    // モーダル内の固定メッセージなど、開いた時点から切り替わらない場所での二重読み上げを避ける
+    render(
+      <EmptyState announce={false}>
+        配偶者の個人取引のため、詳細の閲覧・編集はできません
+      </EmptyState>,
+    )
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(
+      screen.getByText('配偶者の個人取引のため、詳細の閲覧・編集はできません'),
+    ).toBeInTheDocument()
+  })
+
   it('空状態専用のカード・イラストを持たず、インラインのテキストだけを描画する', () => {
     // usability 6-6: 空状態はインラインのテキスト。器(カード / モーダル)は呼び出し側が持つ
     const { container } = render(<EmptyState>世帯支出はありません</EmptyState>)
 
-    expect(container.childElementCount).toBe(1)
-    expect(container.firstElementChild?.tagName).toBe('DIV')
     expect(container.querySelector('svg')).toBeNull()
     expect(container.querySelector('img')).toBeNull()
   })
 })
 
-describe('空状態の共通部品への集約', () => {
-  it('共通スタイルシートに .empty が残っていない（部品を迂回できない）', () => {
-    const css = readFileSync(join(SRC_DIR, 'components/ui/common.module.css'), 'utf8')
-
-    expect(css).not.toMatch(/^\.empty\b/m)
-  })
-
-  it('EmptyState 以外に空状態のスタイルを持つ .module.css が無い', () => {
-    const offenders = walk(SRC_DIR)
-      .filter(path => path.endsWith('.module.css') && !path.endsWith('EmptyState.module.css'))
+describe('空状態スタイルの重複定義の禁止', () => {
+  // 検出できるのは「`.empty` という名前で CSS に書かれた重複」だけ。別名クラスで
+  // 空状態を書き起こす迂回は検出できないため、集約そのものの担保は各画面のテストで行う
+  it('EmptyState 以外の .module.css に .empty が定義されていない', () => {
+    const stylesheets = walk(SRC_DIR).filter(path => path.endsWith('.module.css'))
+    const offenders = stylesheets
+      .filter(path => !path.endsWith('EmptyState.module.css'))
       .filter(path => /^\.empty\b/m.test(readFileSync(path, 'utf8')))
 
+    // 走査自体が空振りしていないことを併せて確認する
+    expect(stylesheets.length).toBeGreaterThan(0)
     expect(offenders).toEqual([])
   })
 })

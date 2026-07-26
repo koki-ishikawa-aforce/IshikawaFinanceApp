@@ -102,3 +102,4 @@ JSX に絵文字（Unicode Emoji）を表示目的で埋め込まない。装飾
 - 片方のテーマだけで見た目を確認して完了にしない — darling / honey 両テーマで破綻しないことを確認する
 - `react-icons` を `icons.ts` の barrel を経由せず直接 import しない
 - 色だけでロールや状態を区別しない — 形状・テキストを併用する
+- 空状態（「〜がありません」）を画面ごとに書き起こさない — 共通部品 `EmptyState`（`packages/web/src/components/ui/EmptyState.tsx`）を使い、`*.module.css` に独自の空状態スタイルを定義しない

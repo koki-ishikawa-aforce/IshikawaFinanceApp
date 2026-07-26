@@ -44,14 +44,20 @@ export default function DashboardPage() {
 
       {/*
         カテゴリ内訳だけカードと見出しの外に置くと、空状態の案内が背景の上に 1 行浮いて
-        他画面と揃わない(#311 のレビュー指摘)。他画面のセクションと同じ器に載せる
+        他画面と揃わない(#311 のレビュー指摘)。他画面のセクションと同じ器に載せる。
+        器は取得状態によらず出す — 月・モードを切り替えるたびカードごと消えると、
+        何のセクションが消えたのか分からなくなるため(usability 1-1)
       */}
-      {breakdown.data && (
-        <div className={ui.card}>
-          <span className={ui.sectionTitle}>カテゴリ別支出</span>
+      <div className={ui.card}>
+        <span className={ui.sectionTitle}>
+          {mode === 'household' ? '世帯支出（カテゴリ別）' : '個人支出（カテゴリ別）'}
+        </span>
+        {breakdown.isLoading && <div className={ui.loading}>読み込み中...</div>}
+        {breakdown.error && <div className={ui.error}>カテゴリ内訳の取得に失敗しました</div>}
+        {breakdown.data && (
           <CategoryBreakdown data={breakdown.data} categoryColors={categoryColors} />
-        </div>
-      )}
+        )}
+      </div>
 
       {mode === 'household' && kpis.data && (
         <SpousePersonalNote amount={kpis.data.spousePersonalTotal} theme={theme} />
