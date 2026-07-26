@@ -1,4 +1,9 @@
-import type { BrokerageNameWire, ExpenseClassWire, OwnAccountWire } from './api-schemas'
+import type {
+  BrokerageNameWire,
+  ExpenseClassWire,
+  LearningRefsWire,
+  OwnAccountWire,
+} from './api-schemas'
 
 export const EXPENSE_CLASS_LABELS: Record<ExpenseClassWire, string> = {
   household: '世帯',
@@ -29,4 +34,71 @@ export function brokerageNameLabel(name: BrokerageNameWire): string {
     case 'other':
       return name.customName
   }
+}
+
+// ---------- 分類学習ルール（#400） ----------
+
+/**
+ * 学習の 3 軸（08b §3 の更新軸。domain の `LearningAxis` と同じ集合）。
+ * 表示名は下の LEARNING_AXIS_LABELS が持ち、識別子と表示文字列を混ぜない。
+ */
+export type LearningAxisKey = 'category' | 'expense_class' | 'expense_type'
+
+export const LEARNING_AXIS_LABELS: Record<LearningAxisKey, string> = {
+  category: 'カテゴリ',
+  expense_class: '費用区分',
+  expense_type: '経費種別',
+}
+
+/** 学習ルールが覚えている 1 軸ぶんの表示。`learned` が false のとき `value` は未学習の案内文 */
+export interface LearnedAxisLabel {
+  axis: LearningAxisKey
+  value: string
+  learned: boolean
+}
+
+const UNLEARNED_LABEL = 'まだ覚えていません'
+
+/** マスタ名を引けないときの表示。カテゴリ・経費種別の削除は付け替えを伴うため通常は起きない */
+const UNKNOWN_MASTER_LABEL = '（不明）'
+
+/**
+ * 学習ルールが軸ごとに覚えている内容を表示用ラベルへ変換する。
+ *
+ * 3 軸（カテゴリ / 費用区分 / 経費種別）は独立に学習される（T-2）ため、学習済みの軸だけを
+ * 抜き出さず常に 3 軸すべてを返し、未学習の軸も「まだ覚えていません」として見せる。
+ * 「未学習の軸が残るルールは自動分類に使えない」という判定はドメインの不変条件なので、
+ * ここでは再実装せず素の状態のみを表示する。
+ */
+export function learnedAxisLabels(
+  refs: LearningRefsWire,
+  categoryNameOf: (categoryId: string) => string | undefined,
+  expenseTypeNameOf: (expenseTypeId: string) => string | undefined,
+): LearnedAxisLabel[] {
+  return [
+    {
+      axis: 'category',
+      ...(refs.categoryRef.kind === 'learned'
+        ? {
+            value: categoryNameOf(refs.categoryRef.categoryId) ?? UNKNOWN_MASTER_LABEL,
+            learned: true,
+          }
+        : { value: UNLEARNED_LABEL, learned: false }),
+    },
+    {
+      axis: 'expense_class',
+      ...(refs.expenseClassRef.kind === 'learned'
+        ? { value: EXPENSE_CLASS_LABELS[refs.expenseClassRef.expenseClass], learned: true }
+        : { value: UNLEARNED_LABEL, learned: false }),
+    },
+    {
+      axis: 'expense_type',
+      ...(refs.expenseTypeRef.kind === 'learned'
+        ? {
+            value: expenseTypeNameOf(refs.expenseTypeRef.expenseTypeId) ?? UNKNOWN_MASTER_LABEL,
+            learned: true,
+          }
+        : { value: UNLEARNED_LABEL, learned: false }),
+    },
+  ]
 }

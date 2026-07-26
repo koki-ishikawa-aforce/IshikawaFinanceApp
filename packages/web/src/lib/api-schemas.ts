@@ -393,6 +393,74 @@ export const MonthlyLimitListWireSchema = z.object({
   items: z.array(MonthlyLimitWireSchema),
 })
 
+// ---------- 分類学習ルール（#400） ----------
+
+/**
+ * 学習参照 3 軸（T-2 軸独立）のワイヤー形式。
+ * 軸ごとに「学習済み」「未学習」を持つドメインの discriminated union をそのままミラーする。
+ */
+const CategoryLearningRefWireSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('learned'), categoryId: z.string() }),
+  z.object({ kind: z.literal('unlearned') }),
+])
+export type CategoryLearningRefWire = z.infer<typeof CategoryLearningRefWireSchema>
+
+const ExpenseClassLearningRefWireSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('learned'), expenseClass: ExpenseClassWireSchema }),
+  z.object({ kind: z.literal('unlearned') }),
+])
+export type ExpenseClassLearningRefWire = z.infer<typeof ExpenseClassLearningRefWireSchema>
+
+const ExpenseTypeLearningRefWireSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('learned'), expenseTypeId: z.string() }),
+  z.object({ kind: z.literal('unlearned') }),
+])
+export type ExpenseTypeLearningRefWire = z.infer<typeof ExpenseTypeLearningRefWireSchema>
+
+const LearningRefsWireSchema = z.object({
+  categoryRef: CategoryLearningRefWireSchema,
+  expenseClassRef: ExpenseClassLearningRefWireSchema,
+  expenseTypeRef: ExpenseTypeLearningRefWireSchema,
+})
+export type LearningRefsWire = z.infer<typeof LearningRefsWireSchema>
+
+/** 加盟店学習ルール（有効 / 学習無効化）。自然キーは userId + merchantName で専用 ID を持たない */
+export const MerchantLearningRuleWireSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('active'),
+      common: z.object({ userId: z.string(), merchantName: z.string() }),
+      lastUpdatedAt: IsoDate,
+    })
+    .merge(LearningRefsWireSchema),
+  z.object({
+    kind: z.literal('disabled'),
+    common: z.object({ userId: z.string(), merchantName: z.string() }),
+    disabledAt: IsoDate,
+  }),
+])
+export type MerchantLearningRuleWire = z.infer<typeof MerchantLearningRuleWireSchema>
+
+export const MerchantLearningRuleListWireSchema = z.object({
+  items: z.array(MerchantLearningRuleWireSchema),
+})
+
+/** Amazon 商品キー学習ルール（X-1: AMAZON.CO.JP の取引はこちらで学習する。無効化の概念は無い） */
+export const AmazonProductKeyLearningRuleWireSchema = z
+  .object({
+    userId: z.string(),
+    amazonProductKey: z.string(),
+    lastUpdatedAt: IsoDate,
+  })
+  .merge(LearningRefsWireSchema)
+export type AmazonProductKeyLearningRuleWire = z.infer<
+  typeof AmazonProductKeyLearningRuleWireSchema
+>
+
+export const AmazonProductKeyLearningRuleListWireSchema = z.object({
+  items: z.array(AmazonProductKeyLearningRuleWireSchema),
+})
+
 // ---------- オンボーディング（#42） ----------
 
 const LineOperationSettingsWireSchema = z.object({

@@ -1,0 +1,124 @@
+.note {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.warning {
+  font-size: var(--text-xs);
+  color: var(--error-text);
+  line-height: 1.6;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-2_5);
+}
+
+.retryRow {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-2);
+}
+
+.errorHint {
+  display: block;
+  font-size: var(--text-xs);
+  padding-top: var(--space-1);
+}
+
+/** 停止・再開の結果をその場で伝える行(トーストは採用しない) */
+.actionResult {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.ruleList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ruleRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.ruleRow:last-child {
+  border-bottom: none;
+}
+
+/* min-width: 0 が無いと flex 子が縮まず、長い加盟店名がバッジを押し出す(省略記号が出ない) */
+.ruleName {
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ruleMeta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/** `ui.badge` と併用する色の修飾子(角丸・余白・背景は共通部品側の 1 か所に置く) */
+.badgeStopped {
+  color: var(--warning-muted);
+  white-space: nowrap;
+}
+
+.axes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0_5);
+}
+
+.axisRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.axisName {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.axisValue {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* 学習済みの値(太字・濃色)に対し、未学習は弱い表示にして一目で区別できるようにする */
+.axisUnlearned {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.linkButton {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: var(--tap-target-min);
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  padding: var(--space-0_5);
+}
+
+/** `.linkButton` と併用する色の修飾子。本文サイズのため `--error` ではなく文字用の `--error-text` を使う */
+.linkDanger {
+  color: var(--error-text);
+}
