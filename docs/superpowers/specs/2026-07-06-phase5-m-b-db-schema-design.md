@@ -161,6 +161,14 @@ adapter 実装はドライバ横断の `Db` 型にのみ依存するため実装
 **`db.transaction`（interactive transaction）は neon-http では実行時に throw する**点は変わらない。
 ローカルの node-postgres では動いてしまい本番でのみ壊れるため、save は引き続き単文 upsert で完結させる。
 
+**ローカル専用ドライバの遅延読み込み（#349 で追記）**: `pg` と `drizzle-orm/node-postgres` は
+node-postgres を選んだときだけ動的 import する（本番の neon-http では読み込まない）。
+`drizzle-orm/node-postgres` が `pg` を静的 import しているため、遅延させる対象は両方で、
+片方だけでは `pg` が結局読み込まれる。この遅延のため `createDbConnection()` / `createDb()` は
+非同期であり、api の DI 合成（`createDeps()`）も非同期になる。静的 import へ戻す回帰は
+`tests/unit/noStaticNodePgImport.test.ts` が src の静的解析で検出する。
+あわせて、パッケージ名は Neon 専用でなくなった実態に合わせて `@warimaru/adapters-postgres` に改めた。
+
 ### §2.6 イベント永続化: 行わない（OQ-42 確定）
 
 **決定**: ドメインイベント（M-A で型定義した 89 種）は **in-process pub/sub のみ**で流し、

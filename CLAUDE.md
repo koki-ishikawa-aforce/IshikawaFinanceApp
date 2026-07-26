@@ -8,7 +8,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 ## パッケージ構成(ヘキサゴナル)
 
 - `packages/domain` — 純粋ドメイン層。依存は zod のみ(I/O・フレームワーク依存は禁止)。8つの境界づけられたコンテキスト + `shared`
-- `packages/adapters-postgres` — Drizzle ORM + Neon。実装クラスは `Neon*Repository` / `Neon*Query` 命名
+- `packages/adapters-postgres` — Drizzle ORM + PostgreSQL(本番は Neon、ローカル開発と統合テストは素の PostgreSQL)。実装クラスは `Neon*Repository` / `Neon*Query` 命名
 - `packages/api` — Hono。`src/composition-root.ts` で DI 合成
 - `packages/web` — Next.js 15 Static Export + React 19 + LIFF
 
