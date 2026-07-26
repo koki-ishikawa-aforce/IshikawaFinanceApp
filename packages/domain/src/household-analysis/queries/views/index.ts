@@ -1,4 +1,5 @@
 export * from './DashboardKpisView'
+export * from './BalanceFreshnessListView'
 export * from './CategoryBreakdownView'
 export * from './MonthlyReportView'
 export * from './TransactionListItem'

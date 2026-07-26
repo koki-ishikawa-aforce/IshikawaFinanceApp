@@ -1,4 +1,5 @@
 import type {
+  BalanceFreshnessListView,
   DashboardQuery,
   DashboardKpisView,
   DashboardMode,
@@ -6,7 +7,11 @@ import type {
   UserId,
   YearMonth,
 } from '@warimaru/domain'
-import { DashboardKpisViewSchema, CategoryBreakdownViewSchema } from '@warimaru/domain'
+import {
+  BalanceFreshnessListViewSchema,
+  DashboardKpisViewSchema,
+  CategoryBreakdownViewSchema,
+} from '@warimaru/domain'
 
 export function createMockDashboardQuery(): DashboardQuery {
   return {
@@ -22,6 +27,20 @@ export function createMockDashboardQuery(): DashboardQuery {
         savingsBalance: 2450000,
         nisaContributionAccumulated: 360000,
         totalAssets: 2760000,
+      })
+    },
+
+    async fetchBalanceFreshness(_viewerId: UserId): Promise<BalanceFreshnessListView> {
+      return BalanceFreshnessListViewSchema.parse({
+        items: [
+          {
+            accountId: '01JAAAAAAAAAAAAAAAAAAAAAB1',
+            displayName: 'ゆうちょ銀行',
+            lastUpdatedAt: new Date('2026-07-20T00:00:00.000Z'),
+            daysSinceLastUpdate: 4,
+            status: 'ok',
+          },
+        ],
       })
     },
 

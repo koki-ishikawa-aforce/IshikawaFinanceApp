@@ -170,6 +170,17 @@
   color: var(--white);
 }
 
+.badgeWarning {
+  display: inline-block;
+  border-radius: var(--radius-sm);
+  padding: var(--space-0_5) var(--space-1_5);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  background: var(--warning);
+  color: var(--warning-text);
+  white-space: nowrap;
+}
+
 .row {
   display: flex;
   align-items: center;

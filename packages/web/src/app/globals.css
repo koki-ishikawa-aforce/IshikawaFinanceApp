@@ -49,6 +49,9 @@ textarea {
   --space-12: 48px;
   --space-14: 56px;
 
+  /* タップターゲットの下限（docs/design/usability.md 4-3。padding ではなく min-height で保証する） */
+  --tap-target-min: 44px;
+
   /* Border radius (§2.4) */
   --radius-sm: 8px;
   --radius-md: 10px;

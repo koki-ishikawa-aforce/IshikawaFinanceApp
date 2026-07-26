@@ -349,3 +349,120 @@ describe('NeonDashboardQuery プライバシー否定形テスト', () => {
     expect(darlingView.items.every(i => i.total !== 60000)).toBe(true)
   })
 })
+
+describe('NeonDashboardQuery.fetchBalanceFreshness', () => {
+  const FIXED_NOW = new Date('2026-07-26T00:00:00.000Z')
+  const freshnessQuery = new NeonDashboardQuery(db, {
+    resolveCategoryNames: stubResolveCategoryNames({}),
+    resolveViewerRole: stubResolveViewerRole,
+    now: () => FIXED_NOW,
+  })
+
+  it('閾値 35 日の境界（34 日 = 鮮度OK / 35 日 = 鮮度アラート）で状態を付与する', async () => {
+    // UNIQUE (owner_user_id, kind) により別銀行貯蓄口座は 1 人 1 件のため、
+    // 境界の両側は夫婦それぞれの口座で作る
+    const fresh = otherSavingsAccount({
+      ownerUserId: HONEY_USER_ID,
+      lastUpdatedAt: new Date('2026-06-22T00:00:00.000Z'),
+      bankName: '楽天銀行',
+    })
+    const stale = otherSavingsAccount({
+      ownerUserId: DARLING_USER_ID,
+      lastUpdatedAt: new Date('2026-06-21T00:00:00.000Z'),
+      bankName: 'ゆうちょ銀行',
+    })
+    for (const account of [fresh, stale]) {
+      await accountRepo.save(account)
+    }
+
+    const honeyView = await freshnessQuery.fetchBalanceFreshness(HONEY_USER_ID)
+    expect(honeyView.items).toEqual([
+      {
+        accountId: fresh.common.accountId,
+        displayName: '楽天銀行',
+        lastUpdatedAt: new Date('2026-06-22T00:00:00.000Z'),
+        daysSinceLastUpdate: 34,
+        status: 'ok',
+      },
+    ])
+
+    const darlingView = await freshnessQuery.fetchBalanceFreshness(DARLING_USER_ID)
+    expect(darlingView.items).toEqual([
+      {
+        accountId: stale.common.accountId,
+        displayName: 'ゆうちょ銀行',
+        lastUpdatedAt: new Date('2026-06-21T00:00:00.000Z'),
+        daysSinceLastUpdate: 35,
+        status: 'alert',
+      },
+    ])
+  })
+
+  it('経過日数は残高の最終更新日時ではなく鮮度根拠（freshnessSource）から算出する', async () => {
+    // 残高側は「1 日前に更新」でも、鮮度根拠が 40 日前ならアラートになる（08d L60）
+    await accountRepo.save(
+      otherSavingsAccount({
+        ownerUserId: HONEY_USER_ID,
+        lastUpdatedAt: new Date('2026-07-25T00:00:00.000Z'),
+        freshnessLastUpdatedAt: new Date('2026-06-16T00:00:00.000Z'),
+      }),
+    )
+
+    const view = await freshnessQuery.fetchBalanceFreshness(HONEY_USER_ID)
+    expect(view.items).toHaveLength(1)
+    expect(view.items[0]).toMatchObject({ daysSinceLastUpdate: 40, status: 'alert' })
+  })
+
+  it('配偶者所有の別銀行貯蓄口座は返さない（残高は本人のみ可視 — P2-B5 / AT-404）', async () => {
+    const own = otherSavingsAccount({ ownerUserId: HONEY_USER_ID, bankName: '楽天銀行' })
+    const spouse = otherSavingsAccount({ ownerUserId: DARLING_USER_ID, bankName: 'ゆうちょ銀行' })
+    for (const account of [own, spouse]) {
+      await accountRepo.save(account)
+    }
+
+    const honeyView = await freshnessQuery.fetchBalanceFreshness(HONEY_USER_ID)
+    expect(honeyView.items.map(item => item.accountId)).toEqual([own.common.accountId])
+    expect(honeyView.items.map(item => item.displayName)).not.toContain('ゆうちょ銀行')
+
+    // 対称に、Darling からも Honey の口座は見えない
+    const darlingView = await freshnessQuery.fetchBalanceFreshness(DARLING_USER_ID)
+    expect(darlingView.items.map(item => item.accountId)).toEqual([spouse.common.accountId])
+    expect(darlingView.items.map(item => item.displayName)).not.toContain('楽天銀行')
+  })
+
+  it('自動更新の口座（SMBC / カード / NISA）は鮮度評価の対象に含めない', async () => {
+    const other = otherSavingsAccount({ ownerUserId: HONEY_USER_ID })
+    for (const account of [
+      other,
+      smbcAccount({ ownerUserId: HONEY_USER_ID }),
+      nisaAccount({ ownerUserId: HONEY_USER_ID }),
+      cardAccount({ ownerUserId: HONEY_USER_ID }),
+    ]) {
+      await accountRepo.save(account)
+    }
+
+    const view = await freshnessQuery.fetchBalanceFreshness(HONEY_USER_ID)
+    expect(view.items.map(item => item.accountId)).toEqual([other.common.accountId])
+  })
+
+  it('別銀行貯蓄口座が 1 件も無ければ空リストを返す', async () => {
+    await accountRepo.save(smbcAccount({ ownerUserId: HONEY_USER_ID }))
+
+    const view = await freshnessQuery.fetchBalanceFreshness(HONEY_USER_ID)
+    expect(view.items).toEqual([])
+  })
+
+  it('inactive の別銀行貯蓄口座は鮮度評価の対象に含めない', async () => {
+    const inactive = otherSavingsAccount({ ownerUserId: HONEY_USER_ID })
+    await accountRepo.save({
+      ...inactive,
+      common: {
+        ...inactive.common,
+        activeness: { kind: 'inactive', inactivatedAt: FIXED_NOW, reason: 'test' },
+      },
+    })
+
+    const view = await freshnessQuery.fetchBalanceFreshness(HONEY_USER_ID)
+    expect(view.items).toEqual([])
+  })
+})

@@ -23,6 +23,7 @@ import { registerMonthlyReportDeliveryEventHandlers } from './monthly-report-del
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
 import { createDeepLinkBuilder } from '../notification/deep-links.js'
 import { registerUnpaidBalanceUpdateEventHandlers } from './unpaid-balance-update.js'
+import { registerExpenseReimbursementArrivalEventHandlers } from './expense-reimbursement-arrival.js'
 
 export { domainEventBase } from './event-base.js'
 
@@ -51,6 +52,10 @@ export function registerEventHandlers(deps: AppDeps): void {
     monthlyLimitRepository: deps.monthlyLimitRepository,
     categoryDeletionRequestRepository: deps.categoryDeletionRequestRepository,
     expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
+  })
+  // 入金用途 = 経費精算入金 の確定 → 突合待ちの経費精算入金を作る（#390 / 08e §2）
+  registerExpenseReimbursementArrivalEventHandlers(deps.eventBus, {
+    expenseReimbursementDepositRepository: deps.expenseReimbursementDepositRepository,
   })
   registerMonthlyReportFinalizationEventHandlers(deps.eventBus, {
     monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
