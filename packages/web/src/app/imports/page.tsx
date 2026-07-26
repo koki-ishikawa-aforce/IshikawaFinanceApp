@@ -18,6 +18,7 @@ import { formatMoney } from '@/lib/format'
 import { formatDate, formatDateTime, getCurrentMonth } from '@/lib/month'
 import { LuCircleCheck } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { StatementGuide, type StatementSource } from '@/components/imports/StatementGuide'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -35,6 +36,9 @@ const FILE_KIND_LABELS = {
   bank_statement: '銀行入出金明細',
 } as const
 type FileKind = keyof typeof FILE_KIND_LABELS
+
+/** 取得手順ガイドを出す明細の取得元。spec §10.1 ③ の「アップロード対象カード（2 種）」に対応する。 */
+const STATEMENT_SOURCES: readonly StatementSource[] = ['card', 'bank']
 
 interface CandidatesPanelProps {
   importJobId: string
@@ -252,6 +256,10 @@ function ImportsPageContent() {
             <EmptyState>この月の CSV 取込はまだ完了していません</EmptyState>
           ))}
       </div>
+
+      {STATEMENT_SOURCES.map(source => (
+        <StatementGuide key={source} source={source} month={month} />
+      ))}
 
       <div className={ui.card}>
         <span className={ui.sectionTitle}>CSV アップロード</span>
