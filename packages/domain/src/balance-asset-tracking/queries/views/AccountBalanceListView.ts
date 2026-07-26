@@ -17,13 +17,14 @@ export const AccountBalanceItemSchema = z.discriminatedUnion('kind', [
     currentMonthUnpaidTotal: MoneySchema,
     lastSettledAt: z.date().nullable(),
   }),
+  // 鮮度（経過日数・鮮度状態）は本コンテキストの責務ではない。08d L244 のとおり
+  // 最終更新日時のみを供給し、閾値判定は家計分析の `BalanceFreshnessListView` が担う
   z.object({
     kind: z.literal('other_savings'),
     accountId: AccountIdSchema,
     displayName: z.string(),
     currentBalance: MoneySchema,
     lastUpdatedAt: z.date(),
-    daysSinceLastUpdate: z.number().int().nonnegative(),
   }),
   z.object({
     kind: z.literal('nisa'),

@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { LearningRulesTab } from '@/components/settings/LearningRulesTab'
 import { apiFetch, apiMutate } from '@/lib/api-client'
 import {
   CategoryListWireSchema,
@@ -28,7 +29,7 @@ import { LuPlus, LuRocket } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
-type Tab = 'profile' | 'accounts' | 'categories' | 'expense-types' | 'limits'
+type Tab = 'profile' | 'accounts' | 'categories' | 'expense-types' | 'limits' | 'classification'
 
 // ---------- プロフィール（#48） ----------
 
@@ -1013,6 +1014,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'categories', label: 'カテゴリ' },
   { id: 'expense-types', label: '経費種別' },
   { id: 'limits', label: '月次上限' },
+  { id: 'classification', label: '学習' },
 ]
 
 const VALID_TABS = new Set<string>(TABS.map(t => t.id))
@@ -1046,6 +1048,7 @@ function SettingsPageContent() {
       {tab === 'categories' && <CategoriesTab />}
       {tab === 'expense-types' && <ExpenseTypesTab />}
       {tab === 'limits' && <LimitsTab />}
+      {tab === 'classification' && <LearningRulesTab />}
 
       <Link href="/onboarding" className={styles.onboardingLink}>
         <LuRocket aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}

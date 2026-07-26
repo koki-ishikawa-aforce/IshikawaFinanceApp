@@ -229,7 +229,14 @@ export function accountBalanceListFixture(): unknown {
         displayName: '楽天銀行',
         currentBalance: 1740000,
         lastUpdatedAt: '2026-07-20T00:00:00.000Z',
-        daysSinceLastUpdate: 4,
+      },
+      // 鮮度アラート（35 日以上未更新）の見た目を両テーマで確認するための口座
+      {
+        kind: 'other_savings',
+        accountId: 'ACC_MOCK_005',
+        displayName: 'ゆうちょ銀行',
+        currentBalance: 260000,
+        lastUpdatedAt: '2026-06-14T00:00:00.000Z',
       },
       {
         kind: 'nisa',
@@ -242,15 +249,36 @@ export function accountBalanceListFixture(): unknown {
   }
 }
 
+/**
+ * GET /api/dashboard/balance-freshness
+ *
+ * 残高鮮度は本人所有の口座のみを返す（P2-B5 / AT-404）。別銀行貯蓄口座は
+ * 1 人 1 件（UNIQUE (owner_user_id, kind)）なので、閲覧者本人の 1 件だけを返し、
+ * 鮮度アラートの見た目を両テーマで確認できるようにする。
+ */
+export function balanceFreshnessFixture(): unknown {
+  return {
+    items: [
+      {
+        accountId: 'ACC_MOCK_005',
+        displayName: 'ゆうちょ銀行',
+        lastUpdatedAt: '2026-06-14T00:00:00.000Z',
+        daysSinceLastUpdate: 40,
+        status: 'alert',
+      },
+    ],
+  }
+}
+
 /** GET /api/balances/total */
 export function assetTotalFixture(): unknown {
   return {
     asOf: '2026-07-24T00:00:00.000Z',
     smbcBalance: 1500000,
-    otherSavingsBalance: 1740000,
+    otherSavingsBalance: 2000000,
     nisaContributionAccumulated: 1200000,
     cardUnpaidTotal: 120000,
-    total: 4320000,
+    total: 4580000,
   }
 }
 
@@ -420,4 +448,92 @@ export function onboardingMeFixture(): unknown {
 /** GET /api/imports/status */
 export function importStatusFixture(): unknown {
   return { completion: null }
+}
+
+/**
+ * GET /api/classification/merchant-rules
+ *
+ * 学習データは完全個人別（08b F-1）なので、閲覧ロールごとに別のルールを返す。
+ * 経費(会社) を含む学習は本人だけが見られる情報のため、両ロールで同じ内容を返すと
+ * プレビュー画面が「相手の経費学習が見えている」ように読めてしまう。
+ * 学習中（3 軸学習済み / 一部未学習）と学習停止中を含め、行の見え方を一覧で確認できるようにする。
+ * categoryId / expenseTypeId は categoryListFixture / expenseTypeListFixture の値と揃える。
+ * 日時は JST の暦日が UTC と食い違わないよう 15:00Z より前に置く（基準画像がタイムゾーン依存になる）。
+ */
+export function merchantLearningRuleListFixture(role: UserRole): unknown {
+  const userId = role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK'
+  if (role === 'honey') {
+    return {
+      items: [
+        {
+          kind: 'active',
+          common: { userId, merchantName: 'カルディ 恵比寿店' },
+          categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWY' },
+          expenseClassRef: { kind: 'learned', expenseClass: 'household' },
+          expenseTypeRef: { kind: 'unlearned' },
+          lastUpdatedAt: '2026-07-19T02:40:00.000Z',
+        },
+        {
+          kind: 'disabled',
+          common: { userId, merchantName: 'コンビニ各種' },
+          disabledAt: '2026-07-02T05:00:00.000Z',
+        },
+      ],
+    }
+  }
+  return {
+    items: [
+      {
+        kind: 'active',
+        common: { userId, merchantName: 'ライフ 中目黒店' },
+        categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWY' },
+        expenseClassRef: { kind: 'learned', expenseClass: 'household' },
+        expenseTypeRef: { kind: 'unlearned' },
+        lastUpdatedAt: '2026-07-18T04:20:00.000Z',
+      },
+      {
+        kind: 'active',
+        common: { userId, merchantName: 'メトロ 定期券' },
+        categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VW0' },
+        expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+        expenseTypeRef: { kind: 'learned', expenseTypeId: 'ET_MOCK_001' },
+        lastUpdatedAt: '2026-07-05T09:10:00.000Z',
+      },
+      {
+        kind: 'disabled',
+        common: { userId, merchantName: 'セブンイレブン' },
+        disabledAt: '2026-06-30T12:00:00.000Z',
+      },
+    ],
+  }
+}
+
+/** GET /api/classification/amazon-rules（merchant-rules と同じくロール別。F-1） */
+export function amazonProductKeyLearningRuleListFixture(role: UserRole): unknown {
+  if (role === 'honey') {
+    return {
+      items: [
+        {
+          userId: 'U_HONEY_MOCK',
+          amazonProductKey: '日用品 / 詰め替え洗剤',
+          categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VW0' },
+          expenseClassRef: { kind: 'learned', expenseClass: 'household' },
+          expenseTypeRef: { kind: 'unlearned' },
+          lastUpdatedAt: '2026-07-14T01:30:00.000Z',
+        },
+      ],
+    }
+  }
+  return {
+    items: [
+      {
+        userId: 'U_DARLING_MOCK',
+        amazonProductKey: '技術書 / プログラミング',
+        categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VW0' },
+        expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+        expenseTypeRef: { kind: 'learned', expenseTypeId: 'ET_MOCK_002' },
+        lastUpdatedAt: '2026-07-12T09:00:00.000Z',
+      },
+    ],
+  }
 }

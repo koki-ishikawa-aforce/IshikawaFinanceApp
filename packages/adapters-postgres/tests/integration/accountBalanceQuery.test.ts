@@ -27,8 +27,7 @@ import {
 const accountRepo = new NeonAccountRepository(db)
 const unpaidRepo = new NeonMitsuiSumitomoUnpaidRepository(db)
 
-const FIXED_NOW = new Date('2026-07-06T00:00:00.000Z')
-const query = new NeonAccountBalanceQuery(db, { now: () => FIXED_NOW })
+const query = new NeonAccountBalanceQuery(db)
 
 describe('NeonAccountBalanceQuery.fetchBalanceList', () => {
   it('世帯共有: 両者の active 口座を kind 固定順で返す（inactive 除外）', async () => {
@@ -36,7 +35,7 @@ describe('NeonAccountBalanceQuery.fetchBalanceList', () => {
     const smbc = smbcAccount({ ownerUserId: HONEY_USER_ID, currentBalance: 1500000 })
     const other = otherSavingsAccount({
       ownerUserId: DARLING_USER_ID,
-      lastUpdatedAt: new Date('2026-06-26T00:00:00.000Z'), // 10 日前
+      lastUpdatedAt: new Date('2026-06-26T00:00:00.000Z'),
     })
     const card = cardAccount({ ownerUserId: HONEY_USER_ID })
     const inactive = smbcAccount({ ownerUserId: DARLING_USER_ID, isActive: false })
@@ -68,7 +67,7 @@ describe('NeonAccountBalanceQuery.fetchBalanceList', () => {
     expect(otherItem).toMatchObject({
       displayName: 'ゆうちょ銀行',
       currentBalance: 800000,
-      daysSinceLastUpdate: 10,
+      lastUpdatedAt: new Date('2026-06-26T00:00:00.000Z'),
     })
     expect(nisaItem).toMatchObject({ displayName: 'SBI証券', currentAccumulated: 300000 })
   })
