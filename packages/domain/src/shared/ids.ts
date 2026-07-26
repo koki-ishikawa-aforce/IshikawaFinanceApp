@@ -41,6 +41,9 @@ export type ExpenseTypeId = z.infer<typeof ExpenseTypeIdSchema>
 export const AccountIdSchema = ulidSchema.brand<'AccountId'>()
 export type AccountId = z.infer<typeof AccountIdSchema>
 
+export const BankDepositIdSchema = ulidSchema.brand<'BankDepositId'>()
+export type BankDepositId = z.infer<typeof BankDepositIdSchema>
+
 export const MitsuiSumitomoUnpaidIdSchema = ulidSchema.brand<'MitsuiSumitomoUnpaidId'>()
 export type MitsuiSumitomoUnpaidId = z.infer<typeof MitsuiSumitomoUnpaidIdSchema>
 

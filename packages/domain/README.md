@@ -11,13 +11,13 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### shared
 
-- ID 型: `TransactionId`, `UserId`, `CategoryId`, `ExpenseTypeId`, `AccountId`, `MitsuiSumitomoUnpaidId`, `UnpaidEntryId`, `MonthlyReportId`, `ExpenseReimbursementId`, `SettlementNoticeId`, `GmailMessageId`,
+- ID 型: `TransactionId`, `UserId`, `CategoryId`, `ExpenseTypeId`, `AccountId`, `BankDepositId`, `MitsuiSumitomoUnpaidId`, `UnpaidEntryId`, `MonthlyReportId`, `ExpenseReimbursementId`, `SettlementNoticeId`, `GmailMessageId`,
   `TransactionCandidateId`, `ImportBatchId`, `ImportJobId`, `UploadFileId`, `PdfConversionJobId`, `AmazonOrderId`, `BulkClassificationSessionId`, `MonthlyExpenseCycleId`, `ChildTransactionId`, `ExpenseTypeAccumulationId`, `TalkRoomId`, `MonthlyLimitId`, `CategoryDeletionRequestId`, `ExpenseTypeDeletionRequestId`, `Phase0ConfigId`, `DeliveryMessageId`, `DeliveryLogId`, `FailsafeEmailId`, `LineMessageId`（および各 Schema）
-- 値オブジェクト: `Money`, `YearMonth`, `ExpenseClass`, `ParameterStorePath`, `AmazonProductKey`, `UserRole`, `PersonalExpenseClass`（別名 `DefaultExpenseClass`。`roleToPersonalExpenseClass` / `assertPersonalExpenseClassMatchesRole` で所有者ロールとの整合を担保）
+- 値オブジェクト: `Money`, `YearMonth`（および JST 暦日ヘルパー `jstCalendarParts` / `jstYearMonthOf`）, `normalizeJapaneseName`（OQ-7 / OQ-23 の名称正規化。加盟店名・振込元名の正規化が委譲する単一実装）, `ExpenseClass`, `ParameterStorePath`, `AmazonProductKey`, `UserRole`, `PersonalExpenseClass`（別名 `DefaultExpenseClass`。`roleToPersonalExpenseClass` / `assertPersonalExpenseClassMatchesRole` で所有者ロールとの整合を担保）
 - 共有カーネル語彙（Phase 5 M-A で household-analysis から移設）: `UnclassifiedReason`, `ClassificationBasis`, `ImportSource`（メンバー schema 個別 export あり）, `UnapprovedExpenseTransfer`
 - イベント基底: `DomainEventBase`
 - イベントバス: `EventBus` / `EventHandler`（同期・インプロセス配信、publish はハンドラー完了を await）+ 実装 `InMemoryEventBus`（#34）
-- エラー: `DomainError`, `InvariantViolationError`, `NotFoundError`, `PermissionDeniedError`, `UnpaidAlreadyBookedError` / `UnpaidSettlementAlreadyAppliedError`（いずれも `InvariantViolationError` の派生。冪等ガードの「適用済み」をメッセージ文言ではなく型で判別するため、#388）
+- エラー: `DomainError`, `InvariantViolationError`, `NotFoundError`, `PermissionDeniedError`, `UnpaidAlreadyBookedError` / `UnpaidSettlementAlreadyAppliedError` / `OtherSavingsMovementAlreadyAppliedError`（いずれも `InvariantViolationError` の派生。冪等ガードの「適用済み」をメッセージ文言ではなく型で判別するため、#388 / #390）
 
 ### household-analysis（家計分析）
 
@@ -30,12 +30,13 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### balance-asset-tracking（残高・資産推移管理）
 
-- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`。SMBC 残高更新 `applySmbcBalanceChange`、引落消込の残高反映 `applyUnpaidSettlementToSmbcBalance`（同一 `settlementNoticeId` の再反映を拒否）、口座登録 `registerOtherSavingsAccount` / `registerNisaAccount`、名称変更 `changeBankName` / `changeBrokerageName`、種別絞り込み `asOtherSavingsAccount` / `asNisaAccount`、残高の手動操作 `withdrawOtherSavings` / `correctOtherSavingsBalance` / `correctInitialBalance`（旧初期残高を同時に返す） / `inactivateAccount`（別銀行貯蓄・NISA のみ。取り消し不可）、振込由来の加算 `addOtherSavingsBySmbcTransfer` / `addNisaContributionBySmbcTransfer`（出金用途判別からの呼び出し用。#390）、手入力金額の上限 `BALANCE_INPUT_LIMIT`、非アクティブ理由 `InactivationReasonSchema` を含む）, `MitsuiSumitomoUnpaid`（未払金計上 `bookUnpaid` / 消込 `settleUnpaid` / 通知別の消込エントリ `settledEntriesForNotice` / 消込合計 `settledTotalForNotice` を含む）
-- 値オブジェクト: `AccountKind`, `BankName`, `BrokerageName`（および `brokerageNameToDisplay`）, `OtherSavingsUpdateSource`
-- Repository I/F: `AccountRepository`, `MitsuiSumitomoUnpaidRepository`
+- 集約: `Account`（`smbc_bank` / `mitsui_sumitomo_card` / `other_savings` / `nisa`。SMBC 残高更新 `applySmbcBalanceChange`、別銀行貯蓄（シャドウ）残高の手入力更新 `applyOtherSavingsBalanceChange` / 取引由来の更新 `applyOtherSavingsMovement`（同一 `transactionId` の再適用を拒否）、引落消込の残高反映 `applyUnpaidSettlementToSmbcBalance`（同一 `settlementNoticeId` の再反映を拒否）、口座登録 `registerOtherSavingsAccount` / `registerNisaAccount`、名称変更 `changeBankName` / `changeBrokerageName`、種別絞り込み `asOtherSavingsAccount` / `asNisaAccount`、残高の手動操作 `withdrawOtherSavings` / `correctOtherSavingsBalance` / `correctInitialBalance`（旧初期残高を同時に返す） / `inactivateAccount`（別銀行貯蓄・NISA のみ。取り消し不可）、振込由来の加算 `addOtherSavingsBySmbcTransfer` / `addNisaContributionBySmbcTransfer`（出金用途判別からの呼び出し用。#390）、手入力金額の上限 `BALANCE_INPUT_LIMIT`、非アクティブ理由 `InactivationReasonSchema` を含む）, `BankDeposit`（入金変動 + 入金用途判別結果。`salary` / `expense_reimbursement` / `other_savings_return` / `unknown`。判別結果の記録 `recordBankDeposit` / 手動確認による確定 `confirmBankDepositPurpose`（本人のみ・別用途への変更は不可。同じ用途での再確定は冪等で、反映の前方回復の入口） / 確定判定 `isDeterminedBankDeposit` / 可視判定 `canViewBankDeposit` を含む。確定経路 `DeterminationSource`（`automatic` / `manual`）を保持）, `MitsuiSumitomoUnpaid`（未払金計上 `bookUnpaid` / 消込 `settleUnpaid` / 通知別の消込エントリ `settledEntriesForNotice` / 消込合計 `settledTotalForNotice` を含む）
+- 値オブジェクト: `AccountKind`, `BankName`, `BrokerageName`（および `brokerageNameToDisplay`）, `OtherSavingsUpdateSource`, `DepositPurpose` / `DeterminedDepositPurpose` / `ProvisionalHandling`, `WithdrawalPurpose` / `OtherSavingsCounterpartyNames`, `BankDepositPurposeRule`（組立 `bankDepositPurposeRule` + 既定値 `DEFAULT_SALARY_PAYOUT_DAY_WINDOW` / `DEFAULT_SALARY_THRESHOLD_AMOUNT`）, `normalizeRemitterName`
+- ドメインサービス: `determineBankDepositPurpose`（OQ-21 の入金日 + 金額 2 シグナル判別。矛盾時は用途不明 = 手動確認待ち）, `determineWithdrawalPurpose`, `applyOtherSavingsReturn` / `applyOtherSavingsTransfer`（シャドウ残高への資金移動。金額は正・向きは関数側が決める）
+- Repository I/F: `AccountRepository`, `BankDepositRepository`, `MitsuiSumitomoUnpaidRepository`
 - Query I/F: `AccountBalanceQuery`, `BalanceTimeSeriesQuery`
 - View 型: `AccountBalanceListView`, `BalanceTimeSeriesView`, `AssetTotalView`
-- ドメインイベント: `AccountBalanceUpdated`, `AccountRegistered`, `AccountInactivated`, `InitialBalanceRegistered`, `InitialBalanceCorrected`, `OtherSavingsBalanceUpdated`, `BankNameChanged`, `BrokerageNameChanged`, `UnpaidBookkept`, `UnpaidSettled`, `NisaContributionAdded`
+- ドメインイベント: `AccountBalanceUpdated`, `AccountRegistered`, `AccountInactivated`, `InitialBalanceRegistered`, `InitialBalanceCorrected`, `OtherSavingsBalanceUpdated`, `BankNameChanged`, `BrokerageNameChanged`, `UnpaidBookkept`, `UnpaidSettled`, `NisaContributionAdded`, `BankDepositPurposeDetermined`, `ExpenseReimbursementDepositArrived`（08e の「経費精算入金を受信する」を起動する上流トリガー。08e が発行する `ExpenseReimbursementDepositReceived` とは別物）
 
 ### auto-classification（自動分類・学習、08b）
 
@@ -69,6 +70,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - 値オブジェクト: `Nickname`（≤10 文字・省略可、Phase 3.5）, `Phase2Progress`, `LineOperationSettings`（友達追加 × 通知機能有効化。共通トークルーム参加は `SharedTalkRoom` へ分離済み。有効化記録は有効化日時のみを持ち、共通トークルームID は持たない — 保持する置き場は `SharedTalkRoom` 1 か所、#334）, `RoleJudgment`（+ 役割判定 `judgeRole` / 配偶者ユーザーID導出 `resolveSpouseUserId`、許可リスト照合）, `SpouseCompletionResult`, `GmailOAuthTokenRef`, `InitialBalanceRegistrationRef`
 - Repository I/F: `AppUserRepository`, `GmailOAuthTokenRepository`, `SharedTalkRoomRepository`（世帯で 1 件のため引数なしの `find()` / `save()`）
 - Service I/F（ACL 翻訳層の driven port、実装は api 層）: `GmailOAuthGateway`（OQ-7、トークン実体は Parameter Store へ保管しドメインはパスのみ受領）, `LineFriendshipGateway`（OQ-55 ③、新規登録完了時に友だち状態を照会して登録前 follow の取りこぼしを拾う。結果は `LineFriendshipStatus` = `friend` / `not_friend` / `unknown`。照会失敗は例外ではなく `unknown` で返し `not_friend` と区別する）, `LineTalkRoomMembershipGateway`（OQ-55 ① / #371、join Webhook で参加を記録する前に招待されたトークルームへの在籍を照会する。結果は `LineTalkRoomMembershipStatus` = `member` / `not_member` / `unknown`。照会失敗は `unknown` で返し `not_member` と区別し、`unknown` は `retryable` で一時障害と恒久的な失敗を分ける。`LineTalkRoomKind`（`group` / `room`）・`LineTalkRoomMembershipCheck`（照会 1 回分の入力）を含む）, `decideSharedTalkRoomJoin` / `requiresTalkRoomMembershipCheck`（OQ-55 ① / #371、join Webhook 由来の参加記録の可否判定。`SharedTalkRoomJoinVerdict` = `record` / `skip` / `retry_later`）
+- ドメインサービス（集約横断の判定。application 層が保存とイベント発行を行う）: `decideOperationStart`（論点16、夫婦 2 人の `AppUser` が揃って Phase2 完了なら運用開始済みへ遷移させる。`HouseholdMembers` / `OperationStartedHousehold` / `OperationStartDecision` を含む。片方のみ完了では発火しない）, `decideHouseholdNotificationActivation`（08f §2「通知機能を有効化する」。両者運用開始済み・友達追加済み・世帯が共通トークルーム参加済みで有効化し、配信先は `SharedTalkRoom` から取る）, `isHouseholdNotificationActive`（世帯として有効化済みか。通知機能有効化イベントの二重発行防止に使う）
 - Query I/F: `SpouseCompletionQuery`（論点19: 画面ロード時のみ）
 - ドメインイベント: `RoleJudged`, `GmailOauthRevocationDetected`（OAuth 所有者として一元宣言）ほか 20 種
 
