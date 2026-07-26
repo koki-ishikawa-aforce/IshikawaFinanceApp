@@ -8,7 +8,13 @@ import {
   TransactionSchema,
   YearMonthSchema,
 } from '@warimaru/domain'
-import type { CategoryDeletionRequestId, UserId } from '@warimaru/domain'
+import type {
+  CategoryDeletionCompleted,
+  CategoryDeletionRequestId,
+  ExpenseTypeDeletionCompleted,
+  ExpenseTypeDeletionRequestId,
+  UserId,
+} from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-neon'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, SPOUSE_ID, VIEWER_ID } from '../helpers/test-app.js'
@@ -61,6 +67,30 @@ async function seedClassifiedTransaction(
     }),
   )
   return transactionId
+}
+
+/** 経費種別軸のみを学習した加盟店ルール・Amazon商品キールールを1件ずつ用意する */
+async function seedExpenseTypeLearningRules(t: TestApp, expenseTypeId: string): Promise<void> {
+  await t.deps.merchantLearningRuleRepository.save(
+    MerchantLearningRuleSchema.parse({
+      kind: 'active',
+      common: { userId: VIEWER_ID, merchantName: 'スーパーA' },
+      categoryRef: { kind: 'unlearned' },
+      expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+      expenseTypeRef: { kind: 'learned', expenseTypeId },
+      lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
+    }),
+  )
+  await t.deps.amazonProductKeyLearningRuleRepository.save(
+    AmazonProductKeyLearningRuleSchema.parse({
+      userId: VIEWER_ID,
+      amazonProductKey: '本',
+      categoryRef: { kind: 'unlearned' },
+      expenseClassRef: { kind: 'unlearned' },
+      expenseTypeRef: { kind: 'learned', expenseTypeId },
+      lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
+    }),
+  )
 }
 
 describe('POST /api/categories/:id/deletion-requests', () => {
@@ -168,6 +198,26 @@ describe('POST /api/categories/:id/deletion-requests', () => {
     expect(res.status).toBe(403)
   })
 
+  it('取引も学習ルールも無いカテゴリは件数 0 で削除される', async () => {
+    const t = createTestApp()
+    const target = await createCategory(t, '推し活')
+    const destination = await createCategory(t, '娯楽費')
+
+    const res = await request(t.app, 'POST', `/api/categories/${target}/deletion-requests`, {
+      body: { destinationCategoryId: destination, destinationExpenseClass: 'household' },
+    })
+    expect(res.status).toBe(201)
+    const { request: deletionRequest } = (await res.json()) as {
+      request: {
+        state: { kind: string; affectedTransactionCount: number; affectedLearningRuleCount: number }
+      }
+    }
+    expect(deletionRequest.state.kind).toBe('remap_completed')
+    expect(deletionRequest.state.affectedTransactionCount).toBe(0)
+    expect(deletionRequest.state.affectedLearningRuleCount).toBe(0)
+    expect(await t.deps.categoryMasterRepository.findById(target as never)).toBeNull()
+  })
+
   it('DELETE /api/categories/:id は 409 で新フローを案内する', async () => {
     const t = createTestApp()
     const target = await createCategory(t, '推し活')
@@ -179,11 +229,12 @@ describe('POST /api/categories/:id/deletion-requests', () => {
 })
 
 describe('POST /api/expense-types/:id/deletion-requests', () => {
-  it('取引の経費種別を付け替え、月次上限を削除し、マスタを物理削除する', async () => {
+  it('取引・学習ルールを付け替え、月次上限を削除し、マスタを物理削除する', async () => {
     const t = createTestApp()
     const target = await createExpenseType(t, 'セミナー')
     const destination = await createExpenseType(t, '書籍')
     const transactionId = await seedClassifiedTransaction(t, { expenseTypeId: target })
+    await seedExpenseTypeLearningRules(t, target)
     const limitRes = await request(t.app, 'PUT', '/api/monthly-limits', {
       body: { expenseTypeId: target, capAmount: 10000 },
     })
@@ -194,10 +245,14 @@ describe('POST /api/expense-types/:id/deletion-requests', () => {
     })
     expect(res.status).toBe(201)
     const { request: deletionRequest } = (await res.json()) as {
-      request: { state: { kind: string; affectedTransactionCount: number } }
+      request: {
+        state: { kind: string; affectedTransactionCount: number; affectedLearningRuleCount: number }
+      }
     }
     expect(deletionRequest.state.kind).toBe('remap_completed')
+    // 経費精算・自動分類の両コンテキストの完了通知が揃ってはじめて確定する件数
     expect(deletionRequest.state.affectedTransactionCount).toBe(1)
+    expect(deletionRequest.state.affectedLearningRuleCount).toBe(2)
 
     expect(await t.deps.expenseTypeMasterRepository.findById(target as never)).toBeNull()
     const remapped = await t.deps.transactionRepository.findById(
@@ -209,10 +264,36 @@ describe('POST /api/expense-types/:id/deletion-requests', () => {
       kind: 'business',
       expenseTypeId: destination,
     })
+    // 学習ルールも経費種別軸のみ付け替え済み
+    const rules = await t.deps.merchantLearningRuleRepository.findAllByUser(VIEWER_ID)
+    const rule = rules[0]
+    if (rule?.kind !== 'active') throw new Error('active を期待')
+    expect(rule.expenseTypeRef).toEqual({ kind: 'learned', expenseTypeId: destination })
+    expect(rule.categoryRef).toEqual({ kind: 'unlearned' })
     // 削除対象の月次上限は物理削除済み
     expect(
       await t.deps.monthlyLimitRepository.findByUserAndExpenseType(VIEWER_ID, target as never),
     ).toBeNull()
+  })
+
+  it('取引も学習ルールも無い経費種別は件数 0 で削除される', async () => {
+    const t = createTestApp()
+    const target = await createExpenseType(t, 'セミナー')
+    const destination = await createExpenseType(t, '書籍')
+
+    const res = await request(t.app, 'POST', `/api/expense-types/${target}/deletion-requests`, {
+      body: { destinationExpenseTypeId: destination },
+    })
+    expect(res.status).toBe(201)
+    const { request: deletionRequest } = (await res.json()) as {
+      request: {
+        state: { kind: string; affectedTransactionCount: number; affectedLearningRuleCount: number }
+      }
+    }
+    expect(deletionRequest.state.kind).toBe('remap_completed')
+    expect(deletionRequest.state.affectedTransactionCount).toBe(0)
+    expect(deletionRequest.state.affectedLearningRuleCount).toBe(0)
+    expect(await t.deps.expenseTypeMasterRepository.findById(target as never)).toBeNull()
   })
 
   it('他ユーザーの経費種別を移動先には 403', async () => {
@@ -344,5 +425,163 @@ describe('マスタ削除リマップの冪等性・失敗時のマスタ保全�
       capturedId as CategoryDeletionRequestId,
     )
     expect(reread?.state.kind).toBe('remap_failed')
+  })
+})
+
+describe('マスタ削除完了の通知と物理削除の順序（#363）', () => {
+  it('カテゴリ削除の完了で CategoryDeletionCompleted が合算件数付きで1件だけ発行される', async () => {
+    const t = createTestApp()
+    const completed: CategoryDeletionCompleted[] = []
+    t.deps.eventBus.subscribe<CategoryDeletionCompleted>('CategoryDeletionCompleted', e => {
+      completed.push(e)
+      return Promise.resolve()
+    })
+
+    const target = await createCategory(t, '推し活')
+    const destination = await createCategory(t, '娯楽費')
+    await seedClassifiedTransaction(t, { categoryId: target })
+    await t.deps.merchantLearningRuleRepository.save(
+      MerchantLearningRuleSchema.parse({
+        kind: 'active',
+        common: { userId: VIEWER_ID, merchantName: 'スーパーA' },
+        categoryRef: { kind: 'learned', categoryId: target },
+        expenseClassRef: { kind: 'learned', expenseClass: 'household' },
+        expenseTypeRef: { kind: 'unlearned' },
+        lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
+      }),
+    )
+
+    const res = await request(t.app, 'POST', `/api/categories/${target}/deletion-requests`, {
+      body: { destinationCategoryId: destination, destinationExpenseClass: 'household' },
+    })
+    expect(res.status).toBe(201)
+    const { request: deletionRequest } = (await res.json()) as {
+      request: { categoryDeletionRequestId: string }
+    }
+
+    expect(completed).toHaveLength(1)
+    expect(completed[0]?.categoryDeletionRequestId).toBe(deletionRequest.categoryDeletionRequestId)
+    expect(completed[0]?.affectedTransactionCount).toBe(1)
+    expect(completed[0]?.affectedLearningRuleCount).toBe(1)
+  })
+
+  it('経費種別削除の完了で ExpenseTypeDeletionCompleted が合算件数付きで1件だけ発行される', async () => {
+    const t = createTestApp()
+    const completed: ExpenseTypeDeletionCompleted[] = []
+    t.deps.eventBus.subscribe<ExpenseTypeDeletionCompleted>('ExpenseTypeDeletionCompleted', e => {
+      completed.push(e)
+      return Promise.resolve()
+    })
+
+    const target = await createExpenseType(t, 'セミナー')
+    const destination = await createExpenseType(t, '書籍')
+    await seedClassifiedTransaction(t, { expenseTypeId: target })
+    await seedExpenseTypeLearningRules(t, target)
+
+    const res = await request(t.app, 'POST', `/api/expense-types/${target}/deletion-requests`, {
+      body: { destinationExpenseTypeId: destination },
+    })
+    expect(res.status).toBe(201)
+    const { request: deletionRequest } = (await res.json()) as {
+      request: { expenseTypeDeletionRequestId: string }
+    }
+
+    expect(completed).toHaveLength(1)
+    expect(completed[0]?.expenseTypeDeletionRequestId).toBe(
+      deletionRequest.expenseTypeDeletionRequestId,
+    )
+    expect(completed[0]?.affectedTransactionCount).toBe(1)
+    expect(completed[0]?.affectedLearningRuleCount).toBe(2)
+  })
+
+  it('経費種別: 学習ルールの付け替えが失敗するとマスタ・月次上限が残り remap_failed になる', async () => {
+    const t = createTestApp()
+    const completed: ExpenseTypeDeletionCompleted[] = []
+    t.deps.eventBus.subscribe<ExpenseTypeDeletionCompleted>('ExpenseTypeDeletionCompleted', e => {
+      completed.push(e)
+      return Promise.resolve()
+    })
+
+    const target = await createExpenseType(t, 'セミナー')
+    const destination = await createExpenseType(t, '書籍')
+    const transactionId = await seedClassifiedTransaction(t, { expenseTypeId: target })
+    const limitRes = await request(t.app, 'PUT', '/api/monthly-limits', {
+      body: { expenseTypeId: target, capAmount: 10000 },
+    })
+    expect(limitRes.status).toBe(200)
+
+    // 自動分類・学習コンテキストの付け替えを失敗させる（学習ルールストア障害を模擬）
+    t.deps.merchantLearningRuleRepository.findAllByUser = () => {
+      throw new Error('learning rule store unavailable')
+    }
+    let capturedId: string | undefined
+    const originalSave = t.deps.expenseTypeDeletionRequestRepository.save.bind(
+      t.deps.expenseTypeDeletionRequestRepository,
+    )
+    t.deps.expenseTypeDeletionRequestRepository.save = async deletionRequest => {
+      capturedId = deletionRequest.expenseTypeDeletionRequestId
+      return originalSave(deletionRequest)
+    }
+
+    const res = await request(t.app, 'POST', `/api/expense-types/${target}/deletion-requests`, {
+      body: { destinationExpenseTypeId: destination },
+    })
+    expect(res.status).toBe(500)
+
+    // 1コンテキストでも失敗したらマスタも月次上限も消さない
+    expect(await t.deps.expenseTypeMasterRepository.findById(target as never)).not.toBeNull()
+    expect(
+      await t.deps.monthlyLimitRepository.findByUserAndExpenseType(VIEWER_ID, target as never),
+    ).not.toBeNull()
+    expect(completed).toHaveLength(0)
+    if (capturedId === undefined) throw new Error('削除リクエストID を捕捉できなかった')
+    const reread = await t.deps.expenseTypeDeletionRequestRepository.findById(
+      capturedId as ExpenseTypeDeletionRequestId,
+    )
+    expect(reread?.state.kind).toBe('remap_failed')
+
+    // 先行コンテキストの付け替えは済んでいる（マスタが残るので取引の参照先は失われない）
+    const remapped = await t.deps.transactionRepository.findById(
+      TransactionIdSchema.parse(transactionId),
+    )
+    if (remapped?.kind !== 'classified') throw new Error('classified を期待')
+    expect(remapped.details.expenseTypeRef).toEqual({
+      kind: 'business',
+      expenseTypeId: destination,
+    })
+  })
+
+  it('経費種別: 完了通知が揃わないままなら 201 を返さずマスタを残す', async () => {
+    const t = createTestApp()
+    const completed: ExpenseTypeDeletionCompleted[] = []
+    t.deps.eventBus.subscribe<ExpenseTypeDeletionCompleted>('ExpenseTypeDeletionCompleted', e => {
+      completed.push(e)
+      return Promise.resolve()
+    })
+
+    const target = await createExpenseType(t, 'セミナー')
+    const destination = await createExpenseType(t, '書籍')
+    await seedClassifiedTransaction(t, { expenseTypeId: target })
+
+    // 完了通知の記録だけが失われる状況を模擬する（購読漏れ・保存の取りこぼし）
+    const originalSave = t.deps.expenseTypeDeletionRequestRepository.save.bind(
+      t.deps.expenseTypeDeletionRequestRepository,
+    )
+    t.deps.expenseTypeDeletionRequestRepository.save = async deletionRequest => {
+      if (
+        deletionRequest.state.kind === 'remap_requested' &&
+        deletionRequest.state.completedContexts.length > 0
+      ) {
+        return
+      }
+      return originalSave(deletionRequest)
+    }
+
+    const res = await request(t.app, 'POST', `/api/expense-types/${target}/deletion-requests`, {
+      body: { destinationExpenseTypeId: destination },
+    })
+    expect(res.status).toBe(500)
+    expect(completed).toHaveLength(0)
+    expect(await t.deps.expenseTypeMasterRepository.findById(target as never)).not.toBeNull()
   })
 })

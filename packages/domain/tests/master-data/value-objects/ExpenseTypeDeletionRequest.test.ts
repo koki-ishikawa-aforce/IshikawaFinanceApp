@@ -53,10 +53,58 @@ describe('ExpenseTypeDeletionRequest 状態遷移', () => {
     expect(completed.state.affectedLearningRuleCount).toBe(4)
   })
 
+  it('同一コンテキストの完了通知は冪等（再記録しても件数を二重加算しない）', () => {
+    const requested = requestExpenseTypeRemap(
+      pendingRequest(),
+      ['expense_settlement', 'auto_classification'],
+      at,
+    )
+    const once = recordExpenseTypeRemapContextCompletion(
+      requested,
+      { context: 'expense_settlement', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
+      at,
+    )
+    const twice = recordExpenseTypeRemapContextCompletion(
+      once,
+      { context: 'expense_settlement', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
+      at,
+    )
+    expect(twice.state.completedContexts).toHaveLength(1)
+    // 再通知だけでは残りのコンテキストが埋まらない（物理削除の前提条件を満たさない）
+    expect(isExpenseTypeRemapFullyCompleted(twice)).toBe(false)
+
+    const afterAuto = recordExpenseTypeRemapContextCompletion(
+      twice,
+      { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 2 },
+      at,
+    )
+    const completed = completeExpenseTypeRemap(afterAuto, at)
+    // 合算値が再通知の分だけ増えていない（6 / 4 にならない）
+    expect(completed.state.affectedTransactionCount).toBe(3)
+    expect(completed.state.affectedLearningRuleCount).toBe(2)
+  })
+
+  it('未完了のコンテキストが残るかぎり全完了と判定しない', () => {
+    const requested = requestExpenseTypeRemap(
+      pendingRequest(),
+      ['expense_settlement', 'auto_classification'],
+      at,
+    )
+    expect(isExpenseTypeRemapFullyCompleted(requested)).toBe(false)
+
+    const afterAuto = recordExpenseTypeRemapContextCompletion(
+      requested,
+      { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 2 },
+      at,
+    )
+    expect(isExpenseTypeRemapFullyCompleted(afterAuto)).toBe(false)
+  })
+
   it('pending_remap → remap_requested → remap_failed', () => {
     const requested = requestExpenseTypeRemap(pendingRequest(), ['expense_settlement'], at)
     const failed = failExpenseTypeRemap(requested, '保存に失敗', at)
     expect(failed.state.kind).toBe('remap_failed')
+    expect(failed.state.failureDetail).toBe('保存に失敗')
   })
 
   it('remap_failed 状態は失敗詳細が必須', () => {

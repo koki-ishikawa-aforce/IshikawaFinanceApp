@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import type { ExpenseTypeDeletionRequestId } from '@warimaru/domain'
 import type { PendingRemapExpenseTypeDeletionRequest } from '@warimaru/domain'
-import { failExpenseTypeRemap, requestExpenseTypeRemap } from '@warimaru/domain'
+import {
+  completeExpenseTypeRemap,
+  failExpenseTypeRemap,
+  recordExpenseTypeRemapContextCompletion,
+  requestExpenseTypeRemap,
+} from '@warimaru/domain'
 import { db } from './setup'
 import { NeonExpenseTypeDeletionRequestRepository } from '../../src/master-data/NeonExpenseTypeDeletionRequestRepository'
 import { expenseTypeDeletionRequest } from '../helpers/masterDataFixtures'
@@ -19,6 +24,40 @@ describe('NeonExpenseTypeDeletionRequestRepository', () => {
     expect(
       await repo.findById('01HZZZZZZZZZZZZZZZZZZZZZZZ' as ExpenseTypeDeletionRequestId),
     ).toBeNull()
+  })
+
+  it('複数コンテキストの完了記録と remap_completed が往復して同一（pending_remap → remap_requested → remap_completed）', async () => {
+    const pending = expenseTypeDeletionRequest() as PendingRemapExpenseTypeDeletionRequest
+    await repo.save(pending)
+    const at = new Date('2026-07-02T00:00:00.000Z')
+    const requested = requestExpenseTypeRemap(
+      pending,
+      ['expense_settlement', 'auto_classification'],
+      at,
+    )
+    await repo.save(requested)
+    expect(await repo.findById(pending.expenseTypeDeletionRequestId)).toEqual(requested)
+
+    // 各コンテキストの完了通知を記録（completedContexts の永続化往復も検証）
+    const afterSettlement = recordExpenseTypeRemapContextCompletion(
+      requested,
+      { context: 'expense_settlement', affectedTransactionCount: 2, affectedLearningRuleCount: 0 },
+      at,
+    )
+    await repo.save(afterSettlement)
+    expect(await repo.findById(pending.expenseTypeDeletionRequestId)).toEqual(afterSettlement)
+
+    const afterAuto = recordExpenseTypeRemapContextCompletion(
+      afterSettlement,
+      { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 1 },
+      at,
+    )
+    await repo.save(afterAuto)
+    expect(await repo.findById(pending.expenseTypeDeletionRequestId)).toEqual(afterAuto)
+
+    const completed = completeExpenseTypeRemap(afterAuto, at)
+    await repo.save(completed)
+    expect(await repo.findById(pending.expenseTypeDeletionRequestId)).toEqual(completed)
   })
 
   it('状態遷移の再 save で上書きされる（remap_failed も保存できる）', async () => {

@@ -108,6 +108,16 @@ describe('CategoryDeletionRequest 状態遷移', () => {
     )
     expect(twice.state.completedContexts).toHaveLength(1)
     expect(isCategoryRemapFullyCompleted(twice)).toBe(false)
+
+    const afterAuto = recordCategoryRemapContextCompletion(
+      twice,
+      { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 2 },
+      at,
+    )
+    const completed = completeCategoryRemap(afterAuto, at)
+    // 合算値が再通知の分だけ増えていない（6 / 4 にならない）
+    expect(completed.state.affectedTransactionCount).toBe(3)
+    expect(completed.state.affectedLearningRuleCount).toBe(2)
   })
 
   it('pending_remap → remap_requested → remap_failed', () => {
