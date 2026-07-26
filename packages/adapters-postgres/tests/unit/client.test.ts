@@ -106,4 +106,14 @@ describe('createDbConnection の close 契約（#323）', () => {
     expect(connection.db).toBeDefined()
     await expect(connection.close()).resolves.toBeUndefined()
   })
+
+  // node-postgres 側は #349 でドライバの読み込みが動的 import に変わった経路。
+  // 実 DB は要らない（pg の Pool は生成時に接続せず、未接続の end() も resolve する）ので、
+  // 動的 import の解決（名前付きエクスポートの取り違え等）はここで実際に実行して確かめる。
+  it('node-postgres も db を返し、close() が実接続なしで resolve する', async () => {
+    const connection = await createDbConnection({ databaseUrl: LOCAL_URL, isProduction: false })
+
+    expect(connection.db).toBeDefined()
+    await expect(connection.close()).resolves.toBeUndefined()
+  })
 })

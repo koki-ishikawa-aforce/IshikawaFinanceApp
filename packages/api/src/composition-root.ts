@@ -298,10 +298,12 @@ function resolveAllowedOrigins(env: CompositionEnv): string[] {
 }
 
 /**
- * 開発モードの合成（DATABASE_URL 未設定時のインメモリモック）。
+ * 開発モードの合成（インメモリモック）。DB へ接続しない構成を組み立てる。
  *
- * DB 接続を持たないため同期で組み立てられる。実 DB 経路（`createDeps`）は `pg` の遅延読み込み
- * のため非同期になった（#349）が、DB を使わないこの経路まで非同期にする必要はないので分けている。
+ * `createDeps` は DATABASE_URL が無いときにここへ委ねるが、この関数自体は DATABASE_URL の
+ * 有無を判定しない（DB を使わない構成を作る、というのが契約）。DB 接続を持たないため同期で
+ * 組み立てられる。実 DB 経路（`createDeps`）は `pg` の遅延読み込みのため非同期になった（#349）が、
+ * DB を使わないこの経路まで非同期にする必要はないので分けている。
  * エンドポイントテストのアプリ組み立てもこの関数を直接使う。
  */
 export function createMockDeps(env: CompositionEnv): AppDeps {
@@ -313,7 +315,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
       'DATABASE_URL is required in production. Refusing to start with mock data — set DATABASE_URL.',
     )
   }
-  console.warn('DATABASE_URL not set — using mock data (development only)')
+  console.warn('Using in-memory mock data (development only) — not connecting to a database')
   // 開発モードの許可リスト（devViewerIdMiddleware / テストの X-User-Id と揃える）
   const devAllowlist = AllowlistSchema.parse({
     honeyLineUserId: 'user-honey-test',

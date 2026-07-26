@@ -28,6 +28,10 @@ describe('createDeps モックフォールバックの環境ガード (#47)', ()
   })
 
   it('本番環境でも DATABASE_URL が設定されていればガードは発火しない（実 deps を構築）', async () => {
+    // モック合成に落ちたときも dashboardQuery は生えるため、それだけでは実 deps の証明にならない。
+    // モック経路でしか出ない警告が出ていないことを対にして見る（#349 で合成が2関数に分かれたため）。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
     const deps = await createDeps({
       NODE_ENV: 'production',
       DATABASE_URL: 'postgresql://user:pass@localhost:5432/warimaru',
@@ -36,6 +40,7 @@ describe('createDeps モックフォールバックの環境ガード (#47)', ()
     })
 
     expect(deps.dashboardQuery).toBeDefined()
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('development only'))
   })
 
   // createMockDeps は createDeps 経由だけでなくテストのアプリ組み立てからも直接呼ばれる (#349)。
