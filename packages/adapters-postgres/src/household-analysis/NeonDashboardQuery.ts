@@ -21,6 +21,7 @@
  */
 import { and, count, eq, gte, inArray, lt, sum } from 'drizzle-orm'
 import type {
+  BalanceFreshnessListView,
   CategoryBreakdownView,
   CategoryId,
   DashboardKpisView,
@@ -33,8 +34,10 @@ import type {
 } from '@warimaru/domain'
 import {
   AccountSchema,
+  BalanceFreshnessListViewSchema,
   CategoryBreakdownViewSchema,
   DashboardKpisViewSchema,
+  evaluateBalanceFreshness,
 } from '@warimaru/domain'
 import type { Db } from '../client'
 import { accounts, mitsuiSumitomoUnpaids, transactions } from '../schema'
@@ -58,13 +61,19 @@ function spousePersonalClass(role: UserRole): ExpenseClass {
 export interface NeonDashboardQueryDeps {
   resolveCategoryNames: ResolveCategoryNames
   resolveViewerRole: ResolveViewerRole
+  /** 鮮度評価の現在日時（テストで固定時刻を注入する） */
+  now?: () => Date
 }
 
 export class NeonDashboardQuery implements DashboardQuery {
+  private readonly now: () => Date
+
   constructor(
     private readonly db: Db,
     private readonly deps: NeonDashboardQueryDeps,
-  ) {}
+  ) {
+    this.now = deps.now ?? (() => new Date())
+  }
 
   async fetchKpis(
     viewerId: UserId,
@@ -171,6 +180,44 @@ export class NeonDashboardQuery implements DashboardQuery {
         ),
       )
     return rows[0]?.total ?? 0
+  }
+
+  /**
+   * 残高鮮度評価リスト（08c）。
+   *
+   * 対象は別銀行貯蓄口座（`other_savings`）の active 口座のみ（OQ-44: 他 3 種は
+   * 自動更新のため鮮度評価の対象外）。口座単位の残高情報は本人のみ可視（P2-B5 /
+   * AT-404）のため viewer 所有の口座だけを返す — 配偶者の口座は銀行名も件数も返さない。
+   * 閾値判定はドメインの `evaluateBalanceFreshness` に委譲する（本層で再実装しない）。
+   */
+  async fetchBalanceFreshness(viewerId: UserId): Promise<BalanceFreshnessListView> {
+    const rows = await this.db
+      .select({ payload: accounts.payload })
+      .from(accounts)
+      .where(
+        and(
+          eq(accounts.ownerUserId, viewerId),
+          eq(accounts.isActive, true),
+          eq(accounts.kind, 'other_savings'),
+        ),
+      )
+
+    // UNIQUE (owner_user_id, kind) により本人の other_savings は最大 1 件のため、
+    // 返却順を決める並べ替えは不要（スキーマ上は将来の複数件に備えたリスト）
+    const now = this.now()
+    const items = rows
+      .map(row => parsePayload(AccountSchema, row.payload))
+      .filter(account => account.kind === 'other_savings')
+      .map(account => ({
+        ...evaluateBalanceFreshness({
+          accountId: account.common.accountId,
+          lastUpdatedAt: account.freshnessSource.lastUpdatedAt,
+          now,
+        }),
+        displayName: account.bankName,
+      }))
+
+    return BalanceFreshnessListViewSchema.parse({ items })
   }
 
   /** viewer 所有の active 口座から貯蓄残高（SMBC + 別銀行）と NISA 積立原資を合算 */

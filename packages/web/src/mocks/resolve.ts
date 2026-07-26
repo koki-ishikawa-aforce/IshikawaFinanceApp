@@ -11,6 +11,7 @@ import {
   accountBalanceListFixture,
   amazonProductKeyLearningRuleListFixture,
   assetTotalFixture,
+  balanceFreshnessFixture,
   balanceTimeSeriesFixture,
   categoryBreakdownFixture,
   categoryListFixture,
@@ -64,6 +65,8 @@ export function resolveMock(method: string, path: string): unknown {
         return meFixture(getMockRole())
       case '/api/dashboard/kpis':
         return dashboardKpisFixture(parseMode(params))
+      case '/api/dashboard/balance-freshness':
+        return balanceFreshnessFixture()
       case '/api/dashboard/category-breakdown':
         return categoryBreakdownFixture(parseMode(params), params.get('month') ?? '2026-07')
       case '/api/transactions':

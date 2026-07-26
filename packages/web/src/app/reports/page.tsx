@@ -16,6 +16,7 @@ import { formatMoney } from '@/lib/format'
 import { formatDateTime, getCurrentMonth } from '@/lib/month'
 import { LuTriangleAlert } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { BalanceFreshnessCard } from '@/components/balances/BalanceFreshness'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -72,6 +73,8 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
           )}
         </div>
       </div>
+
+      <BalanceFreshnessCard />
 
       <div className={ui.card}>
         <span className={ui.sectionTitle}>世帯支出（カテゴリ別）</span>

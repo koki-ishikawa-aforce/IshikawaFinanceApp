@@ -229,7 +229,14 @@ export function accountBalanceListFixture(): unknown {
         displayName: '楽天銀行',
         currentBalance: 1740000,
         lastUpdatedAt: '2026-07-20T00:00:00.000Z',
-        daysSinceLastUpdate: 4,
+      },
+      // 鮮度アラート（35 日以上未更新）の見た目を両テーマで確認するための口座
+      {
+        kind: 'other_savings',
+        accountId: 'ACC_MOCK_005',
+        displayName: 'ゆうちょ銀行',
+        currentBalance: 260000,
+        lastUpdatedAt: '2026-06-14T00:00:00.000Z',
       },
       {
         kind: 'nisa',
@@ -242,15 +249,36 @@ export function accountBalanceListFixture(): unknown {
   }
 }
 
+/**
+ * GET /api/dashboard/balance-freshness
+ *
+ * 残高鮮度は本人所有の口座のみを返す（P2-B5 / AT-404）。別銀行貯蓄口座は
+ * 1 人 1 件（UNIQUE (owner_user_id, kind)）なので、閲覧者本人の 1 件だけを返し、
+ * 鮮度アラートの見た目を両テーマで確認できるようにする。
+ */
+export function balanceFreshnessFixture(): unknown {
+  return {
+    items: [
+      {
+        accountId: 'ACC_MOCK_005',
+        displayName: 'ゆうちょ銀行',
+        lastUpdatedAt: '2026-06-14T00:00:00.000Z',
+        daysSinceLastUpdate: 40,
+        status: 'alert',
+      },
+    ],
+  }
+}
+
 /** GET /api/balances/total */
 export function assetTotalFixture(): unknown {
   return {
     asOf: '2026-07-24T00:00:00.000Z',
     smbcBalance: 1500000,
-    otherSavingsBalance: 1740000,
+    otherSavingsBalance: 2000000,
     nisaContributionAccumulated: 1200000,
     cardUnpaidTotal: 120000,
-    total: 4320000,
+    total: 4580000,
   }
 }
 

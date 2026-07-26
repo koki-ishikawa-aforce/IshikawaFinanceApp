@@ -103,7 +103,6 @@ export const AccountBalanceItemWireSchema = z.discriminatedUnion('kind', [
     displayName: z.string(),
     currentBalance: z.number(),
     lastUpdatedAt: IsoDate,
-    daysSinceLastUpdate: z.number().int(),
   }),
   z.object({
     kind: z.literal('nisa'),
@@ -117,6 +116,24 @@ export type AccountBalanceItemWire = z.infer<typeof AccountBalanceItemWireSchema
 
 export const AccountBalanceListWireSchema = z.object({
   items: z.array(AccountBalanceItemWireSchema),
+})
+
+/**
+ * 残高鮮度評価（GET /api/dashboard/balance-freshness）。
+ * 鮮度状態は家計分析の Query が閾値 35 日（OQ-44）で判定済みのものを受け取る。
+ * 画面側で経過日数から状態を再判定しない。
+ */
+export const BalanceFreshnessItemWireSchema = z.object({
+  accountId: z.string(),
+  displayName: z.string(),
+  lastUpdatedAt: IsoDate,
+  daysSinceLastUpdate: z.number().int(),
+  status: z.enum(['ok', 'alert']),
+})
+export type BalanceFreshnessItemWire = z.infer<typeof BalanceFreshnessItemWireSchema>
+
+export const BalanceFreshnessListWireSchema = z.object({
+  items: z.array(BalanceFreshnessItemWireSchema),
 })
 
 export const AssetTotalWireSchema = z.object({
