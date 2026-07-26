@@ -8,26 +8,41 @@
  * - 「同一ユーザー × 口座種別の一意性」は Repository.save の一意制約が最終保証（409 に翻訳）
  * - 銀行名・証券会社名の変更は所有者本人のみ（ドメイン関数 changeBankName /
  *   changeBrokerageName が操作者を検証し、error-handler が 403 に翻訳する）
+ * - 残高の手動操作（#397。取り崩し・補正・初期残高の後修正・非アクティブ化）も所有者本人のみ。
+ *   金額と残高の不変条件（1 円以上・負残高にしない）はドメイン関数が持ち、本ルートでは
+ *   再実装しない（400 / 409 への翻訳は error-handler が行う）
  */
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
   AccountIdSchema,
+  AccountInactivatedSchema,
   AccountRegisteredSchema,
   BankNameChangedSchema,
   BankNameSchema,
   BrokerageNameChangedSchema,
   BrokerageNameSchema,
+  InitialBalanceCorrectedSchema,
   InitialBalanceRegisteredSchema,
+  InvariantViolationError,
   MoneySchema,
+  NisaContributionAddedSchema,
   NotFoundError,
+  OtherSavingsBalanceUpdatedSchema,
   PermissionDeniedError,
+  addNisaContributionBySmbcTransfer,
+  addOtherSavingsBySmbcTransfer,
   asNisaAccount,
   asOtherSavingsAccount,
   changeBankName,
   changeBrokerageName,
+  correctInitialBalance,
+  correctOtherSavingsBalance,
+  inactivateAccount,
+  initialBalanceOf,
   registerNisaAccount,
   registerOtherSavingsAccount,
+  withdrawOtherSavings,
 } from '@warimaru/domain'
 import type { Account, AccountId, AccountRepository, EventBus, UserId } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-postgres'
@@ -48,6 +63,10 @@ const RegisterBodySchema = z.discriminatedUnion('kind', [
 ])
 const BankNameBodySchema = z.object({ bankName: BankNameSchema })
 const BrokerageNameBodySchema = z.object({ brokerageName: BrokerageNameSchema })
+const AmountBodySchema = z.object({ amount: MoneySchema })
+const BalanceBodySchema = z.object({ balance: MoneySchema })
+const InitialBalanceBodySchema = z.object({ initialBalance: MoneySchema })
+const InactivateBodySchema = z.object({ reason: z.string().min(1) })
 
 export interface AccountsRoutesDeps {
   accountRepository: AccountRepository
@@ -175,6 +194,169 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
         newBrokerageName: body.brokerageName,
         changedByUserId: viewerId,
         changedAt: now,
+      }),
+    )
+    return c.json({ account: updated })
+  })
+
+  // --- #397: 残高の手動操作 ---
+
+  /** 所有者本人であることを確かめたうえで口座を取り出す（手動操作系の共通前処理） */
+  async function loadOwnedAccount(c: {
+    req: { param: (k: string) => string | undefined }
+    get: (k: 'viewerId') => UserId
+  }): Promise<{ account: Account; viewerId: UserId; accountId: AccountId }> {
+    const accountId = AccountIdSchema.parse(c.req.param('accountId'))
+    const viewerId = c.get('viewerId')
+    const account = await getAccountOr404(accountId)
+    assertOwnedByViewer(account, viewerId)
+    return { account, viewerId, accountId }
+  }
+
+  /** 別銀行貯蓄残高更新イベント（08d §3）の発行 */
+  async function publishOtherSavingsUpdated(params: {
+    accountId: AccountId
+    delta: number
+    newBalance: number
+    source: 'smbc_transfer_addition' | 'manual_withdrawal' | 'manual_correction'
+    at: Date
+  }): Promise<void> {
+    await deps.eventBus.publish(
+      OtherSavingsBalanceUpdatedSchema.parse({
+        ...domainEventBase(params.at),
+        type: 'OtherSavingsBalanceUpdated',
+        accountId: params.accountId,
+        delta: params.delta,
+        newBalance: params.newBalance,
+        source: params.source,
+      }),
+    )
+  }
+
+  /**
+   * SMBC からの振込による加算（別銀行貯蓄 = 貯蓄への振込 / NISA = 積立の買い付け）。
+   * 口座種別で振る舞いが分かれる（08d §2 の 2 つの behavior）。
+   */
+  app.post('/:accountId/transfer-in', async c => {
+    const body = AmountBodySchema.parse(await c.req.json())
+    const { account, accountId } = await loadOwnedAccount(c)
+    const now = new Date()
+
+    if (account.kind === 'other_savings') {
+      const updated = addOtherSavingsBySmbcTransfer(account, { amount: body.amount, at: now })
+      await deps.accountRepository.save(updated)
+      await publishOtherSavingsUpdated({
+        accountId,
+        delta: body.amount,
+        newBalance: updated.balance.currentBalance,
+        source: 'smbc_transfer_addition',
+        at: now,
+      })
+      return c.json({ account: updated })
+    }
+    if (account.kind === 'nisa') {
+      const updated = addNisaContributionBySmbcTransfer(account, { amount: body.amount, at: now })
+      await deps.accountRepository.save(updated)
+      await deps.eventBus.publish(
+        NisaContributionAddedSchema.parse({
+          ...domainEventBase(now),
+          type: 'NisaContributionAdded',
+          accountId,
+          addedAmount: body.amount,
+          newAccumulated: updated.contribution.currentAccumulated,
+          brokerageName: updated.brokerageName,
+        }),
+      )
+      return c.json({ account: updated })
+    }
+    throw new InvariantViolationError(
+      `振込による加算は別銀行貯蓄・NISA 口座のみ（現種別: ${account.kind}）`,
+    )
+  })
+
+  /** 取り崩しの記録（別銀行貯蓄。所有者本人のみ、残高を超える取り崩しは 409） */
+  app.post('/:accountId/withdraw', async c => {
+    const body = AmountBodySchema.parse(await c.req.json())
+    const { account, viewerId, accountId } = await loadOwnedAccount(c)
+    const savings = asOtherSavingsAccount(account)
+    const now = new Date()
+    const updated = withdrawOtherSavings(savings, {
+      amount: body.amount,
+      operatorUserId: viewerId,
+      at: now,
+    })
+    await deps.accountRepository.save(updated)
+    await publishOtherSavingsUpdated({
+      accountId,
+      delta: -body.amount,
+      newBalance: updated.balance.currentBalance,
+      source: 'manual_withdrawal',
+      at: now,
+    })
+    return c.json({ account: updated })
+  })
+
+  /** 残高の手動補正（別銀行貯蓄。差分ではなく実際の残高へ差し替える） */
+  app.put('/:accountId/balance', async c => {
+    const body = BalanceBodySchema.parse(await c.req.json())
+    const { account, viewerId, accountId } = await loadOwnedAccount(c)
+    const savings = asOtherSavingsAccount(account)
+    const now = new Date()
+    const updated = correctOtherSavingsBalance(savings, {
+      correctedBalance: body.balance,
+      operatorUserId: viewerId,
+      at: now,
+    })
+    await deps.accountRepository.save(updated)
+    await publishOtherSavingsUpdated({
+      accountId,
+      delta: updated.balance.currentBalance - savings.balance.currentBalance,
+      newBalance: updated.balance.currentBalance,
+      source: 'manual_correction',
+      at: now,
+    })
+    return c.json({ account: updated })
+  })
+
+  /** 初期残高の後修正（オンボーディング Phase 2-B の入力ミスを直す。現在残高も同じ差分ずれる） */
+  app.put('/:accountId/initial-balance', async c => {
+    const body = InitialBalanceBodySchema.parse(await c.req.json())
+    const { account, viewerId, accountId } = await loadOwnedAccount(c)
+    const oldInitialBalance = initialBalanceOf(account)
+    const now = new Date()
+    const updated = correctInitialBalance(account, {
+      initialBalance: body.initialBalance,
+      operatorUserId: viewerId,
+      at: now,
+    })
+    await deps.accountRepository.save(updated)
+    await deps.eventBus.publish(
+      InitialBalanceCorrectedSchema.parse({
+        ...domainEventBase(now),
+        type: 'InitialBalanceCorrected',
+        accountId,
+        // correctInitialBalance を通った時点で初期残高を持つ種別に限られる（カードは 409）
+        oldInitialBalance,
+        newInitialBalance: body.initialBalance,
+        correctedByUserId: viewerId,
+      }),
+    )
+    return c.json({ account: updated })
+  })
+
+  /** 口座の非アクティブ化（以降この口座は残高一覧・資産合計から外れる） */
+  app.post('/:accountId/inactivate', async c => {
+    const body = InactivateBodySchema.parse(await c.req.json())
+    const { account, accountId } = await loadOwnedAccount(c)
+    const now = new Date()
+    const updated = inactivateAccount(account, { reason: body.reason, at: now })
+    await deps.accountRepository.save(updated)
+    await deps.eventBus.publish(
+      AccountInactivatedSchema.parse({
+        ...domainEventBase(now),
+        type: 'AccountInactivated',
+        accountId,
+        reason: body.reason,
       }),
     )
     return c.json({ account: updated })
