@@ -5,7 +5,7 @@
 
 | ID | 概要 | ブロッカー(未実装機能) | 昇格先 |
 | --- | --- | --- | --- |
-| AT-901 | Gmail OAuth 連携 | オンボーディング Section A のバックエンド(OAuth フロー・Parameter Store 保存・LIFF 外部ブラウザ切り出し) | 02-onboarding |
+| AT-901 | Gmail OAuth 連携 | トークン失効時の検知 → LINE 個人 DM → 再認可導線(#392。検知の主体となるメール取得は #35 を分割した #412 / #414)。認可フロー本体(認可 URL 生成・トークン交換・Parameter Store 保存・LIFF 外部ブラウザ切り出し)は実装済み | 02-onboarding |
 | AT-902 | 日次メール取込バッチ | Gmail API 取得・SMBC/Amazon メールパース・EventBridge スケジュール(`POST /api/imports/mail-batch` の本稼働) | 04-monthly-cycle |
 | AT-903 | LINE 通知配信 | CSV リマインダーの定時起動(EventBridge → Lambda。#35 / #416)。配信処理・本文生成・月次レポートサマリ配信の発火元は #389 で実装済み | 04-monthly-cycle |
 | AT-904 | Amazon 注文突合・商品キー学習 | Amazon 注文確認メール取込・SMBC 通知との突合(3日タイムアウト双方向) | 03-classification |
@@ -15,6 +15,14 @@
 ---
 
 ## AT-901: Gmail OAuth 連携(シナリオB Section A)
+
+残るブロッカーはトークン失効まわりのみ(#392)。認可フロー本体 — 認可 URL 生成・トークン交換・
+Parameter Store へのトークン保管・LIFF から OS 標準ブラウザへの切り出し・再認可の受け口 — は実装済み。
+
+未実装なのは失効を検知して知らせる側で、失効検知・LINE 個人 DM への失効通知・そこからの再認可導線が無い。
+検知の主体は Gmail からのメール取得時の認可エラーであり、メールを取得する処理自体がまだ無いため、
+#392 は #35 を分割した #412(Gmail からのメール取得)・#414(日次メール取込バッチ)の後に実装される。
+昇格は #392 の完了後に行う。
 
 昇格時の骨子:
 
