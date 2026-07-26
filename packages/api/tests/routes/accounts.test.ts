@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { AccountIdSchema, AccountSchema } from '@warimaru/domain'
+import { newUlid } from '@warimaru/adapters-postgres'
 import type {
   AccountInactivated,
   AccountRegistered,
@@ -6,7 +8,6 @@ import type {
   BrokerageNameChanged,
   InitialBalanceCorrected,
   InitialBalanceRegistered,
-  NisaContributionAdded,
   OtherSavingsBalanceUpdated,
 } from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
@@ -280,7 +281,6 @@ describe('PUT /api/accounts/:accountId/brokerage-name', () => {
 
 interface ManualEventLog {
   otherSavingsUpdated: OtherSavingsBalanceUpdated[]
-  nisaContributionAdded: NisaContributionAdded[]
   initialBalanceCorrected: InitialBalanceCorrected[]
   inactivated: AccountInactivated[]
 }
@@ -288,15 +288,11 @@ interface ManualEventLog {
 function subscribeManualEvents(t: TestApp): ManualEventLog {
   const log: ManualEventLog = {
     otherSavingsUpdated: [],
-    nisaContributionAdded: [],
     initialBalanceCorrected: [],
     inactivated: [],
   }
   t.deps.eventBus.subscribe<OtherSavingsBalanceUpdated>('OtherSavingsBalanceUpdated', e => {
     log.otherSavingsUpdated.push(e)
-  })
-  t.deps.eventBus.subscribe<NisaContributionAdded>('NisaContributionAdded', e => {
-    log.nisaContributionAdded.push(e)
   })
   t.deps.eventBus.subscribe<InitialBalanceCorrected>('InitialBalanceCorrected', e => {
     log.initialBalanceCorrected.push(e)
@@ -312,64 +308,26 @@ async function accountId(res: Response): Promise<string> {
   return account.common.accountId
 }
 
-describe('POST /api/accounts/:accountId/transfer-in', () => {
-  it('別銀行貯蓄口座に振込額を加算し、OtherSavingsBalanceUpdated を発行する', async () => {
-    const t = createTestApp()
-    const log = subscribeManualEvents(t)
-    const id = await accountId(await registerOtherSavings(t))
-    const res = await request(t.app, 'POST', `/api/accounts/${id}/transfer-in`, {
-      body: { amount: 50000 },
-    })
-    expect(res.status).toBe(200)
-    const { account } = await json<{ account: AccountWire }>(res)
-    expect(account.balance?.currentBalance).toBe(550000)
-    expect(log.otherSavingsUpdated).toHaveLength(1)
-    expect(log.otherSavingsUpdated[0]).toMatchObject({
-      accountId: id,
-      delta: 50000,
-      newBalance: 550000,
-      source: 'smbc_transfer_addition',
-    })
+/** 三井住友系はどの登録 API でも作れないため、リポジトリへ直接置く */
+async function seedSmbcBank(t: TestApp, ownerUserId = VIEWER_ID): Promise<string> {
+  const account = AccountSchema.parse({
+    kind: 'smbc_bank',
+    common: {
+      accountId: AccountIdSchema.parse(newUlid()),
+      ownerUserId,
+      registeredAt: new Date('2026-01-01T00:00:00.000Z'),
+      activeness: { kind: 'active' },
+    },
+    balance: {
+      currentBalance: 300000,
+      initialBalance: 250000,
+      initialBalanceBaselineAt: new Date('2026-01-01T00:00:00.000Z'),
+      lastUpdatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    },
   })
-
-  it('NISA 口座に積立額を加算し、NisaContributionAdded を発行する', async () => {
-    const t = createTestApp()
-    const log = subscribeManualEvents(t)
-    const id = await accountId(await registerNisa(t))
-    const res = await request(t.app, 'POST', `/api/accounts/${id}/transfer-in`, {
-      body: { amount: 33333 },
-    })
-    expect(res.status).toBe(200)
-    const { account } = await json<{ account: AccountWire }>(res)
-    expect(account.contribution?.currentAccumulated).toBe(233333)
-    expect(log.nisaContributionAdded).toHaveLength(1)
-    expect(log.nisaContributionAdded[0]).toMatchObject({
-      accountId: id,
-      addedAmount: 33333,
-      newAccumulated: 233333,
-      brokerageName: { kind: 'sbi' },
-    })
-  })
-
-  it('0 円は加算できない（400）', async () => {
-    const t = createTestApp()
-    const id = await accountId(await registerOtherSavings(t))
-    const res = await request(t.app, 'POST', `/api/accounts/${id}/transfer-in`, {
-      body: { amount: 0 },
-    })
-    expect(res.status).toBe(400)
-  })
-
-  it('配偶者の口座には加算できない（403）', async () => {
-    const t = createTestApp()
-    const id = await accountId(await registerOtherSavings(t))
-    const res = await request(t.app, 'POST', `/api/accounts/${id}/transfer-in`, {
-      viewerId: SPOUSE_ID,
-      body: { amount: 1000 },
-    })
-    expect(res.status).toBe(403)
-  })
-})
+  await t.deps.accountRepository.save(account)
+  return account.common.accountId
+}
 
 describe('POST /api/accounts/:accountId/withdraw', () => {
   it('取り崩し額を減算し、manual_withdrawal 由来のイベントを発行する', async () => {
@@ -396,6 +354,24 @@ describe('POST /api/accounts/:accountId/withdraw', () => {
       body: { amount: 500001 },
     })
     expect(res.status).toBe(409)
+  })
+
+  it('上限を超える金額は取り崩せない（400）', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerOtherSavings(t))
+    const res = await request(t.app, 'POST', `/api/accounts/${id}/withdraw`, {
+      body: { amount: 1_000_000_001 },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('0 円は取り崩せない（400）', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerOtherSavings(t))
+    const res = await request(t.app, 'POST', `/api/accounts/${id}/withdraw`, {
+      body: { amount: 0 },
+    })
+    expect(res.status).toBe(400)
   })
 
   it('配偶者は取り崩しを記録できない（403）', async () => {
@@ -445,6 +421,15 @@ describe('PUT /api/accounts/:accountId/balance', () => {
     expect(res.status).toBe(409)
   })
 
+  it('NISA 口座は残高補正の対象外（409）', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerNisa(t))
+    const res = await request(t.app, 'PUT', `/api/accounts/${id}/balance`, {
+      body: { balance: 1000 },
+    })
+    expect(res.status).toBe(409)
+  })
+
   it('配偶者は補正できない（403）', async () => {
     const t = createTestApp()
     const id = await accountId(await registerOtherSavings(t))
@@ -476,22 +461,25 @@ describe('PUT /api/accounts/:accountId/initial-balance', () => {
       newInitialBalance: 450000,
       correctedByUserId: VIEWER_ID,
     })
+    // 現在残高も動くが、残高更新イベントは重ねて発行しない（購読側の二重反映を避ける）
+    expect(log.otherSavingsUpdated).toHaveLength(0)
   })
 
   it('以降の変動を保ったまま初期残高を修正できる', async () => {
     const t = createTestApp()
     const id = await accountId(await registerOtherSavings(t))
-    await request(t.app, 'POST', `/api/accounts/${id}/transfer-in`, { body: { amount: 100000 } })
+    await request(t.app, 'POST', `/api/accounts/${id}/withdraw`, { body: { amount: 100000 } })
     const res = await request(t.app, 'PUT', `/api/accounts/${id}/initial-balance`, {
       body: { initialBalance: 400000 },
     })
     const { account } = await json<{ account: AccountWire }>(res)
-    // 初期 500000 → 400000（-100000）。現在 600000 も -100000 されて 500000
-    expect(account.balance?.currentBalance).toBe(500000)
+    // 初期 500000 → 400000（-100000）。取り崩し後の現在 400000 も -100000 されて 300000
+    expect(account.balance?.currentBalance).toBe(300000)
   })
 
   it('NISA 口座の初期累計も修正できる', async () => {
     const t = createTestApp()
+    const log = subscribeManualEvents(t)
     const id = await accountId(await registerNisa(t))
     const res = await request(t.app, 'PUT', `/api/accounts/${id}/initial-balance`, {
       body: { initialBalance: 150000 },
@@ -501,6 +489,8 @@ describe('PUT /api/accounts/:accountId/initial-balance', () => {
     // 登録直後は 現在累計 = 初期累計 = 200000。初期を 150000 に直すと現在も 150000
     expect(account.contribution?.initialAccumulated).toBe(150000)
     expect(account.contribution?.currentAccumulated).toBe(150000)
+    // 残高更新イベントは別銀行貯蓄専用。NISA の初期累計修正では発行しない
+    expect(log.otherSavingsUpdated).toHaveLength(0)
   })
 
   it('負の初期残高には修正できない（409）', async () => {
@@ -565,6 +555,24 @@ describe('POST /api/accounts/:accountId/inactivate', () => {
     const id = await accountId(await registerOtherSavings(t))
     const res = await request(t.app, 'POST', `/api/accounts/${id}/inactivate`, {
       body: { reason: '' },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('SMBC 銀行口座は非アクティブ化できない（409、取込基盤が管理する口座）', async () => {
+    const t = createTestApp()
+    const id = await seedSmbcBank(t)
+    const res = await request(t.app, 'POST', `/api/accounts/${id}/inactivate`, {
+      body: { reason: '解約' },
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('長すぎる理由では非アクティブ化できない（400）', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerOtherSavings(t))
+    const res = await request(t.app, 'POST', `/api/accounts/${id}/inactivate`, {
+      body: { reason: 'あ'.repeat(101) },
     })
     expect(res.status).toBe(400)
   })

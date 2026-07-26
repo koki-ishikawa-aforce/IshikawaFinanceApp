@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   addNisaContributionBySmbcTransfer,
+  addOtherSavingsBySmbcTransfer,
   asNisaAccount,
   asOtherSavingsAccount,
+  correctInitialBalance,
   correctOtherSavingsBalance,
   inactivateAccount,
   money,
@@ -107,14 +109,15 @@ describe('NeonAccountBalanceQuery.fetchAssetTotal', () => {
 // --- #397: 残高の手動操作が残高一覧・資産合計に反映されること ---
 
 describe('残高の手動操作の反映', () => {
-  it('取り崩し・補正・振込加算の結果が残高一覧と資産合計に反映される', async () => {
+  it('取り崩しと振込由来の加算の結果が残高一覧と資産合計に反映される', async () => {
     const at = new Date('2026-07-05T00:00:00.000Z')
     const savings = asOtherSavingsAccount(
-      otherSavingsAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 800000 }),
+      otherSavingsAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 700000 }),
     )
     const nisa = asNisaAccount(nisaAccount({ ownerUserId: DARLING_USER_ID }))
+    const afterTransfer = addOtherSavingsBySmbcTransfer(savings, { amount: money(100000), at })
     await accountRepo.save(
-      withdrawOtherSavings(savings, {
+      withdrawOtherSavings(afterTransfer, {
         amount: money(300000),
         operatorUserId: DARLING_USER_ID,
         at,
@@ -168,11 +171,34 @@ describe('残高の手動操作の反映', () => {
     expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(800000)
 
     await accountRepo.save(
-      inactivateAccount(savings, { reason: '解約したため', at: new Date('2026-07-05T00:00:00Z') }),
+      inactivateAccount(savings, {
+        reason: '解約したため',
+        operatorUserId: DARLING_USER_ID,
+        at: new Date('2026-07-05T00:00:00Z'),
+      }),
     )
 
     const list = await query.fetchBalanceList()
     expect(list.items.some(i => i.kind === 'other_savings')).toBe(false)
     expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(0)
+  })
+
+  it('初期残高の後修正が残高一覧・資産合計に反映される', async () => {
+    const savings = asOtherSavingsAccount(
+      otherSavingsAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 800000 }),
+    )
+    // fixture の初期残高は 500000。400000 に直すと現在残高も -100000 されて 700000
+    const { account } = correctInitialBalance(savings, {
+      initialBalance: money(400000),
+      operatorUserId: DARLING_USER_ID,
+      at: new Date('2026-07-05T00:00:00.000Z'),
+    })
+    await accountRepo.save(account)
+
+    const list = await query.fetchBalanceList()
+    expect(list.items).toContainEqual(
+      expect.objectContaining({ kind: 'other_savings', currentBalance: 700000 }),
+    )
+    expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(700000)
   })
 })
