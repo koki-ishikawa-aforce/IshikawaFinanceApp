@@ -15,7 +15,10 @@ import type {
   LineFriendAdded,
   LineFriendshipGateway,
   LineFriendshipStatus,
+  NotificationActivated,
+  OperationStarted,
   SharedTalkRoom,
+  TestMessageSent,
   UserId,
 } from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
@@ -639,21 +642,22 @@ describe('Phase2 進捗', () => {
   })
 })
 
-describe('GET /api/onboarding/spouse-completion', () => {
-  async function completePhase2For(t: TestApp, viewerId: string): Promise<void> {
-    const id = UserIdSchema.parse(viewerId)
-    // 各 viewer 本人名義の 3 口座（SMBC・別銀行貯蓄・NISA）を先に登録しておく（所有者照合を満たすため）
-    await seedInitialBalanceAccounts(t, id)
-    await startPhase2(t, id)
-    await completeSectionAViaOAuth(t, id)
-    await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
-      viewerId: id,
-      body: { initialBalanceRef: initialBalanceRefFor(id) },
-    })
-    const res = await request(t.app, 'POST', '/api/onboarding/phase2/complete', { viewerId: id })
-    expect(res.status).toBe(201)
-  }
+/** 指定 viewer を Phase2 完了まで進める（口座 seed → Phase2 開始 → SectionA/B 完了 → 完了） */
+async function completePhase2For(t: TestApp, viewerId: string): Promise<void> {
+  const id = UserIdSchema.parse(viewerId)
+  // 各 viewer 本人名義の 3 口座（SMBC・別銀行貯蓄・NISA）を先に登録しておく（所有者照合を満たすため）
+  await seedInitialBalanceAccounts(t, id)
+  await startPhase2(t, id)
+  await completeSectionAViaOAuth(t, id)
+  await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
+    viewerId: id,
+    body: { initialBalanceRef: initialBalanceRefFor(id) },
+  })
+  const res = await request(t.app, 'POST', '/api/onboarding/phase2/complete', { viewerId: id })
+  expect(res.status).toBe(201)
+}
 
+describe('GET /api/onboarding/spouse-completion', () => {
   it('配偶者が未完了なら awaiting_spouse', async () => {
     const t = createTestApp()
     await completePhase2For(t, VIEWER_ID)
@@ -673,5 +677,184 @@ describe('GET /api/onboarding/spouse-completion', () => {
     expect(body.kind).toBe('both_completed')
     expect(body.honeyUserId).toBe(VIEWER_ID)
     expect(body.darlingUserId).toBe(SPOUSE_ID)
+  })
+})
+
+/**
+ * 運用開始発火（08f §2、論点16）と世帯の通知機能有効化（テスト送信の起動）。
+ * 「両者の Phase2 完了が揃った時点で一元発火する」ことと、片方だけでは発火しないことを固定する。
+ */
+describe('運用開始発火（OperationStarted / NotificationActivated）', () => {
+  interface EventLog {
+    operationStarted: OperationStarted[]
+    notificationActivated: NotificationActivated[]
+    testMessageSent: TestMessageSent[]
+  }
+
+  function subscribeOperationEvents(t: TestApp): EventLog {
+    const log: EventLog = { operationStarted: [], notificationActivated: [], testMessageSent: [] }
+    t.deps.eventBus.subscribe<OperationStarted>('OperationStarted', e => {
+      log.operationStarted.push(e)
+      return Promise.resolve()
+    })
+    t.deps.eventBus.subscribe<NotificationActivated>('NotificationActivated', e => {
+      log.notificationActivated.push(e)
+      return Promise.resolve()
+    })
+    t.deps.eventBus.subscribe<TestMessageSent>('TestMessageSent', e => {
+      log.testMessageSent.push(e)
+      return Promise.resolve()
+    })
+    return log
+  }
+
+  /** 通知機能有効化の前提（両者の友だち追加 + 世帯の共通トークルーム参加）を満たす */
+  async function completePhase1Notification(t: TestApp): Promise<void> {
+    for (const viewerId of [VIEWER_ID, SPOUSE_ID]) {
+      await register(t, viewerId)
+      expect(
+        (await request(t.app, 'POST', '/api/onboarding/phase1/line-friend', { viewerId })).status,
+      ).toBe(200)
+    }
+    expect(
+      (
+        await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
+          body: { talkRoomId: 'room_test_001' },
+        })
+      ).status,
+    ).toBe(200)
+  }
+
+  async function userKindOf(t: TestApp, userId: UserId): Promise<string | undefined> {
+    return (await t.deps.appUserRepository.findById(userId))?.kind
+  }
+
+  it('片方のみ Phase2 完了では発火しない（否定形）', async () => {
+    const t = createTestApp()
+    const log = subscribeOperationEvents(t)
+    await completePhase1Notification(t)
+    await completePhase2For(t, VIEWER_ID)
+
+    // 配偶者完了検知（画面ロード）を挟んでも、相方が未完了である限り発火しない
+    expect((await request(t.app, 'GET', '/api/onboarding/spouse-completion')).status).toBe(200)
+    expect(log.operationStarted).toHaveLength(0)
+    expect(log.notificationActivated).toHaveLength(0)
+    expect(await userKindOf(t, VIEWER_ID)).toBe('phase2_completed')
+  })
+
+  it('両者の Phase2 完了が揃った時点で発火し、両者が運用開始済みになる', async () => {
+    const t = createTestApp()
+    const log = subscribeOperationEvents(t)
+    await completePhase1Notification(t)
+    await completePhase2For(t, VIEWER_ID)
+    await completePhase2For(t, SPOUSE_ID)
+
+    expect(log.operationStarted).toHaveLength(1)
+    expect(log.operationStarted[0]?.honeyUserId).toBe(VIEWER_ID)
+    expect(log.operationStarted[0]?.darlingUserId).toBe(SPOUSE_ID)
+    expect(await userKindOf(t, VIEWER_ID)).toBe('operation_started')
+    expect(await userKindOf(t, SPOUSE_ID)).toBe('operation_started')
+  })
+
+  it('運用開始で世帯の通知機能が有効化され、テストメッセージが配信される', async () => {
+    const t = createTestApp()
+    const log = subscribeOperationEvents(t)
+    await completePhase1Notification(t)
+    await completePhase2For(t, VIEWER_ID)
+    await completePhase2For(t, SPOUSE_ID)
+
+    expect(log.notificationActivated).toHaveLength(1)
+    expect(log.notificationActivated[0]?.talkRoomId).toBe('room_test_001')
+    // 既存のテストメッセージ配信ハンドラー（#36）が起動していること
+    expect(log.testMessageSent).toHaveLength(1)
+    expect(log.testMessageSent[0]?.talkRoomId).toBe('room_test_001')
+  })
+
+  it('発火後に検知・完了要求を繰り返しても二重発火しない（冪等）', async () => {
+    const t = createTestApp()
+    const log = subscribeOperationEvents(t)
+    await completePhase1Notification(t)
+    await completePhase2For(t, VIEWER_ID)
+    await completePhase2For(t, SPOUSE_ID)
+
+    for (const viewerId of [VIEWER_ID, SPOUSE_ID]) {
+      expect(
+        (await request(t.app, 'GET', '/api/onboarding/spouse-completion', { viewerId })).status,
+      ).toBe(200)
+      const complete = await request(t.app, 'POST', '/api/onboarding/phase2/complete', { viewerId })
+      expect(complete.status).toBe(200)
+      expect((await json<UserResponse>(complete)).user?.kind).toBe('operation_started')
+    }
+    expect(log.operationStarted).toHaveLength(1)
+    expect(log.notificationActivated).toHaveLength(1)
+    expect(log.testMessageSent).toHaveLength(1)
+  })
+
+  it('共通トークルーム未参加なら運用開始はするが通知機能は有効化されない（否定形）', async () => {
+    const t = createTestApp()
+    const log = subscribeOperationEvents(t)
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      await completePhase2For(t, VIEWER_ID)
+      await completePhase2For(t, SPOUSE_ID)
+
+      expect(log.operationStarted).toHaveLength(1)
+      expect(log.notificationActivated).toHaveLength(0)
+      expect(log.testMessageSent).toHaveLength(0)
+      // 無言で止まらず、前提が欠けたことが記録される
+      expect(warned).toHaveBeenCalled()
+    } finally {
+      warned.mockRestore()
+    }
+  })
+
+  it('前提が後から揃えば、次の配偶者完了検知で通知機能が有効化される（回復）', async () => {
+    const t = createTestApp()
+    const log = subscribeOperationEvents(t)
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      await completePhase2For(t, VIEWER_ID)
+      await completePhase2For(t, SPOUSE_ID)
+      expect(log.notificationActivated).toHaveLength(0)
+
+      // 運用開始後に友だち追加・共通トークルーム参加が記録される
+      await completePhase1Notification(t)
+      expect(log.notificationActivated).toHaveLength(0)
+
+      expect((await request(t.app, 'GET', '/api/onboarding/spouse-completion')).status).toBe(200)
+      expect(log.notificationActivated).toHaveLength(1)
+      expect(log.testMessageSent).toHaveLength(1)
+      expect(log.operationStarted).toHaveLength(1)
+    } finally {
+      warned.mockRestore()
+    }
+  })
+
+  it('運用開始後の通知有効化要求でも、世帯としての有効化は一元発火に委ねられる', async () => {
+    const t = createTestApp()
+    const log = subscribeOperationEvents(t)
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      // 相方（Darling）だけ Phase1 の通知有効化まで済ませてから運用開始させる
+      await completePhase1Notification(t)
+      expect(
+        (
+          await request(t.app, 'POST', '/api/onboarding/phase1/notification', {
+            viewerId: SPOUSE_ID,
+          })
+        ).status,
+      ).toBe(200)
+      await completePhase2For(t, VIEWER_ID)
+      await completePhase2For(t, SPOUSE_ID)
+      expect(log.notificationActivated).toHaveLength(1)
+
+      // 本人の有効化要求を後から出しても、既に世帯として有効化済みのため二重発火しない
+      const res = await request(t.app, 'POST', '/api/onboarding/phase1/notification')
+      expect(res.status).toBe(200)
+      expect(log.notificationActivated).toHaveLength(1)
+      expect(log.testMessageSent).toHaveLength(1)
+    } finally {
+      warned.mockRestore()
+    }
   })
 })

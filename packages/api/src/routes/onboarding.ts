@@ -58,6 +58,7 @@ import type {
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 import { applyLineFriendAdded, applySharedTalkRoomJoined } from '../line-operation-records.js'
+import { fireOperationStartIfReady } from '../operation-start.js'
 
 const RegisterBodySchema = z.object({ nickname: NicknameSchema.optional() })
 const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
@@ -306,14 +307,21 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
 
   /**
    * Phase1: 通知有効化の完了記録（友だち追加 + 世帯の共通トークルーム参加が前提。冪等）。
-   * NotificationActivated イベント（世帯レベル、通知配信のテスト送信を起動）は
-   * ここでは発行しない — 08f §2 のとおり両者の運用開始が揃った時点（運用開始発火、
-   * 本 Issue のスコープ外）で一元発行する。
+   * NotificationActivated イベント（世帯レベル、通知配信のテスト送信を起動）はここでは発行しない
+   * — 08f §2 のとおり両者の運用開始が揃った時点で一元発行する（`fireOperationStartIfReady`）。
+   * ここが記録するのは運用開始前に事前蓄積する per-user の有効化状態（08f §1 実装ノート）。
+   *
+   * 運用開始発火を先に呼ぶ理由: 世帯としての有効化済み判定は per-user の有効化状態の合成で表す
+   * （世帯レベルの記録を持たない）ため、本人ぶんだけを先に有効化すると、運用開始済みの世帯では
+   * 「発行済み」と誤認されてテスト送信が起きなくなる。先に発火させれば、条件が揃った回に
+   * 世帯としての有効化とイベント発行がまとめて行われる。
    */
   app.post('/phase1/notification', async c => {
     const viewerId = c.get('viewerId')
-    const user = await getUserOr404(viewerId)
+    await getUserOr404(viewerId)
     const now = new Date()
+    await fireOperationStartIfReady(deps, now)
+    const user = await getUserOr404(viewerId)
     const sharedTalkRoom = await deps.sharedTalkRoomRepository.find()
     const updated = activateNotification(user, sharedTalkRoom, now)
     if (updated !== user) {
@@ -404,14 +412,20 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     return c.json({ user: updated })
   })
 
-  /** Phase2 の完了（SectionA/B 完了が前提。完了済みなら冪等に現状を返す） */
+  /**
+   * Phase2 の完了（SectionA/B 完了が前提。完了済みなら冪等に現状を返す）。
+   * 自分の完了で夫婦両方が揃うなら、ここが運用開始の発火点になる（08f §2、論点16）。
+   * 相方が後から完了した場合は自分の再要求（冪等な 200）でも拾い直す。
+   * 応答は発火後の状態を返す（発火していれば運用開始済み）。
+   */
   app.post('/phase2/complete', async c => {
     const viewerId = c.get('viewerId')
     const user = await getUserOr404(viewerId)
-    if (user.kind === 'phase2_completed' || user.kind === 'operation_started') {
-      return c.json({ user })
-    }
     const now = new Date()
+    if (user.kind === 'phase2_completed' || user.kind === 'operation_started') {
+      await fireOperationStartIfReady(deps, now)
+      return c.json({ user: await getUserOr404(viewerId) })
+    }
     const updated = completePhase2(asPhase2InProgress(user), now)
     await deps.appUserRepository.save(updated)
     await deps.eventBus.publish(
@@ -422,11 +436,18 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
         completedAt: now,
       }),
     )
-    return c.json({ user: updated }, 201)
+    await fireOperationStartIfReady(deps, now)
+    return c.json({ user: await getUserOr404(viewerId) }, 201)
   })
 
-  /** 配偶者完了検知（論点19: 画面ロード時のみ判定） */
+  /**
+   * 配偶者完了検知（論点19: 画面ロード時のみ判定）。
+   * 相方の完了はポーリングしないため、遅れて開いた側のこの画面ロードが運用開始の唯一の検知機会に
+   * なる（08f §2「事後: 両者完了済み なら運用開始発火を準備」）。参照系だが発火の副作用を持つのは
+   * このため。発火は冪等で、条件が揃っていなければ何も起きない。
+   */
   app.get('/spouse-completion', async c => {
+    await fireOperationStartIfReady(deps)
     const result = await deps.spouseCompletionQuery.check(c.get('viewerId'))
     return c.json(result)
   })
