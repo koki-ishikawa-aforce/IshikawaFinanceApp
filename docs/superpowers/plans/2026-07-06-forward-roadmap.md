@@ -14,10 +14,13 @@
 | Phase 3.5 | UX/UI 設計（ワイヤーフレーム 12 画面 / デザイントークン） | ✅ 完了 |
 | Phase 4 | 戦術的設計 — Core 2 コンテキストの TS 型 + Zod + Repository/Query I/F | ✅ 完了 |
 | Phase 4.5 | リポジトリ健全化（本計画 §1） | ✅ 完了（2026-07-06） |
-| Phase 5 | 残りコンテキストの型化 + adapter 層 + web/api スケルトン | 🚧 M-A 完了（2026-07-06）、M-B adapter 完了（2026-07-07、イベントバスのみ残）、M-C 未着手 |
-| Phase 6 | 実装統合・E2E・運用開始準備 | ⬜ 未着手 |
+| Phase 5 | 残りコンテキストの型化 + adapter 層 + web/api スケルトン | ✅ 完了 — M-A（2026-07-06）／ M-B（2026-07-07、イベントバスも実装済み）／ M-C（web・api とも縦串貫通済み） |
+| Phase 6 | 実装統合・E2E・運用開始準備 | 🚧 進行中 — 画面・API・受入 E2E は実装が進行中。デプロイ（IaC）・監視・バックアップは未着手 |
 
-コード資産は `packages/domain`（`@warimaru/domain`）のみ。永続化・UI・API は未実装。
+コード資産は `packages/domain`（`@warimaru/domain`）／ `packages/adapters-postgres`（Drizzle + PostgreSQL）／
+`packages/api`（Hono）／ `packages/web`（Next.js Static Export + LIFF）と、受入 E2E の `e2e`（Playwright）。
+永続化・UI・API はいずれも実装済み。CI は build / typecheck / test / 統合テスト / VRT / 受入 E2E / lint / format:check を回す
+（実行枠の節約のため、統合テスト以降は変更パスで出し分ける。docs だけの PR では走らない）。
 
 2026-07-06 確定事項:
 
@@ -72,7 +75,7 @@ Phase 5 の実装量が増える前に、機械的なチェックを固める。
 各コンテキストとも Phase 4 の確立パターンを踏襲する:
 discriminated union 集約 + Zod superRefine 不変条件 + branded ID + Repository/Query I/F 分離 + View 型 + ドメインイベント型 + 不変条件テスト + 冒頭に DDD docs へのリンク。
 
-### M-B: adapter 層の実装
+### M-B: adapter 層の実装 ✅ 完了（2026-07-07）
 
 永続化バックエンドは **Neon (PostgreSQL)** で確定済み（OQ-27 / OQ-46）。
 
@@ -82,36 +85,42 @@ discriminated union 集約 + Zod superRefine 不変条件 + branded ID + Reposit
   - 第 2 波（2026-07-07）: 残り 6 コンテキストの 19 Repository / 6 Query + 19 テーブル
     （migration 0001〜0006、**全 8 コンテキスト = 23/23 Repository・11/11 Query 完了**）
 - [x] ID 生成方式の確定（OQ-41: ULID 採用）と `idSchema` の正規表現強化（内部発番 24 種 = ULID regex、外部由来 6 種 = `min(1)` 維持）
-- [ ] ドメインイベントバス（家計内ツール規模なので in-process pub/sub から開始、OQ-42 で「永続化しない」と確定済み。
-      application 層の同期 pub/sub として実装する — **M-B で唯一の残タスク**）
+- [x] ドメインイベントバス（家計内ツール規模なので in-process pub/sub から開始、OQ-42 で「永続化しない」と確定済み。
+      `packages/domain/src/shared/events/InMemoryEventBus.ts` を api 層の composition-root で合成し、
+      ハンドラー登録は `packages/api/src/event-handlers/` に集約。配信は同期・at-least-once で、
+      ハンドラー例外は `safeSubscribe` で隔離する）
 
-### M-C: アプリスケルトン
+### M-C: アプリスケルトン ✅ 完了
 
 技術スタックは OQ-27 で確定済み: フロント = Next.js (TS) Static Export、バックエンド = Hono on Lambda、
 配信 = S3 + CloudFront、シークレット = Parameter Store。
 
-- [ ] `packages/web/`: Next.js (TS) Static Export + LIFF SDK、TanStack Query で Query I/F を消費、React Hook Form + Zod resolvers
-- [ ] `packages/api/`: Hono on Lambda、Repository/Query adapter のワイヤリング
-- [ ] ダッシュボード 1 画面（KPI 4 枚 + ドーナツチャート）を縦串で貫通させ、アーキテクチャを実証する
+- [x] `packages/web/`: Next.js (TS) Static Export + LIFF SDK、TanStack Query で Query I/F を消費、React Hook Form + Zod resolvers
+- [x] `packages/api/`: Hono on Lambda、Repository/Query adapter のワイヤリング（`composition-root.ts`）
+- [x] ダッシュボード 1 画面（KPI 4 枚 + ドーナツチャート）を縦串で貫通させ、アーキテクチャを実証する
+      → 現在はダッシュボードに加えて取引一覧・残高・月次レポート・明細取込・経費精算・設定・オンボーディングの各画面が実装済み
 
-### DoD（Phase 5）
+### DoD（Phase 5）✅ 達成
 
-- 全 8 コンテキストが `@warimaru/domain` から export され、不変条件テストが green
-- Neon (PostgreSQL) で Repository/Query の統合テストが green
-- ダッシュボード画面が実データ（またはシード）で表示できる（縦串の貫通確認）
-- OQ-38 / 39 / 41 / 44 がクローズされている
+- [x] 全 8 コンテキストが `@warimaru/domain` から export され、不変条件テストが green
+- [x] Neon (PostgreSQL) で Repository/Query の統合テストが green（CI がコード変更を含む PR で `test:integration` を実行）
+- [x] ダッシュボード画面が実データ（またはシード）で表示できる（縦串の貫通確認）
+- [x] OQ-38 / 39 / 41 / 44 がクローズされている（いずれも [03-open-questions.md](../../domain/03-open-questions.md) で ✅ 解決済み）
 
 ---
 
-## 3. Phase 6: 実装統合・運用開始準備（アウトライン）
+## 3. Phase 6: 実装統合・運用開始準備
 
-Phase 5 完了後に writing-plans で詳細化する。現時点では見通しのみ:
+現在ここを進めている。個々のタスクは GitHub Issue で管理しており、本節は大枠の進捗のみを持つ:
 
-- 残り画面の実装（Phase 3.5 ワイヤーフレーム 12 画面）
-- 取引取込の実運用パイプライン（CSV / Gmail 連携、OQ-38 の成果を反映)
-- LINE 通知の実配信（OQ-39 の検証結果を反映)
-- デプロイ（IaC）・監視・バックアップ方針
-- テーマカラー対応の最終判断（OQ-40）
+- 🚧 残り画面の実装（Phase 3.5 ワイヤーフレーム 12 画面）— 主要画面は実装済み。口座詳細（#406）など未着手の画面が残る
+- 🚧 取引取込の実運用パイプライン — CSV 取込と PDF→CSV 変換 API は実装済み。Gmail 連携は
+      メール取得（#412）・日次メール取込バッチ（#414）・SMBC 通知メールのパース（#415、OQ-38 で
+      フォーマット確定済み）が残る
+- 🚧 LINE 通知の実配信（OQ-39 の検証結果を反映）— 配信処理・本文生成・月次レポートサマリの発火は
+      実装済み（#389）。定時起動の Lambda エントリポイント（#416）が残る
+- ⬜ デプロイ（IaC）・監視・バックアップ方針（#56 本番環境構築 / #57 CD。IaC の選定は OQ-28）
+- ⬜ テーマカラー対応の最終判断（OQ-40）
 
 ---
 
