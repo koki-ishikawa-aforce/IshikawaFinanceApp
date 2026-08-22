@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { YearMonthSchema, type PdfToCsvConversion } from '@warimaru/domain'
+import { GmailOAuthTokenSchema, YearMonthSchema, type PdfToCsvConversion } from '@warimaru/domain'
 import { createApp } from '../../src/app.js'
 import { createMockDeps } from '../../src/composition-root.js'
 import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
@@ -344,24 +344,55 @@ describe('POST /api/imports/mail-batch', () => {
     expect(res.status).toBe(400)
   })
 
-  it('from < to は 202 でバッチが起動する', async () => {
+  it('from < to なら取込が最後まで進み、結果が返る', async () => {
+    // 開発モードのモックは Gmail 連携が無いため、取込は「連携未設定」で閉じる。
+    // ここで固定したいのは「起動記録だけで終わらず、ワーカーの結末が応答に載る」こと
     const { app } = createTestApp()
     const res = await request(app, 'POST', '/api/imports/mail-batch', {
       body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
     })
-    expect(res.status).toBe(202)
-    const json = (await res.json()) as { batch: { kind: string } }
-    expect(json.batch.kind).toBe('started')
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as {
+      batch: { kind: string }
+      result: { status: string; failureKind?: string }
+    }
+    expect(json.result.status).toBe('failed')
+    expect(json.result.failureKind).toBe('gmail_not_authorized')
+    expect(json.batch.kind).toBe('failed')
+  })
+
+  it('Gmail 連携済みならメールを取り込んで完了する', async () => {
+    const { app, deps } = createTestApp()
+    await deps.gmailOAuthTokenRepository.save(
+      GmailOAuthTokenSchema.parse({
+        kind: 'valid',
+        userId: VIEWER_ID,
+        tokenStoreRef: '/warimaru/gmail/honey',
+        authorizedAt: new Date('2026-07-01T00:00:00Z'),
+        lastVerifiedAt: new Date('2026-07-01T00:00:00Z'),
+      }),
+    )
+    const res = await request(app, 'POST', '/api/imports/mail-batch', {
+      body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
+    })
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as {
+      batch: { kind: string }
+      result: { status: string; importedCount: number }
+    }
+    // モックの Gmail 取得は 0 件を返す（取り込むメールが無い日と同じ経路）
+    expect(json.result).toMatchObject({ status: 'completed', importedCount: 0 })
+    expect(json.batch.kind).toBe('completed')
   })
 
   it('期間逆転ガードは進行中バッチの照会より先に効く（400 が 409 に化けない）', async () => {
-    // 単一ソース化後も、from < to は domain スキーマの parse（境界）で早期に弾かれる。
+    // 単一ソース化後も、from < to は domain スキーマの parse（ワーカーの入口）で早期に弾かれる。
     // 進行中バッチが存在しても期間逆転は 409(進行中) ではなく 400 を返す。
     const { app } = createTestApp()
     const started = await request(app, 'POST', '/api/imports/mail-batch', {
       body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
     })
-    expect(started.status).toBe(202)
+    expect(started.status).toBe(200)
     const res = await request(app, 'POST', '/api/imports/mail-batch', {
       body: { from: '2026-07-10T00:00:00Z', to: '2026-07-09T00:00:00Z' },
     })

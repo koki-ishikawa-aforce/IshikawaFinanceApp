@@ -58,10 +58,11 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### transaction-import（取引取込、08a）
 
-- 集約: `TransactionCandidate`（`normal` / `amazon_matched` / `match_timeout`）, `DailyMailImportBatch`, `StatementImportJob`（`startPdfConversion` / `startFormatValidation` / `startImporting` / `updateProcessedCount` / `completeImportJob` / `failImportJob`）
+- 集約: `TransactionCandidate`（`normal` / `amazon_matched` / `match_timeout`）, `DailyMailImportBatch`（`startBatchImporting` / `updateBatchImportedCount`（取込中の進捗更新。件数は減らせない） / `completeBatch` / `failBatch`）, `StatementImportJob`（`startPdfConversion` / `startFormatValidation` / `startImporting` / `updateProcessedCount` / `completeImportJob` / `failImportJob`）
 - 値オブジェクト: `CandidateImportSource`, `AmazonOrderInfo`, `SmbcMailParseResult`, `DuplicationJudgment`, `ImportResultSummary`, `ImportJobFailureReason`, `PdfConversionFailureReason`（および `normalizeMerchantName` — OQ-23 加盟店名正規化）
 - Repository I/F: `TransactionCandidateRepository`（GmailID / 三項一致検索）, `DailyMailImportBatchRepository`, `StatementImportJobRepository`
 - Service I/F（ACL 翻訳層の driven port、実装は adapter 層）: `PdfToCsvConverter`（OQ-23、`ConvertedStatementRow` / `PdfToCsvConversion` を含む）, `GmailMailFetchGateway`（#412、実装は api 層。取込対象期間の SMBC 通知メール / Amazon 注文確認メールをパース前の外部表現のまま取得する。`MailFetchRequest`（トークン保管参照 + 取込対象期間）/ `MailFetchResult` / `SmbcNotificationMailBody` / `AmazonOrderConfirmationMailBody` / `MailKindHint` / `MailFetchFailure` を含む。失敗は例外ではなく戻り値で返し、トークン失効 `oauth_revocation_detected` をその他の取得失敗 `other_fetch_failure` と型で区別する — 失効は再認可導線 #392 の起点）
+- パース関数型（driven port ではなく純粋なドメイン処理のシグネチャ。実装もドメイン内）: `SmbcNotificationMailParser`（#414 の日次メール取込ワーカーが注入して使う。`SmbcNotificationMailParseInput`（メール本文 + ユーザーID + 検知日時）→ `SmbcMailParseResult`。実パースルールは #415。例外は投げず失敗も `parse_failure` で返す）
 - Query I/F: `CsvImportStatusQuery` + `CsvImportCompletionView`
 - ドメインイベント: `MailImportBatchLaunched` / `CardUsageTransactionImported` / `SettlementNoticeReceived` ほか 13 種
 

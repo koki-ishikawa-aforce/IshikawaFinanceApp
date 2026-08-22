@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   DailyMailImportBatchSchema,
   startBatchImporting,
+  updateBatchImportedCount,
   completeBatch,
   failBatch,
   type StartedImportBatch,
@@ -51,6 +52,28 @@ describe('DailyMailImportBatch 集約', () => {
     )
     expect(completed.kind).toBe('completed')
     expect(completed.duplicateExcludedCount).toBe(1)
+  })
+
+  it('取込中の進捗（取込済み件数）を更新できる', () => {
+    const started = DailyMailImportBatchSchema.parse({
+      kind: 'started',
+      common,
+    }) as StartedImportBatch
+    const importing = startBatchImporting(started, new Date())
+    const progressed = updateBatchImportedCount(importing, 3)
+    expect(progressed.importedCount).toBe(3)
+    // 進捗以外は変わらない（同じバッチの続き）
+    expect(progressed.common.importBatchId).toBe(importing.common.importBatchId)
+    expect(progressed.importStartedAt).toEqual(importing.importStartedAt)
+  })
+
+  it('取込済み件数は減らせない（進捗の記録として成立しない）', () => {
+    const started = DailyMailImportBatchSchema.parse({
+      kind: 'started',
+      common,
+    }) as StartedImportBatch
+    const progressed = updateBatchImportedCount(startBatchImporting(started, new Date()), 3)
+    expect(() => updateBatchImportedCount(progressed, 2)).toThrow()
   })
 
   it('起動済み → 失敗（終端）の遷移', () => {

@@ -24,6 +24,7 @@ import type {
   GmailMailFetchGateway,
   GmailOAuthGateway,
   GmailOAuthTokenRepository,
+  SmbcNotificationMailParser,
   LineDeliveryLogRepository,
   LineFriendshipGateway,
   LineTalkRoomMembershipGateway,
@@ -104,6 +105,7 @@ import {
   createUnconfiguredGmailMailFetchGateway,
 } from './mail-fetch/gmail-mail-fetch-gateway.js'
 import { createMockGmailMailFetchGateway } from './mail-fetch/mock.js'
+import { createUnimplementedSmbcMailParser } from './mail-fetch/unimplemented-smbc-mail-parser.js'
 import { createLineTalkRoomMembershipGateway } from './line-talk-room-membership/line-talk-room-membership-gateway.js'
 import { createMockLineTalkRoomMembershipGateway } from './line-talk-room-membership/mock.js'
 import {
@@ -216,6 +218,11 @@ export interface AppDeps {
    * メールをパース前の外部表現のまま取得する。消費側は日次バッチワーカー（#414）。
    */
   gmailMailFetchGateway: GmailMailFetchGateway
+  /**
+   * SMBC 通知メール本文のパース（#414 の日次メール取込ワーカーが使う）。実パースルールは
+   * #415 が入れるまで未実装で、それまではどのメールもパース失敗として記録される。
+   */
+  parseSmbcNotificationMail: SmbcNotificationMailParser
   /**
    * LINE 友だち状態の照会（#297、OQ-55 ③）。アプリユーザーの新規登録完了時に呼び、
    * 登録前に友だち追加していた場合の取りこぼし（follow Webhook が破棄される）を拾い直す。
@@ -420,6 +427,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
       createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
     ),
     gmailMailFetchGateway: createMockGmailMailFetchGateway(),
+    parseSmbcNotificationMail: createUnimplementedSmbcMailParser(),
     lineFriendshipGateway: createMockLineFriendshipGateway(),
     lineTalkRoomMembershipGateway: createMockLineTalkRoomMembershipGateway(),
     // 開発モードは Phase0Config も Parameter Store も無いため、環境変数か固定値で署名検証を通す
@@ -587,6 +595,7 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     }),
     gmailOAuthGateway,
     gmailMailFetchGateway,
+    parseSmbcNotificationMail: createUnimplementedSmbcMailParser(),
     resolveLineChannelSecret,
     dashboardQuery: new NeonDashboardQuery(db, { resolveCategoryNames, resolveViewerRole, now }),
     transactionListQuery: new NeonTransactionListQuery(db, {
