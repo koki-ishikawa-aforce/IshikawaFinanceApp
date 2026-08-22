@@ -4,17 +4,17 @@ import type { DeliveryLogId, LineDeliveryLog } from '@warimaru/domain'
 import { InvariantViolationError, LineDeliveryLogSchema } from '@warimaru/domain'
 import { db } from './setup'
 import { NeonLineDeliveryLogRepository } from '../../src/notification-delivery/NeonLineDeliveryLogRepository'
-import { deliveryLog } from '../helpers/notificationFixtures'
+import { deliveryLog, failedDeliveryLog, skippedDeliveryLog } from '../helpers/notificationFixtures'
 
 const repo = new NeonLineDeliveryLogRepository(db)
 
 describe('NeonLineDeliveryLogRepository（append-only 監査レコード）', () => {
-  it('save → findById / findByIdempotencyKey の往復同一性', async () => {
+  it('save → findById / findAllByIdempotencyKey の往復同一性', async () => {
     const log = deliveryLog({ idempotencyKey: 'idem-2026-07-reminder' })
     await repo.save(log)
     expect(await repo.findById(log.deliveryLogId)).toEqual(log)
-    expect(await repo.findByIdempotencyKey('idem-2026-07-reminder')).toEqual(log)
-    expect(await repo.findByIdempotencyKey('idem-none')).toBeNull()
+    expect(await repo.findAllByIdempotencyKey('idem-2026-07-reminder')).toEqual([log])
+    expect(await repo.findAllByIdempotencyKey('idem-none')).toEqual([])
   })
 
   it('未知の ID は null', async () => {
@@ -32,9 +32,37 @@ describe('NeonLineDeliveryLogRepository（append-only 監査レコード）', ()
     expect(await repo.findById(log.deliveryLogId)).toEqual(log)
   })
 
-  it('同一冪等性キーの別ログは InvariantViolationError（再送信の重複防止、OQ-34）', async () => {
+  it('確定済み（成功）の冪等性キーに別の確定ログは InvariantViolationError（再送信の重複防止、OQ-34）', async () => {
     await repo.save(deliveryLog({ idempotencyKey: 'idem-dup' }))
     await expect(repo.save(deliveryLog({ idempotencyKey: 'idem-dup' }))).rejects.toThrow(
+      InvariantViolationError,
+    )
+  })
+
+  it('確定済み（スキップ）の冪等性キーにも別の確定ログは保存できない', async () => {
+    await repo.save(skippedDeliveryLog({ idempotencyKey: 'idem-dup-skipped' }))
+    await expect(repo.save(deliveryLog({ idempotencyKey: 'idem-dup-skipped' }))).rejects.toThrow(
+      InvariantViolationError,
+    )
+  })
+
+  it('失敗ログは同一冪等性キーに複数件積める（#441-A の再送信を可能にする）', async () => {
+    const first = failedDeliveryLog({ idempotencyKey: 'idem-retry' })
+    const second = failedDeliveryLog({ idempotencyKey: 'idem-retry' })
+    await repo.save(first)
+    await repo.save(second)
+    expect(await repo.findAllByIdempotencyKey('idem-retry')).toHaveLength(2)
+  })
+
+  it('失敗が続いたあとの成功は保存でき、失敗の履歴も残る', async () => {
+    const failed = failedDeliveryLog({ idempotencyKey: 'idem-recovered' })
+    const succeeded = deliveryLog({ idempotencyKey: 'idem-recovered' })
+    await repo.save(failed)
+    await repo.save(succeeded)
+    const logs = await repo.findAllByIdempotencyKey('idem-recovered')
+    expect(logs.map(l => l.resultStatus.kind)).toEqual(['failure', 'success'])
+    // 確定したあとは、同じキーで二重に送って確定させることはできない
+    await expect(repo.save(deliveryLog({ idempotencyKey: 'idem-recovered' }))).rejects.toThrow(
       InvariantViolationError,
     )
   })

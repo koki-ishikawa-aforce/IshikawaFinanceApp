@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  concludesDelivery,
   createLineDeliveryLog,
   LineDeliveryLogSchema,
 } from '../../../src/notification-delivery/aggregates/LineDeliveryLog'
@@ -59,6 +60,36 @@ describe('LineDeliveryLog 集約', () => {
         },
       }),
     ).toThrow()
+  })
+})
+
+describe('concludesDelivery（冪等性キーの配信を確定させるか）', () => {
+  const logWith = (resultStatus: unknown) => LineDeliveryLogSchema.parse({ ...base, resultStatus })
+
+  it('送信成功は配信を確定させる（同一キーで再送信しない）', () => {
+    expect(
+      concludesDelivery(
+        logWith({ kind: 'success', lineMessageId: 'line_msg_001', sentAt: new Date() }),
+      ),
+    ).toBe(true)
+  })
+
+  it('送信スキップも配信を確定させる（送らないと決めた事実が確定している）', () => {
+    for (const skipReason of ['reminder_stop_condition_met', 'notification_disabled'] as const) {
+      expect(
+        concludesDelivery(logWith({ kind: 'skipped', skipReason, skippedAt: new Date() })),
+      ).toBe(true)
+    }
+  })
+
+  it('送信失敗は配信を確定させない（次の機会に再送信できる、#441-A）', () => {
+    // 失敗理由によらず再送信の余地を残す。月次レポートサマリは月に 1 通しか
+    // 送る機会が無く、1 回の失敗で永久に届かなくなるのを防ぐのが目的
+    for (const failureReason of ['line_api_failure', 'timeout', 'invalid_target'] as const) {
+      expect(
+        concludesDelivery(logWith({ kind: 'failure', failureReason, failedAt: new Date() })),
+      ).toBe(false)
+    }
   })
 })
 

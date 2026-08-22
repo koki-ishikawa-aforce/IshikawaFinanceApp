@@ -8,9 +8,12 @@
  *   配信先 AND 送信payload_json AND 送信結果ステータス AND 送信日時 AND 冪等性キー
  *
  * 不変条件:
- *  - 冪等性キーで同月レポート再送信の重複を防ぐ（同一冪等性キーは 1 件のみ保存、
- *    Repository.findByIdempotencyKey で保証、Phase 5 M-B）
- *  - 送信完了後のログは変更不可（監査記録。遷移関数を一切提供しない）
+ *  - 冪等性キーで同月レポート再送信の重複を防ぐ（同一冪等性キーで配信確定ログは 1 件のみ、
+ *    concludesDelivery と Repository.findAllByIdempotencyKey で保証、Phase 5 M-B）
+ *  - 送信失敗のログは配信を確定させない（同一冪等性キーで再送信できる。#441-A。
+ *    月次レポートサマリは月に 1 通しか送る機会が無く、1 回の失敗で永久に届かなくなるため）
+ *  - 送信完了後のログは変更不可（監査記録。遷移関数を一切提供しない。再送信は
+ *    新しい配信メッセージ・新しいログとして積まれ、失敗ログは履歴として残る）
  *  - 送信日時は送信結果ステータス内でのみ保持する（success.sentAt / failure.failedAt /
  *    skipped.skippedAt。skipped は送信が発生しないため、集約直下に送信日時を持たない）
  *
@@ -74,6 +77,19 @@ const TIMING_KIND_BY_PURPOSE: Record<DeliveryPurpose, DeliveryTimingKind> = {
   monthly_report_personal_summary: 'csv_confirmation',
   oauth_revocation_notice: 'oauth_revocation_detected',
   test_message: 'test_send',
+}
+
+/**
+ * この配信ログが冪等性キーの配信を確定させるか（08g §2「LINE 配信ログを保存する」）。
+ *
+ * 成功・スキップは確定（同一キーでの再送信を止める終端）。送信失敗は確定させない
+ * ため、同じ冪等性キーの配信は次の機会に改めて試行される（#441-A）。
+ *
+ * 「確定したログが同一キーで 1 件だけ」は本関数が唯一の判定元で、adapter 側の
+ * partial unique index は最終保証にすぎない（判定を再実装しない）。
+ */
+export function concludesDelivery(log: LineDeliveryLog): boolean {
+  return log.resultStatus.kind !== 'failure'
 }
 
 /**

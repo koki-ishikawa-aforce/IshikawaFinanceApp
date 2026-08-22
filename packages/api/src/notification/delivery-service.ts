@@ -7,8 +7,10 @@
  *  → 失敗時は連続失敗カウンタ +1（単発失敗は完全スキップでログのみ、論点23）
  *  → しきい値到達でフェイルセーフメールを 1 回だけ発火（OQ-14）
  *
- * 冪等性: 同一冪等性キーの配信ログが既にあれば送信せずスキップする
+ * 冪等性: 同一冪等性キーの配信が既に確定していれば送信せずスキップする
  * （同月レポート再送信の重複防止。at-least-once なイベント再配信にも耐える）。
+ * 確定させるのは成功・スキップのみで、送信失敗のログは次の機会に再送信できる
+ * （#441-A。判定は domain の concludesDelivery）。
  *
  * OAuth 失効通知はメールフェイルセーフの対象外（OQ-2: 個人 DM のみ）のため、
  * 送信失敗しても連続失敗カウンタを更新しない（ログのみ）。
@@ -32,6 +34,7 @@ import type {
   SkippedDeliveryMessage,
 } from '@warimaru/domain'
 import {
+  concludesDelivery,
   counterRefOf,
   createLineDeliveryLog,
   DeliveryLogIdSchema,
@@ -152,6 +155,27 @@ export function createNotificationDeliveryService(
     return log
   }
 
+  /**
+   * 冪等性キーの配信を確定させたログを返す（無ければ null = 送信に進んでよい）。
+   *
+   * 失敗ログしか無いキーは未確定として扱い、再送信を許す（#441-A）。過去に失敗が
+   * あった場合は再送信であることを記録する（失敗が続いているのか、再送信で回復した
+   * のかをログだけで追えるようにする。冪等性キーは配信先 ID を含むため出さない）。
+   */
+  async function findConcludingLog(
+    idempotencyKey: string,
+    purpose: DeliveryPurpose,
+  ): Promise<LineDeliveryLog | null> {
+    const logs = await deps.lineDeliveryLogRepository.findAllByIdempotencyKey(idempotencyKey)
+    const concluding = logs.find(concludesDelivery)
+    if (concluding === undefined && logs.length > 0) {
+      console.info(
+        `[notification] 過去に ${logs.length} 回失敗した配信を再送信する（用途 ${purpose}）`,
+      )
+    }
+    return concluding ?? null
+  }
+
   /** しきい値到達済み・未発火ならフェイルセーフメールを生成・送信し、発火済みを記録する */
   async function fireFailsafeEmail(ref: FailureCounterRef, at: Date): Promise<void> {
     const counter = await deps.consecutiveFailureCounterRepository.findByRef(ref)
@@ -220,9 +244,7 @@ export function createNotificationDeliveryService(
 
   return {
     async skip(input): Promise<SkipOutcome> {
-      const existing = await deps.lineDeliveryLogRepository.findByIdempotencyKey(
-        input.idempotencyKey,
-      )
+      const existing = await findConcludingLog(input.idempotencyKey, input.purpose)
       if (existing !== null) {
         return { kind: 'already_delivered', log: existing }
       }
@@ -255,9 +277,7 @@ export function createNotificationDeliveryService(
     },
 
     async deliver(input): Promise<DeliverOutcome> {
-      const existing = await deps.lineDeliveryLogRepository.findByIdempotencyKey(
-        input.idempotencyKey,
-      )
+      const existing = await findConcludingLog(input.idempotencyKey, input.purpose)
       if (existing !== null) {
         return { kind: 'already_delivered', log: existing }
       }

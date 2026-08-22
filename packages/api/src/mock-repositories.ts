@@ -2,7 +2,11 @@
  * DATABASE_URL 未設定時（開発モード）のインメモリ Repository 実装。
  * プロセス再起動でデータは消える。永続化・一意制約の最終保証は Neon 実装側が担う。
  */
-import { InvariantViolationError, NOT_JOINED_SHARED_TALK_ROOM } from '@warimaru/domain'
+import {
+  concludesDelivery,
+  InvariantViolationError,
+  NOT_JOINED_SHARED_TALK_ROOM,
+} from '@warimaru/domain'
 import type {
   Account,
   AccountId,
@@ -609,19 +613,23 @@ export function createMockLineDeliveryLogRepository(): LineDeliveryLogRepository
     async findById(id: DeliveryLogId) {
       return store.get(id) ?? null
     },
-    async findByIdempotencyKey(idempotencyKey: string) {
-      return [...store.values()].find(log => log.idempotencyKey === idempotencyKey) ?? null
+    async findAllByIdempotencyKey(idempotencyKey: string) {
+      // Map は挿入順を保つため、保存順（= Postgres 実装の created_at 昇順）と一致する
+      return [...store.values()].filter(log => log.idempotencyKey === idempotencyKey)
     },
     async save(log: LineDeliveryLog) {
-      // append-only + idempotency_key UNIQUE を Neon 実装と同じ失敗モードで再現する
+      // append-only + 確定済み配信の idempotency_key partial unique を
+      // Postgres 実装と同じ失敗モードで再現する（失敗ログは何件でも積める）
       const conflict = [...store.values()].find(
         existing =>
           existing.deliveryLogId === log.deliveryLogId ||
-          existing.idempotencyKey === log.idempotencyKey,
+          (existing.idempotencyKey === log.idempotencyKey &&
+            concludesDelivery(existing) &&
+            concludesDelivery(log)),
       )
       if (conflict !== undefined) {
         throw new InvariantViolationError(
-          `LINE配信ログは不変の監査レコード（append-only）: ${log.deliveryLogId} / 冪等性キー ${log.idempotencyKey} は既に記録済み`,
+          `LINE配信ログは不変の監査レコード（append-only）: ${log.deliveryLogId} / 冪等性キー ${log.idempotencyKey} の配信は既に確定済み`,
         )
       }
       store.set(log.deliveryLogId, log)

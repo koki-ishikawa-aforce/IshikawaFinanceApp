@@ -67,6 +67,40 @@ export function failedTestMessage(): DeliveryMessage {
   })
 }
 
+/** 送信失敗の配信ログ（配信を確定させないため、同一冪等性キーで何件でも積める） */
+export function failedDeliveryLog(input: { idempotencyKey?: string } = {}): LineDeliveryLog {
+  return LineDeliveryLogSchema.parse({
+    deliveryLogId: newUlid(),
+    deliveryMessageId: newUlid(),
+    timingKind: 'reminder',
+    target: { kind: 'shared_talk_room', talkRoomId: TALK_ROOM_ID },
+    sentPayloadJson: '{"type":"text","text":"リマインダー"}',
+    resultStatus: {
+      kind: 'failure',
+      failureReason: 'line_api_failure',
+      failedAt: new Date('2026-07-07T00:05:00.000Z'),
+    },
+    idempotencyKey: input.idempotencyKey ?? `idem-${newUlid()}`,
+  })
+}
+
+/** 送信スキップの配信ログ（成功と同じく配信を確定させる） */
+export function skippedDeliveryLog(input: { idempotencyKey?: string } = {}): LineDeliveryLog {
+  return LineDeliveryLogSchema.parse({
+    deliveryLogId: newUlid(),
+    deliveryMessageId: newUlid(),
+    timingKind: 'reminder',
+    target: { kind: 'shared_talk_room', talkRoomId: TALK_ROOM_ID },
+    sentPayloadJson: '{"skipped":true}',
+    resultStatus: {
+      kind: 'skipped',
+      skipReason: 'notification_disabled',
+      skippedAt: new Date('2026-07-07T00:05:00.000Z'),
+    },
+    idempotencyKey: input.idempotencyKey ?? `idem-${newUlid()}`,
+  })
+}
+
 export function deliveryLog(input: { idempotencyKey?: string } = {}): LineDeliveryLog {
   return LineDeliveryLogSchema.parse({
     deliveryLogId: newUlid(),

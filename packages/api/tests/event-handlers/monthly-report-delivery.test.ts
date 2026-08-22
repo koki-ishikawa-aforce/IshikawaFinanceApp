@@ -276,16 +276,18 @@ describe('月次レポートCSV確定 → サマリ配信', () => {
     const h = await buildHarness({})
     await h.publishConfirmed()
 
-    const householdLog = await h.logRepository.findByIdempotencyKey(
-      `monthly_report_household_summary:${REPORT_ID}`,
-    )
+    const householdLog = (
+      await h.logRepository.findAllByIdempotencyKey(`monthly_report_household_summary:${REPORT_ID}`)
+    ).at(-1)
     expect(householdLog?.resultStatus.kind).toBe('success')
     expect(householdLog?.timingKind).toBe('csv_confirmation')
     expect(householdLog?.sentPayloadJson).toContain('82,000円')
 
-    const personalLog = await h.logRepository.findByIdempotencyKey(
-      `monthly_report_personal_summary:${REPORT_ID}:user-honey`,
-    )
+    const personalLog = (
+      await h.logRepository.findAllByIdempotencyKey(
+        `monthly_report_personal_summary:${REPORT_ID}:user-honey`,
+      )
+    ).at(-1)
     expect(personalLog?.target).toEqual({ kind: 'personal_dm', userId: 'user-honey' })
   })
 
@@ -327,16 +329,18 @@ describe('月次レポートCSV確定 → サマリ配信', () => {
 
     // 世帯サマリは送らない。有効化済みの honey への個人 DM は送る
     expect(h.lineGateway.sends.map(s => s.to)).toEqual(['user-honey'])
-    const householdLog = await h.logRepository.findByIdempotencyKey(
-      `monthly_report_household_summary:${REPORT_ID}`,
-    )
+    const householdLog = (
+      await h.logRepository.findAllByIdempotencyKey(`monthly_report_household_summary:${REPORT_ID}`)
+    ).at(-1)
     expect(householdLog?.resultStatus).toMatchObject({
       kind: 'skipped',
       skipReason: 'notification_disabled',
     })
-    const darlingLog = await h.logRepository.findByIdempotencyKey(
-      `monthly_report_personal_summary:${REPORT_ID}:user-darling`,
-    )
+    const darlingLog = (
+      await h.logRepository.findAllByIdempotencyKey(
+        `monthly_report_personal_summary:${REPORT_ID}:user-darling`,
+      )
+    ).at(-1)
     expect(darlingLog?.resultStatus).toMatchObject({
       kind: 'skipped',
       skipReason: 'notification_disabled',
