@@ -322,7 +322,7 @@ export default function ExpenseSettlementPage() {
             aria-label="入金記録を追加"
             onClick={() => setDepositModal(true)}
           >
-            <LuPlus aria-hidden="true" size="1.25em" />
+            <LuPlus aria-hidden="true" className={ui.iconMd} />
             入金記録
           </button>
         </div>

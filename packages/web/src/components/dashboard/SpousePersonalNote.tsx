@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from 'react'
 import type { Theme } from '@/theme/tokens'
 import { RoleIcon } from '@/components/ui/RoleIcon'
 import { formatMoney } from '@/lib/format'
+import ui from '@/components/ui/common.module.css'
 import styles from './SpousePersonalNote.module.css'
 
 const PARTNER_LABEL: Record<Theme, { role: 'honey' | 'darling'; name: string }> = {
@@ -50,7 +51,7 @@ export function SpousePersonalNote({ amount, theme }: SpousePersonalNoteProps) {
     >
       <span className={styles.label}>
         <span className={styles.emoji}>
-          <RoleIcon role={partner.role} size="1em" />
+          <RoleIcon role={partner.role} className={ui.iconSm} />
         </span>
         {partner.name}の個人費（合計のみ）
       </span>

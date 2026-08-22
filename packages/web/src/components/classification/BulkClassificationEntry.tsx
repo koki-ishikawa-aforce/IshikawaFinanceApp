@@ -141,7 +141,7 @@ export function BulkClassificationEntry({
     <div className={styles.section}>
       {unclassifiedCount > 0 && (
         <button className={`${ui.card} ${styles.banner}`} onClick={onFilterUnclassified}>
-          <LuTriangleAlert aria-hidden="true" className={styles.bannerIcon} />
+          <LuTriangleAlert aria-hidden="true" className={`${ui.iconSm} ${styles.bannerIcon}`} />
           <span role="status">未分類の取引が {unclassifiedCount} 件あります</span>
         </button>
       )}

@@ -37,9 +37,13 @@
   background: var(--shadow-color);
 }
 
+/*
+ * ナビのアイコンは単独で置かれ、ラベル（.label）とは大きさが連動しない。
+ * そのため --icon-* を解決する基準の font-size をアイコン自身に明示する
+ * （--text-sm 12px × --icon-lg 1.5em = 18px）。大きさそのものは共通クラス .iconLg が与える。
+ */
 .icon {
-  width: 18px;
-  height: 18px;
+  font-size: var(--text-sm);
 }
 
 .label {

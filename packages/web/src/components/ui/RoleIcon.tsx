@@ -9,11 +9,11 @@ const ROLE_ICONS: Record<UserRole, { Icon: IconType; colorVar: string }> = {
 
 interface RoleIconProps {
   role: UserRole
-  size?: string | number
+  /** 大きさは DESIGN.md §4 のスケール（`common.module.css` の `.iconSm` 等）を渡す */
   className?: string
 }
 
-export function RoleIcon({ role, size, className }: RoleIconProps) {
+export function RoleIcon({ role, className }: RoleIconProps) {
   const { Icon, colorVar } = ROLE_ICONS[role]
-  return <Icon size={size} color={colorVar} aria-hidden="true" className={className} />
+  return <Icon color={colorVar} aria-hidden="true" className={className} />
 }

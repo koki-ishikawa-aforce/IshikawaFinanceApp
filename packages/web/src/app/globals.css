@@ -69,6 +69,17 @@ textarea {
   --text-2xl: 24px;
   --text-3xl: 30px;
 
+  /*
+   * アイコンサイズ（DESIGN.md §4）。隣接するテキストに対する相対値で定義する。
+   *
+   * px ではなく em にするのは、アイコンが文字と並んで置かれるためで、
+   * 文字サイズを変えたときにアイコンだけ取り残されないようにする。
+   * 単独で置くアイコン（下部ナビ等）は、基準となる font-size を要素側で明示する。
+   */
+  --icon-sm: 1em;
+  --icon-md: 1.25em;
+  --icon-lg: 1.5em;
+
   /* Semantic status colors (theme-independent) */
   --success: #3aab5c;
   --warning: #ffb84d;

@@ -67,7 +67,10 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
           {report.finalizedAt !== null && <span>確定: {formatDateTime(report.finalizedAt)}</span>}
           {report.common.isIncompleteMonth === true && (
             <span className={styles.incomplete}>
-              <LuTriangleAlert aria-hidden="true" className={styles.incompleteIcon} />
+              <LuTriangleAlert
+                aria-hidden="true"
+                className={`${ui.iconSm} ${styles.incompleteIcon}`}
+              />
               データが不完全な月です
             </span>
           )}

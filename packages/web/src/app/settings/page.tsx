@@ -60,7 +60,7 @@ function ProfileForm({
       <div className={ui.field}>
         <label className={ui.fieldLabel}>役割（変更不可）</label>
         <span className={styles.roleValue}>
-          <RoleIcon role={role} size="1em" /> {role === 'honey' ? 'Honey' : 'Darling'}
+          <RoleIcon role={role} className={ui.iconSm} /> {role === 'honey' ? 'Honey' : 'Darling'}
         </span>
       </div>
       <div className={ui.field}>
@@ -433,7 +433,7 @@ function AccountsTab() {
               aria-label="別銀行貯蓄口座を追加"
               onClick={() => setAdding('other_savings')}
             >
-              <LuPlus aria-hidden="true" />
+              <LuPlus aria-hidden="true" className={ui.iconSm} />
               別銀行貯蓄口座
             </button>
           )}
@@ -443,7 +443,7 @@ function AccountsTab() {
               aria-label="NISA口座を追加"
               onClick={() => setAdding('nisa')}
             >
-              <LuPlus aria-hidden="true" />
+              <LuPlus aria-hidden="true" className={ui.iconSm} />
               NISA口座
             </button>
           )}
@@ -1051,7 +1051,7 @@ function SettingsPageContent() {
       {tab === 'classification' && <LearningRulesTab />}
 
       <Link href="/onboarding" className={styles.onboardingLink}>
-        <LuRocket aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
+        <LuRocket aria-hidden="true" className={ui.iconSm} style={{ verticalAlign: 'middle' }} />{' '}
         はじめての設定（オンボーディング）を開く
       </Link>
     </main>
