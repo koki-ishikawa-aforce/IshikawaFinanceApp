@@ -25,6 +25,10 @@ interface ErrorStateProps {
  * 再試行手段(1-3)は失敗の種類ごとに置き場所が変わるため、この部品には含めない
  */
 export function ErrorState({ children, announce = true }: ErrorStateProps) {
+  // 文言が空(API のエラーメッセージが空文字だったなど)なら何も出さない。
+  // 無音の live region と赤い余白だけが残るのを避ける
+  if (children === null || children === undefined || children === '') return null
+
   return (
     <div className={styles.error} role={announce ? 'alert' : undefined}>
       {children}

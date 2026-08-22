@@ -29,7 +29,7 @@
 
 ```tsx
 // 違反(1-1): ローディングと空は書いたが、エラーが無い。取得失敗時に何も出ない
-{query.isLoading && <div className={ui.loading}>読み込み中...</div>}
+{query.isLoading && <LoadingState />}
 {items.length === 0 && <EmptyState>データがありません</EmptyState>}
 {items.map(...)}
 ```
@@ -44,14 +44,14 @@
 
 ```tsx
 // 違反(1-3): 再試行できない
-{query.error && <div className={ui.error}>取引一覧の取得に失敗しました</div>}
+{query.error && <ErrorState>取引一覧の取得に失敗しました</ErrorState>}
 
-// 適合
+// 適合(再試行手段は ErrorState の外に置く)
 {query.error && (
-  <div className={ui.error}>
-    取引一覧の取得に失敗しました
+  <>
+    <ErrorState>取引一覧の取得に失敗しました</ErrorState>
     <button className={ui.buttonGhost} onClick={() => void query.refetch()}>再読み込み</button>
-  </div>
+  </>
 )}
 ```
 
@@ -82,7 +82,7 @@
 <td>{tx.merchantName ?? '-'}</td>
 
 // 違反(2-2): 権限制限を汎用エラーに落としている
-{tx.amount === null && <div className={ui.error}>データを取得できませんでした</div>}
+{tx.amount === null && <ErrorState>データを取得できませんでした</ErrorState>}
 
 // 適合
 <EmptyState>配偶者の個人取引のため、詳細の閲覧・編集はできません</EmptyState>
@@ -112,9 +112,9 @@ window.confirm('この取引を削除しますか？')
 <button disabled={!valid}>登録</button>
 
 // 違反(3-6): 次の行動が無い
-<div className={ui.error}>不正な値です</div>
+<ErrorState>不正な値です</ErrorState>
 // 適合
-<div className={ui.error}>金額は1円以上の整数で入力してください</div>
+<ErrorState>金額は1円以上の整数で入力してください</ErrorState>
 ```
 
 ---
@@ -194,10 +194,10 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 | 目的 | 採用パターン |
 | --- | --- |
 | **6-1 破壊的操作の確認** | `Modal`(`packages/web/src/components/ui/Modal.tsx`)で確認する。`window.confirm` は使わない |
-| **6-2 操作結果の通知** | 成功はその場の表示更新で示す(専用の成功トーストは置かない)。失敗はその操作の直下にインラインのエラー表示(`ui.error`)を出す。トースト / スナックバーは採用しない |
+| **6-2 操作結果の通知** | 成功はその場の表示更新で示す(専用の成功トーストは置かない)。失敗はその操作の直下に共通部品 `ErrorState`(`packages/web/src/components/ui/ErrorState.tsx`)で出す。トースト / スナックバーは採用しない。`*.module.css` に独自のエラースタイルを定義しない |
 | **6-3 フォームの保存方式** | 明示保存(送信ボタン)。自動保存・フィールド単位保存は採用しない |
 | **6-4 フォームの提示** | 一覧からの追加・編集は `Modal`。ページ遷移させない |
-| **6-5 ローディング** | セクション単位のインライン表示(`ui.loading`)。全画面スピナー・スケルトンは採用しない |
+| **6-5 ローディング** | 共通部品 `LoadingState`(`packages/web/src/components/ui/LoadingState.tsx`)によるセクション単位のインライン表示。全画面スピナー・スケルトンは採用しない。`*.module.css` に独自のローディングスタイルを定義しない |
 | **6-6 空状態** | 共通部品 `EmptyState`(`packages/web/src/components/ui/EmptyState.tsx`)。インラインのテキストで、イラスト・空状態専用カードは採用しない。置き場所はその空状態が説明するセクションの器(`ui.card` かモーダル)の内側。`*.module.css` に独自の空状態スタイルを定義しない |
 | **6-7 月の切り替え** | 画面上部の月ナビゲーション。日付ピッカーで月を選ばせない |
 | **6-8 補足情報・手順の格納** | カード内の開閉トグル(見出しが `aria-expanded` + `aria-controls` を持つボタンを包む)。主操作の前に読まなくてよい補足はこれで畳む。モーダル・別ページ・常時展開は採用しない |
@@ -235,7 +235,7 @@ const total = query.data?.total ?? 0
 return <span>{formatMoney(total)}</span>
 
 // 適合
-if (query.isPending) return <div className={ui.loading}>読み込み中...</div>
+if (query.isPending) return <LoadingState />
 return <span>{formatMoney(query.data.total)}</span>
 ```
 

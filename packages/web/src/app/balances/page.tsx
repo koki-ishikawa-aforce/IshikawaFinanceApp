@@ -162,7 +162,9 @@ export default function BalancesPage() {
       <div className={ui.card}>
         <span className={ui.sectionTitle}>口座残高</span>
         {/* 読み込み中 → 一覧 / 空 / エラー に入れ替わる領域（docs/design/usability.md 8-4）。
-            入れ替わる側は announce={false} で live region の入れ子を避ける */}
+            入れ替わる側は announce={false} で live region の入れ子を避ける。
+            器が status のため、この中のエラーは alert ではなく polite で通知される
+            （器を alert にすると読み込み中まで割り込むため、こちらを採る） */}
         <div role="status">
           {(listQuery.isLoading || (listQuery.data !== undefined && !balanceListReady)) && (
             <LoadingState announce={false} />

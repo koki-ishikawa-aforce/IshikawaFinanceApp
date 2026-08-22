@@ -1,17 +1,7 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { ErrorState } from '../ErrorState'
-
-const SRC_DIR = join(import.meta.dirname, '../../..')
-
-function walk(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
-    const path = join(dir, entry.name)
-    return entry.isDirectory() ? walk(path) : [path]
-  })
-}
+import { definesClass, findDuplicateClassDefinitions, listStylesheets } from '@/test/stylesheets'
 
 describe('ErrorState', () => {
   it('失敗の文言をそのまま表示する', () => {
@@ -40,6 +30,20 @@ describe('ErrorState', () => {
     expect(alert).toHaveTextContent('時間をおいて、もう一度お試しください。')
   })
 
+  it('文言が空なら何も描画しない', () => {
+    // API のエラーメッセージが空文字でも、無音の live region と赤い余白だけが残らないようにする
+    const { container } = render(<ErrorState>{''}</ErrorState>)
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('アイコンなどの図形を持たず、インラインのテキストだけを描画する', () => {
+    const { container } = render(<ErrorState>保存できませんでした</ErrorState>)
+
+    expect(container.querySelector('svg')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
+  })
+
   it('announce={false} のときは live region にしない', () => {
     // 呼び出し側が常時マウントの live region を持つ場合、入れ子にすると二重に読まれる
     render(<ErrorState announce={false}>残高一覧の取得に失敗しました</ErrorState>)
@@ -53,13 +57,11 @@ describe('エラースタイルの重複定義の禁止', () => {
   // 検出できるのは「`.error` という名前で CSS に書かれた重複」だけ。別名クラスで
   // エラー表示を書き起こす迂回は検出できないため、集約そのものの担保は各画面のテストで行う
   it('ErrorState 以外の .module.css に .error が定義されていない', () => {
-    const stylesheets = walk(SRC_DIR).filter(path => path.endsWith('.module.css'))
-    const offenders = stylesheets
-      .filter(path => !path.endsWith('ErrorState.module.css'))
-      .filter(path => /^\.error\b/m.test(readFileSync(path, 'utf8')))
+    const offenders = findDuplicateClassDefinitions('error', 'ErrorState.module.css')
 
-    // 走査自体が空振りしていないことを併せて確認する
-    expect(stylesheets.length).toBeGreaterThan(0)
+    // 走査自体が空振りしていないこと・正本が実際に定義していることを併せて確認する
+    expect(listStylesheets().length).toBeGreaterThan(0)
+    expect(definesClass('error', 'ErrorState.module.css')).toBe(true)
     expect(offenders).toEqual([])
   })
 })

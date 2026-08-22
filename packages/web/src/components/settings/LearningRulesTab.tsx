@@ -38,14 +38,14 @@ interface MastersState {
 
 function LoadFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <ErrorState>
-      {message}
+    <>
+      <ErrorState>{message}</ErrorState>
       <div className={styles.retryRow}>
         <button className={ui.buttonGhost} onClick={onRetry}>
           再読み込み
         </button>
       </div>
-    </ErrorState>
+    </>
   )
 }
 

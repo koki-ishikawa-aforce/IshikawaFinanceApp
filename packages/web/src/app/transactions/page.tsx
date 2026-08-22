@@ -504,7 +504,7 @@ function TransactionsPageContent() {
 export default function TransactionsPage() {
   // Static Export では useSearchParams を使うコンポーネントに Suspense 境界が必須
   return (
-    <Suspense fallback={<LoadingState />}>
+    <Suspense fallback={<LoadingState announce={false} />}>
       <TransactionsPageContent />
     </Suspense>
   )

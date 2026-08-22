@@ -200,7 +200,7 @@ function ReportsPageContent() {
 
 export default function ReportsPage() {
   return (
-    <Suspense fallback={<LoadingState />}>
+    <Suspense fallback={<LoadingState announce={false} />}>
       <ReportsPageContent />
     </Suspense>
   )

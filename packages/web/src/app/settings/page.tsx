@@ -1060,7 +1060,7 @@ function SettingsPageContent() {
 
 export default function SettingsPage() {
   return (
-    <Suspense fallback={<LoadingState />}>
+    <Suspense fallback={<LoadingState announce={false} />}>
       <SettingsPageContent />
     </Suspense>
   )

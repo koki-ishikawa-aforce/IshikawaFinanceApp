@@ -397,7 +397,7 @@ function ImportsPageContent() {
 
 export default function ImportsPage() {
   return (
-    <Suspense fallback={<LoadingState />}>
+    <Suspense fallback={<LoadingState announce={false} />}>
       <ImportsPageContent />
     </Suspense>
   )
