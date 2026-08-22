@@ -13,6 +13,7 @@ import {
 } from './icons'
 import type { IconType } from './icons'
 import styles from './AppNav.module.css'
+import ui from './common.module.css'
 
 const NAV_ITEMS: readonly { href: string; icon: IconType; label: string }[] = [
   { href: '/', icon: LuHouse, label: 'ホーム' },
@@ -40,7 +41,7 @@ export function AppNav() {
             className={active ? `${styles.item} ${styles.active}` : styles.item}
             aria-current={active ? 'page' : undefined}
           >
-            <Icon className={styles.icon} aria-hidden="true" />
+            <Icon className={`${ui.iconLg} ${styles.icon}`} aria-hidden="true" />
             <span className={styles.label}>{item.label}</span>
           </Link>
         )

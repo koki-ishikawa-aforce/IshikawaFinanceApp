@@ -46,6 +46,7 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 - **間隔（`--space-*`）**: 4px 基準。`--space-1` = 4px を基本単位とし、0.5 刻みの中間値を含む等差スケール。上限は `--space-14`（56px）
 - **角丸（`--radius-*`）**: 用途別の 5 段階。`--radius-card`（カード）と `--radius-panel`（パネル全体）が主要な 2 値
 - **フォントサイズ（`--text-*`）**: KPI ラベルの極小（`--text-xs`）から hero 値の最大（`--text-3xl`）まで 8 段階
+- **アイコンサイズ（`--icon-*`）**: 小 / 中 / 大の 3 段階。px ではなく隣接するテキストに対する相対値（`em`）で定義し、文字サイズを変えたときにアイコンだけ取り残されないようにする（§4 大きさ）
 - **書体（`--font-family`）**: 丸ゴシック（Zen Maru Gothic）。`html, body` に加えてフォーム要素（`button` / `input` / `select` / `textarea`）にも `globals.css` で継承させているため、**コンポーネント側で `font-family` を再指定しない**（UA スタイルシートの打ち消しはグローバル 1 か所に集約する）
 - **色**: テーマ色（`--accent` / `--bg-gradient` / `--kpi-*` 等）、ロール識別色（`--role-darling` / `--role-honey`、テーマ非依存）、カテゴリ色（`--cat-*`）、意味対応色（`--success` / `--warning` / `--error` 等）
 - **影（`--shadow-*`）**: 用途別の合成トークン（`--shadow-sm` 〜 `--shadow-modal`）。テーマ依存の `--shadow-color` / `--shadow-strong` を遅延解決する
@@ -61,6 +62,26 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 ### react-icons（共通モジュール経由）
 
 アイコンは `react-icons` の Lucide 系（`lu` プレフィックス）を使用し、`packages/web/src/components/ui/icons.ts` の barrel export を経由する。直接 `react-icons` から import しない。
+
+### 大きさ
+
+アイコンの大きさは 3 段階のスケール（`--icon-sm` / `--icon-md` / `--icon-lg`）から選ぶ。指定は共通クラス（`packages/web/src/components/ui/common.module.css` の `.iconSm` / `.iconMd` / `.iconLg`）で行い、`react-icons` の `size` プロパティや `*.module.css` の `width` / `height` に直値を書かない。
+
+| トークン    | 使いどころ                                                               |
+| ----------- | ------------------------------------------------------------------------ |
+| `--icon-sm` | 文字と並ぶアイコン（文中・ボタンのラベル併記・一覧の行頭・閉じるボタン） |
+| `--icon-md` | 併記するラベルより少し目立たせたい主操作のアイコン                       |
+| `--icon-lg` | アイコン単体で意味を担うもの（月送り・手順の見出し・下部ナビ）           |
+
+文章の途中に置くアイコンは `.iconInline`（`.iconSm` + 行内での縦位置揃え）を使う。
+
+`--icon-md` の現在の使用は精算画面の主操作 1 か所のみで、同種のボタンでも設定画面は `--icon-sm` を使っている。この不一致を揃えるかは #502 で判断待ちのため、迷う場合は既存の近い画面に合わせる。
+
+**実際の大きさは「基準の `font-size` × トークンの係数」で決まる**。上の表は係数の選び方の目安であり、クラス名の大小がそのまま画面上の大小になるわけではない（例: 取引追加ボタンのアイコンは基準が `--text-xl` のため `.iconSm` でも 20px、下部ナビは基準が `--text-sm` のため `.iconLg` で 18px）。既存の画面でクラスを付け替えるときは、基準の `font-size` を確認してから選ぶ。
+
+単独で置くアイコン（隣に大きさの連動する文字が無いもの）は、相対値の基準となる `font-size` を**アイコン自身、またはアイコンだけを内包する親要素**に明示する（アイコン自身の例: `AppNav.module.css` の `.icon`・`app/balances/page.module.css` の `.balanceIcon`。親要素の例: `app/transactions/page.module.css` の `.fab`・`MonthNavigator.module.css` の `.button`）。基準を書かずに周囲の文字サイズへ委ねると、無関係な文字サイズの変更でアイコンの大きさが動く。
+
+スケールの逸脱は `packages/web/src/test/icon-size-scale.test.ts` が機械的に検出する（width / height はレイアウト用途と区別できず stylelint で縛れないため、アイコンに限ってテストで縛っている）。
 
 ### UI への絵文字使用は禁止
 
@@ -101,6 +122,7 @@ JSX に絵文字（Unicode Emoji）を表示目的で埋め込まない。装飾
 - JSX に絵文字を表示目的で埋め込まない — react-icons のラインアイコンまたは CSS で表現する
 - 片方のテーマだけで見た目を確認して完了にしない — darling / honey 両テーマで破綻しないことを確認する
 - `react-icons` を `icons.ts` の barrel を経由せず直接 import しない
+- アイコンの大きさを画面ごとに決めない — `size` プロパティや `width` / `height` の直値ではなく、共通クラス（`.iconSm` / `.iconMd` / `.iconLg`）から選ぶ
 - 色だけでロールや状態を区別しない — 形状・テキストを併用する
 - 空状態（「〜がありません」）を画面ごとに書き起こさない — 共通部品 `EmptyState`（`packages/web/src/components/ui/EmptyState.tsx`）を使い、`*.module.css` に独自の空状態スタイルを定義しない
 - ローディング（「読み込み中...」）・エラー（「〜の取得に失敗しました」）を画面ごとに書き起こさない — 共通部品 `LoadingState`（`packages/web/src/components/ui/LoadingState.tsx`）・`ErrorState`（同 `ErrorState.tsx`）を使い、`*.module.css` に独自の `.loading` / `.error` を定義しない

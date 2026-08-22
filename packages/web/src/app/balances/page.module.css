@@ -67,9 +67,16 @@
   gap: var(--space-1);
 }
 
+/*
+ * 口座名（.balanceName）の左に置く見出しアイコン。口座名（--text-sm）とは大きさが
+ * 連動しないため、--icon-* を解決する基準の font-size をアイコン自身に明示する
+ * （--text-base 14px × --icon-sm 1em = 14px）。大きさそのものは共通クラス .iconSm が与える。
+ *
+ * --text-base は「従来の 14px を保つ」ために選んだ基準で、隣の口座名とは連動しない。
+ * 口座名に合わせて --text-sm へ寄せるとアイコンは 12px に縮む（見た目が変わる判断は #502）。
+ */
 .balanceIcon {
-  width: 14px;
-  height: 14px;
+  font-size: var(--text-base);
   flex-shrink: 0;
   color: var(--text-secondary);
 }

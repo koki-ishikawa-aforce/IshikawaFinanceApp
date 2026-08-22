@@ -492,7 +492,7 @@ function TransactionsPageContent() {
       )}
 
       <button className={styles.fab} onClick={() => setCreating(true)} aria-label="取引を追加">
-        <LuPlus aria-hidden="true" />
+        <LuPlus aria-hidden="true" className={ui.iconSm} />
       </button>
 
       {creating && <CreateModal month={month} onClose={() => setCreating(false)} />}

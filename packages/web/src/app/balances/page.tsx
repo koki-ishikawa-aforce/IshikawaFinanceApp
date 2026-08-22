@@ -39,7 +39,7 @@ function BalanceItem({
       return (
         <div className={styles.balanceItem}>
           <div className={styles.balanceHead}>
-            <LuLandmark className={styles.balanceIcon} aria-hidden="true" />
+            <LuLandmark className={`${ui.iconSm} ${styles.balanceIcon}`} aria-hidden="true" />
             <span className={styles.balanceName}>{item.displayName}</span>
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentBalance)}</span>
@@ -50,7 +50,7 @@ function BalanceItem({
       return (
         <div className={styles.balanceItem}>
           <div className={styles.balanceHead}>
-            <LuCreditCard className={styles.balanceIcon} aria-hidden="true" />
+            <LuCreditCard className={`${ui.iconSm} ${styles.balanceIcon}`} aria-hidden="true" />
             <span className={styles.balanceName}>{item.displayName}</span>
           </div>
           <span className={`${styles.balanceValue} ${styles.negative}`}>
@@ -66,7 +66,7 @@ function BalanceItem({
       return (
         <div className={styles.balanceItem}>
           <div className={styles.balanceHead}>
-            <LuPiggyBank className={styles.balanceIcon} aria-hidden="true" />
+            <LuPiggyBank className={`${ui.iconSm} ${styles.balanceIcon}`} aria-hidden="true" />
             <span className={styles.balanceName}>{item.displayName}</span>
             <FreshnessBadge freshness={freshness} />
           </div>
@@ -78,7 +78,7 @@ function BalanceItem({
       return (
         <div className={styles.balanceItem}>
           <div className={styles.balanceHead}>
-            <LuTrendingUp className={styles.balanceIcon} aria-hidden="true" />
+            <LuTrendingUp className={`${ui.iconSm} ${styles.balanceIcon}`} aria-hidden="true" />
             <span className={styles.balanceName}>{item.displayName}</span>
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentAccumulated)}</span>

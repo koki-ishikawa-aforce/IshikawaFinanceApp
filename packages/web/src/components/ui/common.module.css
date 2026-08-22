@@ -22,6 +22,34 @@
   padding-top: var(--space-1);
 }
 
+/**
+ * アイコンの大きさ。DESIGN.md §4 のスケール（小 / 中 / 大）から選ぶ。
+ *
+ * react-icons の `size` プロパティで画面ごとに指定すると大きさが散らばるため、
+ * 大きさの指定はこの 3 クラスに集約する（`src/test/icon-size-scale.test.ts` が機械的に守る）。
+ * 値は em なので、アイコンは隣接するテキストの大きさに追従する。
+ */
+.iconSm {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.iconMd {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.iconLg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+
+/** 文章の途中に置くアイコン（注意書きの先頭など）。行の中で文字の高さに揃える */
+.iconInline {
+  composes: iconSm;
+  vertical-align: middle;
+}
+
 /** アイコン + ラベルを並べるボタン・リンクに併記する。ボタン種別のクラスと組み合わせて使う */
 .iconLabel {
   display: inline-flex;

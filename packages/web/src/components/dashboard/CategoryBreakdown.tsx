@@ -7,6 +7,7 @@ import { formatMoney } from '@/lib/format'
 import { FALLBACK_CATEGORY_COLORS } from '@/theme/tokens'
 import { LuChevronRight } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
+import ui from '@/components/ui/common.module.css'
 import styles from './CategoryBreakdown.module.css'
 
 interface CategoryBreakdownProps {
@@ -74,7 +75,7 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
                 {!hasZeroTotal && (
                   <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
                 )}
-                <LuChevronRight className={styles.chevron} aria-hidden="true" />
+                <LuChevronRight className={`${ui.iconSm} ${styles.chevron}`} aria-hidden="true" />
               </Link>
             </li>
           ))}

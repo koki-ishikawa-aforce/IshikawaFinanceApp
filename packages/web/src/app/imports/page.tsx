@@ -318,7 +318,10 @@ function ImportsPageContent() {
         {statusQuery.data &&
           (completion !== null ? (
             <div className={styles.statusDone}>
-              <LuCircleCheck aria-hidden="true" className={styles.statusDoneIcon} />
+              <LuCircleCheck
+                aria-hidden="true"
+                className={`${ui.iconSm} ${styles.statusDoneIcon}`}
+              />
               取込完了（{formatDateTime(completion.completedAt)}）
             </div>
           ) : (

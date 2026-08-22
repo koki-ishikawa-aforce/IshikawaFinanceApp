@@ -121,7 +121,7 @@ function ErrorNote({ error }: { error: unknown }) {
   if (message === null) return null
   return (
     <p className={styles.note}>
-      <LuTriangleAlert aria-hidden="true" style={{ verticalAlign: 'middle' }} /> {message}
+      <LuTriangleAlert aria-hidden="true" className={ui.iconInline} /> {message}
     </p>
   )
 }
@@ -340,7 +340,11 @@ export default function OnboardingPage() {
             }
           >
             <span className={styles.stepIndex}>
-              {i < stepIndex ? <LuCheck aria-label="完了" /> : i + 1}
+              {i < stepIndex ? (
+                <LuCheck role="img" aria-label="完了" className={ui.iconSm} />
+              ) : (
+                i + 1
+              )}
             </span>
             <span className={styles.stepLabel}>{s.label}</span>
           </div>
@@ -350,7 +354,7 @@ export default function OnboardingPage() {
       {step === 'nickname' && (
         <div className={ui.card}>
           <div className={styles.stepAvatar}>
-            <RoleIcon role={avatarRole} size="1.5em" />
+            <RoleIcon role={avatarRole} className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>ニックネームを設定</span>
           <p className={styles.note}>アプリ内で表示される呼び名を決めましょう（10文字まで）。</p>
@@ -375,7 +379,7 @@ export default function OnboardingPage() {
       {step === 'line_friend' && (
         <div className={ui.card}>
           <div className={styles.stepAvatar}>
-            <LuMessageCircle aria-hidden="true" size="1.5em" />
+            <LuMessageCircle aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>LINE 公式アカウントを友だち追加</span>
           <p className={styles.note}>
@@ -425,7 +429,7 @@ export default function OnboardingPage() {
       {step === 'talk_room' && (
         <div className={ui.card}>
           <div className={styles.stepAvatar}>
-            <LuUsers aria-hidden="true" size="1.5em" />
+            <LuUsers aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>共通トークルームへ参加</span>
           <p className={styles.note}>
@@ -433,7 +437,7 @@ export default function OnboardingPage() {
           </p>
           {talkRoomId === null && (
             <p className={styles.note}>
-              <LuTriangleAlert aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
+              <LuTriangleAlert aria-hidden="true" className={ui.iconInline} />{' '}
               参加を記録するトークルームを特定できません。共通トークルーム内からこの画面を開き直してください。
             </p>
           )}
@@ -453,7 +457,7 @@ export default function OnboardingPage() {
       {step === 'notifications' && (
         <div className={ui.card}>
           <div className={styles.stepAvatar}>
-            <LuBell aria-hidden="true" size="1.5em" />
+            <LuBell aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>通知の設定</span>
           <p className={styles.note}>
@@ -477,7 +481,7 @@ export default function OnboardingPage() {
       {step === 'phase2' && user?.kind === 'phase1_completed' && (
         <div className={ui.card}>
           <div className={styles.stepAvatar}>
-            <LuRocket aria-hidden="true" size="1.5em" />
+            <LuRocket aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>Phase 2 をはじめる</span>
           <p className={styles.note}>
@@ -634,7 +638,7 @@ export default function OnboardingPage() {
           {spouse?.kind === 'both_completed' ? (
             <>
               <div className={styles.stepAvatar}>
-                <LuPartyPopper aria-hidden="true" size="1.5em" />
+                <LuPartyPopper aria-hidden="true" className={ui.iconLg} />
               </div>
               <span className={ui.sectionTitle}>ふたりの設定が完了しました！</span>
               <p className={styles.note}>
@@ -648,7 +652,7 @@ export default function OnboardingPage() {
           ) : (
             <>
               <div className={styles.stepAvatar}>
-                <LuHourglass aria-hidden="true" size="1.5em" />
+                <LuHourglass aria-hidden="true" className={ui.iconLg} />
               </div>
               <span className={ui.sectionTitle}>配偶者の設定完了を待っています</span>
               <p className={styles.note}>
@@ -671,7 +675,7 @@ export default function OnboardingPage() {
       {step === 'done' && (
         <div className={ui.card}>
           <div className={styles.stepAvatar}>
-            <LuPartyPopper aria-hidden="true" size="1.5em" />
+            <LuPartyPopper aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>運用開始済みです</span>
           <p className={styles.note}>

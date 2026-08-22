@@ -77,7 +77,7 @@ export function StatementGuide({ fileKind, month }: StatementGuideProps) {
           {guide.title}の取得方法
           <LuChevronDown
             aria-hidden="true"
-            className={expanded ? styles.chevronOpen : styles.chevron}
+            className={`${ui.iconSm} ${expanded ? styles.chevronOpen : styles.chevron}`}
           />
         </button>
       </h2>
@@ -99,7 +99,7 @@ export function StatementGuide({ fileKind, month }: StatementGuideProps) {
           onClick={() => openExternal(statementSiteUrl(fileKind, month))}
         >
           {guide.linkLabel}
-          <LuExternalLink aria-hidden="true" className={styles.linkIcon} />
+          <LuExternalLink aria-hidden="true" className={`${ui.iconSm} ${styles.linkIcon}`} />
         </button>
         <p className={styles.note}>
           ブラウザで CSV を保存したあと、この画面に戻ってアップロードしてください。
