@@ -74,6 +74,19 @@ pnpm audit --audit-level moderate
 
 いずれも `pnpm build && pnpm typecheck && pnpm test && pnpm lint && pnpm format:check`・統合テスト(194 件)・VRT(14 件)が green であることを確認済み。VRT のベースライン変更は発生していない。
 
+### 2026-08-22 の修正(上流 advisory の追加公開)
+
+コード変更なしに main が **9 件(high 4 / moderate 4 / low 1)** で赤くなった。§5 の手順で以下のとおり 0 件に戻した。いずれもメジャーを跨がないパッチ更新。
+
+| 対応 | 内容 | 解消した advisory |
+| --- | --- | --- |
+| 直接依存のレンジ更新 | `hono` を `^4.4.0` → `^4.13.3`、`@hono/node-server` を `^2.0.5` → `^2.1.1` | hono 4 件(moderate 3 / low 1。CORS ミドルウェアの ReDoS・`memo()` の SSR 出力残留・Language ミドルウェアの DoS・Proxy Helper のヘッダー除去漏れ) |
+| `pnpm.overrides` の引き上げ | `brace-expansion` `^5.0.8` → `^5.0.9` | high 1 件(境界外配列による DoS) |
+| `pnpm.overrides` の引き上げ | `js-yaml@4` `^4.3.0` → `^4.3.1`、`postcss@8` `^8.5.18` → `^8.5.23` | high 1 件 / moderate 1 件 |
+| `pnpm.overrides` の追加 | `nanoid@3` → `^3.3.18`、`fast-uri@3` → `^3.1.5` | high 2 件 |
+
+検証一式・統合テスト(233 件)・VRT(34 件)が green。VRT のベースライン変更は発生していない。
+
 ## 5. main が赤くなったときの手順
 
 新しい advisory の公開でコード変更なしに落ちることがある。慌てて除外に走らず、以下の順で進める。
