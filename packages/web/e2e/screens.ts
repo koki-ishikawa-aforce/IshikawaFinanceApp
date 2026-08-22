@@ -5,10 +5,17 @@ export const SCREENS = [
   { name: 'balances', path: '/balances' },
   { name: 'reports', path: '/reports' },
   { name: 'imports', path: '/imports' },
+  { name: 'expense-settlement', path: '/expense-settlement' },
   { name: 'settings', path: '/settings' },
   // 設定のタブは初期表示が ?section= で決まる。既定タブ（プロフィール）の撮影では
   // 学習ルールの見た目を押さえられないため、別画面として並べる
   { name: 'settings-classification', path: '/settings?section=classification' },
+  // 口座タブの「別銀行貯蓄口座を追加」「NISA口座を追加」は、その口座が未登録の人にだけ
+  // 出る。既定の fixture は登録済みの世帯なので、未登録のシナリオを指定して撮る（#425）
+  {
+    name: 'settings-accounts-unregistered',
+    path: '/settings?section=accounts&mockScenario=accounts-unregistered',
+  },
   { name: 'onboarding', path: '/onboarding' },
 ] as const
 

@@ -7,6 +7,7 @@
  */
 import type { DashboardMode } from '@warimaru/domain'
 import { getMockRole } from './role'
+import { getMockScenario } from './scenario'
 import {
   accountBalanceListFixture,
   amazonProductKeyLearningRuleListFixture,
@@ -18,7 +19,9 @@ import {
   bulkClassificationSessionFixture,
   categoryBreakdownFixture,
   categoryListFixture,
+  currentCycleFixture,
   dashboardKpisFixture,
+  expenseSettlementViewFixture,
   expenseTypeListFixture,
   importStatusFixture,
   meFixture,
@@ -69,9 +72,9 @@ export function resolveMock(method: string, path: string): unknown {
       case '/api/me':
         return meFixture(getMockRole())
       case '/api/dashboard/kpis':
-        return dashboardKpisFixture(parseMode(params))
+        return dashboardKpisFixture(parseMode(params), getMockScenario())
       case '/api/dashboard/balance-freshness':
-        return balanceFreshnessFixture()
+        return balanceFreshnessFixture(getMockScenario())
       case '/api/dashboard/category-breakdown':
         return categoryBreakdownFixture(parseMode(params), params.get('month') ?? '2026-07')
       case '/api/transactions':
@@ -88,17 +91,21 @@ export function resolveMock(method: string, path: string): unknown {
       case '/api/expense-types':
         return expenseTypeListFixture()
       case '/api/balances':
-        return accountBalanceListFixture()
+        return accountBalanceListFixture(getMockScenario())
       case '/api/balances/total':
-        return assetTotalFixture()
+        return assetTotalFixture(getMockScenario())
       case '/api/balances/time-series':
-        return balanceTimeSeriesFixture()
+        return balanceTimeSeriesFixture(getMockScenario())
+      case '/api/expense-settlement':
+        return expenseSettlementViewFixture(getMockRole())
+      case '/api/expense-settlement/cycles':
+        return currentCycleFixture(params.get('month') ?? '2026-07')
       case '/api/monthly-reports':
         return monthlyReportFixture(params.get('month') ?? '2026-07')
       case '/api/settings/profile':
         return settingsProfileFixture(getMockRole())
       case '/api/accounts':
-        return ownAccountListFixture()
+        return ownAccountListFixture(getMockScenario())
       case '/api/monthly-limits':
         return monthlyLimitListFixture()
       case '/api/onboarding/me':
