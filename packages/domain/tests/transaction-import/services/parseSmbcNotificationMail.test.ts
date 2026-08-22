@@ -107,6 +107,38 @@ describe('カード利用のお知らせ', () => {
     })
   })
 
+  it('全角の数字・カンマで書かれた金額も読む', () => {
+    expect(parse(CARD_USAGE_BODY.replace('2,420円', '２，４２０円'))).toMatchObject({
+      amount: 2420,
+    })
+  })
+
+  it('本文どおりの 0 円はそのまま 0 円として読む（金額を勝手に変えない）', () => {
+    expect(parse(CARD_USAGE_BODY.replace('2,420円', '0円'))).toMatchObject({
+      kind: 'card_usage',
+      amount: 0,
+    })
+  })
+
+  it('数字を 1 桁も含まない金額を 0 円の取引にしない', () => {
+    // `Number('')` は 0 になるため、桁が壊れたメールが静かに 0 円の候補として入りうる
+    expect(parse(CARD_USAGE_BODY.replace('2,420円', ',,,円'))).toMatchObject({
+      kind: 'parse_failure',
+      reason: 'missing_required_field',
+    })
+  })
+
+  it('安全に扱えない桁数の金額は取引候補にしない', () => {
+    expect(parse(CARD_USAGE_BODY.replace('2,420円', '9,007,199,254,740,993円'))).toMatchObject({
+      kind: 'parse_failure',
+      reason: 'missing_required_field',
+    })
+  })
+
+  it('改行コードが CRLF の本文でも同じ結果になる（実メールは CRLF で届く）', () => {
+    expect(parse(CARD_USAGE_BODY.replace(/\n/g, '\r\n'))).toEqual(parse(CARD_USAGE_BODY))
+  })
+
   it('利用金額の行が無い本文は必須フィールド欠落として返す', () => {
     expect(parse(CARD_USAGE_BODY.replace('◇利用金額：2,420円', ''), 'card_usage')).toEqual({
       kind: 'parse_failure',
@@ -160,8 +192,12 @@ describe('振込入金のお知らせ', () => {
     expect(result).toMatchObject({ amount: 30014 })
   })
 
-  it('入金日の行が無い本文は必須フィールド欠落として返す', () => {
-    const result = parse(BANK_DEPOSIT_BODY.replace('入金日 ： 2026年07月13日', ''), 'bank_deposit')
+  it.each([
+    ['入金日', '入金日 ： 2026年07月13日'],
+    ['金額', '金額  ： 30,014円'],
+    ['内容', '内容  ： 振込サービス エイ フオース(カ'],
+  ])('%s の行が無い本文は必須フィールド欠落として返す', (_label, line) => {
+    const result = parse(BANK_DEPOSIT_BODY.replace(line, ''), 'bank_deposit')
     expect(result).toMatchObject({ kind: 'parse_failure', reason: 'missing_required_field' })
   })
 })
@@ -212,6 +248,18 @@ describe('口座引き落としの事前お知らせ', () => {
     expect(parse(twoCards)).toMatchObject({ totalAmount: 259052 })
   })
 
+  it.each([
+    ['引落予定日の行が無い', (b: string) => b.replace('口座引落予定日： 2026年07月27日', '')],
+    ['引落予定日が実在しない', (b: string) => b.replace('2026年07月27日', '2026年02月30日')],
+    // 1 件でも読めない明細があると合計が過少になるため、メール全体を失敗にする
+    ['カード明細に引落金額が無い', (b: string) => b.replace('引落金額： 247,052円', '')],
+  ])('%s引落通知は必須フィールド欠落として返す', (_label, mutate) => {
+    expect(parse(mutate(CARD_SETTLEMENT_BODY), 'card_settlement_confirmed')).toMatchObject({
+      kind: 'parse_failure',
+      reason: 'missing_required_field',
+    })
+  })
+
   it('カード引落の明細が 1 件も無い引落通知は必須フィールド欠落として返す', () => {
     const utilityOnly = CARD_SETTLEMENT_BODY.replace(
       'ミツイスミトモカード (カ',
@@ -256,8 +304,38 @@ describe('読めない本文', () => {
     })
   })
 
-  it('本文が空でも例外を投げない', () => {
-    expect(() => parse('')).not.toThrow()
+  it('構造は読める本文でも、加盟店名が文字化けしていれば取引候補にしない', () => {
+    // 化けた加盟店名のまま候補にすると、同じ店が別の店として家計簿に入り、
+    // 三項一致の重複除外も自動分類の学習も静かに外れる（OQ-23）
+    expect(parse(CARD_USAGE_BODY.replace('AMAZON CO JP', 'AM�ZON'), 'card_usage')).toMatchObject({
+      kind: 'parse_failure',
+      reason: 'garbled_text',
+    })
+  })
+
+  it('構造は読める振込入金でも、内容が文字化けしていれば取引候補にしない', () => {
+    expect(parse(BANK_DEPOSIT_BODY.replace('エイ フオース', 'エイ ���ス'))).toMatchObject({
+      kind: 'parse_failure',
+      reason: 'garbled_text',
+    })
+  })
+
+  it('本文が空なら構造不一致として返す（例外は投げない）', () => {
     expect(parse('')).toMatchObject({ kind: 'parse_failure', reason: 'structure_mismatch' })
+  })
+
+  it('2 種の目印に当たる本文は、種別ヒントが指す構造で読む', () => {
+    // 目印は基本的に排他だが、定型文が別種のものと混ざることはありうる。
+    // そのときどちらで読むかを決めるのが種別ヒント（08a §2 の事後条件）
+    const ambiguous = `${CARD_SETTLEMENT_BODY}
+（本メールは振込入金についてのお知らせと同じ配信基盤で送信しています）
+入金日 ： 2026年07月13日
+金額  ： 30,014円
+内容  ： 振込サービス エイ フオース(カ
+`
+    expect(parse(ambiguous, 'card_settlement_confirmed')).toMatchObject({
+      kind: 'card_settlement_confirmed',
+    })
+    expect(parse(ambiguous, 'bank_deposit')).toMatchObject({ kind: 'bank_deposit' })
   })
 })

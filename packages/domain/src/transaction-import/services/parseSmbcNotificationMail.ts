@@ -21,10 +21,11 @@
  * 生文字列に対して規則を書くと全角・半角の揺れごとに規則が増える（OQ-23）。
  */
 import {
-  jstDateTimeToUtc,
+  utcInstantOfJstDateTime,
   utcMidnightOfJstCalendarDate,
 } from '../../shared/value-objects/JstCalendar'
 import type { GmailMessageId, UserId } from '../../shared/ids'
+import { MoneySchema, type Money } from '../../shared/value-objects/Money'
 import { previousMonth, yearMonth } from '../../shared/value-objects/YearMonth'
 import { normalizeMerchantName } from '../value-objects/NormalizedMerchantName'
 import {
@@ -38,8 +39,23 @@ import type {
   SmbcNotificationMailParser,
 } from './SmbcNotificationMailParser'
 
-/** 本文構造を持っている（= パーサがある）メール種別 */
-type ParsableKind = 'card_usage' | 'bank_deposit' | 'card_settlement_confirmed'
+/**
+ * 本文構造を持っている（= パーサがある）メール種別。
+ *
+ * 語彙は `SmbcMailParseResult`（08a §1）を単一ソースにして、そこから「失敗」と実メールが
+ * 観測されていない 2 種を除いて導く。リテラルを書き写すと、スキーマ側の語彙が変わっても
+ * ここが古いまま通ってしまう。
+ */
+type ParsableKind = Exclude<
+  SmbcMailParseResult['kind'],
+  'parse_failure' | 'bank_withdrawal' | 'card_refund'
+>
+
+/** パースに成功したときの結果（失敗を除いた判別共用体のメンバー） */
+type ParsedResult = Extract<SmbcMailParseResult, { kind: ParsableKind }>
+
+/** メールの持ち主と出所。本文からは決まらないため呼出し側が渡す */
+type MailIdentity = { gmailMessageId: GmailMessageId; userId: UserId }
 
 const PARSABLE_KINDS: readonly ParsableKind[] = [
   'card_usage',
@@ -98,10 +114,17 @@ const CARD_SETTLEMENT_CONTENT_PREFIX = 'ミツイスミトモカード'
 /** 文字化けの目印。iso-2022-jp のデコードに失敗した本文は置換文字が残る */
 const REPLACEMENT_CHARACTER = '�'
 
-/** `2,420` のようなカンマ区切り金額 → 数値。読めなければ null */
-function parseAmount(raw: string): number | null {
-  const value = Number(raw.replace(/,/g, ''))
-  return Number.isSafeInteger(value) ? value : null
+/**
+ * `2,420` のようなカンマ区切り金額 → 金額。読めなければ null。
+ *
+ * 数字を 1 桁も含まない一致（`,,,円`）は 0 円として通さない。`Number('')` は 0 になるため、
+ * 桁が壊れたメールが「0 円の取引」として静かに家計簿へ入ってしまう。
+ * 本文どおりの `0円` は受理する（与信確認などで 0 円の通知が届いても、金額を勝手に変えない）。
+ */
+function parseAmount(raw: string): Money | null {
+  if (!/\d/.test(raw)) return null
+  const parsed = MoneySchema.safeParse(Number(raw.replace(/,/g, '')))
+  return parsed.success ? parsed.data : null
 }
 
 /** 本文構造を選ぶ順番。種別ヒントが指す構造から先に見る（08a §2 の事後条件） */
@@ -118,13 +141,14 @@ function kindOrder(hint: MailKindHint): readonly ParsableKind[] {
  */
 function parseCardUsage(
   text: string,
-): { merchantName: string; amount: number; occurredAt: Date } | null {
+  identity: MailIdentity,
+): Extract<ParsedResult, { kind: 'card_usage' }> | null {
   const date = CARD_USAGE_DATE.exec(text)
   const merchant = CARD_USAGE_MERCHANT.exec(text)
   const amountText = CARD_USAGE_AMOUNT.exec(text)
   if (date === null || merchant === null || amountText === null) return null
 
-  const occurredAt = jstDateTimeToUtc(
+  const occurredAt = utcInstantOfJstDateTime(
     Number(date[1]),
     Number(date[2]),
     Number(date[3]),
@@ -138,7 +162,14 @@ function parseCardUsage(
   // 別の店として扱われ、自動分類の学習も三項一致の重複除外も効かなくなる
   const merchantName = normalizeMerchantName(merchant[1] ?? '')
   if (merchantName === '') return null
-  return { merchantName, amount, occurredAt }
+  return {
+    kind: 'card_usage',
+    ...identity,
+    merchantName,
+    amount,
+    occurredAt,
+    cardKind: 'mitsui_sumitomo',
+  }
 }
 
 /**
@@ -149,7 +180,8 @@ function parseCardUsage(
  */
 function parseBankDeposit(
   text: string,
-): { payerName: string; amount: number; occurredAt: Date; description: string } | null {
+  identity: MailIdentity,
+): Extract<ParsedResult, { kind: 'bank_deposit' }> | null {
   const date = DEPOSIT_DATE.exec(text)
   const amountText = DEPOSIT_AMOUNT.exec(text)
   const content = DEPOSIT_CONTENT.exec(text)
@@ -162,7 +194,7 @@ function parseBankDeposit(
   const description = (content[1] ?? '').trim()
   const payerName = description.replace(REMITTANCE_PREFIX, '').trim()
   if (payerName === '') return null
-  return { payerName, amount, occurredAt, description }
+  return { kind: 'bank_deposit', ...identity, payerName, amount, occurredAt, description }
 }
 
 /**
@@ -179,7 +211,8 @@ function parseBankDeposit(
  */
 function parseCardSettlement(
   text: string,
-): { totalAmount: number; settlementDate: Date; targetMonth: string } | null {
+  identity: MailIdentity,
+): Extract<ParsedResult, { kind: 'card_settlement_confirmed' }> | null {
   const date = SETTLEMENT_DATE.exec(text)
   if (date === null) return null
   const year = Number(date[1])
@@ -188,20 +221,30 @@ function parseCardSettlement(
   if (settlementDate === null) return null
 
   const details = text.split(DETAIL_SEPARATOR).slice(1)
-  let totalAmount = 0
+  let sum = 0
   let cardDetailCount = 0
   for (const detail of details) {
     const content = DETAIL_CONTENT.exec(detail)
     if (content === null || !(content[1] ?? '').startsWith(CARD_SETTLEMENT_CONTENT_PREFIX)) continue
     const amountText = DETAIL_AMOUNT.exec(detail)
     const amount = amountText === null ? null : parseAmount(amountText[1] ?? '')
+    // 読めない明細が 1 件でもあれば合計が過少になるため、メール全体を失敗にする
+    // （足りない金額のまま「確定」として記録すると、差額の原因を後から追えない）
     if (amount === null) return null
-    totalAmount += amount
+    sum += amount
     cardDetailCount++
   }
   if (cardDetailCount === 0) return null
+  const totalAmount = parseAmount(String(sum))
+  if (totalAmount === null) return null
 
-  return { totalAmount, settlementDate, targetMonth: previousMonth(yearMonth(year, month)) }
+  return {
+    kind: 'card_settlement_confirmed',
+    ...identity,
+    totalAmount,
+    settlementDate,
+    targetMonth: previousMonth(yearMonth(year, month)),
+  }
 }
 
 /**
@@ -236,26 +279,19 @@ export const parseSmbcNotificationMail: SmbcNotificationMailParser = ({
   const parsed = buildResult(kind, text, { gmailMessageId: mail.gmailMessageId, userId })
   if (parsed === null) return failure('missing_required_field')
 
-  // 値の不変条件（金額が整数か・加盟店名が空でないか等）はスキーマに任せる。
-  // 通らなかった本文は「必須の値が読めなかった」と同じ扱いにする（例外は投げない）
+  // 組み立ては型でスキーマに合わせてあるので、ここを通らないのは実装の誤り。
+  // メール側の事情（必須フィールド欠落）と混ぜると、書式変更として追跡できなくなる
   const validated = SmbcMailParseResultSchema.safeParse(parsed)
-  return validated.success ? validated.data : failure('missing_required_field')
+  return validated.success ? validated.data : failure('other')
 }
 
 /** 選んだ構造で本文を読む。読めなければ null（呼出し側が必須フィールド欠落として扱う） */
 function buildResult(
   kind: ParsableKind,
   text: string,
-  identity: { gmailMessageId: GmailMessageId; userId: UserId },
-): object | null {
-  if (kind === 'card_usage') {
-    const fields = parseCardUsage(text)
-    return fields === null ? null : { kind, ...identity, ...fields, cardKind: 'mitsui_sumitomo' }
-  }
-  if (kind === 'bank_deposit') {
-    const fields = parseBankDeposit(text)
-    return fields === null ? null : { kind, ...identity, ...fields }
-  }
-  const fields = parseCardSettlement(text)
-  return fields === null ? null : { kind, ...identity, ...fields }
+  identity: MailIdentity,
+): ParsedResult | null {
+  if (kind === 'card_usage') return parseCardUsage(text, identity)
+  if (kind === 'bank_deposit') return parseBankDeposit(text, identity)
+  return parseCardSettlement(text, identity)
 }

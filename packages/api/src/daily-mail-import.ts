@@ -21,7 +21,7 @@
  * 加えて、確認と保存の間に別の実行が同じ候補を作った場合（同時起動）は保存が一意制約違反に
  * なるが、これも重複除外として扱う（結末が実際の状態と食い違わないようにする）。
  *
- * パースは注入する（`SmbcNotificationMailParser`）。実パースルールは #415 が実装するため、
+ * パースは注入する（`SmbcNotificationMailParser`。実装はドメインの `parseSmbcNotificationMail`）。
  * 本モジュールは「パース結果をどう扱うか」だけを持ち、本文の読み方は持たない。
  *
  * 候補にするのはカード利用通知だけ（08a §2「カード利用通知から取引候補を生成する」）。
@@ -92,7 +92,7 @@ export interface DailyMailImportDeps {
   transactionCandidateRepository: TransactionCandidateRepository
   gmailOAuthTokenRepository: GmailOAuthTokenRepository
   gmailMailFetchGateway: GmailMailFetchGateway
-  /** SMBC 通知メール本文のパース（実装は #415。それまでは未実装版が失敗を返す） */
+  /** SMBC 通知メール本文のパース（実装はドメインの `parseSmbcNotificationMail`） */
   parseSmbcNotificationMail: SmbcNotificationMailParser
   eventBus: EventBus
 }

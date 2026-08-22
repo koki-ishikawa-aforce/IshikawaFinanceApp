@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   jstCalendarParts,
-  jstDateTimeToUtc,
+  utcInstantOfJstDateTime,
   jstYearMonthOf,
   utcMidnightOfJstCalendarDate,
 } from '../../../src/shared/value-objects/JstCalendar'
@@ -54,6 +54,8 @@ describe('utcMidnightOfJstCalendarDate', () => {
     expect(utcMidnightOfJstCalendarDate(2026, 2, 30)).toBeNull()
     expect(utcMidnightOfJstCalendarDate(2026, 13, 1)).toBeNull()
     expect(utcMidnightOfJstCalendarDate(2026, 7, 0)).toBeNull()
+    // うるう年でない年の 2/29
+    expect(utcMidnightOfJstCalendarDate(2027, 2, 29)).toBeNull()
   })
 
   it('うるう年の 2 月 29 日は受理する', () => {
@@ -61,20 +63,30 @@ describe('utcMidnightOfJstCalendarDate', () => {
   })
 })
 
-describe('jstDateTimeToUtc', () => {
+describe('utcInstantOfJstDateTime', () => {
   it('JST の日時をその瞬間の Date にする', () => {
-    expect(jstDateTimeToUtc(2026, 7, 15, 14, 37)).toEqual(new Date('2026-07-15T05:37:00Z'))
+    expect(utcInstantOfJstDateTime(2026, 7, 15, 14, 37)).toEqual(new Date('2026-07-15T05:37:00Z'))
   })
 
   it('JST 深夜帯は UTC では前日になる（暦日は JST で読み戻せる）', () => {
-    const at = jstDateTimeToUtc(2026, 7, 15, 0, 5)
+    const at = utcInstantOfJstDateTime(2026, 7, 15, 0, 5)
     expect(at).toEqual(new Date('2026-07-14T15:05:00Z'))
     expect(jstCalendarParts(at as Date)).toEqual({ year: 2026, month: 7, day: 15 })
   })
 
-  it('実在しない日時は null を返す', () => {
-    expect(jstDateTimeToUtc(2026, 2, 30, 10, 0)).toBeNull()
-    expect(jstDateTimeToUtc(2026, 7, 15, 24, 0)).toBeNull()
-    expect(jstDateTimeToUtc(2026, 7, 15, 10, 60)).toBeNull()
+  it('その日の最後の時刻（23:59）は受理する', () => {
+    expect(utcInstantOfJstDateTime(2026, 7, 15, 23, 59)).toEqual(new Date('2026-07-15T14:59:00Z'))
+  })
+
+  it('実在しない日時は null を返す（上限・下限・数値でない時刻）', () => {
+    expect(utcInstantOfJstDateTime(2026, 2, 30, 10, 0)).toBeNull()
+    expect(utcInstantOfJstDateTime(2026, 7, 15, 24, 0)).toBeNull()
+    expect(utcInstantOfJstDateTime(2026, 7, 15, 10, 60)).toBeNull()
+    // 下限を割った時刻を「前日の 23 時」として黙って受け入れない
+    expect(utcInstantOfJstDateTime(2026, 7, 15, -1, 0)).toBeNull()
+    expect(utcInstantOfJstDateTime(2026, 7, 15, 10, -5)).toBeNull()
+    // 数値にならなかった時刻を Invalid Date として返さない
+    expect(utcInstantOfJstDateTime(2026, 7, 15, Number.NaN, 0)).toBeNull()
+    expect(utcInstantOfJstDateTime(2026, 7, 15, 10.5, 0)).toBeNull()
   })
 })

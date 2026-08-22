@@ -60,14 +60,16 @@ export function utcMidnightOfJstCalendarDate(
  * 時刻を捨てずに実時刻として持つ（JST 暦日は `jstCalendarParts` で導出できるため、
  * 発生日での突合には影響しない）。実在しない日時は `null` を返す。
  */
-export function jstDateTimeToUtc(
+export function utcInstantOfJstDateTime(
   year: number,
   month: number,
   day: number,
   hour: number,
   minute: number,
 ): Date | null {
-  if (hour > 23 || minute > 59) return null
+  const inRange = (value: number, max: number): boolean =>
+    Number.isInteger(value) && value >= 0 && value <= max
+  if (!inRange(hour, 23) || !inRange(minute, 59)) return null
   const midnight = utcMidnightOfJstCalendarDate(year, month, day)
   if (midnight === null) return null
   return new Date(midnight.getTime() + (hour * 60 + minute) * 60 * 1000 - JST_OFFSET_MS)
