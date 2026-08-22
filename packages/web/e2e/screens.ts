@@ -16,6 +16,9 @@ export const SCREENS = [
     name: 'settings-accounts-unregistered',
     path: '/settings?section=accounts&mockScenario=accounts-unregistered',
   },
+  // 同じシナリオは残高画面の見え方も変える（貯蓄・NISA の行が消え、鮮度の知らせが
+  // 空になり、推移グラフの系列が減る）。撮っておかないとその状態だけ見張られない
+  { name: 'balances-accounts-unregistered', path: '/balances?mockScenario=accounts-unregistered' },
   { name: 'onboarding', path: '/onboarding' },
 ] as const
 

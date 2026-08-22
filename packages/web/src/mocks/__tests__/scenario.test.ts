@@ -44,4 +44,16 @@ describe('getMockScenario', () => {
     expect(getMockRole()).toBe('honey')
     expect(getMockScenario()).toBe('default')
   })
+
+  it('ロールとシナリオを同時に指定しても、画面遷移後に両方とも保たれる', () => {
+    // 保持の仕組みを role と共有したことで生まれる失敗は「保存先の取り違え」。
+    // 後から解決したほうが先の値を上書きすると、遷移後に片方が既定へ落ちる
+    visit('/settings?section=accounts&mockScenario=accounts-unregistered&mockRole=honey')
+    expect(getMockScenario()).toBe('accounts-unregistered')
+    expect(getMockRole()).toBe('honey')
+
+    visit('/balances')
+    expect(getMockScenario()).toBe('accounts-unregistered')
+    expect(getMockRole()).toBe('honey')
+  })
 })

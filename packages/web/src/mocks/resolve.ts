@@ -5,7 +5,7 @@
  * パスに対応する fixture を返し、未定義のパスは実 API の 404 相当として
  * {@link MockNotFoundError} を投げる（呼び出し側で ApiError に変換される）。
  */
-import type { DashboardMode } from '@warimaru/domain'
+import { YearMonthSchema, type DashboardMode, type YearMonth } from '@warimaru/domain'
 import { getMockRole } from './role'
 import { getMockScenario } from './scenario'
 import {
@@ -63,6 +63,18 @@ function parseMode(params: URLSearchParams): DashboardMode {
   return params.get('mode') === 'personal' ? 'personal' : 'household'
 }
 
+/** fixture が持つ標準の月。月指定が無い・壊れているときはここへ落とす */
+const DEFAULT_MONTH = YearMonthSchema.parse('2026-07')
+
+/**
+ * 表示中の月。実 API は不正な月を弾くが、モックは画面を落とさず既定月で描画する
+ * （プレビューの URL を手で書き換えたときに白画面にしない）。
+ */
+function parseMonth(params: URLSearchParams): YearMonth {
+  const parsed = YearMonthSchema.safeParse(params.get('month'))
+  return parsed.success ? parsed.data : DEFAULT_MONTH
+}
+
 export function resolveMock(method: string, path: string): unknown {
   const [pathname = '', query = ''] = path.split('?')
   const params = new URLSearchParams(query)
@@ -76,7 +88,7 @@ export function resolveMock(method: string, path: string): unknown {
       case '/api/dashboard/balance-freshness':
         return balanceFreshnessFixture(getMockScenario())
       case '/api/dashboard/category-breakdown':
-        return categoryBreakdownFixture(parseMode(params), params.get('month') ?? '2026-07')
+        return categoryBreakdownFixture(parseMode(params), parseMonth(params))
       case '/api/transactions':
         return transactionListFixture(getMockRole())
       case '/api/transactions/unclassified-summary':
@@ -97,15 +109,15 @@ export function resolveMock(method: string, path: string): unknown {
       case '/api/balances/time-series':
         return balanceTimeSeriesFixture(getMockScenario())
       case '/api/expense-settlement':
-        return expenseSettlementViewFixture(getMockRole())
+        return expenseSettlementViewFixture(getMockRole(), parseMonth(params))
       case '/api/expense-settlement/cycles':
-        return currentCycleFixture(params.get('month') ?? '2026-07')
+        return currentCycleFixture(parseMonth(params))
       case '/api/monthly-reports':
-        return monthlyReportFixture(params.get('month') ?? '2026-07')
+        return monthlyReportFixture(parseMonth(params))
       case '/api/settings/profile':
         return settingsProfileFixture(getMockRole())
       case '/api/accounts':
-        return ownAccountListFixture(getMockScenario())
+        return ownAccountListFixture(getMockRole(), getMockScenario())
       case '/api/monthly-limits':
         return monthlyLimitListFixture()
       case '/api/onboarding/me':
