@@ -25,3 +25,50 @@ export function jstYearMonthOf(at: Date): YearMonth {
   const { year, month } = jstCalendarParts(at)
   return YearMonthSchema.parse(`${year}-${String(month).padStart(2, '0')}`)
 }
+
+/**
+ * JST 暦日（年・月・日）→ 取込側の発生日表現（UTC 深夜 0 時の `Date`）。
+ *
+ * 時刻を持たない取込元（CSV の計上日、振込入金のお知らせの入金日、引落予定日）は
+ * この表現に揃える。UTC 深夜 0 時は JST の同日 09:00 に当たるので、`jstCalendarParts` で
+ * 読み戻したときに元の暦日へ戻る。取込経路ごとに表現が割れると、発生日を突き合わせる
+ * 重複除外（三項一致、OQ-7 / OQ-23）が成立しない。
+ *
+ * 2 月 30 日のような実在しない日付は繰り上がりを許さず `null` を返す（外部入力である
+ * メール本文・CSV から来るため、黙って別の日に化けさせない）。
+ */
+export function utcMidnightOfJstCalendarDate(
+  year: number,
+  month: number,
+  day: number,
+): Date | null {
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null
+  }
+  return date
+}
+
+/**
+ * JST の日時（分単位）→ その瞬間を指す `Date`。
+ *
+ * 時刻まで分かる取込元（カード利用通知の「利用日」）に使う。暦日だけの取込元と違い、
+ * 時刻を捨てずに実時刻として持つ（JST 暦日は `jstCalendarParts` で導出できるため、
+ * 発生日での突合には影響しない）。実在しない日時は `null` を返す。
+ */
+export function jstDateTimeToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+): Date | null {
+  if (hour > 23 || minute > 59) return null
+  const midnight = utcMidnightOfJstCalendarDate(year, month, day)
+  if (midnight === null) return null
+  return new Date(midnight.getTime() + (hour * 60 + minute) * 60 * 1000 - JST_OFFSET_MS)
+}

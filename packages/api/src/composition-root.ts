@@ -47,11 +47,7 @@ import type {
   UserId,
   UserRole,
 } from '@warimaru/domain'
-import {
-  AllowlistSchema,
-  InMemoryEventBus,
-  createUnimplementedSmbcMailParser,
-} from '@warimaru/domain'
+import { AllowlistSchema, InMemoryEventBus, parseSmbcNotificationMail } from '@warimaru/domain'
 import {
   createDb,
   NeonAccountRepository,
@@ -430,7 +426,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
       createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
     ),
     gmailMailFetchGateway: createMockGmailMailFetchGateway(),
-    parseSmbcNotificationMail: createUnimplementedSmbcMailParser(),
+    parseSmbcNotificationMail,
     lineFriendshipGateway: createMockLineFriendshipGateway(),
     lineTalkRoomMembershipGateway: createMockLineTalkRoomMembershipGateway(),
     // 開発モードは Phase0Config も Parameter Store も無いため、環境変数か固定値で署名検証を通す
@@ -598,7 +594,7 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     }),
     gmailOAuthGateway,
     gmailMailFetchGateway,
-    parseSmbcNotificationMail: createUnimplementedSmbcMailParser(),
+    parseSmbcNotificationMail,
     resolveLineChannelSecret,
     dashboardQuery: new NeonDashboardQuery(db, { resolveCategoryNames, resolveViewerRole, now }),
     transactionListQuery: new NeonTransactionListQuery(db, {

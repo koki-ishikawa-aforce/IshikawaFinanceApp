@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { jstCalendarParts, jstYearMonthOf } from '../../../src/shared/value-objects/JstCalendar'
+import {
+  jstCalendarParts,
+  jstDateTimeToUtc,
+  jstYearMonthOf,
+  utcMidnightOfJstCalendarDate,
+} from '../../../src/shared/value-objects/JstCalendar'
 
 describe('jstCalendarParts', () => {
   it('UTC の 15:00 は JST では翌日の 0:00 として扱われる', () => {
@@ -35,5 +40,41 @@ describe('jstYearMonthOf', () => {
   it('JST の年月を 2 桁ゼロ埋めで返す', () => {
     expect(jstYearMonthOf(new Date('2026-08-31T15:00:00Z'))).toBe('2026-09')
     expect(jstYearMonthOf(new Date('2026-12-31T15:00:00Z'))).toBe('2027-01')
+  })
+})
+
+describe('utcMidnightOfJstCalendarDate', () => {
+  it('暦日を UTC 深夜 0 時で表す（読み戻すと同じ JST 暦日になる）', () => {
+    const date = utcMidnightOfJstCalendarDate(2026, 7, 13)
+    expect(date).toEqual(new Date('2026-07-13T00:00:00Z'))
+    expect(jstCalendarParts(date as Date)).toEqual({ year: 2026, month: 7, day: 13 })
+  })
+
+  it('実在しない日付は繰り上げず null を返す（取込元の外部入力を黙って別の日にしない）', () => {
+    expect(utcMidnightOfJstCalendarDate(2026, 2, 30)).toBeNull()
+    expect(utcMidnightOfJstCalendarDate(2026, 13, 1)).toBeNull()
+    expect(utcMidnightOfJstCalendarDate(2026, 7, 0)).toBeNull()
+  })
+
+  it('うるう年の 2 月 29 日は受理する', () => {
+    expect(utcMidnightOfJstCalendarDate(2028, 2, 29)).toEqual(new Date('2028-02-29T00:00:00Z'))
+  })
+})
+
+describe('jstDateTimeToUtc', () => {
+  it('JST の日時をその瞬間の Date にする', () => {
+    expect(jstDateTimeToUtc(2026, 7, 15, 14, 37)).toEqual(new Date('2026-07-15T05:37:00Z'))
+  })
+
+  it('JST 深夜帯は UTC では前日になる（暦日は JST で読み戻せる）', () => {
+    const at = jstDateTimeToUtc(2026, 7, 15, 0, 5)
+    expect(at).toEqual(new Date('2026-07-14T15:05:00Z'))
+    expect(jstCalendarParts(at as Date)).toEqual({ year: 2026, month: 7, day: 15 })
+  })
+
+  it('実在しない日時は null を返す', () => {
+    expect(jstDateTimeToUtc(2026, 2, 30, 10, 0)).toBeNull()
+    expect(jstDateTimeToUtc(2026, 7, 15, 24, 0)).toBeNull()
+    expect(jstDateTimeToUtc(2026, 7, 15, 10, 60)).toBeNull()
   })
 })
