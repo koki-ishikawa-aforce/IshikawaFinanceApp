@@ -35,6 +35,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { startMonthlyExpenseCycleForUser } from '../monthly-expense-cycle-start.js'
 
 const QueryParamsSchema = z.object({
   month: YearMonthSchema.optional(),
@@ -125,32 +126,30 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
     return c.json({ cycle })
   })
 
-  /** 月次経費精算サイクルの開始 */
+  /**
+   * 月次経費精算サイクルの開始（手動）。
+   * 生成・保存・イベント発行は月初の自動開始と共通の適用モジュールを通す
+   * （`monthly-expense-cycle-start.ts`。ここでサイクル生成を組み立て直さない）。
+   */
   app.post('/cycles', async c => {
     const body = CycleCreateBodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
-    const existing = await deps.monthlyExpenseCycleRepository.findByUserAndMonth(
-      viewerId,
-      body.targetMonth,
+    const result = await startMonthlyExpenseCycleForUser(
+      {
+        monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
+        eventBus: deps.eventBus,
+      },
+      { userId: viewerId, targetYearMonth: body.targetMonth },
     )
-    if (existing !== null) {
+    if (result.kind === 'already_started') {
+      // 月初バッチ（#413）が先に開始していることがあり、画面を開いたままだと利用者にはこの
+      // 409 が「開始できなかった」に見える。次にすること（再読込）まで含めた文言にする。
+      // サイクル ID は載せない（利用者に意味が無く、相手のサイクル ID 露出の芽も作らない）
       throw new InvariantViolationError(
-        `対象年月のサイクルが既に存在する: ${body.targetMonth}（${existing.common.monthlyExpenseCycleId}）`,
+        `${body.targetMonth} の経費精算サイクルはすでに開始済みです。画面を再読み込みしてください`,
       )
     }
-    const cycle = MonthlyExpenseCycleSchema.parse({
-      kind: 'accumulating',
-      common: {
-        monthlyExpenseCycleId: MonthlyExpenseCycleIdSchema.parse(newUlid()),
-        userId: viewerId,
-        targetYearMonth: body.targetMonth,
-        cycleStartedAt: new Date(),
-        accumulations: [],
-        childTransactionRefs: [],
-      },
-    })
-    await deps.monthlyExpenseCycleRepository.save(cycle)
-    return c.json(cycle, 201)
+    return c.json(result.cycle, 201)
   })
 
   /** サイクルの CSV 確定（集積中 → CSV確定） */

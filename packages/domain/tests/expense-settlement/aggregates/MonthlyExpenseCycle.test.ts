@@ -5,6 +5,7 @@ import {
   confirmCycleCsv,
   cycleExpenseTotal,
   finalizeCycle,
+  startMonthlyExpenseCycle,
   type AccumulatingCycle,
 } from '../../../src/expense-settlement/aggregates/MonthlyExpenseCycle'
 import { money } from '../../../src/shared/value-objects/Money'
@@ -132,6 +133,57 @@ describe('MonthlyExpenseCycle 集約', () => {
     )
     expect(finalized.kind).toBe('finalized')
     expect(finalized.expenseReimbursementId).toBe('01RMB000000000000000000001')
+  })
+})
+
+describe('startMonthlyExpenseCycle（08e §2「月次経費サイクルをリセットする」）', () => {
+  const PARAMS = {
+    monthlyExpenseCycleId: '01CYC000000000000000000001' as never,
+    userId: 'user_honey' as never,
+    targetYearMonth: '2026-07' as never,
+    at: new Date('2026-07-01T00:00:00+09:00'),
+  }
+
+  it('累計・按分子取引参照が空の集積中サイクルを、リセット日時つきで作る', () => {
+    const cycle = startMonthlyExpenseCycle(PARAMS)
+
+    expect(cycle.kind).toBe('accumulating')
+    expect(cycle.common.accumulations).toEqual([])
+    expect(cycle.common.childTransactionRefs).toEqual([])
+    expect(cycle.common.targetYearMonth).toBe('2026-07')
+    expect(cycle.common.userId).toBe('user_honey')
+    expect(cycle.common.cycleStartedAt).toEqual(PARAMS.at)
+    expect(cycleExpenseTotal(cycle)).toBe(0)
+  })
+
+  it.each(['2026-7', '2026-13', '2026-00', '2026', ''])(
+    '対象年月が %s なら作れない（ゼロ埋め YYYY-MM かつ月は 01〜12）',
+    invalid => {
+      expect(() =>
+        startMonthlyExpenseCycle({ ...PARAMS, targetYearMonth: invalid as never }),
+      ).toThrow()
+    },
+  )
+
+  it('サイクルID が ULID でなければ作れない', () => {
+    expect(() =>
+      startMonthlyExpenseCycle({ ...PARAMS, monthlyExpenseCycleId: 'cycle-1' as never }),
+    ).toThrow()
+  })
+
+  it('ユーザーID が空なら作れない', () => {
+    expect(() => startMonthlyExpenseCycle({ ...PARAMS, userId: '' as never })).toThrow()
+  })
+
+  it('渡した対象年月がそのままサイクルに載る（別の月を渡せば別の月のサイクルになる）', () => {
+    const august = startMonthlyExpenseCycle({
+      ...PARAMS,
+      monthlyExpenseCycleId: '01CYC000000000000000000002' as never,
+      targetYearMonth: '2026-08' as never,
+    })
+
+    expect(august.common.targetYearMonth).toBe('2026-08')
+    // 「ユーザー + 対象年月で一意」は集約の外の制約（Repository / DB の unique が保証する）
   })
 })
 
