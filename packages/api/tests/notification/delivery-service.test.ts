@@ -99,6 +99,18 @@ const failure: LinePushResult = {
   failureReason: 'line_api_failure',
   detail: 'stub failure',
 }
+/** 送達が不明な失敗（LINE 側が受理済みかもしれない） */
+const timeoutFailure: LinePushResult = {
+  kind: 'failure',
+  failureReason: 'timeout',
+  detail: 'stub timeout',
+}
+/** 時間が経っても直らない失敗 */
+const invalidTargetFailure: LinePushResult = {
+  kind: 'failure',
+  failureReason: 'invalid_target',
+  detail: 'stub invalid target',
+}
 
 describe('NotificationDeliveryService', () => {
   let deps: NotificationDeliveryServiceDeps
@@ -293,6 +305,11 @@ describe('NotificationDeliveryService', () => {
         'failure',
         'success',
       ])
+      // 再送信の成功で連続失敗が断ち切られる（次の障害を 1 回目から数え直す）
+      const counter = await deps.consecutiveFailureCounterRepository.findByRef(
+        FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' }),
+      )
+      expect(counter?.consecutiveFailureCount).toBe(0)
     })
 
     it('再送信が成功したあとは already_delivered に戻る（3 回目は送らない）', async () => {
@@ -310,6 +327,9 @@ describe('NotificationDeliveryService', () => {
       const third = await service.deliver(input)
 
       expect(third.kind).toBe('already_delivered')
+      // 呼出し側へ渡るのは確定した成功ログ（失敗ログを返すと「配信済み」の根拠がずれる）
+      if (third.kind !== 'already_delivered') return
+      expect(third.log.resultStatus.kind).toBe('success')
       expect(gateway.calls).toBe(2)
       expect(await logsOf('key-retry-2')).toHaveLength(2)
     })
@@ -331,6 +351,52 @@ describe('NotificationDeliveryService', () => {
       expect(third.kind).toBe('failed')
       expect(gateway.calls).toBe(3)
       expect(await logsOf('key-retry-3')).toHaveLength(3)
+
+      // 再送信の試行 1 回を連続失敗 1 回として数える（同一キーの再試行でもカウンタが進む）。
+      // 差分前は 2 回目以降が already_delivered で短絡し、カウンタに触れなかった
+      const counter = await deps.consecutiveFailureCounterRepository.findByRef(
+        FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' }),
+      )
+      expect(counter?.consecutiveFailureCount).toBe(3)
+      // 既定しきい値 3 に到達するので、障害としてフェイルセーフメールが全宛先へ 1 回だけ出る
+      expect(events.filter(e => e.type === 'FailureThresholdReached')).toHaveLength(1)
+      expect(events.filter(e => e.type === 'FailsafeEmailSent')).toHaveLength(2)
+    })
+
+    it('タイムアウトで終わったキーは再送信しない（LINE 側に届いているかもしれないため）', async () => {
+      // 再送信すると金額入りの月次サマリが 2 通届きうる。届かない側のリスクより
+      // 二重配信を避ける側を採る(#523 で見直しの判断を仰いでいる)
+      const gateway = stubLineGateway([timeoutFailure, success])
+      const service = build(gateway)
+      const input = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'monthly_report_household_summary' as const,
+        idempotencyKey: 'key-retry-timeout',
+      }
+
+      await service.deliver(input)
+      const second = await service.deliver(input)
+
+      expect(second.kind).toBe('already_delivered')
+      expect(gateway.calls).toBe(1)
+    })
+
+    it('宛先・payload が不正で終わったキーは再送信しない（何度送っても直らない）', async () => {
+      const gateway = stubLineGateway([invalidTargetFailure, success])
+      const service = build(gateway)
+      const input = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'monthly_report_household_summary' as const,
+        idempotencyKey: 'key-retry-invalid',
+      }
+
+      await service.deliver(input)
+      const second = await service.deliver(input)
+
+      expect(second.kind).toBe('already_delivered')
+      expect(gateway.calls).toBe(1)
     })
 
     it('スキップで確定したキーは再送信しない（送らないと決めた事実は確定している）', async () => {
@@ -347,6 +413,8 @@ describe('NotificationDeliveryService', () => {
       const outcome = await service.deliver(common)
 
       expect(outcome.kind).toBe('already_delivered')
+      if (outcome.kind !== 'already_delivered') return
+      expect(outcome.log.resultStatus.kind).toBe('skipped')
       expect(gateway.calls).toBe(0)
     })
 
@@ -367,6 +435,11 @@ describe('NotificationDeliveryService', () => {
       expect(skipped.kind).toBe('skipped')
       expect(afterSkip.kind).toBe('already_delivered')
       expect(gateway.calls).toBe(1)
+      // 失敗の履歴は消えず、スキップが後ろに積まれる
+      expect((await logsOf('key-retry-5')).map(l => l.resultStatus.kind)).toEqual([
+        'failure',
+        'skipped',
+      ])
     })
   })
 

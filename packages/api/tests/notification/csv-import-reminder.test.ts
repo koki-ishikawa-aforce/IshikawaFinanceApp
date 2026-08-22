@@ -385,12 +385,30 @@ describe('CSV 取込リマインダー', () => {
       expect(outcome).toEqual({ kind: 'send_failed' })
       // 送信できていないので ReminderSent は発行しない
       expect(failing.events).toHaveLength(0)
-      const log = (
-        await failing.logRepository.findAllByIdempotencyKey(
-          `csv_import_reminder:${TALK_ROOM_ID}:${month}:2026-07-10`,
-        )
-      ).at(-1)
-      expect(log?.resultStatus.kind).toBe('failure')
+      const logs = await failing.logRepository.findAllByIdempotencyKey(
+        `csv_import_reminder:${TALK_ROOM_ID}:${month}:2026-07-10`,
+      )
+      // 1 回の実行で積まれるログは 1 件（失敗ログが複数件許容になったぶん、
+      // 二重に積むバグを保存時の一意制約では検出できなくなっている）
+      expect(logs).toHaveLength(1)
+      expect(logs.at(-1)?.resultStatus.kind).toBe('failure')
+    })
+
+    it('送信に失敗した日は、同じ JST 暦日の再実行で改めて送信される（#441-A）', async () => {
+      // 差分前はこの経路も already_sent_today で短絡し、その日の催促は届かなかった
+      const failing = await buildHarness({ pushResult: pushFailure })
+      await failing.runner.run({ targetMonth: month, at: day10 })
+      const second = await failing.runner.run({
+        targetMonth: month,
+        at: new Date('2026-07-10T14:00:00Z'), // 同じ JST 暦日
+      })
+
+      expect(second).toEqual({ kind: 'send_failed' })
+      expect(failing.lineGateway.calls).toBe(2)
+      const logs = await failing.logRepository.findAllByIdempotencyKey(
+        `csv_import_reminder:${TALK_ROOM_ID}:${month}:2026-07-10`,
+      )
+      expect(logs.map(l => l.resultStatus.kind)).toEqual(['failure', 'failure'])
     })
   })
 })

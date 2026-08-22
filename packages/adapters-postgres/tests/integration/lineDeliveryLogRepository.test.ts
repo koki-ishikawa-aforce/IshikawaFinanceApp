@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { sql } from 'drizzle-orm'
 import type { DeliveryLogId, LineDeliveryLog } from '@warimaru/domain'
-import { InvariantViolationError, LineDeliveryLogSchema } from '@warimaru/domain'
+import {
+  concludesDelivery,
+  InvariantViolationError,
+  LineDeliveryLogSchema,
+  SendFailureReasonSchema,
+} from '@warimaru/domain'
 import { db } from './setup'
 import { NeonLineDeliveryLogRepository } from '../../src/notification-delivery/NeonLineDeliveryLogRepository'
 import { deliveryLog, failedDeliveryLog, skippedDeliveryLog } from '../helpers/notificationFixtures'
@@ -54,9 +59,54 @@ describe('NeonLineDeliveryLogRepository（append-only 監査レコード）', ()
     expect(await repo.findAllByIdempotencyKey('idem-retry')).toHaveLength(2)
   })
 
+  it('確定させる失敗（timeout / invalid_target）は同一キーに 2 件目を保存できない', async () => {
+    // 索引の述語（SQL）と domain の CONCLUDES_BY_FAILURE_REASON がずれると
+    // 「再送信されるはずのものが弾かれる」「弾かれるはずのものが積まれる」が起きる。
+    // 失敗理由を列挙して両者の一致を実 DB で押さえる
+    for (const failureReason of SendFailureReasonSchema.options) {
+      const key = `idem-reason-${failureReason}`
+      const first = failedDeliveryLog({ idempotencyKey: key, failureReason })
+      const second = failedDeliveryLog({ idempotencyKey: key, failureReason })
+      await repo.save(first)
+      const save = repo.save(second)
+      if (concludesDelivery(first)) {
+        await expect(save).rejects.toThrow(InvariantViolationError)
+      } else {
+        await save
+        expect(await repo.findAllByIdempotencyKey(key)).toHaveLength(2)
+      }
+    }
+  })
+
+  it('発生日時の昇順で返す（保存順とずれていても時系列で並ぶ）', async () => {
+    // 保存の順序と発生日時の順序を意図的に逆にする。並べ替えを外しても
+    // 挿入順のまま返って通ってしまわないようにするため
+    const later = failedDeliveryLog({
+      idempotencyKey: 'idem-order',
+      failedAt: new Date('2026-07-07T09:00:00.000Z'),
+    })
+    const earlier = failedDeliveryLog({
+      idempotencyKey: 'idem-order',
+      failedAt: new Date('2026-07-07T08:00:00.000Z'),
+    })
+    await repo.save(later)
+    await repo.save(earlier)
+
+    expect((await repo.findAllByIdempotencyKey('idem-order')).map(l => l.deliveryLogId)).toEqual([
+      earlier.deliveryLogId,
+      later.deliveryLogId,
+    ])
+  })
+
   it('失敗が続いたあとの成功は保存でき、失敗の履歴も残る', async () => {
-    const failed = failedDeliveryLog({ idempotencyKey: 'idem-recovered' })
-    const succeeded = deliveryLog({ idempotencyKey: 'idem-recovered' })
+    const failed = failedDeliveryLog({
+      idempotencyKey: 'idem-recovered',
+      failedAt: new Date('2026-07-07T00:05:00.000Z'),
+    })
+    const succeeded = deliveryLog({
+      idempotencyKey: 'idem-recovered',
+      sentAt: new Date('2026-07-07T00:06:00.000Z'),
+    })
     await repo.save(failed)
     await repo.save(succeeded)
     const logs = await repo.findAllByIdempotencyKey('idem-recovered')

@@ -1,5 +1,5 @@
 {
-  "id": "febb98e3-b524-4412-8519-9646e07d1267",
+  "id": "72005bc7-d7ce-4dce-ad26-47e8a93de370",
   "prevId": "6e79521d-12aa-49de-a9e7-14705f077adc",
   "version": "7",
   "dialect": "postgresql",
@@ -1765,6 +1765,27 @@
         }
       },
       "indexes": {
+        "idx_line_delivery_logs_idempotency_key": {
+          "name": "idx_line_delivery_logs_idempotency_key",
+          "columns": [
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_line_delivery_logs_concluded_idempotency_key": {
           "name": "idx_line_delivery_logs_concluded_idempotency_key",
           "columns": [
@@ -1776,7 +1797,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"line_delivery_logs\".\"payload\"->'resultStatus'->>'kind' <> 'failure'",
+          "where": "(\"line_delivery_logs\".\"payload\"->'resultStatus'->>'kind' = 'failure' AND \"line_delivery_logs\".\"payload\"->'resultStatus'->>'failureReason' = 'line_api_failure') IS NOT TRUE",
           "concurrently": false,
           "method": "btree",
           "with": {}

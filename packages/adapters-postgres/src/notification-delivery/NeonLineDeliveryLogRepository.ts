@@ -8,7 +8,11 @@
  */
 import { asc, eq } from 'drizzle-orm'
 import type { DeliveryLogId, LineDeliveryLog, LineDeliveryLogRepository } from '@warimaru/domain'
-import { InvariantViolationError, LineDeliveryLogSchema } from '@warimaru/domain'
+import {
+  deliveryLogOccurredAt,
+  InvariantViolationError,
+  LineDeliveryLogSchema,
+} from '@warimaru/domain'
 import type { Db } from '../client'
 import { lineDeliveryLogs } from '../schema'
 import { parsePayload, serializeForPayload } from '../serialize'
@@ -30,13 +34,17 @@ export class NeonLineDeliveryLogRepository implements LineDeliveryLogRepository 
 
   async findAllByIdempotencyKey(idempotencyKey: string): Promise<LineDeliveryLog[]> {
     // 失敗ログは配信を確定させないため 0..N 行。確定判定は呼出し側の
-    // concludesDelivery が行うので、ここでは絞り込まず保存順に返す
+    // concludedDeliveryOf が行うので、ここでは絞り込まず全件返す
     const rows = await this.db
       .select({ payload: lineDeliveryLogs.payload })
       .from(lineDeliveryLogs)
       .where(eq(lineDeliveryLogs.idempotencyKey, idempotencyKey))
       .orderBy(asc(lineDeliveryLogs.createdAt), asc(lineDeliveryLogs.deliveryLogId))
-    return rows.map(row => parsePayload(LineDeliveryLogSchema, row.payload))
+    // 並べ替えの正はドメインの発生日時。created_at 昇順で取ってから安定ソートするので、
+    // 発生日時が同一のときは保存順（created_at）が保たれる
+    return rows
+      .map(row => parsePayload(LineDeliveryLogSchema, row.payload))
+      .sort((a, b) => deliveryLogOccurredAt(a).getTime() - deliveryLogOccurredAt(b).getTime())
   }
 
   async save(log: LineDeliveryLog): Promise<void> {

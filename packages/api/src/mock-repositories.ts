@@ -4,6 +4,7 @@
  */
 import {
   concludesDelivery,
+  deliveryLogOccurredAt,
   InvariantViolationError,
   NOT_JOINED_SHARED_TALK_ROOM,
 } from '@warimaru/domain'
@@ -614,8 +615,11 @@ export function createMockLineDeliveryLogRepository(): LineDeliveryLogRepository
       return store.get(id) ?? null
     },
     async findAllByIdempotencyKey(idempotencyKey: string) {
-      // Map は挿入順を保つため、保存順（= Postgres 実装の created_at 昇順）と一致する
-      return [...store.values()].filter(log => log.idempotencyKey === idempotencyKey)
+      // Postgres 実装と同じく発生日時の昇順で返す（Map の挿入順 = 保存順を
+      // 安定ソートするので、発生日時が同じなら保存順が保たれる）
+      return [...store.values()]
+        .filter(log => log.idempotencyKey === idempotencyKey)
+        .sort((a, b) => deliveryLogOccurredAt(a).getTime() - deliveryLogOccurredAt(b).getTime())
     },
     async save(log: LineDeliveryLog) {
       // append-only + 確定済み配信の idempotency_key partial unique を

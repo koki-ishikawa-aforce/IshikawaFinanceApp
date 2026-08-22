@@ -94,14 +94,16 @@ const pushSuccess: LinePushResult = {
 /** 送信先と payload を記録するスタブ LINE ゲートウェイ */
 function recordingGateway(
   result: LinePushResult = pushSuccess,
-): LineMessagingGateway & { sends: { to: string; payload: string }[] } {
+): LineMessagingGateway & { sends: { to: string; payload: string }[]; result: LinePushResult } {
   const gateway = {
     sends: [] as { to: string; payload: string }[],
+    // 途中で応答を差し替えられるようにする（障害から復旧したあとの再送信を作るため）
+    result,
     sendPush(target: Parameters<LineMessagingGateway['sendPush']>[0], content: unknown) {
       const to = target.kind === 'shared_talk_room' ? target.talkRoomId : target.userId
       const payload = JSON.stringify({ to, content })
       gateway.sends.push({ to, payload })
-      return Promise.resolve({ sentPayloadJson: payload, result })
+      return Promise.resolve({ sentPayloadJson: payload, result: gateway.result })
     },
   }
   return gateway
@@ -365,5 +367,31 @@ describe('月次レポートCSV確定 → サマリ配信', () => {
 
     expect(h.lineGateway.sends).toHaveLength(3)
     expect(h.events).toHaveLength(0)
+  })
+
+  it('LINE 障害で配信に失敗しても、復旧後の再確定で改めて届く（#441-A）', async () => {
+    // #441 の動機そのもの。月次サマリは月に 1 通しか送る機会が無く、差分前は
+    // 1 回目の失敗でその月のサマリが夫婦のどちらにも永久に届かなかった
+    const h = await buildHarness({
+      pushResult: { kind: 'failure', failureReason: 'line_api_failure', detail: 'stub' },
+    })
+    await h.publishConfirmed()
+    expect(h.events).toHaveLength(0)
+
+    h.lineGateway.result = pushSuccess
+    await h.publishConfirmed()
+
+    // 3 宛先 × 2 回。2 回目で世帯サマリ 1 通 + 個人サマリ 2 通の配信イベントが出る
+    expect(h.lineGateway.sends).toHaveLength(6)
+    expect(h.events).toHaveLength(3)
+    expect(h.events.filter(e => e.type === 'MonthlyReportHouseholdSummaryDelivered')).toHaveLength(
+      1,
+    )
+    expect(h.events.filter(e => e.type === 'MonthlyReportPersonalSummaryDelivered')).toHaveLength(2)
+
+    // 3 回目は送らない（成功で配信が確定したため）
+    await h.publishConfirmed()
+    expect(h.lineGateway.sends).toHaveLength(6)
+    expect(h.events).toHaveLength(3)
   })
 })

@@ -9,8 +9,9 @@
  *
  * 冪等性: 同一冪等性キーの配信が既に確定していれば送信せずスキップする
  * （同月レポート再送信の重複防止。at-least-once なイベント再配信にも耐える）。
- * 確定させるのは成功・スキップのみで、送信失敗のログは次の機会に再送信できる
- * （#441-A。判定は domain の concludesDelivery）。
+ * 成功・スキップと「未達が確定していない失敗」は確定させ、未達が確定した失敗
+ * （LINE がエラーを返した / 接続できなかった）のログだけが次の機会の再送信を許す
+ * （#441-A。判定は domain の concludesDelivery / concludedDeliveryOf）。
  *
  * OAuth 失効通知はメールフェイルセーフの対象外（OQ-2: 個人 DM のみ）のため、
  * 送信失敗しても連続失敗カウンタを更新しない（ログのみ）。
@@ -34,7 +35,7 @@ import type {
   SkippedDeliveryMessage,
 } from '@warimaru/domain'
 import {
-  concludesDelivery,
+  concludedDeliveryOf,
   counterRefOf,
   createLineDeliveryLog,
   DeliveryLogIdSchema,
@@ -158,22 +159,32 @@ export function createNotificationDeliveryService(
   /**
    * 冪等性キーの配信を確定させたログを返す（無ければ null = 送信に進んでよい）。
    *
-   * 失敗ログしか無いキーは未確定として扱い、再送信を許す（#441-A）。過去に失敗が
-   * あった場合は再送信であることを記録する（失敗が続いているのか、再送信で回復した
-   * のかをログだけで追えるようにする。冪等性キーは配信先 ID を含むため出さない）。
+   * 未達が確定した失敗ログしか無いキーは未確定として扱い、再送信を許す（#441-A）。
+   * 判定そのものは domain の concludedDeliveryOf が持つ（確定ログが 2 件ある異常＝
+   * 二重配信済みは、そこで InvariantViolationError になる）。
    */
-  async function findConcludingLog(
-    idempotencyKey: string,
-    purpose: DeliveryPurpose,
-  ): Promise<LineDeliveryLog | null> {
+  async function findConcludedLog(idempotencyKey: string): Promise<{
+    concluded: LineDeliveryLog | null
+    priorLogs: LineDeliveryLog[]
+  }> {
     const logs = await deps.lineDeliveryLogRepository.findAllByIdempotencyKey(idempotencyKey)
-    const concluding = logs.find(concludesDelivery)
-    if (concluding === undefined && logs.length > 0) {
-      console.info(
-        `[notification] 過去に ${logs.length} 回失敗した配信を再送信する（用途 ${purpose}）`,
-      )
-    }
-    return concluding ?? null
+    return { concluded: concludedDeliveryOf(logs), priorLogs: logs }
+  }
+
+  /**
+   * 再送信であることを記録する（失敗が続いているのか、再送信で回復したのかを
+   * ログだけで追えるようにする）。
+   *
+   * 出すのは件数・用途と直前の失敗ログ ID（ULID）だけで、冪等性キーは出さない
+   * （配信先のトークルーム ID / ユーザー ID を含むため）。ログ ID を添えるのは、
+   * 宛先が 2 人いる個人サマリで「どの配信の再送信か」を配信ログ側から辿れるようにするため。
+   */
+  function logRedelivery(purpose: DeliveryPurpose, priorLogs: LineDeliveryLog[]): void {
+    const previous = priorLogs.at(-1)
+    if (previous === undefined) return
+    console.info(
+      `[notification] 過去に ${priorLogs.length} 回失敗した配信を再送信する（用途 ${purpose} / 直前の配信ログ ${previous.deliveryLogId}）`,
+    )
   }
 
   /** しきい値到達済み・未発火ならフェイルセーフメールを生成・送信し、発火済みを記録する */
@@ -244,10 +255,11 @@ export function createNotificationDeliveryService(
 
   return {
     async skip(input): Promise<SkipOutcome> {
-      const existing = await findConcludingLog(input.idempotencyKey, input.purpose)
-      if (existing !== null) {
-        return { kind: 'already_delivered', log: existing }
+      const { concluded } = await findConcludedLog(input.idempotencyKey)
+      if (concluded !== null) {
+        return { kind: 'already_delivered', log: concluded }
       }
+      // 送信しないため再送信のログは出さない（失敗履歴のあるキーをスキップで確定させる経路）
 
       const reserved = reserveDeliveryMessage(
         {
@@ -277,10 +289,11 @@ export function createNotificationDeliveryService(
     },
 
     async deliver(input): Promise<DeliverOutcome> {
-      const existing = await findConcludingLog(input.idempotencyKey, input.purpose)
-      if (existing !== null) {
-        return { kind: 'already_delivered', log: existing }
+      const { concluded, priorLogs } = await findConcludedLog(input.idempotencyKey)
+      if (concluded !== null) {
+        return { kind: 'already_delivered', log: concluded }
       }
+      logRedelivery(input.purpose, priorLogs)
 
       const content = await resolveContent(input.content)
       const reserved = reserveDeliveryMessage(
@@ -311,7 +324,9 @@ export function createNotificationDeliveryService(
       }
 
       const failedAt = now()
-      // 単発失敗は完全スキップ（リトライ基盤なし、論点23）→ リトライ放棄で終端化
+      // この配信メッセージ自体は再試行しない（リトライ基盤なし、論点23）→ リトライ放棄で終端化。
+      // 冪等性キー単位では未確定として残りうるが、そのときの再送信は
+      // 新しい配信メッセージとして起こる（#441-A。粒度の違いは 08g のリトライ状態を参照）
       const failed = markMessageSendFailed(
         sending,
         outcome.result.failureReason,

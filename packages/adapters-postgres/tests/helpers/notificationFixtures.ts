@@ -7,6 +7,7 @@ import type {
   FailsafeEmail,
   FailureCounterRef,
   LineDeliveryLog,
+  SendFailureReason,
   UserId,
 } from '@warimaru/domain'
 import {
@@ -67,8 +68,15 @@ export function failedTestMessage(): DeliveryMessage {
   })
 }
 
-/** 送信失敗の配信ログ（配信を確定させないため、同一冪等性キーで何件でも積める） */
-export function failedDeliveryLog(input: { idempotencyKey?: string } = {}): LineDeliveryLog {
+/**
+ * 送信失敗の配信ログ。
+ *
+ * 既定の line_api_failure は未達が確定した失敗なので配信を確定させず、同一冪等性キーで
+ * 何件でも積める。timeout / invalid_target は確定させる（domain の concludesDelivery）。
+ */
+export function failedDeliveryLog(
+  input: { idempotencyKey?: string; failureReason?: SendFailureReason; failedAt?: Date } = {},
+): LineDeliveryLog {
   return LineDeliveryLogSchema.parse({
     deliveryLogId: newUlid(),
     deliveryMessageId: newUlid(),
@@ -77,8 +85,8 @@ export function failedDeliveryLog(input: { idempotencyKey?: string } = {}): Line
     sentPayloadJson: '{"type":"text","text":"リマインダー"}',
     resultStatus: {
       kind: 'failure',
-      failureReason: 'line_api_failure',
-      failedAt: new Date('2026-07-07T00:05:00.000Z'),
+      failureReason: input.failureReason ?? 'line_api_failure',
+      failedAt: input.failedAt ?? new Date('2026-07-07T00:05:00.000Z'),
     },
     idempotencyKey: input.idempotencyKey ?? `idem-${newUlid()}`,
   })
@@ -101,7 +109,9 @@ export function skippedDeliveryLog(input: { idempotencyKey?: string } = {}): Lin
   })
 }
 
-export function deliveryLog(input: { idempotencyKey?: string } = {}): LineDeliveryLog {
+export function deliveryLog(
+  input: { idempotencyKey?: string; sentAt?: Date } = {},
+): LineDeliveryLog {
   return LineDeliveryLogSchema.parse({
     deliveryLogId: newUlid(),
     deliveryMessageId: newUlid(),
@@ -111,7 +121,7 @@ export function deliveryLog(input: { idempotencyKey?: string } = {}): LineDelive
     resultStatus: {
       kind: 'success',
       lineMessageId: `lm-${newUlid()}`,
-      sentAt: new Date('2026-07-07T00:05:00.000Z'),
+      sentAt: input.sentAt ?? new Date('2026-07-07T00:05:00.000Z'),
     },
     idempotencyKey: input.idempotencyKey ?? `idem-${newUlid()}`,
   })
