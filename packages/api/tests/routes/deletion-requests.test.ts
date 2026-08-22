@@ -429,6 +429,14 @@ describe('マスタ削除リマップの冪等性・失敗時のマスタ保全�
   })
 })
 
+/**
+ * ここで見るのは「ルートの契約」に限る（#431）。
+ * コーディネーター自身の守り（全コンテキストの完了通知が揃うまで消さない・完了済み /
+ * 失敗済み / 未依頼のリクエストへの通知は無視する・同一コンテキストの再通知を二重計上しない）は
+ * tests/event-handlers/master-data-deletion-coordinator.test.ts でハンドラーを直接呼んで検証する。
+ * ルート越しに確かめようとすると、完了通知が揃わない状況を作るために保存処理の差し替えなどの
+ * 細工が必要になり、テストが実装の都合に依存するため。
+ */
 describe('マスタ削除完了の通知と物理削除の順序（#363）', () => {
   it('カテゴリ削除の完了で CategoryDeletionCompleted が合算件数付きで1件だけ発行される', async () => {
     const t = createTestApp()
@@ -709,30 +717,16 @@ describe('マスタ削除完了の通知と物理削除の順序（#363）', () 
       return Promise.resolve()
     })
 
-    let capturedId: string | undefined
-    const originalSave = t.deps.expenseTypeDeletionRequestRepository.save.bind(
-      t.deps.expenseTypeDeletionRequestRepository,
-    )
-    t.deps.expenseTypeDeletionRequestRepository.save = async deletionRequest => {
-      capturedId = deletionRequest.expenseTypeDeletionRequestId
-      return originalSave(deletionRequest)
-    }
-
     const res = await request(t.app, 'POST', `/api/expense-types/${target}/deletion-requests`, {
       body: { destinationExpenseTypeId: destination },
     })
+    // 揃わないまま 201 を返さず、内部エラーとして顕在化させる（ルートの安全網）
     expect(res.status).toBe(500)
     expect(completed).toHaveLength(0)
     expect(await t.deps.expenseTypeMasterRepository.findById(target as never)).not.toBeNull()
     expect(
       await t.deps.monthlyLimitRepository.findByUserAndExpenseType(VIEWER_ID, target as never),
     ).not.toBeNull()
-    // 削除リクエストは完了扱いにならず、リマップ依頼済みのまま滞留する
-    if (capturedId === undefined) throw new Error('削除リクエストID を捕捉できなかった')
-    const reread = await t.deps.expenseTypeDeletionRequestRepository.findById(
-      capturedId as ExpenseTypeDeletionRequestId,
-    )
-    expect(reread?.state.kind).toBe('remap_requested')
   })
 
   it('カテゴリ: 完了通知が揃わないままなら 201 を返さずマスタを残す', async () => {
@@ -748,25 +742,11 @@ describe('マスタ削除完了の通知と物理削除の順序（#363）', () 
       return Promise.resolve()
     })
 
-    let capturedId: string | undefined
-    const originalSave = t.deps.categoryDeletionRequestRepository.save.bind(
-      t.deps.categoryDeletionRequestRepository,
-    )
-    t.deps.categoryDeletionRequestRepository.save = async deletionRequest => {
-      capturedId = deletionRequest.categoryDeletionRequestId
-      return originalSave(deletionRequest)
-    }
-
     const res = await request(t.app, 'POST', `/api/categories/${target}/deletion-requests`, {
       body: { destinationCategoryId: destination, destinationExpenseClass: 'household' },
     })
     expect(res.status).toBe(500)
     expect(completed).toHaveLength(0)
     expect(await t.deps.categoryMasterRepository.findById(target as never)).not.toBeNull()
-    if (capturedId === undefined) throw new Error('削除リクエストID を捕捉できなかった')
-    const reread = await t.deps.categoryDeletionRequestRepository.findById(
-      capturedId as CategoryDeletionRequestId,
-    )
-    expect(reread?.state.kind).toBe('remap_requested')
   })
 })
