@@ -22,7 +22,9 @@ export {
   LuHourglass,
   LuChevronLeft,
   LuChevronRight,
+  LuChevronDown,
   LuPlus,
+  LuExternalLink,
 } from 'react-icons/lu'
 
 export type { IconType } from 'react-icons'

@@ -4,7 +4,13 @@ import { Suspense, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { YearMonthSchema, type UploadFileFormat, type YearMonth } from '@warimaru/domain'
+import {
+  StatementFileKindSchema,
+  YearMonthSchema,
+  type StatementFileKind,
+  type UploadFileFormat,
+  type YearMonth,
+} from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
 import {
@@ -21,14 +27,14 @@ import { formatDate, formatDateTime, getCurrentMonth } from '@/lib/month'
 import { LuCircleCheck } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ImportJobCard } from '@/components/imports/ImportJobCard'
+import { StatementGuide } from '@/components/imports/StatementGuide'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
-const FILE_KIND_LABELS = {
+const FILE_KIND_LABELS: Record<StatementFileKind, string> = {
   card_statement: 'カード利用明細',
   bank_statement: '銀行入出金明細',
-} as const
-type FileKind = keyof typeof FILE_KIND_LABELS
+}
 
 interface CandidatesPanelProps {
   importJobId: string
@@ -219,7 +225,7 @@ function ImportsPageContent() {
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const [month, setMonth] = useState<YearMonth>(() => parseMonthParam(searchParams.get('month')))
-  const [fileKind, setFileKind] = useState<FileKind>('card_statement')
+  const [fileKind, setFileKind] = useState<StatementFileKind>('card_statement')
   const [job, setJob] = useState<ImportJobWire | null>(null)
   /** アップロードせずに拒否した選択（対応外の拡張子）の文言 */
   const [selectionError, setSelectionError] = useState<string | null>(null)
@@ -333,6 +339,11 @@ function ImportsPageContent() {
           ))}
       </section>
 
+      {/* spec §10.1 ③「アップロード対象カード（2 種）」。ファイル種別の列挙はドメインを単一ソースにする */}
+      {StatementFileKindSchema.options.map(kind => (
+        <StatementGuide key={kind} fileKind={kind} month={month} />
+      ))}
+
       <section className={ui.card} aria-labelledby="import-upload-title">
         <h2 id="import-upload-title" className={ui.sectionTitle}>
           明細ファイルのアップロード
@@ -345,7 +356,7 @@ function ImportsPageContent() {
             id="import-file-kind"
             className={ui.select}
             value={fileKind}
-            onChange={e => setFileKind(e.target.value as FileKind)}
+            onChange={e => setFileKind(e.target.value as StatementFileKind)}
           >
             {Object.entries(FILE_KIND_LABELS).map(([key, label]) => (
               <option key={key} value={key}>
