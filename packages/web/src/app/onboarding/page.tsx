@@ -9,6 +9,7 @@ import {
   AccountBalanceListWireSchema,
   GmailAuthorizeResponseSchema,
   ImportStatusResponseSchema,
+  LineFriendCheckWireSchema,
   OnboardingMeWireSchema,
   OnboardingUserWireSchema,
   SpouseCompletionResultWireSchema,
@@ -156,6 +157,21 @@ export default function OnboardingPage() {
     onSuccess: invalidate,
   })
 
+  /**
+   * 友だち追加の確認をやり直す（#417 A）。
+   * 登録時の照会が失敗した人は「友だち未追加」の扱いのまま止まるため、この入口が唯一の
+   * 立て直し経路になる（自己申告ボタンは #298 で廃止される）。
+   */
+  const checkLineFriend = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        '/api/onboarding/phase1/line-friend/check',
+        { method: 'POST' },
+        LineFriendCheckWireSchema,
+      ),
+    onSuccess: invalidate,
+  })
+
   const recordLineFriend = useMutation({
     mutationFn: () =>
       apiMutate('/api/onboarding/phase1/line-friend', { method: 'POST' }, OnboardingUserWireSchema),
@@ -292,6 +308,9 @@ export default function OnboardingPage() {
   const nickname = user?.common.nickname ?? ''
   const spouse = spouseQuery.data
   const talkRoomId = getTalkRoomContextId() ?? CONFIGURED_TALK_ROOM_ID
+  // 確認できた回は友だち追加が記録されて次のステップへ進むため、ここに残るのは
+  // 「まだ友だち追加されていない」「LINE へ問い合わせできなかった」のどちらかになる
+  const friendCheckResult = checkLineFriend.data?.result ?? null
 
   return (
     <main className={styles.main}>
@@ -349,8 +368,33 @@ export default function OnboardingPage() {
           </div>
           <span className={ui.sectionTitle}>LINE 公式アカウントを友だち追加</span>
           <p className={styles.note}>
-            通知の受け取りに使う「わりまる」公式アカウントを LINE で友だち追加してください。
+            通知の受け取りに使う「わりまる」公式アカウントを LINE
+            で友だち追加してください。追加したら「友だち追加を確認する」を押すと、わりまるが LINE
+            に問い合わせて確認します。
           </p>
+          <button
+            className={ui.button}
+            disabled={checkLineFriend.isPending}
+            onClick={() => checkLineFriend.mutate()}
+          >
+            {checkLineFriend.isPending ? '確認中...' : '友だち追加を確認する'}
+          </button>
+          {/* 確認結果は押した場所で差し替わる。読み上げに載せないと結果が伝わらない（使用性 8-4） */}
+          <div role="status">
+            {friendCheckResult?.kind === 'not_friend' && (
+              <p className={styles.note}>
+                友だち追加を確認できませんでした。LINE で「わりまる」を友だち追加してから、もう一度
+                「友だち追加を確認する」を押してください。
+              </p>
+            )}
+            {friendCheckResult?.kind === 'unavailable' && (
+              <p className={ui.error}>
+                LINE に問い合わせできませんでした。通信状況を確かめて、もう一度お試しください。
+              </p>
+            )}
+          </div>
+          <ErrorNote error={checkLineFriend.error} />
+          {/* 自己申告（#298 で廃止予定）。確認が通らないあいだの暫定の逃げ道として残す */}
           <button
             className={ui.buttonGhost}
             disabled={recordLineFriend.isPending}

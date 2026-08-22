@@ -349,6 +349,130 @@ describe('POST /api/onboarding/register — 登録時の LINE 友だち状態照
   })
 })
 
+/**
+ * 登録時の照会が失敗した回は、画面が登録要求を初回しか送らないため自力では回復できない
+ * （自己申告ボタンは #298 で廃止される）。セットアップ画面からの明示的な確認が回復経路になる。
+ */
+describe('POST /api/onboarding/phase1/line-friend/check — 友だち追加の確認をやり直す（#417 A）', () => {
+  interface CheckResponse {
+    user: AppUser
+    result: { kind: string }
+  }
+
+  async function check(t: TestApp, viewerId = VIEWER_ID): Promise<Response> {
+    return request(t.app, 'POST', '/api/onboarding/phase1/line-friend/check', { viewerId })
+  }
+
+  /** 登録時の照会は空振りさせ、その後の応答だけを差し替える（回復の検証を登録と混ぜない） */
+  function stubAfterRegistration(after: LineFriendshipStatus[]): {
+    gateway: LineFriendshipGateway
+    calls: UserId[]
+  } {
+    const responses: LineFriendshipStatus[] = [{ kind: 'not_friend' }, ...after]
+    return stubFriendshipGateway(() => Promise.resolve(responses.shift() ?? { kind: 'not_friend' }))
+  }
+
+  it('登録時の照会に失敗していても、画面からの確認で友だち追加を記録して回復する', async () => {
+    const stub = stubAfterRegistration([{ kind: 'friend' }])
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+    await register(t)
+    expect(await friendAddKindOf(t)).toBe('not_added')
+
+    const res = await check(t)
+
+    expect(res.status).toBe(200)
+    const body = await json<CheckResponse>(res)
+    expect(body.result.kind).toBe('confirmed')
+    expect(body.user.common.lineOperationSettings?.friendAdd.kind).toBe('added')
+    expect(await friendAddKindOf(t)).toBe('added')
+    expect(events).toHaveLength(1)
+  })
+
+  it('まだ友だち追加されていなければ not_friend を返し、記録しない', async () => {
+    const stub = stubAfterRegistration([{ kind: 'not_friend' }])
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+    await register(t)
+
+    const res = await check(t)
+
+    expect(res.status).toBe(200)
+    expect((await json<CheckResponse>(res)).result.kind).toBe('not_friend')
+    // 照会したうえで友だちでなかったことを固定する（照会をやめても通る形にしない）
+    expect(stub.calls).toEqual([VIEWER_ID, VIEWER_ID])
+    expect(await friendAddKindOf(t)).toBe('not_added')
+    expect(events).toHaveLength(0)
+  })
+
+  it('照会できなかった場合は unavailable を返す（友だち未追加として確定させない）', async () => {
+    const stub = stubAfterRegistration([{ kind: 'unknown', detail: 'LINE profile API 500' }])
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await register(t)
+
+    try {
+      const res = await check(t)
+
+      expect(res.status).toBe(200)
+      expect((await json<CheckResponse>(res)).result.kind).toBe('unavailable')
+      expect(await friendAddKindOf(t)).toBe('not_added')
+      // 無言の握りつぶしと区別する（失敗の理由がログに出ること）
+      expect(logged).toHaveBeenCalledTimes(1)
+      expect(String(logged.mock.calls[0]?.[0])).toContain('LINE profile API 500')
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('照会が例外を投げても 5xx にせず unavailable を返す', async () => {
+    // 登録時の照会は空振りさせ、画面からの確認だけを例外にする
+    let calls = 0
+    const stub = stubFriendshipGateway(() => {
+      calls += 1
+      return calls === 1
+        ? Promise.resolve({ kind: 'not_friend' })
+        : Promise.reject(new Error('boom'))
+    })
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    await register(t)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const res = await check(t)
+
+      expect(res.status).toBe(200)
+      expect((await json<CheckResponse>(res)).result.kind).toBe('unavailable')
+      expect(await friendAddKindOf(t)).toBe('not_added')
+      expect(logged).toHaveBeenCalledTimes(1)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('記録済みなら照会せずに confirmed を返す（押すたびに外部 API を叩かない）', async () => {
+    const stub = stubAfterRegistration([{ kind: 'friend' }])
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    await register(t)
+    expect((await json<CheckResponse>(await check(t))).result.kind).toBe('confirmed')
+
+    const res = await check(t)
+
+    expect((await json<CheckResponse>(res)).result.kind).toBe('confirmed')
+    // 登録時 + 回復した 1 回だけ。記録後の押下では照会しない
+    expect(stub.calls).toEqual([VIEWER_ID, VIEWER_ID])
+  })
+
+  it('未登録のユーザーからの確認は 404', async () => {
+    const stub = stubFriendshipGateway(() => Promise.resolve({ kind: 'friend' }))
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+
+    expect((await check(t)).status).toBe(404)
+    // 登録していない相手の友だち状態を外部へ問い合わせない
+    expect(stub.calls).toEqual([])
+  })
+})
+
 describe('GET /api/onboarding/me', () => {
   it('未登録なら user: null', async () => {
     const t = createTestApp()

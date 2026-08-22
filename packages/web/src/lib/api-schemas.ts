@@ -619,6 +619,17 @@ export type AppUserWire = z.infer<typeof AppUserWireSchema>
 export const OnboardingUserWireSchema = z.object({ user: AppUserWireSchema.nullable() })
 
 /**
+ * 友だち追加の確認（POST /phase1/line-friend/check、#417）のレスポンス。
+ * 「まだ友だち追加されていない（not_friend）」と「LINE へ照会できなかった（unavailable）」を
+ * 区別して返すため、案内すべき次の行動を画面で出し分けられる。
+ */
+export const LineFriendCheckWireSchema = z.object({
+  user: AppUserWireSchema,
+  result: z.object({ kind: z.enum(['confirmed', 'not_friend', 'unavailable']) }),
+})
+export type LineFriendCheckResultWire = z.infer<typeof LineFriendCheckWireSchema>['result']
+
+/**
  * 世帯レベルの共通トークルーム参加状態を併せて返すレスポンス
  * （GET /me と POST /phase1/talk-room）。
  */
