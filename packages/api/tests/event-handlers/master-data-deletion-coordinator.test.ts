@@ -2,7 +2,7 @@
  * マスタ削除コーディネーターのハンドラーテスト（#223 / #431）
  *
  * コーディネーターの守り（全コンテキストの完了通知が揃ってはじめて物理削除する・
- * 完了済み / 失敗済みリクエストへの通知は無視する）を、HTTP ルートを介さずに
+ * 完了済み / 失敗済み / リマップ未依頼のリクエストへの通知は無視する）を、HTTP ルートを介さずに
  * registerMasterDataDeletionCoordinator を直接呼んで検証する。
  *
  * ルート経由でしか確かめられないと、完了通知が揃わない状況を作るために
@@ -28,6 +28,8 @@ import {
   MonthlyLimitIdSchema,
   MonthlyLimitSchema,
   UserIdSchema,
+  failCategoryRemap,
+  failExpenseTypeRemap,
   requestCategoryRemap,
   requestExpenseTypeRemap,
 } from '@warimaru/domain'
@@ -36,7 +38,6 @@ import type {
   CategoryDeletionRequest,
   CategoryDeletionRequestId,
   CategoryId,
-  DeletionRequestState,
   ExpenseTypeDeletionCompleted,
   ExpenseTypeDeletionRequest,
   ExpenseTypeDeletionRequestId,
@@ -54,19 +55,21 @@ import {
   createMockMonthlyLimitRepository,
 } from '../../src/mock-repositories.js'
 import { registerMasterDataDeletionCoordinator } from '../../src/event-handlers/master-data-deletion-coordinator.js'
+import type { MasterDataDeletionCoordinatorDeps } from '../../src/event-handlers/master-data-deletion-coordinator.js'
+import { domainEventBase } from '../../src/event-handlers/event-base.js'
 
 const OWNER_ID: UserId = UserIdSchema.parse('user-honey-test')
 const AT = new Date('2026-07-10T00:00:00Z')
 
 interface Harness {
   eventBus: InMemoryEventBus
-  deps: ReturnType<typeof createDeps>
+  deps: MasterDataDeletionCoordinatorDeps
   /** コーディネーターが発行した削除完了イベント（発行時点の外部状態つき） */
   categoryCompleted: CategoryDeletionCompleted[]
   expenseTypeCompleted: ExpenseTypeDeletionCompleted[]
 }
 
-function createDeps() {
+function createCoordinatorDeps(): MasterDataDeletionCoordinatorDeps {
   return {
     categoryMasterRepository: createMockCategoryMasterRepository(),
     expenseTypeMasterRepository: createMockExpenseTypeMasterRepository(),
@@ -78,7 +81,7 @@ function createDeps() {
 
 function createHarness(): Harness {
   const eventBus = new InMemoryEventBus()
-  const deps = createDeps()
+  const deps = createCoordinatorDeps()
   registerMasterDataDeletionCoordinator(eventBus, deps)
 
   const categoryCompleted: CategoryDeletionCompleted[] = []
@@ -113,13 +116,11 @@ async function seedCategoryMaster(h: Harness, name: string): Promise<CategoryId>
   return categoryId
 }
 
-/** リマップ依頼済み（家計分析・自動分類の 2 コンテキスト待ち）のカテゴリ削除リクエストを保存する */
-async function seedRemapRequestedCategoryDeletion(
-  h: Harness,
+function pendingCategoryDeletion(
+  categoryDeletionRequestId: CategoryDeletionRequestId,
   targetCategoryId: CategoryId,
-): Promise<CategoryDeletionRequestId> {
-  const categoryDeletionRequestId = CategoryDeletionRequestIdSchema.parse(newUlid())
-  const pending = CategoryDeletionRequestSchema.parse({
+): PendingRemapCategoryDeletionRequest {
+  return CategoryDeletionRequestSchema.parse({
     categoryDeletionRequestId,
     targetCategoryId,
     requestedByUserId: OWNER_ID,
@@ -128,29 +129,54 @@ async function seedRemapRequestedCategoryDeletion(
     requestedAt: AT,
     state: { kind: 'pending_remap' },
   }) as PendingRemapCategoryDeletionRequest
-  const requested = requestCategoryRemap(pending, ['household_analysis', 'auto_classification'], AT)
+}
+
+/** リマップ依頼済み（家計分析・自動分類の 2 コンテキスト待ち）のカテゴリ削除リクエストを保存する */
+async function seedRemapRequestedCategoryDeletion(
+  h: Harness,
+  targetCategoryId: CategoryId,
+): Promise<CategoryDeletionRequestId> {
+  const categoryDeletionRequestId = CategoryDeletionRequestIdSchema.parse(newUlid())
+  const requested = requestCategoryRemap(
+    pendingCategoryDeletion(categoryDeletionRequestId, targetCategoryId),
+    ['household_analysis', 'auto_classification'],
+    AT,
+  )
   await h.deps.categoryDeletionRequestRepository.save(requested)
   return categoryDeletionRequestId
 }
 
-/** 任意の状態のカテゴリ削除リクエストを保存する（完了済み / 失敗済みへの通知を作るため） */
-async function saveCategoryDeletionWithState(
+/** リマップ未依頼のままのカテゴリ削除リクエストを保存する（未依頼への通知を作るため） */
+async function seedPendingRemapCategoryDeletion(
   h: Harness,
-  categoryDeletionRequestId: CategoryDeletionRequestId,
   targetCategoryId: CategoryId,
-  state: DeletionRequestState,
-): Promise<void> {
+): Promise<CategoryDeletionRequestId> {
+  const categoryDeletionRequestId = CategoryDeletionRequestIdSchema.parse(newUlid())
   await h.deps.categoryDeletionRequestRepository.save(
-    CategoryDeletionRequestSchema.parse({
-      categoryDeletionRequestId,
-      targetCategoryId,
-      requestedByUserId: OWNER_ID,
-      destinationCategoryId: CategoryIdSchema.parse(newUlid()),
-      destinationExpenseClass: 'household',
-      requestedAt: AT,
-      state,
-    }),
+    pendingCategoryDeletion(categoryDeletionRequestId, targetCategoryId),
   )
+  return categoryDeletionRequestId
+}
+
+/**
+ * リマップ失敗済みのカテゴリ削除リクエストを保存する（失敗済みへの通知を作るため）。
+ * 状態はドメインの遷移関数で組み立てる（スキーマへ直接与えると、
+ * 実際には到達しない形の失敗状態でテストできてしまい、遷移の前提が変わっても気づけない）。
+ */
+async function seedRemapFailedCategoryDeletion(
+  h: Harness,
+  targetCategoryId: CategoryId,
+): Promise<CategoryDeletionRequestId> {
+  const categoryDeletionRequestId = CategoryDeletionRequestIdSchema.parse(newUlid())
+  const requested = requestCategoryRemap(
+    pendingCategoryDeletion(categoryDeletionRequestId, targetCategoryId),
+    ['household_analysis', 'auto_classification'],
+    AT,
+  )
+  await h.deps.categoryDeletionRequestRepository.save(
+    failCategoryRemap(requested, '学習ルールストア障害', AT),
+  )
+  return categoryDeletionRequestId
 }
 
 async function publishCategoryTransactionsRemapped(
@@ -160,8 +186,7 @@ async function publishCategoryTransactionsRemapped(
 ): Promise<void> {
   await h.eventBus.publish(
     CategoryTransactionsRemappedSchema.parse({
-      eventId: newUlid(),
-      occurredAt: AT,
+      ...domainEventBase(AT),
       type: 'CategoryTransactionsRemapped',
       categoryDeletionRequestId,
       affectedTransactionCount,
@@ -176,8 +201,7 @@ async function publishCategoryLearningRulesRemapped(
 ): Promise<void> {
   await h.eventBus.publish(
     CategoryLearningRulesRemappedSchema.parse({
-      eventId: newUlid(),
-      occurredAt: AT,
+      ...domainEventBase(AT),
       type: 'CategoryLearningRulesRemapped',
       categoryDeletionRequestId,
       affectedLearningRuleCount,
@@ -226,13 +250,11 @@ async function seedMonthlyLimit(h: Harness, expenseTypeId: ExpenseTypeId): Promi
   )
 }
 
-/** リマップ依頼済み（経費精算・自動分類の 2 コンテキスト待ち）の経費種別削除リクエストを保存する */
-async function seedRemapRequestedExpenseTypeDeletion(
-  h: Harness,
+function pendingExpenseTypeDeletion(
+  expenseTypeDeletionRequestId: ExpenseTypeDeletionRequestId,
   targetExpenseTypeId: ExpenseTypeId,
-): Promise<ExpenseTypeDeletionRequestId> {
-  const expenseTypeDeletionRequestId = ExpenseTypeDeletionRequestIdSchema.parse(newUlid())
-  const pending = ExpenseTypeDeletionRequestSchema.parse({
+): PendingRemapExpenseTypeDeletionRequest {
+  return ExpenseTypeDeletionRequestSchema.parse({
     expenseTypeDeletionRequestId,
     targetExpenseTypeId,
     requestedByUserId: OWNER_ID,
@@ -240,12 +262,49 @@ async function seedRemapRequestedExpenseTypeDeletion(
     requestedAt: AT,
     state: { kind: 'pending_remap' },
   }) as PendingRemapExpenseTypeDeletionRequest
+}
+
+/** リマップ依頼済み（経費精算・自動分類の 2 コンテキスト待ち）の経費種別削除リクエストを保存する */
+async function seedRemapRequestedExpenseTypeDeletion(
+  h: Harness,
+  targetExpenseTypeId: ExpenseTypeId,
+): Promise<ExpenseTypeDeletionRequestId> {
+  const expenseTypeDeletionRequestId = ExpenseTypeDeletionRequestIdSchema.parse(newUlid())
   const requested = requestExpenseTypeRemap(
-    pending,
+    pendingExpenseTypeDeletion(expenseTypeDeletionRequestId, targetExpenseTypeId),
     ['expense_settlement', 'auto_classification'],
     AT,
   )
   await h.deps.expenseTypeDeletionRequestRepository.save(requested)
+  return expenseTypeDeletionRequestId
+}
+
+/** リマップ未依頼のままの経費種別削除リクエストを保存する */
+async function seedPendingRemapExpenseTypeDeletion(
+  h: Harness,
+  targetExpenseTypeId: ExpenseTypeId,
+): Promise<ExpenseTypeDeletionRequestId> {
+  const expenseTypeDeletionRequestId = ExpenseTypeDeletionRequestIdSchema.parse(newUlid())
+  await h.deps.expenseTypeDeletionRequestRepository.save(
+    pendingExpenseTypeDeletion(expenseTypeDeletionRequestId, targetExpenseTypeId),
+  )
+  return expenseTypeDeletionRequestId
+}
+
+/** リマップ失敗済みの経費種別削除リクエストを保存する（状態はドメインの遷移関数で組み立てる） */
+async function seedRemapFailedExpenseTypeDeletion(
+  h: Harness,
+  targetExpenseTypeId: ExpenseTypeId,
+): Promise<ExpenseTypeDeletionRequestId> {
+  const expenseTypeDeletionRequestId = ExpenseTypeDeletionRequestIdSchema.parse(newUlid())
+  const requested = requestExpenseTypeRemap(
+    pendingExpenseTypeDeletion(expenseTypeDeletionRequestId, targetExpenseTypeId),
+    ['expense_settlement', 'auto_classification'],
+    AT,
+  )
+  await h.deps.expenseTypeDeletionRequestRepository.save(
+    failExpenseTypeRemap(requested, '学習ルールストア障害', AT),
+  )
   return expenseTypeDeletionRequestId
 }
 
@@ -256,8 +315,7 @@ async function publishExpenseTypeTransactionsRemapped(
 ): Promise<void> {
   await h.eventBus.publish(
     ExpenseTypeTransactionsRemappedSchema.parse({
-      eventId: newUlid(),
-      occurredAt: AT,
+      ...domainEventBase(AT),
       type: 'ExpenseTypeTransactionsRemapped',
       expenseTypeDeletionRequestId,
       affectedTransactionCount,
@@ -272,8 +330,7 @@ async function publishExpenseTypeLearningRulesRemapped(
 ): Promise<void> {
   await h.eventBus.publish(
     ExpenseTypeLearningRulesRemappedSchema.parse({
-      eventId: newUlid(),
-      occurredAt: AT,
+      ...domainEventBase(AT),
       type: 'ExpenseTypeLearningRulesRemapped',
       expenseTypeDeletionRequestId,
       affectedLearningRuleCount,
@@ -298,10 +355,24 @@ describe('registerMasterDataDeletionCoordinator: カテゴリ削除', () => {
     const target = await seedCategoryMaster(h, '推し活')
     const requestId = await seedRemapRequestedCategoryDeletion(h, target)
 
-    // 完了イベントは物理削除の後に発行される（購読時点の状態が順序の証拠になる）
-    const masterAtPublish: (boolean | null)[] = []
+    // 「完了の記録 → マスタの物理削除 → 完了イベントの発行」の順序を、各時点の状態で固定する。
+    // 記録より先に消すと、その間に落ちたときに「マスタは消えたのに完了が記録されていない」が残り、
+    // 発行より先に消さないと、完了の合図を受け取った側が消えたはずのマスタを見る。
+    // ここでの差し替えは失敗の模擬ではなく、途中の時点を覗くための観測に限る
+    const requestStateAtDeletion: string[] = []
+    const originalDeleteById = h.deps.categoryMasterRepository.deleteById.bind(
+      h.deps.categoryMasterRepository,
+    )
+    h.deps.categoryMasterRepository.deleteById = async id => {
+      requestStateAtDeletion.push((await rereadCategoryDeletion(h, requestId)).state.kind)
+      return originalDeleteById(id)
+    }
+    const stateAtPublish: { masterDeleted: boolean; requestState: string }[] = []
     h.eventBus.subscribe<CategoryDeletionCompleted>('CategoryDeletionCompleted', async () => {
-      masterAtPublish.push((await h.deps.categoryMasterRepository.findById(target)) === null)
+      stateAtPublish.push({
+        masterDeleted: (await h.deps.categoryMasterRepository.findById(target)) === null,
+        requestState: (await rereadCategoryDeletion(h, requestId)).state.kind,
+      })
     })
 
     await publishCategoryTransactionsRemapped(h, requestId, 3)
@@ -312,7 +383,8 @@ describe('registerMasterDataDeletionCoordinator: カテゴリ削除', () => {
     expect(h.categoryCompleted[0]?.categoryDeletionRequestId).toBe(requestId)
     expect(h.categoryCompleted[0]?.affectedTransactionCount).toBe(3)
     expect(h.categoryCompleted[0]?.affectedLearningRuleCount).toBe(2)
-    expect(masterAtPublish).toEqual([true])
+    expect(requestStateAtDeletion).toEqual(['remap_completed'])
+    expect(stateAtPublish).toEqual([{ masterDeleted: true, requestState: 'remap_completed' }])
 
     const reread = await rereadCategoryDeletion(h, requestId)
     expect(reread.state.kind).toBe('remap_completed')
@@ -376,12 +448,8 @@ describe('registerMasterDataDeletionCoordinator: カテゴリ削除', () => {
   it('失敗済みリクエストへの完了通知は無視する（マスタを消さない）', async () => {
     const h = createHarness()
     const target = await seedCategoryMaster(h, '推し活')
-    const requestId = CategoryDeletionRequestIdSchema.parse(newUlid())
-    await saveCategoryDeletionWithState(h, requestId, target, {
-      kind: 'remap_failed',
-      failedAt: AT,
-      failureDetail: '学習ルールストア障害',
-    })
+    // 付け替えが途中で失敗し、マスタを残すと決めたリクエストに、遅れて完了通知が届く状況
+    const requestId = await seedRemapFailedCategoryDeletion(h, target)
 
     await publishCategoryTransactionsRemapped(h, requestId, 3)
     await publishCategoryLearningRulesRemapped(h, requestId, 2)
@@ -394,8 +462,7 @@ describe('registerMasterDataDeletionCoordinator: カテゴリ削除', () => {
   it('リマップ未依頼のリクエストへの完了通知は無視する（マスタを消さない）', async () => {
     const h = createHarness()
     const target = await seedCategoryMaster(h, '推し活')
-    const requestId = CategoryDeletionRequestIdSchema.parse(newUlid())
-    await saveCategoryDeletionWithState(h, requestId, target, { kind: 'pending_remap' })
+    const requestId = await seedPendingRemapCategoryDeletion(h, target)
 
     await publishCategoryTransactionsRemapped(h, requestId, 3)
     await publishCategoryLearningRulesRemapped(h, requestId, 2)
@@ -421,12 +488,17 @@ describe('registerMasterDataDeletionCoordinator: 経費種別削除', () => {
     await seedMonthlyLimit(h, target)
     const requestId = await seedRemapRequestedExpenseTypeDeletion(h, target)
 
-    const stateAtPublish: { masterDeleted: boolean; limitDeleted: boolean }[] = []
+    const stateAtPublish: {
+      masterDeleted: boolean
+      limitDeleted: boolean
+      requestState: string
+    }[] = []
     h.eventBus.subscribe<ExpenseTypeDeletionCompleted>('ExpenseTypeDeletionCompleted', async () => {
       stateAtPublish.push({
         masterDeleted: (await h.deps.expenseTypeMasterRepository.findById(target)) === null,
         limitDeleted:
           (await h.deps.monthlyLimitRepository.findByUserAndExpenseType(OWNER_ID, target)) === null,
+        requestState: (await rereadExpenseTypeDeletion(h, requestId)).state.kind,
       })
     })
 
@@ -442,7 +514,9 @@ describe('registerMasterDataDeletionCoordinator: 経費種別削除', () => {
     expect(h.expenseTypeCompleted[0]?.expenseTypeDeletionRequestId).toBe(requestId)
     expect(h.expenseTypeCompleted[0]?.affectedTransactionCount).toBe(1)
     expect(h.expenseTypeCompleted[0]?.affectedLearningRuleCount).toBe(2)
-    expect(stateAtPublish).toEqual([{ masterDeleted: true, limitDeleted: true }])
+    expect(stateAtPublish).toEqual([
+      { masterDeleted: true, limitDeleted: true, requestState: 'remap_completed' },
+    ])
 
     const reread = await rereadExpenseTypeDeletion(h, requestId)
     if (reread.state.kind !== 'remap_completed') throw new Error('remap_completed を期待')
@@ -471,12 +545,17 @@ describe('registerMasterDataDeletionCoordinator: 経費種別削除', () => {
   it('同一コンテキストの完了通知が再配信されても二重に記録しない', async () => {
     const h = createHarness()
     const target = await seedExpenseTypeMaster(h, 'セミナー')
+    await seedMonthlyLimit(h, target)
     const requestId = await seedRemapRequestedExpenseTypeDeletion(h, target)
 
     await publishExpenseTypeLearningRulesRemapped(h, requestId, 2)
     await publishExpenseTypeLearningRulesRemapped(h, requestId, 0)
 
     expect(h.expenseTypeCompleted).toHaveLength(0)
+    expect(await h.deps.expenseTypeMasterRepository.findById(target)).not.toBeNull()
+    expect(
+      await h.deps.monthlyLimitRepository.findByUserAndExpenseType(OWNER_ID, target),
+    ).not.toBeNull()
     const reread = await rereadExpenseTypeDeletion(h, requestId)
     if (reread.state.kind !== 'remap_requested') throw new Error('remap_requested を期待')
     expect(reread.state.completedContexts).toHaveLength(1)
@@ -499,6 +578,41 @@ describe('registerMasterDataDeletionCoordinator: 経費種別削除', () => {
     if (reread.state.kind !== 'remap_completed') throw new Error('remap_completed を期待')
     expect(reread.state.affectedTransactionCount).toBe(1)
     expect(reread.state.affectedLearningRuleCount).toBe(2)
+  })
+
+  it('失敗済みリクエストへの完了通知は無視する（マスタも月次上限も消さない）', async () => {
+    const h = createHarness()
+    const target = await seedExpenseTypeMaster(h, 'セミナー')
+    await seedMonthlyLimit(h, target)
+    // 付け替えが途中で失敗し、マスタを残すと決めたリクエストに、遅れて完了通知が届く状況
+    const requestId = await seedRemapFailedExpenseTypeDeletion(h, target)
+
+    await publishExpenseTypeTransactionsRemapped(h, requestId, 1)
+    await publishExpenseTypeLearningRulesRemapped(h, requestId, 2)
+
+    expect(await h.deps.expenseTypeMasterRepository.findById(target)).not.toBeNull()
+    expect(
+      await h.deps.monthlyLimitRepository.findByUserAndExpenseType(OWNER_ID, target),
+    ).not.toBeNull()
+    expect(h.expenseTypeCompleted).toHaveLength(0)
+    expect((await rereadExpenseTypeDeletion(h, requestId)).state.kind).toBe('remap_failed')
+  })
+
+  it('リマップ未依頼のリクエストへの完了通知は無視する（マスタも月次上限も消さない）', async () => {
+    const h = createHarness()
+    const target = await seedExpenseTypeMaster(h, 'セミナー')
+    await seedMonthlyLimit(h, target)
+    const requestId = await seedPendingRemapExpenseTypeDeletion(h, target)
+
+    await publishExpenseTypeTransactionsRemapped(h, requestId, 1)
+    await publishExpenseTypeLearningRulesRemapped(h, requestId, 2)
+
+    expect(await h.deps.expenseTypeMasterRepository.findById(target)).not.toBeNull()
+    expect(
+      await h.deps.monthlyLimitRepository.findByUserAndExpenseType(OWNER_ID, target),
+    ).not.toBeNull()
+    expect(h.expenseTypeCompleted).toHaveLength(0)
+    expect((await rereadExpenseTypeDeletion(h, requestId)).state.kind).toBe('pending_remap')
   })
 
   it('存在しないリクエストへの完了通知は例外にせず無視する', async () => {

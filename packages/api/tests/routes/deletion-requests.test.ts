@@ -11,8 +11,10 @@ import {
 } from '@warimaru/domain'
 import type {
   CategoryDeletionCompleted,
+  CategoryDeletionRemapRequested,
   CategoryDeletionRequestId,
   ExpenseTypeDeletionCompleted,
+  ExpenseTypeDeletionRemapRequested,
   ExpenseTypeDeletionRequestId,
   UserId,
 } from '@warimaru/domain'
@@ -435,7 +437,15 @@ describe('マスタ削除リマップの冪等性・失敗時のマスタ保全�
  * 失敗済み / 未依頼のリクエストへの通知は無視する・同一コンテキストの再通知を二重計上しない）は
  * tests/event-handlers/master-data-deletion-coordinator.test.ts でハンドラーを直接呼んで検証する。
  * ルート越しに確かめようとすると、完了通知が揃わない状況を作るために保存処理の差し替えなどの
- * 細工が必要になり、テストが実装の都合に依存するため。
+ * 細工が必要になり、テストが実装の都合（保存の呼び出し回数）に依存するため。
+ *
+ * ルートに残す契約は 2 つ。どちらも「削除リクエストがどの状態で残るか」がルート側の分岐で決まる。
+ *  - 完了通知が揃わなかったとき: 201 を返さず、リクエストは remap_requested のまま滞留させる
+ *    （この分岐はリマップ実行の失敗を拾う catch の外にあり、remap_failed へは遷移しない）
+ *  - リマップの実行そのものが失敗したとき: remap_failed へ遷移させ、マスタを残す
+ * 前者は削除リクエストID をリマップ要請イベントから受け取れる（購読を解除した後に張るため）。
+ * 後者は先に登録済みのリマップハンドラーが例外を投げて後続の購読者へ届かないため、
+ * 保存処理の差し替えでしか ID を捕捉できず、その細工だけは残している。
  */
 describe('マスタ削除完了の通知と物理削除の順序（#363）', () => {
   it('カテゴリ削除の完了で CategoryDeletionCompleted が合算件数付きで1件だけ発行される', async () => {
@@ -716,6 +726,15 @@ describe('マスタ削除完了の通知と物理削除の順序（#363）', () 
       completed.push(e)
       return Promise.resolve()
     })
+    // 削除リクエストID はリマップ要請イベントから受け取る（失敗時は 500 応答から取得できないため）
+    let requestId: string | undefined
+    t.deps.eventBus.subscribe<ExpenseTypeDeletionRemapRequested>(
+      'ExpenseTypeDeletionRemapRequested',
+      e => {
+        requestId = e.expenseTypeDeletionRequestId
+        return Promise.resolve()
+      },
+    )
 
     const res = await request(t.app, 'POST', `/api/expense-types/${target}/deletion-requests`, {
       body: { destinationExpenseTypeId: destination },
@@ -727,6 +746,13 @@ describe('マスタ削除完了の通知と物理削除の順序（#363）', () 
     expect(
       await t.deps.monthlyLimitRepository.findByUserAndExpenseType(VIEWER_ID, target as never),
     ).not.toBeNull()
+    // 揃わなかった経路は失敗記録に倒さず、リマップ依頼済みのまま滞留させる
+    // （この分岐はリマップ実行の失敗を拾う catch の外にあり、remap_failed へは遷移しない）
+    if (requestId === undefined) throw new Error('リマップ要請イベントを受け取れなかった')
+    const reread = await t.deps.expenseTypeDeletionRequestRepository.findById(
+      requestId as ExpenseTypeDeletionRequestId,
+    )
+    expect(reread?.state.kind).toBe('remap_requested')
   })
 
   it('カテゴリ: 完了通知が揃わないままなら 201 を返さずマスタを残す', async () => {
@@ -741,6 +767,14 @@ describe('マスタ削除完了の通知と物理削除の順序（#363）', () 
       completed.push(e)
       return Promise.resolve()
     })
+    let requestId: string | undefined
+    t.deps.eventBus.subscribe<CategoryDeletionRemapRequested>(
+      'CategoryDeletionRemapRequested',
+      e => {
+        requestId = e.categoryDeletionRequestId
+        return Promise.resolve()
+      },
+    )
 
     const res = await request(t.app, 'POST', `/api/categories/${target}/deletion-requests`, {
       body: { destinationCategoryId: destination, destinationExpenseClass: 'household' },
@@ -748,5 +782,11 @@ describe('マスタ削除完了の通知と物理削除の順序（#363）', () 
     expect(res.status).toBe(500)
     expect(completed).toHaveLength(0)
     expect(await t.deps.categoryMasterRepository.findById(target as never)).not.toBeNull()
+    // 揃わなかった経路は失敗記録に倒さず、リマップ依頼済みのまま滞留させる
+    if (requestId === undefined) throw new Error('リマップ要請イベントを受け取れなかった')
+    const reread = await t.deps.categoryDeletionRequestRepository.findById(
+      requestId as CategoryDeletionRequestId,
+    )
+    expect(reread?.state.kind).toBe('remap_requested')
   })
 })
