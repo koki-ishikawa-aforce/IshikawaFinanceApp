@@ -6,6 +6,7 @@
 
 import type { ImportJobWire } from '@/lib/api-schemas'
 import { describeImportFailure } from '@/lib/import-upload'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './ImportJobCard.module.css'
 
@@ -45,9 +46,7 @@ export function ImportJobCard({ job }: ImportJobCardProps) {
       )}
       {job.failureReason && (
         // 失敗は挿入時にも読み上げられるよう alert にする（外側の polite リージョンとは別扱い）
-        <div className={ui.error} role="alert">
-          {describeImportFailure(job.failureReason)}
-        </div>
+        <ErrorState>{describeImportFailure(job.failureReason)}</ErrorState>
       )}
     </section>
   )

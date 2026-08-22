@@ -12,6 +12,8 @@ import {
 } from '@/lib/api-schemas'
 import { LuTriangleAlert } from '@/components/ui/icons'
 import { BulkClassificationModal } from './BulkClassificationModal'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './BulkClassificationEntry.module.css'
 
@@ -117,7 +119,7 @@ export function BulkClassificationEntry({
   })
 
   if (currentSessionQuery.isPending) {
-    return <div className={ui.loading}>未分類の取引を確認中...</div>
+    return <LoadingState>未分類の取引を確認中...</LoadingState>
   }
 
   if (currentSessionQuery.error) {
@@ -125,9 +127,7 @@ export function BulkClassificationEntry({
     // （1 ユーザー 1 セッション）ため、開始の導線は出さずに再試行を促す
     return (
       <div className={styles.section}>
-        <div className={ui.error} role="alert">
-          まとめて分類の状況を取得できませんでした。
-        </div>
+        <ErrorState>まとめて分類の状況を取得できませんでした。</ErrorState>
         <button className={ui.buttonGhost} onClick={() => void currentSessionQuery.refetch()}>
           再読み込み
         </button>
@@ -151,9 +151,9 @@ export function BulkClassificationEntry({
             まとめて分類が途中のままです。続けると、まだ未分類の取引だけを分類できます。これをおえるか、やめるまで、ほかの月のまとめて分類は始められません。
           </p>
           {resume.error && (
-            <div className={ui.error} role="alert">
+            <ErrorState>
               続きを開けませんでした。通信状態を確かめて、もう一度お試しください。
-            </div>
+            </ErrorState>
           )}
           <button
             className={ui.button}
@@ -172,11 +172,7 @@ export function BulkClassificationEntry({
           {startBulk.isPending ? '準備中...' : '未分類をまとめて分類する'}
         </button>
       )}
-      {startBulk.error && (
-        <div className={ui.error} role="alert">
-          {startErrorMessage(startBulk.error)}
-        </div>
-      )}
+      {startBulk.error && <ErrorState>{startErrorMessage(startBulk.error)}</ErrorState>}
       {openSession && (
         <BulkClassificationModal
           session={openSession}

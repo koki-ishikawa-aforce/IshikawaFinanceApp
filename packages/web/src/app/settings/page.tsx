@@ -26,6 +26,8 @@ import { ACCOUNT_KIND_LABELS, EXPENSE_CLASS_LABELS, brokerageNameLabel } from '@
 import { formatMoney } from '@/lib/format'
 import { RoleIcon } from '@/components/ui/RoleIcon'
 import { LuPlus, LuRocket } from '@/components/ui/icons'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -76,7 +78,7 @@ function ProfileForm({
       <p className={styles.note}>
         空欄で保存するとニックネームを解除し、ロール名の表示に戻ります。
       </p>
-      {save.error && <div className={ui.error}>{save.error.message}</div>}
+      {save.error && <ErrorState>{save.error.message}</ErrorState>}
       {save.isSuccess && <p className={styles.note}>保存しました</p>}
       <button className={ui.button} disabled={save.isPending} onClick={() => save.mutate()}>
         {save.isPending ? '保存中...' : '保存'}
@@ -96,8 +98,8 @@ function ProfileTab() {
   return (
     <div className={ui.card}>
       <span className={ui.sectionTitle}>プロフィール</span>
-      {profileQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-      {profileQuery.error && <div className={ui.error}>プロフィールの取得に失敗しました</div>}
+      {profileQuery.isLoading && <LoadingState />}
+      {profileQuery.error && <ErrorState>プロフィールの取得に失敗しました</ErrorState>}
       {profile && (
         <ProfileForm
           key={`${profile.userId}:${profile.nickname ?? ''}`}
@@ -212,7 +214,7 @@ function OtherSavingsAddModal({ onClose }: { onClose: () => void }) {
           placeholder="例: 500000"
         />
       </div>
-      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
       <button
         className={ui.button}
         disabled={!valid || mutation.isPending}
@@ -268,7 +270,7 @@ function NisaAddModal({ onClose }: { onClose: () => void }) {
           placeholder="例: 200000"
         />
       </div>
-      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
       <button
         className={ui.button}
         disabled={!valid || mutation.isPending}
@@ -311,7 +313,7 @@ function BankNameEditModal({
         maxLength={50}
         onChange={e => setBankName(e.target.value)}
       />
-      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
       <button
         className={ui.button}
         disabled={bankName.trim() === '' || mutation.isPending}
@@ -349,7 +351,7 @@ function BrokerageNameEditModal({
   return (
     <Modal title="証券会社名を変更" onClose={onClose}>
       <BrokerageNameFields value={brokerageName} onChange={setBrokerageName} />
-      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
       <button
         className={ui.button}
         disabled={!isBrokerageNameValid(brokerageName) || mutation.isPending}
@@ -407,8 +409,8 @@ function AccountsTab() {
         自分が所有する口座の一覧です。別銀行貯蓄口座の銀行名と NISA
         口座の証券会社名を編集できます。三井住友系の口座は自動管理のため固定です。
       </p>
-      {accountsQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-      {accountsQuery.error && <div className={ui.error}>口座の取得に失敗しました</div>}
+      {accountsQuery.isLoading && <LoadingState />}
+      {accountsQuery.error && <ErrorState>口座の取得に失敗しました</ErrorState>}
       {!accountsQuery.isLoading && items.length === 0 && (
         <EmptyState>登録済みの口座はありません。</EmptyState>
       )}
@@ -559,7 +561,7 @@ function CategoryDeleteModal({
           </select>
         </div>
       )}
-      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
       <button
         className={ui.buttonDanger}
         disabled={!valid || mutation.isPending}
@@ -620,8 +622,8 @@ function CategoriesTab() {
   return (
     <div className={ui.card}>
       <span className={ui.sectionTitle}>カテゴリ</span>
-      {categoriesQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-      {categoriesQuery.error && <div className={ui.error}>カテゴリの取得に失敗しました</div>}
+      {categoriesQuery.isLoading && <LoadingState />}
+      {categoriesQuery.error && <ErrorState>カテゴリの取得に失敗しました</ErrorState>}
       <ul className={styles.masterList}>
         {items.map(category => (
           <li key={category.categoryId} className={styles.masterRow}>
@@ -665,7 +667,7 @@ function CategoriesTab() {
           追加
         </button>
       </div>
-      {create.error && <div className={ui.error}>{create.error.message}</div>}
+      {create.error && <ErrorState>{create.error.message}</ErrorState>}
 
       {renaming !== null && (
         <Modal title="カテゴリを改名" onClose={() => setRenaming(null)}>
@@ -674,7 +676,7 @@ function CategoriesTab() {
             value={renameValue}
             onChange={e => setRenameValue(e.target.value)}
           />
-          {rename.error && <div className={ui.error}>{rename.error.message}</div>}
+          {rename.error && <ErrorState>{rename.error.message}</ErrorState>}
           <button
             className={ui.button}
             disabled={renameValue.trim() === '' || rename.isPending}
@@ -745,7 +747,7 @@ function ExpenseTypeDeleteModal({
           ))}
         </select>
       </div>
-      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
       <button
         className={ui.buttonDanger}
         disabled={destinationExpenseTypeId === '' || mutation.isPending}
@@ -802,8 +804,8 @@ function ExpenseTypesTab() {
   return (
     <div className={ui.card}>
       <span className={ui.sectionTitle}>経費種別</span>
-      {expenseTypesQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-      {expenseTypesQuery.error && <div className={ui.error}>経費種別の取得に失敗しました</div>}
+      {expenseTypesQuery.isLoading && <LoadingState />}
+      {expenseTypesQuery.error && <ErrorState>経費種別の取得に失敗しました</ErrorState>}
       <ul className={styles.masterList}>
         {items.map(expenseType => (
           <li key={expenseType.expenseTypeId} className={styles.masterRow}>
@@ -847,7 +849,7 @@ function ExpenseTypesTab() {
           追加
         </button>
       </div>
-      {create.error && <div className={ui.error}>{create.error.message}</div>}
+      {create.error && <ErrorState>{create.error.message}</ErrorState>}
 
       {renaming !== null && (
         <Modal title="経費種別を改名" onClose={() => setRenaming(null)}>
@@ -856,7 +858,7 @@ function ExpenseTypesTab() {
             value={renameValue}
             onChange={e => setRenameValue(e.target.value)}
           />
-          {rename.error && <div className={ui.error}>{rename.error.message}</div>}
+          {rename.error && <ErrorState>{rename.error.message}</ErrorState>}
           <button
             className={ui.button}
             disabled={renameValue.trim() === '' || rename.isPending}
@@ -932,7 +934,7 @@ function LimitEditModal({
           />
         </div>
       )}
-      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
       <button
         className={ui.button}
         disabled={!valid || mutation.isPending}
@@ -967,11 +969,9 @@ function LimitsTab() {
       <p className={styles.note}>
         経費種別ごとに月あたりの経費上限を設定します。上限を超えた分は個人負担として按分されます。
       </p>
-      {(expenseTypesQuery.isLoading || limitsQuery.isLoading) && (
-        <div className={ui.loading}>読み込み中...</div>
-      )}
+      {(expenseTypesQuery.isLoading || limitsQuery.isLoading) && <LoadingState />}
       {(expenseTypesQuery.error ?? limitsQuery.error) && (
-        <div className={ui.error}>月次上限の取得に失敗しました</div>
+        <ErrorState>月次上限の取得に失敗しました</ErrorState>
       )}
       <ul className={styles.masterList}>
         {expenseTypes.map(expenseType => {
@@ -1060,7 +1060,7 @@ function SettingsPageContent() {
 
 export default function SettingsPage() {
   return (
-    <Suspense fallback={<div className={ui.loading}>読み込み中...</div>}>
+    <Suspense fallback={<LoadingState />}>
       <SettingsPageContent />
     </Suspense>
   )

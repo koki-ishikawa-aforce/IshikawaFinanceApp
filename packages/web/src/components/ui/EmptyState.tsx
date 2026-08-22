@@ -21,7 +21,7 @@ interface EmptyStateProps {
  * - データ有無の切り替わりで内容が差し替わる領域のため、既定で `role="status"` を付ける(同 8-4)。
  *   月やモードの切り替えは画面遷移を伴わず、指定が無いと切り替わりが読み上げられない
  *
- * 同じ器の中のローディング・エラーはまだ無音のままで、通知するかどうかは #341 から切り出して判断待ち
+ * 同じ器の中で入れ替わるローディング・エラーは `LoadingState` / `ErrorState` が同じ方針で通知する
  */
 export function EmptyState({ children, announce = true }: EmptyStateProps) {
   return (

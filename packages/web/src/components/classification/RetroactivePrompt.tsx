@@ -9,6 +9,8 @@ import {
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
 import { formatDateWithYear } from '@/lib/month'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './RetroactivePrompt.module.css'
 
@@ -98,15 +100,15 @@ export function RetroactivePrompt({ merchantName, onDone }: RetroactivePromptPro
   }
 
   if (candidatesQuery.isPending || noCandidates) {
-    return <div className={ui.loading}>過去の未分類取引を確認しています...</div>
+    return <LoadingState>過去の未分類取引を確認しています...</LoadingState>
   }
 
   if (candidatesQuery.error) {
     return (
       <>
-        <div className={ui.error} role="alert">
+        <ErrorState>
           過去の未分類取引を確認できませんでした。この取引の分類は保存済みです。
-        </div>
+        </ErrorState>
         <button className={ui.buttonGhost} onClick={() => void candidatesQuery.refetch()}>
           もう一度確認する
         </button>
@@ -150,11 +152,7 @@ export function RetroactivePrompt({ merchantName, onDone }: RetroactivePromptPro
           </li>
         ))}
       </ul>
-      {apply.error && (
-        <div className={ui.error} role="alert">
-          {applyErrorMessage(apply.error)}
-        </div>
-      )}
+      {apply.error && <ErrorState>{applyErrorMessage(apply.error)}</ErrorState>}
       {selectedIds.length === 0 && (
         // 3-5: なぜ押せないかを画面上に出す
         <p className={styles.hint}>変更する取引にチェックを入れると、まとめて変更できます。</p>

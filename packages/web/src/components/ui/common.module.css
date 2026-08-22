@@ -132,23 +132,8 @@
   gap: var(--space-1);
 }
 
-.loading {
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  padding: var(--space-5) 0;
-}
-
-.error {
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--error-text);
-  padding: var(--space-3) 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* 空状態は共通部品 EmptyState に集約している(`components/ui/EmptyState.tsx`) */
+/* ローディング・エラー・空状態は共通部品に集約している
+   (`components/ui/LoadingState.tsx` / `ErrorState.tsx` / `EmptyState.tsx`) */
 
 .badge {
   display: inline-block;

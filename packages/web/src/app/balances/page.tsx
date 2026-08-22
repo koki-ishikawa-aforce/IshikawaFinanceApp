@@ -16,6 +16,8 @@ import { TimeSeriesChart, type ChartSeries } from '@/components/balances/TimeSer
 import { FreshnessBadge, useBalanceFreshnessQuery } from '@/components/balances/BalanceFreshness'
 import { LuLandmark, LuCreditCard, LuPiggyBank, LuTrendingUp } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -155,21 +157,24 @@ export default function BalancesPage() {
           </div>
         </div>
       )}
-      {totalQuery.error && <div className={ui.error}>資産合計の取得に失敗しました</div>}
+      {totalQuery.error && <ErrorState>資産合計の取得に失敗しました</ErrorState>}
 
       <div className={ui.card}>
         <span className={ui.sectionTitle}>口座残高</span>
-        {/* 読み込み中 → 一覧 / 空 / エラー に入れ替わる領域（docs/design/usability.md 8-4） */}
+        {/* 読み込み中 → 一覧 / 空 / エラー に入れ替わる領域（docs/design/usability.md 8-4）。
+            入れ替わる側は announce={false} で live region の入れ子を避ける */}
         <div role="status">
           {(listQuery.isLoading || (listQuery.data !== undefined && !balanceListReady)) && (
-            <div className={ui.loading}>読み込み中...</div>
+            <LoadingState announce={false} />
           )}
-          {listQuery.error && <div className={ui.error}>残高一覧の取得に失敗しました</div>}
+          {listQuery.error && (
+            <ErrorState announce={false}>残高一覧の取得に失敗しました</ErrorState>
+          )}
           {freshnessQuery.isError && (
             <>
-              <div className={ui.error}>
+              <ErrorState announce={false}>
                 残高の更新状況を取得できませんでした（未更新のお知らせは出ません）
-              </div>
+              </ErrorState>
               <button
                 type="button"
                 className={ui.buttonGhost}
@@ -215,8 +220,8 @@ export default function BalancesPage() {
             ))}
           </div>
         </div>
-        {seriesQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-        {seriesQuery.error && <div className={ui.error}>資産推移の取得に失敗しました</div>}
+        {seriesQuery.isLoading && <LoadingState />}
+        {seriesQuery.error && <ErrorState>資産推移の取得に失敗しました</ErrorState>}
         {seriesQuery.data && <TimeSeriesChart series={chartSeries} />}
       </div>
     </main>

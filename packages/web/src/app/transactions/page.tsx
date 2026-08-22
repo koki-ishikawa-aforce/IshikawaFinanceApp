@@ -33,6 +33,8 @@ import { EXPENSE_CLASS_LABELS, expenseClassLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatMonthLabel, getCurrentMonth } from '@/lib/month'
 import { LuPlus } from '@/components/ui/icons'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -141,7 +143,7 @@ function CreateModal({ month, onClose }: CreateModalProps) {
           masters={masters}
         />
       )}
-      {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
+      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
       <button
         className={ui.button}
         disabled={!valid || mutation.isPending}
@@ -318,7 +320,7 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
           </button>
         </>
       )}
-      {error && <div className={ui.error}>{error.message}</div>}
+      {error && <ErrorState>{error.message}</ErrorState>}
     </Modal>
   )
 }
@@ -389,9 +391,7 @@ function TransactionsPageContent() {
 
       {summaryQuery.error && (
         <>
-          <div className={ui.error} role="alert">
-            未分類の件数を取得できませんでした
-          </div>
+          <ErrorState>未分類の件数を取得できませんでした</ErrorState>
           <button className={ui.buttonGhost} onClick={() => void summaryQuery.refetch()}>
             再読み込み
           </button>
@@ -447,8 +447,8 @@ function TransactionsPageContent() {
         </label>
       </div>
 
-      {listQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-      {listQuery.error && <div className={ui.error}>取引一覧の取得に失敗しました</div>}
+      {listQuery.isLoading && <LoadingState />}
+      {listQuery.error && <ErrorState>取引一覧の取得に失敗しました</ErrorState>}
 
       {!listQuery.isLoading && !listQuery.error && (
         <>
@@ -504,7 +504,7 @@ function TransactionsPageContent() {
 export default function TransactionsPage() {
   // Static Export では useSearchParams を使うコンポーネントに Suspense 境界が必須
   return (
-    <Suspense fallback={<div className={ui.loading}>読み込み中...</div>}>
+    <Suspense fallback={<LoadingState />}>
       <TransactionsPageContent />
     </Suspense>
   )

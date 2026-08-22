@@ -20,6 +20,7 @@ import {
   type ClassificationInput,
 } from './ClassificationFields'
 import { useMasters } from './useMasters'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './BulkClassificationModal.module.css'
 
@@ -192,9 +193,9 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
           件は未分類のままになり、このまとめて分類は再開できなくなります。分類済みの取引はそのまま残ります。
         </p>
         {abort.error && (
-          <div className={ui.error} role="alert">
+          <ErrorState>
             取りやめられませんでした。通信状態を確かめて、もう一度お試しください。
-          </div>
+          </ErrorState>
         )}
         <button
           className={ui.buttonDanger}
@@ -222,9 +223,9 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
             分類する取引が残っていません。このまとめて分類をおえてください。
           </EmptyState>
           {complete.error && (
-            <div className={ui.error} role="alert">
+            <ErrorState>
               おえられませんでした。通信状態を確かめて、もう一度お試しください。
-            </div>
+            </ErrorState>
           )}
           <button
             className={ui.button}
@@ -253,15 +254,15 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
           <ClassificationFields value={input} onChange={setInput} masters={masters} />
 
           {classify.error && (
-            <div className={ui.error} role="alert">
+            <ErrorState>
               分類の保存に失敗しました。通信状態を確かめて、もう一度「この店舗の{' '}
               {group.targets.length} 件を分類」を押してください。
-            </div>
+            </ErrorState>
           )}
           {complete.error && (
-            <div className={ui.error} role="alert">
+            <ErrorState>
               おえられませんでした。通信状態を確かめて、「この店舗はとばす」でもう一度お試しください。
-            </div>
+            </ErrorState>
           )}
           {!classificationValid(input) && !masters.isPending && !masters.isError && (
             // 3-5: なぜ押せないかを画面上に出す
