@@ -16,9 +16,14 @@
  * 上限時間: バッチには応答を待つ相手が居らず、外部 API がいつまでも返さない場合に
  * そのまま待ち続けてしまう。Lambda 側のタイムアウトで打ち切られると、その回に何が
  * 起きていたのかがログに残らない。上限に達した時点でこちら側から打ち切り、何のジョブが
- * どれだけの時間で止まったかを記録してから失敗させる。
- * （`withTimeout` は待つのをやめるだけで、進行中の処理そのものは止められない。Lambda の
- * 実行環境は関数の終了とともに凍結されるため、途中まで進んだ処理は次回の実行でやり直す。）
+ * どれだけの時間で止まったかを記録してから失敗させる（そこまでに済んだぶんの結末は
+ * ジョブ側が 1 件ずつログに出している）。
+ *
+ * 打ち切りの限界: `withTimeout` は待つのをやめるだけで、進行中の処理そのものは止められない。
+ * Lambda の実行環境は関数の終了とともに凍結されるが、次の起動で解凍されると残りの処理が
+ * 続きから動く（やり直しではなく継続）。また、月次サイクル開始が「保存済み・イベント未発行」の
+ * 位置で打ち切られた場合、次回は `already_started` になり開始イベントは出し直されない
+ * （#484 の既知の制約）。
  */
 import type { AppDeps } from '../composition-root.js'
 import { createCsvImportReminderRunnerFromDeps } from '../notification/csv-import-reminder.js'
@@ -28,8 +33,8 @@ import {
   runCsvImportReminderJob,
   runDailyMailImportJob,
   runMonthlyExpenseCycleStartJob,
-  type BatchJobName,
-  type BatchJobSummary,
+  type ScheduledJobName,
+  type ScheduledJobSummary,
 } from './jobs.js'
 import { readScheduledBatchEvent, type ScheduledBatchInput } from './scheduled-event.js'
 
@@ -53,7 +58,7 @@ export interface LambdaContextLike {
 export type ScheduledBatchHandler = (
   event: unknown,
   context?: LambdaContextLike,
-) => Promise<BatchJobSummary>
+) => Promise<ScheduledJobSummary>
 
 export interface ScheduledBatchHandlerOptions {
   loadDeps: () => Promise<AppDeps>
@@ -66,6 +71,7 @@ export interface ScheduledBatchHandlerOptions {
 /**
  * 上限時間を決める。Lambda の残り時間が分かる場合はそれより手前に寄せる
  * （設定した上限が Lambda のタイムアウトより長いと、こちらの打ち切りが働く前に殺される）。
+ * 残りが余裕を下回っていても 1 秒は待つ — 0 以下にすると起動直後に必ず打ち切られる。
  */
 function resolveTimeoutMs(
   configured: number | undefined,
@@ -78,12 +84,22 @@ function resolveTimeoutMs(
 }
 
 function createHandler(
-  job: BatchJobName,
+  job: ScheduledJobName,
   options: ScheduledBatchHandlerOptions,
-  invoke: (deps: AppDeps, input: ScheduledBatchInput) => Promise<BatchJobSummary>,
+  invoke: (deps: AppDeps, input: ScheduledBatchInput) => Promise<ScheduledJobSummary>,
 ): ScheduledBatchHandler {
   return async (event, context) => {
-    const input = readScheduledBatchEvent(event, options.now)
+    let input: ScheduledBatchInput
+    try {
+      input = readScheduledBatchEvent(event, options.now)
+    } catch (e) {
+      // 起動イベントの読み取りは開始ログより前に起きる。どのジョブの起動が弾かれたのかが
+      // 分からないと、3 ハンドラーが同居する実行環境では原因を辿れない
+      console.error(
+        `[batch] ${job} の起動イベントを読めなかった（${e instanceof Error ? e.name : 'unknown'}）`,
+      )
+      throw e
+    }
     const timeoutMs = resolveTimeoutMs(options.timeoutMs, context)
     console.info(
       `[batch] ${job} を開始する（at=${input.at.toISOString()}, timeoutMs=${timeoutMs}）`,
@@ -94,7 +110,7 @@ function createHandler(
       if (e instanceof Error && e.name === 'TimeoutError') {
         console.error(
           `[batch] ${job} が上限時間に達したため打ち切った（timeoutMs=${timeoutMs}, ` +
-            `at=${input.at.toISOString()}）— 途中まで進んだぶんは次回の実行でやり直す`,
+            `at=${input.at.toISOString()}）— 済んだぶんの結末は上の行に出ている`,
         )
       }
       throw e
@@ -147,9 +163,11 @@ export function createCsvImportReminderHandler(
 
 /**
  * `BATCH_TIMEOUT_MS` → 正の整数（不正値は既定値）。
+ *
+ * 依存の合成に渡す設定ではない（`CompositionEnv` に載せない）ため、ここで直接読む。
  * 不正値を黙って既定値に落とすと、設定したつもりの上限が効かないまま気づけないため警告を出す。
  */
-function batchTimeoutMsFromEnv(value: string | undefined): number | undefined {
+export function batchTimeoutMsFromEnv(value: string | undefined): number | undefined {
   if (value === undefined) return undefined
   const parsed = Number(value)
   if (Number.isInteger(parsed) && parsed > 0) return parsed

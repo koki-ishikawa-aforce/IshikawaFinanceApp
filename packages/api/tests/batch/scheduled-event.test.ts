@@ -51,6 +51,33 @@ describe('readScheduledBatchEvent', () => {
     )
   })
 
+  it.each(['targetYearMonth', 'scanDays'])(
+    '上書きを detail の外に書いたイベントを受け付けない: %s',
+    key => {
+      // 素通しすると、書き間違えた上書きが無視されたまま既定値で「成功」してしまう
+      expect(() => readScheduledBatchEvent({ [key]: '2026-08' }, now)).toThrow(/書式が不正/)
+    },
+  )
+
+  it('EventBridge の封筒（読まないフィールド）は素通しする', () => {
+    expect(() =>
+      readScheduledBatchEvent(
+        {
+          version: '0',
+          id: 'cdc73f9d-aea9-11e3-9d5a-835b769c0d9c',
+          'detail-type': 'Scheduled Event',
+          source: 'aws.events',
+          account: '123456789012',
+          time: '2026-08-01T15:00:00Z',
+          region: 'ap-northeast-1',
+          resources: ['arn:aws:events:ap-northeast-1:123456789012:rule/daily'],
+          detail: {},
+        },
+        now,
+      ),
+    ).not.toThrow()
+  })
+
   it('対象年月の書式違いを受け付けない', () => {
     expect(() => readScheduledBatchEvent({ detail: { targetYearMonth: '2026/08' } }, now)).toThrow(
       /書式が不正/,

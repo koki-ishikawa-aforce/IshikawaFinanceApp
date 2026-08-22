@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDeps, createMockDeps } from '../src/composition-root.js'
+import {
+  compositionEnvFromEnvironment,
+  createDeps,
+  createMockDeps,
+} from '../src/composition-root.js'
 
 describe('createDeps モックフォールバックの環境ガード (#47)', () => {
   afterEach(() => {
@@ -214,5 +218,49 @@ describe('Deep Link の起点 URL の解決 (#389)', () => {
     await expect(createDeps({ WEB_BASE_URL: 'javascript:alert(1)' })).rejects.toThrowError(
       /must use http\(s\)/,
     )
+  })
+})
+
+describe('環境変数の読み出し (#416)', () => {
+  // API サーバとバッチの起動口が同じ設定を見るための一本化。キー名は文字列リテラルのため、
+  // 追加漏れ・typo は型検査では捕まらない（片方の起動口でだけ設定が効かない状態になる）
+  it('合成が使う環境変数をすべてそのまま読み出す', () => {
+    const source = {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://user:pass@localhost:5432/warimaru',
+      DATABASE_DRIVER: 'node-postgres',
+      GOOGLE_OAUTH_CLIENT_ID: 'client-id',
+      GOOGLE_OAUTH_CLIENT_SECRET: 'client-secret',
+      GOOGLE_OAUTH_REDIRECT_URI: 'https://example.com/oauth/gmail/callback',
+      GMAIL_OAUTH_STATE_SECRET: 'state-secret',
+      LINE_CHANNEL_SECRET: 'line-secret',
+      AWS_REGION: 'ap-northeast-1',
+      FAILSAFE_EMAIL_FROM: 'from@example.com',
+      FAILSAFE_EMAIL_TO: 'to@example.com',
+      FAILSAFE_FAILURE_THRESHOLD: '3',
+      CORS_ALLOWED_ORIGINS: 'https://example.cloudfront.net',
+      WEB_BASE_URL: 'https://liff.line.me/1234567890-abcdefgh',
+    }
+
+    expect(compositionEnvFromEnvironment(source)).toEqual(source)
+  })
+
+  it('未設定のキーは undefined のまま返す（既定値をここで埋めない）', () => {
+    expect(compositionEnvFromEnvironment({})).toEqual({
+      NODE_ENV: undefined,
+      DATABASE_URL: undefined,
+      DATABASE_DRIVER: undefined,
+      GOOGLE_OAUTH_CLIENT_ID: undefined,
+      GOOGLE_OAUTH_CLIENT_SECRET: undefined,
+      GOOGLE_OAUTH_REDIRECT_URI: undefined,
+      GMAIL_OAUTH_STATE_SECRET: undefined,
+      LINE_CHANNEL_SECRET: undefined,
+      AWS_REGION: undefined,
+      FAILSAFE_EMAIL_FROM: undefined,
+      FAILSAFE_EMAIL_TO: undefined,
+      FAILSAFE_FAILURE_THRESHOLD: undefined,
+      CORS_ALLOWED_ORIGINS: undefined,
+      WEB_BASE_URL: undefined,
+    })
   })
 })

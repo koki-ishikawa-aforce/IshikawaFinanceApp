@@ -28,6 +28,9 @@ const ScheduledBatchOverridesSchema = z
   })
   .strict()
 
+/** 上書きのキー名（`detail` の外に書かれていないかの検査に使う） */
+const OVERRIDE_KEYS = Object.keys(ScheduledBatchOverridesSchema.shape)
+
 /**
  * EventBridge のスケジュール起動イベント。
  * `time` / `detail` 以外のフィールド（id・source・resources など）は読まないため素通しする。
@@ -39,7 +42,21 @@ const ScheduledBatchEventSchema = z
     time: z.string().datetime({ offset: true }).optional(),
     detail: ScheduledBatchOverridesSchema.optional(),
   })
+  // 封筒（id・source・resources など）は読まないので素通しする。ただし上書きのキーが
+  // `detail` の外に書かれた場合だけは弾く — 素通しすると、書き間違えた上書きが無視された
+  // まま既定値で「成功」してしまう（`detail` 配下の書き間違いは strict が弾く）
   .passthrough()
+  .superRefine((event, ctx) => {
+    for (const key of OVERRIDE_KEYS) {
+      if (key in event) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} は detail の中に書く`,
+        })
+      }
+    }
+  })
 
 export interface ScheduledBatchOverrides {
   targetYearMonth?: YearMonth | undefined
