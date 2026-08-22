@@ -1,10 +1,86 @@
 import { describe, it, expect } from 'vitest'
-import { GmailOAuthTokenSchema, YearMonthSchema, type PdfToCsvConversion } from '@warimaru/domain'
+import {
+  DailyMailImportBatchSchema,
+  GmailMessageIdSchema,
+  GmailOAuthTokenSchema,
+  SmbcMailParseResultSchema,
+  YearMonthSchema,
+  money,
+  type PdfToCsvConversion,
+  type SmbcNotificationMailBody,
+} from '@warimaru/domain'
 import { createApp } from '../../src/app.js'
 import { createMockDeps } from '../../src/composition-root.js'
 import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
 
 const CSV = '2026/07/05,スーパーA,1200\n2026/07/06,コンビニB,300\n'
+
+const MAIL_OCCURRED_AT = new Date('2026-07-09T12:34:00+09:00')
+
+function mailBody(id: string): SmbcNotificationMailBody {
+  return {
+    gmailMessageId: GmailMessageIdSchema.parse(id),
+    receivedAt: MAIL_OCCURRED_AT,
+    subject: 'ご利用のお知らせ【三井住友カード】',
+    body: '本文',
+    kindHint: 'card_usage',
+  }
+}
+
+/** 前回の実行が取込中のまま残したバッチ（再開の検証用） */
+function leftoverImportingBatch() {
+  return DailyMailImportBatchSchema.parse({
+    kind: 'importing',
+    common: {
+      importBatchId: '01BATCH0000000000000000000',
+      userId: VIEWER_ID,
+      launchedAt: new Date('2026-07-09T00:00:00Z'),
+      targetPeriod: {
+        from: new Date('2026-07-04T00:00:00Z'),
+        to: new Date('2026-07-09T00:00:00Z'),
+      },
+    },
+    importStartedAt: new Date('2026-07-09T00:00:00Z'),
+    importedCount: 0,
+  })
+}
+
+/**
+ * Gmail 連携済みで、指定したメールを返す取込経路のアプリ。
+ * 既定のモックは取得 0 件・パース未実装で 1 件も取り込めないため、そのままでは候補生成が
+ * 壊れても気づけない（ルートの検証としては「取り込めること」まで見たい）。
+ */
+async function authorizedMailBatchApp(
+  mails: SmbcNotificationMailBody[],
+  overrides: Parameters<typeof createTestApp>[0] = {},
+): Promise<ReturnType<typeof createTestApp>> {
+  const t = createTestApp({
+    gmailMailFetchGateway: {
+      fetchMails: () => Promise.resolve({ ok: true, smbcMails: mails, amazonMails: [] }),
+    },
+    parseSmbcNotificationMail: ({ mail, userId }) =>
+      SmbcMailParseResultSchema.parse({
+        kind: 'card_usage',
+        gmailMessageId: mail.gmailMessageId,
+        userId,
+        merchantName: 'スーパーA',
+        amount: money(1200),
+        occurredAt: MAIL_OCCURRED_AT,
+        cardKind: 'mitsui_sumitomo',
+      }),
+    ...overrides,
+  })
+  await t.deps.gmailOAuthTokenRepository.save(
+    GmailOAuthTokenSchema.parse({
+      kind: 'valid',
+      userId: VIEWER_ID,
+      tokenStoreRef: '/warimaru/gmail/honey',
+      authorizedAt: new Date('2026-07-01T00:00:00Z'),
+      lastVerifiedAt: new Date('2026-07-01T00:00:00Z'),
+    }),
+  )
+  return t
+}
 
 function csvFormData(content: string = CSV): FormData {
   const form = new FormData()
@@ -344,14 +420,13 @@ describe('POST /api/imports/mail-batch', () => {
     expect(res.status).toBe(400)
   })
 
-  it('from < to なら取込が最後まで進み、結果が返る', async () => {
-    // 開発モードのモックは Gmail 連携が無いため、取込は「連携未設定」で閉じる。
-    // ここで固定したいのは「起動記録だけで終わらず、ワーカーの結末が応答に載る」こと
+  it('Gmail 未連携なら 409 で返り、取り込めなかったことが結末に載る', async () => {
+    // 成功と同じ 200 で返すと、呼んだ人が「取り込めた」と受け取ってしまう
     const { app } = createTestApp()
     const res = await request(app, 'POST', '/api/imports/mail-batch', {
       body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
     })
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(409)
     const json = (await res.json()) as {
       batch: { kind: string }
       result: { status: string; failureKind?: string }
@@ -362,16 +437,7 @@ describe('POST /api/imports/mail-batch', () => {
   })
 
   it('Gmail 連携済みならメールを取り込んで完了する', async () => {
-    const { app, deps } = createTestApp()
-    await deps.gmailOAuthTokenRepository.save(
-      GmailOAuthTokenSchema.parse({
-        kind: 'valid',
-        userId: VIEWER_ID,
-        tokenStoreRef: '/warimaru/gmail/honey',
-        authorizedAt: new Date('2026-07-01T00:00:00Z'),
-        lastVerifiedAt: new Date('2026-07-01T00:00:00Z'),
-      }),
-    )
+    const { app, deps } = await authorizedMailBatchApp([mailBody('gmail-route-1')])
     const res = await request(app, 'POST', '/api/imports/mail-batch', {
       body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
     })
@@ -380,23 +446,87 @@ describe('POST /api/imports/mail-batch', () => {
       batch: { kind: string }
       result: { status: string; importedCount: number }
     }
-    // モックの Gmail 取得は 0 件を返す（取り込むメールが無い日と同じ経路）
-    expect(json.result).toMatchObject({ status: 'completed', importedCount: 0 })
+    expect(json.result).toMatchObject({ status: 'completed', importedCount: 1 })
     expect(json.batch.kind).toBe('completed')
+    const candidate = await deps.transactionCandidateRepository.findByGmailMessageId(
+      GmailMessageIdSchema.parse('gmail-route-1'),
+    )
+    expect(candidate?.common.merchantName).toBe('スーパーA')
   })
 
-  it('期間逆転ガードは進行中バッチの照会より先に効く（400 が 409 に化けない）', async () => {
-    // 単一ソース化後も、from < to は domain スキーマの parse（ワーカーの入口）で早期に弾かれる。
-    // 進行中バッチが存在しても期間逆転は 409(進行中) ではなく 400 を返す。
-    const { app } = createTestApp()
-    const started = await request(app, 'POST', '/api/imports/mail-batch', {
+  it('取得に失敗したら 502 で返る（時間をおいて再実行すれば直りうる失敗）', async () => {
+    const { app } = await authorizedMailBatchApp([], {
+      gmailMailFetchGateway: {
+        fetchMails: () =>
+          Promise.resolve({
+            ok: false,
+            failure: {
+              kind: 'other_fetch_failure',
+              detail: 'Gmail API がタイムアウトした（list）',
+              detectedAt: new Date('2026-07-10T00:00:00Z'),
+              retryable: true,
+            },
+          }),
+      },
+    })
+    const res = await request(app, 'POST', '/api/imports/mail-batch', {
       body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
     })
-    expect(started.status).toBe(200)
+    expect(res.status).toBe(502)
+  })
+
+  it('to だけ指定すると from は過去 5 日前に補われる', async () => {
+    const { app } = await authorizedMailBatchApp([])
+    const res = await request(app, 'POST', '/api/imports/mail-batch', {
+      body: { to: '2026-07-10T00:00:00Z' },
+    })
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { result: { targetPeriod: { from: string; to: string } } }
+    expect(json.result.targetPeriod.from).toBe('2026-07-05T00:00:00.000Z')
+    expect(json.result.targetPeriod.to).toBe('2026-07-10T00:00:00.000Z')
+  })
+
+  it('from だけ指定するとその日時から現在までを取り込む', async () => {
+    const { app } = await authorizedMailBatchApp([])
+    const from = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+    const res = await request(app, 'POST', '/api/imports/mail-batch', {
+      body: { from: from.toISOString() },
+    })
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { result: { targetPeriod: { from: string; to: string } } }
+    expect(json.result.targetPeriod.from).toBe(from.toISOString())
+    expect(new Date(json.result.targetPeriod.to).getTime()).toBeGreaterThan(from.getTime())
+  })
+
+  it('取込対象期間が 31 日を超える指定は 400（Gmail の取得上限で必ず失敗するため）', async () => {
+    const { app } = await authorizedMailBatchApp([])
+    const res = await request(app, 'POST', '/api/imports/mail-batch', {
+      body: { from: '2026-05-01T00:00:00Z', to: '2026-07-10T00:00:00Z' },
+    })
+    expect(res.status).toBe(400)
+    const json = (await res.json()) as { reason?: string }
+    expect(json.reason).toBe('period_too_long')
+  })
+
+  it('期間逆転ガードは進行中バッチの照会より先に効く（400 が再開に化けない）', async () => {
+    // from < to は domain スキーマの parse（ワーカーの入口）が単一ソース。取込中のバッチが
+    // 残っていても、期間逆転は「再開」ではなく 400 で弾かれる
+    const { app, deps } = await authorizedMailBatchApp([])
+    await deps.dailyMailImportBatchRepository.save(leftoverImportingBatch())
     const res = await request(app, 'POST', '/api/imports/mail-batch', {
       body: { from: '2026-07-10T00:00:00Z', to: '2026-07-09T00:00:00Z' },
     })
     expect(res.status).toBe(400)
+  })
+
+  it('取込中のバッチが残っていれば新規起動せず引き継ぐ（進行中でも弾かない）', async () => {
+    const { app, deps } = await authorizedMailBatchApp([])
+    await deps.dailyMailImportBatchRepository.save(leftoverImportingBatch())
+    const res = await request(app, 'POST', '/api/imports/mail-batch', { body: {} })
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { result: { resumed: boolean; importBatchId: string } }
+    expect(json.result.resumed).toBe(true)
+    expect(json.result.importBatchId).toBe('01BATCH0000000000000000000')
   })
 
   it('不正な JSON ボディは 400（500 に落ちない）', async () => {

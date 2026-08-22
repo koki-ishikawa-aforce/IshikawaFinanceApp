@@ -5,7 +5,7 @@
  * ワーカーが持つため、ルートを介さず直接呼んで固定する。Gmail 取得（driven port）とパース関数は
  * 注入して、取得結果・パース結果の組み合わせごとの結末を検証する。
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
   DailyMailImportBatchSchema,
   GmailMessageIdSchema,
@@ -17,10 +17,13 @@ import {
   registerAppUser,
 } from '@warimaru/domain'
 import type {
+  AmazonOrderConfirmationMailBody,
   DomainEvent,
   DuplicateExcluded,
+  GmailOauthRevocationDetected,
   GmailMailFetchGateway,
   GmailMessageId,
+  MailFetched,
   MailFetchRequest,
   MailFetchResult,
   MailImportBatchCompleted,
@@ -42,6 +45,29 @@ import { createTestApp, SPOUSE_ID, VIEWER_ID, type TestApp } from './helpers/tes
 
 const AT = new Date('2026-07-10T00:00:00+09:00')
 const OCCURRED_AT = new Date('2026-07-09T12:34:00+09:00')
+const LEFTOVER_BATCH_ID = '01BATCH0000000000000000000'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+/** 前回の実行が取込中のまま残したバッチ（引き継ぎの検証用） */
+function leftoverImporting(importedCount: number) {
+  return DailyMailImportBatchSchema.parse({
+    kind: 'importing',
+    common: {
+      importBatchId: LEFTOVER_BATCH_ID,
+      userId: VIEWER_ID,
+      launchedAt: new Date('2026-07-09T00:00:00+09:00'),
+      targetPeriod: {
+        from: new Date('2026-07-04T00:00:00+09:00'),
+        to: new Date('2026-07-09T00:00:00+09:00'),
+      },
+    },
+    importStartedAt: new Date('2026-07-09T00:00:00+09:00'),
+    importedCount,
+  })
+}
 
 function mailBody(id: string, overrides: Partial<SmbcNotificationMailBody> = {}) {
   return {
@@ -57,13 +83,14 @@ function mailBody(id: string, overrides: Partial<SmbcNotificationMailBody> = {})
 /** 常に「取得成功」を返す Gmail 取得。呼び出し内容も検証できるよう記録する */
 function fetchGatewayReturning(
   smbcMails: SmbcNotificationMailBody[],
+  amazonMails: AmazonOrderConfirmationMailBody[] = [],
 ): GmailMailFetchGateway & { requests: MailFetchRequest[] } {
   const requests: MailFetchRequest[] = []
   return {
     requests,
     fetchMails: (request: MailFetchRequest): Promise<MailFetchResult> => {
       requests.push(request)
-      return Promise.resolve({ ok: true, smbcMails, amazonMails: [] })
+      return Promise.resolve({ ok: true, smbcMails, amazonMails })
     },
   }
 }
@@ -210,15 +237,13 @@ describe('日次メール取込ワーカー: 取得 → パース → 候補生�
     await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
     const defaultPeriod = gateway.requests[0]?.period
     expect(defaultPeriod?.to).toEqual(AT)
-    expect(defaultPeriod?.from).toEqual(
-      new Date(AT.getTime() - DEFAULT_MAIL_SCAN_DAYS * 24 * 60 * 60 * 1000),
-    )
+    // 既定は 5 日（OQ-31）。期待値は実装と同じ式ではなくリテラルで固定する
+    expect(defaultPeriod?.from).toEqual(new Date('2026-07-05T00:00:00+09:00'))
+    expect(DEFAULT_MAIL_SCAN_DAYS).toBe(5)
 
-    const later = new Date(AT.getTime() + 24 * 60 * 60 * 1000)
+    const later = new Date('2026-07-11T00:00:00+09:00')
     await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: later, scanDays: 1 })
-    expect(gateway.requests[1]?.period.from).toEqual(
-      new Date(later.getTime() - 24 * 60 * 60 * 1000),
-    )
+    expect(gateway.requests[1]?.period.from).toEqual(new Date('2026-07-10T00:00:00+09:00'))
   })
 
   it('取込対象期間が逆転していたら起動しない（不変条件はドメインが単一ソース）', async () => {
@@ -232,6 +257,30 @@ describe('日次メール取込ワーカー: 取得 → パース → 候補生�
     ).rejects.toThrow()
     // バッチ記録も作られない（進行中バッチの照会より前に弾く）
     expect(await t.deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
+  })
+
+  it('取得件数のイベントには Amazon 注文確認メールも数える', async () => {
+    const t = createTestApp()
+    await authorize(t, VIEWER_ID)
+    const fetchedEvents = collect<MailFetched>(t, 'MailFetched')
+    const gateway = fetchGatewayReturning(
+      [mailBody('gmail-1'), mailBody('gmail-2')],
+      [
+        {
+          gmailMessageId: GmailMessageIdSchema.parse('gmail-amazon-1'),
+          receivedAt: OCCURRED_AT,
+          subject: 'Amazon.co.jp ご注文の確認',
+          body: '本文',
+        },
+      ],
+    )
+
+    await runDailyMailImportForUser(
+      { ...t.deps, gmailMailFetchGateway: gateway, parseSmbcNotificationMail: cardUsageParser() },
+      { userId: VIEWER_ID, at: AT },
+    )
+
+    expect(fetchedEvents[0]?.fetchedCount).toBe(3)
   })
 
   it('取得したメールの持ち主のトークン保管先で Gmail を読む', async () => {
@@ -263,6 +312,12 @@ describe('日次メール取込ワーカー: Gmail message ID による重複除
     expect(extracted).toHaveLength(1)
     expect(duplicates).toHaveLength(1)
     expect(duplicates[0]?.basis).toEqual({ kind: 'gmail_message_id', gmailMessageId: 'gmail-1' })
+    // 既に候補があると分かっている重複は、どの候補と重なったかを主体に残す
+    const [existing] = await savedCandidates(t, ['gmail-1'])
+    expect(duplicates[0]?.subject).toEqual({
+      kind: 'candidate',
+      transactionCandidateId: existing?.common.transactionCandidateId,
+    })
   })
 
   it('同一バッチ内で同じメールが 2 通返っても取引候補は 1 件だけ', async () => {
@@ -335,7 +390,7 @@ describe('日次メール取込ワーカー: パース結果の扱い', () => {
       importedCount: 0,
       failedCount: 0,
       duplicateExcludedCount: 0,
-      deferredCount: 1,
+      otherNotificationCount: 1,
     })
     expect(await savedCandidates(t, ['gmail-1'])).toHaveLength(0)
   })
@@ -453,7 +508,6 @@ describe('日次メール取込ワーカー: 取得できないときの結末',
 
     expect(outcome).toMatchObject({ status: 'failed', failureKind: 'unexpected_error' })
     expect(await t.deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
-    vi.restoreAllMocks()
   })
 })
 
@@ -461,26 +515,13 @@ describe('日次メール取込ワーカー: 途中で終わった取込の再�
   it('残っている取込中バッチを引き継ぎ、MailImportResumed を発行する', async () => {
     const { t, deps, gateway } = await harness({ mails: [mailBody('gmail-1')] })
     const resumedEvents = collect<MailImportResumed>(t, 'MailImportResumed')
-    const leftover = DailyMailImportBatchSchema.parse({
-      kind: 'importing',
-      common: {
-        importBatchId: '01BATCH0000000000000000000',
-        userId: VIEWER_ID,
-        launchedAt: new Date('2026-07-09T00:00:00+09:00'),
-        targetPeriod: {
-          from: new Date('2026-07-04T00:00:00+09:00'),
-          to: new Date('2026-07-09T00:00:00+09:00'),
-        },
-      },
-      importStartedAt: new Date('2026-07-09T00:00:00+09:00'),
-      importedCount: 0,
-    })
+    const leftover = leftoverImporting(0)
     await t.deps.dailyMailImportBatchRepository.save(leftover)
 
     const outcome = await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
 
     expect(outcome.resumed).toBe(true)
-    expect(outcome.importBatchId).toBe('01BATCH0000000000000000000')
+    expect(outcome.importBatchId).toBe(LEFTOVER_BATCH_ID)
     // 引き継いだバッチが起動時に決めた期間で取り直す（前回の取りこぼしを検索範囲から外さない）
     expect(gateway.requests[0]?.period).toEqual(leftover.common.targetPeriod)
     expect(resumedEvents).toHaveLength(1)
@@ -507,6 +548,155 @@ describe('日次メール取込ワーカー: 途中で終わった取込の再�
     await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
 
     expect(resumedEvents).toHaveLength(0)
+  })
+})
+
+describe('日次メール取込ワーカー: 進捗の記録と引き継ぎ', () => {
+  it('取込済み件数が 10 件ごとにバッチへ書き戻される（途中で落ちてもどこまで進んだか残る）', async () => {
+    const mails = Array.from({ length: 11 }, (_, i) => mailBody(`gmail-${i + 1}`))
+    const { t, deps } = await harness({ mails })
+    const savedProgress: number[] = []
+    const repository = t.deps.dailyMailImportBatchRepository
+    const originalSave = repository.save.bind(repository)
+    vi.spyOn(repository, 'save').mockImplementation(async batch => {
+      if (batch.kind === 'importing') savedProgress.push(batch.importedCount)
+      await originalSave(batch)
+    })
+
+    const outcome = await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
+
+    expect(outcome).toMatchObject({ status: 'completed', importedCount: 11 })
+    // 取込開始（0）と 10 件目の書き戻し。11 件目は間隔に満たないので完了記録が拾う
+    expect(savedProgress).toEqual([0, 10])
+  })
+
+  it('進捗の残った取込中バッチを引き継ぐと、前回ぶんに積み増して完了する', async () => {
+    const mails = Array.from({ length: 10 }, (_, i) => mailBody(`gmail-${i + 1}`))
+    const { t, deps } = await harness({ mails })
+    await t.deps.dailyMailImportBatchRepository.save(leftoverImporting(12))
+
+    const outcome = await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
+
+    // 前回 12 件 + 今回 10 件。0 から数え直すと「取込済み件数は減らせない」に触れて失敗する
+    expect(outcome).toMatchObject({ status: 'completed', resumed: true, importedCount: 22 })
+    const batch = await t.deps.dailyMailImportBatchRepository.findById(outcome.importBatchId)
+    expect(batch).toMatchObject({ kind: 'completed', importedCount: 22 })
+  })
+
+  it('起動記録だけ残して落ちたバッチ（取込前）も引き継いで完了する', async () => {
+    const { t, deps } = await harness({ mails: [mailBody('gmail-1')] })
+    const resumedEvents = collect<MailImportResumed>(t, 'MailImportResumed')
+    await t.deps.dailyMailImportBatchRepository.save(
+      DailyMailImportBatchSchema.parse({
+        kind: 'started',
+        common: leftoverImporting(0).common,
+      }),
+    )
+
+    const outcome = await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
+
+    expect(outcome).toMatchObject({
+      status: 'completed',
+      resumed: true,
+      importBatchId: LEFTOVER_BATCH_ID,
+      importedCount: 1,
+    })
+    expect(resumedEvents).toHaveLength(1)
+  })
+})
+
+describe('日次メール取込ワーカー: トークン失効の検知', () => {
+  it('取得で失効を検知したらトークンを失効検知済みにし、失効検知イベントを発行する', async () => {
+    const t = createTestApp()
+    await authorize(t, VIEWER_ID)
+    const detected = collect<GmailOauthRevocationDetected>(t, 'GmailOauthRevocationDetected')
+
+    await runDailyMailImportForUser(
+      {
+        ...t.deps,
+        gmailMailFetchGateway: fetchGatewayFailing({
+          ok: false,
+          failure: {
+            kind: 'oauth_revocation_detected',
+            detail: 'refresh token が失効している（invalid_grant）',
+            detectedAt: AT,
+          },
+        }),
+        parseSmbcNotificationMail: cardUsageParser(),
+      },
+      { userId: VIEWER_ID, at: AT },
+    )
+
+    const token = await t.deps.gmailOAuthTokenRepository.findByUserId(VIEWER_ID)
+    expect(token).toMatchObject({
+      kind: 'revocation_detected',
+      revocationReason: 'api_call_failure',
+    })
+    expect(detected).toHaveLength(1)
+    expect(detected[0]?.userId).toBe(VIEWER_ID)
+  })
+
+  it('その他の取得失敗ではトークンを失効扱いにしない（通信断で再認可を求めない）', async () => {
+    const t = createTestApp()
+    await authorize(t, VIEWER_ID)
+    const detected = collect<GmailOauthRevocationDetected>(t, 'GmailOauthRevocationDetected')
+
+    await runDailyMailImportForUser(
+      {
+        ...t.deps,
+        gmailMailFetchGateway: fetchGatewayFailing({
+          ok: false,
+          failure: {
+            kind: 'other_fetch_failure',
+            detail: 'Gmail API がタイムアウトした（list）',
+            detectedAt: AT,
+            retryable: true,
+          },
+        }),
+        parseSmbcNotificationMail: cardUsageParser(),
+      },
+      { userId: VIEWER_ID, at: AT },
+    )
+
+    expect(await t.deps.gmailOAuthTokenRepository.findByUserId(VIEWER_ID)).toMatchObject({
+      kind: 'valid',
+    })
+    expect(detected).toHaveLength(0)
+  })
+})
+
+describe('日次メール取込ワーカー: 持ち主の取り違え防止', () => {
+  it('パース結果が別人のものなら取引候補を作らず失敗として閉じる', async () => {
+    const t = createTestApp()
+    await authorize(t, VIEWER_ID)
+    const spouseParser: SmbcNotificationMailParser = ({ mail }) =>
+      SmbcMailParseResultSchema.parse({
+        kind: 'card_usage',
+        gmailMessageId: mail.gmailMessageId,
+        // メール本文（外部入力）由来で持ち主がすり替わった状況を作る
+        userId: SPOUSE_ID,
+        merchantName: 'スーパーA',
+        amount: money(1200),
+        occurredAt: OCCURRED_AT,
+        cardKind: 'mitsui_sumitomo',
+      })
+
+    const outcome = await runDailyMailImportForUser(
+      {
+        ...t.deps,
+        gmailMailFetchGateway: fetchGatewayReturning([mailBody('gmail-1')]),
+        parseSmbcNotificationMail: spouseParser,
+      },
+      { userId: VIEWER_ID, at: AT },
+    )
+
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      failureKind: 'unexpected_error',
+      // 実装の誤りなのでやり直しても直らない
+      retryable: false,
+    })
+    expect(await savedCandidates(t, ['gmail-1'])).toHaveLength(0)
   })
 })
 
@@ -544,6 +734,20 @@ describe('日次メール取込ワーカー: 世帯一括', () => {
     expect(gateway.requests).toHaveLength(1)
   })
 
+  it('走査幅の指定が各ユーザーの取込に渡る', async () => {
+    const t = createTestApp()
+    await t.deps.appUserRepository.save(registerAppUser(VIEWER_ID, 'honey', undefined, AT))
+    await authorize(t, VIEWER_ID)
+    const gateway = fetchGatewayReturning([])
+
+    await runDailyMailImportForHousehold(
+      { ...t.deps, gmailMailFetchGateway: gateway, parseSmbcNotificationMail: cardUsageParser() },
+      { at: AT, scanDays: 1 },
+    )
+
+    expect(gateway.requests[0]?.period.from).toEqual(new Date('2026-07-09T00:00:00+09:00'))
+  })
+
   it('1 人の取込が落ちても、もう 1 人の取込は続行する', async () => {
     const t = createTestApp()
     await t.deps.appUserRepository.save(registerAppUser(VIEWER_ID, 'honey', undefined, AT))
@@ -564,6 +768,5 @@ describe('日次メール取込ワーカー: 世帯一括', () => {
 
     expect(outcome.results.find(r => r.role === 'honey')?.status).toBe('failed')
     expect(outcome.results.find(r => r.role === 'darling')?.status).toBe('imported')
-    vi.restoreAllMocks()
   })
 })

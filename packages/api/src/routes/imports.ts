@@ -75,6 +75,12 @@ const ConfirmBodySchema = z.object({
   transactionCandidateIds: z.array(TransactionCandidateIdSchema).min(1).optional(),
 })
 
+/**
+ * 手動実行で指定できる取込対象期間の上限。Gmail の取得は 1 回 500 件が上限（#412）で、
+ * 長期間を指定すると上限超過で必ず失敗する。失敗してから気づくより、受け付けない側に倒す。
+ */
+const MAX_MAIL_BATCH_PERIOD_DAYS = 31
+
 const MailBatchBodySchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
@@ -430,12 +436,16 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
    * メール取込バッチの手動トリガー（EventBridge → Lambda の配線（#416）前の手動実行用）
    *
    * 起動記録を残すだけでなく、取得 → 重複除外 → パース → 候補生成 → 完了 まで進めてから
-   * 結果を返す（進行は `runDailyMailImportForUser` が持つ）。Gmail の取得を待つぶん応答は
-   * 遅い（最大 2 分）。日次の自動実行はスケジューラ側から同じ関数を呼ぶ。
+   * 結果を返す（進行は `runDailyMailImportForUser` が持つ）。Gmail の取得と保存を待つため
+   * 応答までに数分かかりうる。日次の自動実行はスケジューラ側から同じ関数を呼ぶ。
    *
    * 取込対象期間は既定で「過去 5 日から現在まで」（論点22 / OQ-31）。from / to を渡すと
-   * その期間で実行する。取得や保存に失敗した場合も応答は 200 で、結末は `result.status` に
-   * 入る（バッチ記録は失敗として残る）。
+   * その期間で実行する。期間の上限を `MAX_MAIL_BATCH_PERIOD_DAYS` に置いているのは、
+   * 手で長期間を指定すると Gmail の取得件数上限に当たって毎回失敗するため。
+   *
+   * 取込が失敗した場合は成功と同じ 200 では返さない（呼び出した人が「取り込めた」と
+   * 受け取ってしまう）。Gmail の連携が切れているなら再認可が要るので 409、外部の障害なら
+   * 時間をおいて再実行すれば直りうるので 502 を返す。結末の詳細は `result` に入る。
    */
   app.post('/mail-batch', async c => {
     const rawBody = await c.req.text()
@@ -456,11 +466,33 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
               ),
             to: body.to ?? new Date(),
           }
+    if (
+      period !== undefined &&
+      period.to.getTime() - period.from.getTime() > MAX_MAIL_BATCH_PERIOD_DAYS * 24 * 60 * 60 * 1000
+    ) {
+      return c.json(
+        {
+          error: `取込対象期間は ${MAX_MAIL_BATCH_PERIOD_DAYS} 日以内でなければならない`,
+          reason: 'period_too_long',
+        },
+        400,
+      )
+    }
     const result = await runDailyMailImportForUser(deps, {
       userId: viewerId,
       ...(period === undefined ? {} : { period }),
     })
     const batch = await deps.dailyMailImportBatchRepository.findById(result.importBatchId)
+    if (result.status === 'failed') {
+      // 再認可が要る失敗（連携なし・失効）は利用者の操作待ちなので 409、それ以外は
+      // 外部の取得・保存の失敗なので 502
+      const status =
+        result.failureKind === 'gmail_not_authorized' ||
+        result.failureKind === 'oauth_revocation_detected'
+          ? 409
+          : 502
+      return c.json({ batch, result }, status)
+    }
     return c.json({ batch, result })
   })
 

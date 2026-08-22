@@ -10,8 +10,8 @@
  * 取引候補として保存されないので、#415 が入ったあとの再走査（過去 5 日、OQ-31）で同じメールが
  * 取り込まれる。
  */
-import { SmbcMailParseResultSchema } from '@warimaru/domain'
-import type { SmbcNotificationMailParser } from '@warimaru/domain'
+import { SmbcMailParseResultSchema } from '../value-objects/SmbcMailParseResult'
+import type { SmbcNotificationMailParser } from './SmbcNotificationMailParser'
 
 export function createUnimplementedSmbcMailParser(): SmbcNotificationMailParser {
   return ({ mail, at }) =>

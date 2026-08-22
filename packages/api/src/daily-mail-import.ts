@@ -43,11 +43,14 @@ import {
   MailImportResumedSchema,
   MailParseFailedSchema,
   DuplicateExcludedSchema,
+  DuplicationJudgmentSchema,
+  GmailOauthRevocationDetectedSchema,
   TransactionCandidateExtractedSchema,
   TransactionCandidateIdSchema,
   TransactionCandidateSchema,
   UserRoleSchema,
   completeBatch,
+  detectTokenRevocation,
   failBatch,
   startBatchImporting,
   updateBatchImportedCount,
@@ -56,6 +59,7 @@ import type {
   AppUserRepository,
   DailyMailImportBatch,
   DailyMailImportBatchRepository,
+  DuplicationJudgment,
   EventBus,
   GmailMailFetchGateway,
   GmailMessageId,
@@ -70,6 +74,7 @@ import type {
   TransactionCandidateRepository,
   UserId,
   UserRole,
+  ValidGmailOAuthToken,
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-postgres'
 import { domainEventBase } from './event-handlers/index.js'
@@ -122,8 +127,10 @@ export type DailyMailImportFailureKind =
  * 1 ユーザーぶんの取込結果。
  *
  * `resumed` は、前回の実行が最後まで進まずに残していたバッチを引き継いだかを表す。
- * `deferredCount` は、パースには成功したが本 Issue では候補にしない種別（銀行入金・引落確定
- * など）の件数で、`importedCount` にも `failedCount` にも入らない。
+ * `otherNotificationCount` は、パースには成功したが取引候補にしない種別（銀行入金・引落確定
+ * など。反映先が別コンテキスト）の件数で、`importedCount` にも `failedCount` にも入らない。
+ * `duplicateExcludedCount` / `failedCount` はこの実行で数えたぶんだが、`importedCount` だけは
+ * バッチに永続化される累計（再開時は引き継いだ件数から続けて数える）。
  */
 export type DailyMailImportOutcome = {
   importBatchId: ImportBatchId
@@ -132,10 +139,11 @@ export type DailyMailImportOutcome = {
 } & (
   | {
       status: 'completed'
+      /** バッチに積み上がった取込済み件数（再開したときは前回ぶんを含む） */
       importedCount: number
       duplicateExcludedCount: number
       failedCount: number
-      deferredCount: number
+      otherNotificationCount: number
     }
   | {
       status: 'failed'
@@ -146,6 +154,41 @@ export type DailyMailImportOutcome = {
       failureDetail: string
     }
 )
+
+/**
+ * トークン失効を検知した事実を残す（08f §2「Gmail OAuth トークンの失効を検知する」）。
+ *
+ * 取得の失敗として記録するだけでは、トークンは有効なまま残り、再認可のコールバック
+ * （`routes/gmail-oauth.ts` の失効検知済み分岐）も動かない。つまり連携が切れた翌日から
+ * カード利用が家計簿に出てこない状態が、誰にも知らされないまま続く。ここで集約を
+ * 失効検知済みへ移し、失効検知イベントを出して、個人 DM での再認可導線（#392）が
+ * 購読できる起点にする。
+ *
+ * この記録に失敗しても取込の結末（取得失敗）は変えない。記録は次回の取込でやり直せる一方、
+ * ここで例外を投げると失敗の理由が「取得できなかった」から実装エラーにすり替わる。
+ */
+async function recordTokenRevocation(
+  deps: DailyMailImportDeps,
+  token: ValidGmailOAuthToken,
+  at: Date,
+): Promise<void> {
+  try {
+    await deps.gmailOAuthTokenRepository.save(detectTokenRevocation(token, 'api_call_failure', at))
+    await deps.eventBus.publish(
+      GmailOauthRevocationDetectedSchema.parse({
+        ...domainEventBase(at),
+        type: 'GmailOauthRevocationDetected',
+        userId: token.userId,
+        detectedAt: at,
+      }),
+    )
+  } catch (e) {
+    console.error(
+      '[transaction-import] Gmail トークンの失効検知を記録できなかった' +
+        `（error=${e instanceof Error ? e.name : 'unknown'}）— 次回の取込で記録し直す`,
+    )
+  }
+}
 
 /** ログに出してよい識別子だけを持つ目印（ユーザーID = LINE userID は出さない） */
 function batchLabel(batch: DailyMailImportBatch): string {
@@ -251,13 +294,16 @@ export async function runDailyMailImportForUser(
   }
 
   const token = await deps.gmailOAuthTokenRepository.findByUserId(params.userId)
-  if (token === null) {
-    // 連携前 / 連携解除後。翌日も同じ結果になるので、待てば直る失敗ではない
-    return fail('gmail_not_authorized', 'Gmail 連携が未設定のため取り込めない', false)
-  }
-  if (token.kind === 'revocation_detected') {
-    // 再認可（#392 の導線）が済むまでは取得しても失敗する。無駄な API 呼び出しをしない
-    return fail('gmail_not_authorized', 'Gmail 連携が失効しており再認可待ち', false)
+  if (token === null || token.kind === 'revocation_detected') {
+    // 連携前・連携解除後・失効検知済みのいずれか。再認可されるまで何度実行しても取り込めない
+    // ため、取得は試みない。無言で終わると「カード利用が家計簿に出てこない」状態が誰にも
+    // 気づかれないまま続くので、失敗として記録したうえでログにも残す
+    const detail =
+      token === null ? 'Gmail 連携が未設定のため取り込めない' : 'Gmail 連携が失効しており再認可待ち'
+    console.error(
+      `[transaction-import] Gmail 連携が無いためメール取込を実行できない（${batchLabel(batch)}）— ${detail}`,
+    )
+    return fail('gmail_not_authorized', detail, false)
   }
 
   const fetched = await deps.gmailMailFetchGateway.fetchMails({
@@ -275,6 +321,9 @@ export async function runDailyMailImportForUser(
           ? '。再認可されるまで取込は進まない'
           : '。翌日の再走査で取りこぼしを回収する'),
     )
+    if (failure.kind === 'oauth_revocation_detected') {
+      await recordTokenRevocation(deps, token, failure.detectedAt)
+    }
     return fail(failureKindOf(failure), failure.detail, retryable)
   }
 
@@ -287,17 +336,25 @@ export async function runDailyMailImportForUser(
     }),
   )
 
-  let importedCount = 0
+  // 取込済み件数はバッチに積み上がる値なので、引き継いだバッチの件数から数え始める
+  // （0 から数え直すと、完了時に前回ぶんを含まない件数で上書きしてしまう。集約は減る更新を禁じている）
+  let importedCount = batch.importedCount
+  let importedThisRun = 0
   let duplicateExcludedCount = 0
   let failedCount = 0
-  const deferredKinds = new Map<string, number>()
+  const otherNotificationKinds = new Map<string, number>()
   const seenInBatch = new Set<GmailMessageId>()
+  // 失敗したときにどのメールで落ちたかを残す（Gmail message ID は重複除外のため DB にも
+  // 持つ識別子で PII ではない）
+  let processing: GmailMessageId | undefined
 
   try {
     for (const mail of fetched.smbcMails) {
-      if (await isDuplicate(deps, mail.gmailMessageId, seenInBatch)) {
+      processing = mail.gmailMessageId
+      const judgment = await judgeDuplication(deps, mail.gmailMessageId, seenInBatch, at)
+      if (judgment.kind !== 'not_duplicate') {
         duplicateExcludedCount++
-        await publishDuplicateExcluded(deps, mail.gmailMessageId, at)
+        await publishDuplicateExcluded(deps, judgment, at)
         continue
       }
       seenInBatch.add(mail.gmailMessageId)
@@ -317,18 +374,19 @@ export async function runDailyMailImportForUser(
       }
       if (parsed.kind !== 'card_usage') {
         // 反映先が別コンテキストにある種別。捨てた件数が分かるよう種別ごとに数える
-        deferredKinds.set(parsed.kind, (deferredKinds.get(parsed.kind) ?? 0) + 1)
+        otherNotificationKinds.set(parsed.kind, (otherNotificationKinds.get(parsed.kind) ?? 0) + 1)
         continue
       }
 
-      const created = await createCardUsageCandidate(deps, parsed, at)
-      if (created === 'duplicate') {
+      const created = await createCardUsageCandidate(deps, parsed, params.userId, at)
+      if (created.kind === 'duplicate') {
         duplicateExcludedCount++
-        await publishDuplicateExcluded(deps, parsed.gmailMessageId, at)
+        await publishDuplicateExcluded(deps, created.judgment, at)
         continue
       }
       importedCount++
-      if (importedCount % PROGRESS_SAVE_INTERVAL === 0) {
+      importedThisRun++
+      if (importedThisRun % PROGRESS_SAVE_INTERVAL === 0) {
         batch = updateBatchImportedCount(batch, importedCount)
         await deps.dailyMailImportBatchRepository.save(batch)
       }
@@ -338,20 +396,39 @@ export async function runDailyMailImportForUser(
     // 失敗として閉じる。既に作った候補は残るが、翌日の再走査では重複除外されるので増えない。
     // 例外そのものは出さない — DB ドライバの例外は文・パラメータに userId（= LINE userID）を抱える
     const failureKind = e instanceof Error ? e.name : 'unknown'
+    // 不変条件違反はやり直しても直らない実装の誤り。一時障害と同じ `retryable` で記録すると
+    // 「待てば直る」として誰も追わなくなる
+    const retryable = !(e instanceof InvariantViolationError)
     console.error(
       `[transaction-import] メール取込の処理中に失敗した（${batchLabel(batch)}, ` +
-        `error=${failureKind}, imported=${importedCount}）— 翌日の再走査で続きを取り込む`,
+        `error=${failureKind}, retryable=${retryable}, imported=${importedCount}, ` +
+        `gmailMessageId=${processing ?? 'unknown'}）— ` +
+        (retryable ? '翌日の再走査で続きを取り込む' : '実装の誤りのため再実行では回復しない'),
     )
-    return fail('unexpected_error', `メール取込の処理に失敗した（${failureKind}）`, true)
+    // 失敗の詳細は呼出し元（API 応答を含む）へ渡るため、例外の種別名は載せずログだけに残す
+    // （DB ドライバの例外クラス名は内部構成の手がかりになる）
+    return fail('unexpected_error', 'メール取込の処理に失敗した', retryable)
   }
 
-  const deferredCount = [...deferredKinds.values()].reduce((sum, count) => sum + count, 0)
-  if (deferredCount > 0) {
+  const otherNotificationCount = [...otherNotificationKinds.values()].reduce(
+    (sum, count) => sum + count,
+    0,
+  )
+  if (otherNotificationCount > 0) {
     // 取り込まなかったことが記録に残るようにする（種別と件数のみ。本文・金額は出さない）
     console.info(
-      `[transaction-import] 取引候補にしない種別のメールを ${deferredCount} 件読み飛ばした` +
+      `[transaction-import] 取引候補にしない種別のメールを ${otherNotificationCount} 件読み飛ばした` +
         `（${batchLabel(batch)}, ` +
-        `${[...deferredKinds].map(([kind, count]) => `${kind}=${count}`).join(', ')}）`,
+        `${[...otherNotificationKinds].map(([kind, count]) => `${kind}=${count}`).join(', ')}）`,
+    )
+  }
+
+  if (failedCount > 0 || fetched.amazonMails.length > 0) {
+    // 取り込めなかったメールがあることを、バッチ記録を引かずに気づけるようにする。
+    // Amazon 注文確認メールの突合はまだ実装が無いため、取得したまま使っていない
+    console.info(
+      `[transaction-import] 取り込めなかったメールがある（${batchLabel(batch)}, ` +
+        `パース失敗=${failedCount}, 未処理の Amazon 注文確認メール=${fetched.amazonMails.length}）`,
     )
   }
 
@@ -379,33 +456,76 @@ export async function runDailyMailImportForUser(
     importedCount,
     duplicateExcludedCount,
     failedCount,
-    deferredCount,
+    otherNotificationCount,
   }
 }
 
-/** 保存済みの候補・同一バッチ内の既出、どちらの重複も Gmail message ID の一致で判定する */
-async function isDuplicate(
+/**
+ * メールの重複を判定する（08a §2「メールの重複を判定する」）。
+ *
+ * 保存済みの候補との一致と、同一バッチ内で同じメールが 2 度返った場合の一致を、どちらも
+ * Gmail message ID で見る。既存候補が判明した場合は判定結果にその候補 ID を載せる
+ * （重複除外イベントの主体を「どのメールか」ではなく「どの候補と重なったか」で残せる）。
+ */
+async function judgeDuplication(
   deps: DailyMailImportDeps,
   gmailMessageId: GmailMessageId,
   seenInBatch: ReadonlySet<GmailMessageId>,
-): Promise<boolean> {
-  if (seenInBatch.has(gmailMessageId)) return true
-  return (await deps.transactionCandidateRepository.findByGmailMessageId(gmailMessageId)) !== null
+  at: Date,
+): Promise<DuplicationJudgment | { kind: 'in_batch_duplicate'; gmailMessageId: GmailMessageId }> {
+  if (seenInBatch.has(gmailMessageId)) return { kind: 'in_batch_duplicate', gmailMessageId }
+  const existing = await deps.transactionCandidateRepository.findByGmailMessageId(gmailMessageId)
+  return DuplicationJudgmentSchema.parse(
+    existing === null
+      ? { kind: 'not_duplicate', detectedAt: at }
+      : {
+          kind: 'duplicate',
+          existingCandidateId: existing.common.transactionCandidateId,
+          basis: { kind: 'gmail_message_id', gmailMessageId },
+          detectedAt: at,
+        },
+  )
 }
 
+/**
+ * 重複除外イベントを発行する。既存候補が分かっているときはその候補 ID を、同一バッチ内の
+ * 重複（まだ候補が無い）ときは Gmail message ID を主体にする。
+ */
 async function publishDuplicateExcluded(
   deps: DailyMailImportDeps,
-  gmailMessageId: GmailMessageId,
+  judgment: DuplicateJudgmentForExclusion,
   at: Date,
 ): Promise<void> {
+  const gmailMessageId =
+    judgment.kind === 'in_batch_duplicate' ? judgment.gmailMessageId : gmailMessageIdOf(judgment)
   await deps.eventBus.publish(
     DuplicateExcludedSchema.parse({
       ...domainEventBase(at),
       type: 'DuplicateExcluded',
-      subject: { kind: 'gmail_message', gmailMessageId },
+      subject:
+        judgment.kind === 'in_batch_duplicate'
+          ? { kind: 'gmail_message', gmailMessageId }
+          : { kind: 'candidate', transactionCandidateId: judgment.existingCandidateId },
       basis: { kind: 'gmail_message_id', gmailMessageId },
     }),
   )
+}
+
+/** 重複除外の対象になりうる判定（保存済み候補との重複 / 同一バッチ内の重複） */
+type DuplicateJudgmentForExclusion =
+  | Extract<DuplicationJudgment, { kind: 'duplicate' }>
+  | { kind: 'in_batch_duplicate'; gmailMessageId: GmailMessageId }
+
+function gmailMessageIdOf(
+  judgment: Extract<DuplicationJudgment, { kind: 'duplicate' }>,
+): GmailMessageId {
+  // 本ワーカーが作る判定の根拠は常に Gmail message ID 一致（三項一致は CSV / PDF 取込の経路）
+  if (judgment.basis.kind !== 'gmail_message_id') {
+    throw new InvariantViolationError(
+      'メール取込の重複判定の根拠は Gmail message ID でなければならない',
+    )
+  }
+  return judgment.basis.gmailMessageId
 }
 
 /**
@@ -417,13 +537,19 @@ async function publishDuplicateExcluded(
 async function createCardUsageCandidate(
   deps: DailyMailImportDeps,
   parsed: Extract<SmbcMailParseResult, { kind: 'card_usage' }>,
+  userId: UserId,
   at: Date,
-): Promise<'created' | 'duplicate'> {
+): Promise<{ kind: 'created' } | { kind: 'duplicate'; judgment: DuplicateJudgmentForExclusion }> {
+  if (parsed.userId !== userId) {
+    // 持ち主はバッチが決める。パース結果はメール本文（外部入力）から作られるため、そこに
+    // 現れたユーザーを信じると相手の明細が本人の候補として保存されうる
+    throw new InvariantViolationError('パース結果の持ち主が取込対象のユーザーと一致しない')
+  }
   const candidate = TransactionCandidateSchema.parse({
     kind: 'normal',
     common: {
       transactionCandidateId: TransactionCandidateIdSchema.parse(newUlid()),
-      userId: parsed.userId,
+      userId,
       importSource: { kind: 'email', gmailMessageId: parsed.gmailMessageId },
       merchantName: parsed.merchantName,
       amount: parsed.amount,
@@ -437,7 +563,17 @@ async function createCardUsageCandidate(
       const concurrent = await deps.transactionCandidateRepository.findByGmailMessageId(
         parsed.gmailMessageId,
       )
-      if (concurrent !== null) return 'duplicate'
+      if (concurrent !== null) {
+        return {
+          kind: 'duplicate',
+          judgment: {
+            kind: 'duplicate',
+            existingCandidateId: concurrent.common.transactionCandidateId,
+            basis: { kind: 'gmail_message_id', gmailMessageId: parsed.gmailMessageId },
+            detectedAt: at,
+          },
+        }
+      }
     }
     throw e
   }
@@ -446,11 +582,11 @@ async function createCardUsageCandidate(
       ...domainEventBase(at),
       type: 'TransactionCandidateExtracted',
       transactionCandidateId: candidate.common.transactionCandidateId,
-      userId: parsed.userId,
+      userId,
       importSource: candidate.common.importSource,
     }),
   )
-  return 'created'
+  return { kind: 'created' }
 }
 
 /** 世帯一括取込のユーザー単位の結末 */

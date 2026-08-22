@@ -47,7 +47,11 @@ import type {
   UserId,
   UserRole,
 } from '@warimaru/domain'
-import { AllowlistSchema, InMemoryEventBus } from '@warimaru/domain'
+import {
+  AllowlistSchema,
+  InMemoryEventBus,
+  createUnimplementedSmbcMailParser,
+} from '@warimaru/domain'
 import {
   createDb,
   NeonAccountRepository,
@@ -105,7 +109,6 @@ import {
   createUnconfiguredGmailMailFetchGateway,
 } from './mail-fetch/gmail-mail-fetch-gateway.js'
 import { createMockGmailMailFetchGateway } from './mail-fetch/mock.js'
-import { createUnimplementedSmbcMailParser } from './mail-fetch/unimplemented-smbc-mail-parser.js'
 import { createLineTalkRoomMembershipGateway } from './line-talk-room-membership/line-talk-room-membership-gateway.js'
 import { createMockLineTalkRoomMembershipGateway } from './line-talk-room-membership/mock.js'
 import {
