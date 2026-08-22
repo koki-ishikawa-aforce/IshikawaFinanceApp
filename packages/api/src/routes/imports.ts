@@ -2,8 +2,6 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import {
   CsvImportCompletedSchema,
-  DailyMailImportBatchSchema,
-  ImportBatchIdSchema,
   ImportJobIdSchema,
   InvariantViolationError,
   NotFoundError,
@@ -29,8 +27,6 @@ import {
 } from '@warimaru/domain'
 import type {
   CsvImportStatusQuery,
-  DailyMailImportBatchRepository,
-  EventBus,
   PdfToCsvConverter,
   StatementImportJob,
   StatementImportJobRepository,
@@ -43,6 +39,11 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import {
+  DEFAULT_MAIL_SCAN_DAYS,
+  runDailyMailImportForUser,
+  type DailyMailImportDeps,
+} from '../daily-mail-import.js'
 import { parseStatementCsv } from '../parse-statement-csv.js'
 import { readJsonObjectBody } from '../read-json-object-body.js'
 
@@ -74,20 +75,24 @@ const ConfirmBodySchema = z.object({
   transactionCandidateIds: z.array(TransactionCandidateIdSchema).min(1).optional(),
 })
 
+/**
+ * 手動実行で指定できる取込対象期間の上限。Gmail の取得は 1 回 500 件が上限（#412）で、
+ * 長期間を指定すると上限超過で必ず失敗する。失敗してから気づくより、受け付けない側に倒す。
+ */
+const MAX_MAIL_BATCH_PERIOD_DAYS = 31
+
 const MailBatchBodySchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 })
 
-export interface ImportsRoutesDeps {
+/** メール取込バッチの手動トリガーは日次ワーカーと同じ経路を通すため、その依存を引き継ぐ */
+export interface ImportsRoutesDeps extends DailyMailImportDeps {
   csvImportStatusQuery: CsvImportStatusQuery
   statementImportJobRepository: StatementImportJobRepository
-  transactionCandidateRepository: TransactionCandidateRepository
-  dailyMailImportBatchRepository: DailyMailImportBatchRepository
   transactionRepository: TransactionRepository
   pdfToCsvConverter: PdfToCsvConverter
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
-  eventBus: EventBus
 }
 
 function assertJobOwnedByViewer(job: StatementImportJob, viewerId: UserId): void {
@@ -427,35 +432,68 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
     return c.json({ importJobId, confirmedCount, alreadyConfirmedCount, confirmedAt: now })
   })
 
-  /** メール取込バッチの手動トリガー（EventBridge 連携前の手動実行用） */
+  /**
+   * メール取込バッチの手動トリガー（EventBridge → Lambda の配線（#416）前の手動実行用）
+   *
+   * 起動記録を残すだけでなく、取得 → 重複除外 → パース → 候補生成 → 完了 まで進めてから
+   * 結果を返す（進行は `runDailyMailImportForUser` が持つ）。Gmail の取得と保存を待つため
+   * 応答までに数分かかりうる。日次の自動実行はスケジューラ側から同じ関数を呼ぶ。
+   *
+   * 取込対象期間は既定で「過去 5 日から現在まで」（論点22 / OQ-31）。from / to を渡すと
+   * その期間で実行する。期間の上限を `MAX_MAIL_BATCH_PERIOD_DAYS` に置いているのは、
+   * 手で長期間を指定すると Gmail の取得件数上限に当たって毎回失敗するため。
+   *
+   * 取込が失敗した場合は成功と同じ 200 では返さない（呼び出した人が「取り込めた」と
+   * 受け取ってしまう）。Gmail の連携が切れているなら再認可が要るので 409、外部の障害なら
+   * 時間をおいて再実行すれば直りうるので 502 を返す。結末の詳細は `result` に入る。
+   */
   app.post('/mail-batch', async c => {
     const rawBody = await c.req.text()
     const body = MailBatchBodySchema.parse(readJsonObjectBody(rawBody))
     const viewerId = c.get('viewerId')
-    const now = new Date()
-    const to = body.to ?? now
-    const from = body.from ?? new Date(to.getTime() - 24 * 60 * 60 * 1000)
-    // 取込対象期間の from < to ガードは domain の DailyMailImportBatchSchema が単一ソース。
-    // 境界でも同スキーマで parse することで、進行中バッチの照会（DB 参照）より前に不正な
-    // 期間を 400 で早期に弾く。ガードを API 側で再実装しない（CLAUDE.md 不変条件の一元化）。
-    const batch = DailyMailImportBatchSchema.parse({
-      kind: 'started',
-      common: {
-        importBatchId: ImportBatchIdSchema.parse(newUlid()),
-        userId: viewerId,
-        launchedAt: now,
-        targetPeriod: { from, to },
-      },
-    })
-    const inProgress = await deps.dailyMailImportBatchRepository.findInProgressByUser(viewerId)
-    if (inProgress !== null) {
-      throw new InvariantViolationError(
-        `進行中のメール取込バッチが既に存在する: ${inProgress.common.importBatchId}`,
+    // 期間の from < to ガードは domain の DailyMailImportBatchSchema が単一ソース。
+    // ワーカーが進行中バッチの照会（DB 参照）より前に同スキーマで parse するため、不正な
+    // 期間はここでも 400 で早期に弾かれる（ガードを API 側で再実装しない）
+    // 片方だけ指定されたときは、もう片方を既定の走査幅（過去 5 日）から補う
+    const period =
+      body.from === undefined && body.to === undefined
+        ? undefined
+        : {
+            from:
+              body.from ??
+              new Date(
+                (body.to ?? new Date()).getTime() - DEFAULT_MAIL_SCAN_DAYS * 24 * 60 * 60 * 1000,
+              ),
+            to: body.to ?? new Date(),
+          }
+    if (
+      period !== undefined &&
+      period.to.getTime() - period.from.getTime() > MAX_MAIL_BATCH_PERIOD_DAYS * 24 * 60 * 60 * 1000
+    ) {
+      return c.json(
+        {
+          error: `取込対象期間は ${MAX_MAIL_BATCH_PERIOD_DAYS} 日以内でなければならない`,
+          reason: 'period_too_long',
+        },
+        400,
       )
     }
-    await deps.dailyMailImportBatchRepository.save(batch)
-    // 実際のメール取得・候補生成はバッチワーカー側の責務（本 API は起動記録のみ）
-    return c.json({ batch }, 202)
+    const result = await runDailyMailImportForUser(deps, {
+      userId: viewerId,
+      ...(period === undefined ? {} : { period }),
+    })
+    const batch = await deps.dailyMailImportBatchRepository.findById(result.importBatchId)
+    if (result.status === 'failed') {
+      // 再認可が要る失敗（連携なし・失効）は利用者の操作待ちなので 409、それ以外は
+      // 外部の取得・保存の失敗なので 502
+      const status =
+        result.failureKind === 'gmail_not_authorized' ||
+        result.failureKind === 'oauth_revocation_detected'
+          ? 409
+          : 502
+      return c.json({ batch, result }, status)
+    }
+    return c.json({ batch, result })
   })
 
   return app

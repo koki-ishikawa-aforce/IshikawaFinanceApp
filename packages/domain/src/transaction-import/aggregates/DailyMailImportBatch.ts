@@ -13,6 +13,7 @@
  *  - 取込対象期間は from < to（過去 5 日再走査、OQ-31）
  */
 import { z } from 'zod'
+import { InvariantViolationError } from '../../shared/errors/DomainError'
 import { ImportBatchIdSchema, UserIdSchema } from '../../shared/ids'
 
 /** 取込対象期間 */
@@ -81,6 +82,26 @@ export function startBatchImporting(batch: StartedImportBatch, at: Date): Import
     common: batch.common,
     importStartedAt: at,
     importedCount: 0,
+  }) as ImportingImportBatch
+}
+
+/**
+ * 取込中の進捗を更新する（取込中 → 取込中）。
+ *
+ * 途中でワーカーが落ちたとき、どこまで取り込めていたかが記録に残るようにする
+ * （`StatementImportJob.updateProcessedCount` と同じ役割）。取り込み済み件数は減らない
+ * — 減る更新は「再走査で候補が消えた」ように見え、進捗の記録として成立しない。
+ */
+export function updateBatchImportedCount(
+  batch: ImportingImportBatch,
+  importedCount: number,
+): ImportingImportBatch {
+  if (importedCount < batch.importedCount) {
+    throw new InvariantViolationError('取込済み件数は減らせない')
+  }
+  return DailyMailImportBatchSchema.parse({
+    ...batch,
+    importedCount,
   }) as ImportingImportBatch
 }
 
