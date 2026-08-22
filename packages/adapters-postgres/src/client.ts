@@ -128,11 +128,30 @@ function createNeonHttpConnection(databaseUrl: string): DbConnection {
   return { db: drizzleNeonHttp(client, { schema }), close: () => Promise.resolve() }
 }
 
+const MODULE_NOT_FOUND_CODES = ['ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND']
+
+/**
+ * モジュールを解決できなかった（= そのパッケージがインストールされていない）失敗か。
+ * 読み込み時の例外は cause に包まれて届くことがあるため、連鎖をたどって判定する。
+ */
+function isModuleNotFound(error: unknown): boolean {
+  for (let current = error, depth = 0; current instanceof Error && depth < 10; depth++) {
+    const { code } = current as Error & { code?: unknown }
+    if (typeof code === 'string' && MODULE_NOT_FOUND_CODES.includes(code)) return true
+    if (/cannot find (?:module|package)/i.test(current.message)) return true
+    current = current.cause
+  }
+  return false
+}
+
 /**
  * ローカル開発 / 統合テスト専用ドライバの読み込み。
  * `pg` は devDependencies のため、本番向けにインストールした環境には存在しない（#428）。
  * その環境でローカル向けの接続先を指すとここで解決に失敗するので、どの設定が原因で
  * 何をすればよいかを添えて投げ直す（元のエラーは cause に残す）。
+ *
+ * 翻訳するのは**解決できなかった**失敗だけに絞る。ドライバの初期化時エラーまで同じ文面にすると、
+ * `pg` が居るのに落ちた場合に「依存が足りない」という誤った原因へ誘導してしまうため。
  */
 async function loadNodePgDriver() {
   try {
@@ -142,12 +161,13 @@ async function loadNodePgDriver() {
     ])
     return { drizzleNodePg, Pool }
   } catch (cause) {
+    if (!isModuleNotFound(cause)) throw cause
     throw new Error(
       'Failed to load the node-postgres driver (pg). ' +
         'pg is a devDependency and is absent from production installs (pnpm install --prod), ' +
         'which run on Neon over HTTP (neon-http). ' +
-        'Install dev dependencies for local development / integration tests, ' +
-        'or point DATABASE_URL at a Neon endpoint (or set DATABASE_DRIVER=neon-http).',
+        'Install dev dependencies (pnpm install) for local development and integration tests. ' +
+        'A production install expects DATABASE_URL to point at a Neon endpoint.',
       { cause },
     )
   }

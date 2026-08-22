@@ -1,75 +1,68 @@
 /**
- * ローカル開発専用ドライバ（`pg`）を本番向けの配布物から外したこと（#428）を守る。
+ * ローカル開発専用ドライバ（`pg`）を本番向けの配布物から外したこと（#428）を、
+ * 依存宣言の位置で守る。
  *
  * 本番は neon-http だけを使い、`pg` はローカル開発と統合テストでしか読み込まない（#349）。
- * その前提のもとで依存宣言も devDependencies に移したため、守るべきことが 2 つある:
+ * その前提のもとで依存宣言も devDependencies へ移したが、`dependencies` に戻っても
+ * **動いてしまう**（本番でも読み込まれないまま配布物にだけ入る）ため、回帰は誰にも見えない。
  *
- * 1. 宣言が `dependencies` に戻っていないこと（戻ると本番向けインストールに再び含まれる。
- *    動くので誰も気づかず、配布物が黙って太る）
- * 2. `pg` が居ない環境でローカル向けの接続先を指したときに、モジュール解決エラーのままではなく
- *    原因と対処が読み取れるエラーになること（本番向けインストールのままローカル DB を指す、
- *    という設定ミスがこの経路の唯一の踏み方で、素のエラーだと DB 障害と見分けが付かない）
+ * 走査対象を adapters-postgres 1 つに閉じないのは、`pg` を本番向けインストールへ引き戻すのに
+ * 「adapters-postgres の宣言を戻す」以外の道があるため。ワークスペース内のどのパッケージが
+ * `dependencies` に足しても同じ結果になる（noStaticNodePgImport.test.ts が
+ * 「api は pg も drizzle-orm も依存に持たない」を走査範囲の前提に置いているのと同じ理由）。
+ *
+ * ドライバの読み込みそのものの振る舞いは nodePgDriverLoadError.test.ts が受け持つ。
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// `pg` が解決できない環境（本番向けインストール）を再現する。
-// mock ファクトリの例外はそのまま import の失敗になるため、実際に居ない状態と同じ経路を通る。
-vi.mock('pg', () => {
-  throw new Error("Cannot find module 'pg'")
-})
-
 interface PackageManifest {
+  name?: string
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
 }
 
-const manifest = JSON.parse(
-  readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8'),
-) as PackageManifest
+const REPO_ROOT = fileURLToPath(new URL('../../../..', import.meta.url))
+const SELF = 'packages/adapters-postgres/package.json'
+
+/** ワークスペースの全 manifest（root + packages/* + e2e）。パスは表示のためリポジトリ相対で持つ */
+function workspaceManifests(): { path: string; manifest: PackageManifest }[] {
+  const packagePaths = readdirSync(join(REPO_ROOT, 'packages')).map(
+    entry => `packages/${entry}/package.json`,
+  )
+  return ['package.json', ...packagePaths, 'e2e/package.json'].map(path => ({
+    path,
+    manifest: JSON.parse(readFileSync(join(REPO_ROOT, path), 'utf8')) as PackageManifest,
+  }))
+}
 
 describe('pg の依存宣言（#428）', () => {
-  it('pg と型定義は devDependencies にだけ宣言されている', () => {
-    expect(manifest.devDependencies).toHaveProperty('pg')
-    expect(manifest.devDependencies).toHaveProperty('@types/pg')
-    expect(manifest.dependencies ?? {}).not.toHaveProperty('pg')
-    expect(manifest.dependencies ?? {}).not.toHaveProperty('@types/pg')
+  const manifests = workspaceManifests()
+  const self = manifests.find(({ path }) => path === SELF)?.manifest
+
+  it('ワークスペースのどのパッケージも pg を dependencies に宣言していない', () => {
+    const declaredInProduction = manifests
+      .filter(({ manifest }) => manifest.dependencies?.['pg'] !== undefined)
+      .map(({ path }) => path)
+
+    expect(declaredInProduction).toEqual([])
   })
 
-  it('本番で使うドライバ（@neondatabase/serverless）は dependencies に残っている', () => {
-    // 「全部 devDependencies へ移した」という別の壊れ方を、上のテストだけでは検出できない
-    expect(manifest.dependencies).toHaveProperty('@neondatabase/serverless')
-    expect(manifest.devDependencies ?? {}).not.toHaveProperty('@neondatabase/serverless')
-  })
-})
-
-describe('pg が居ない環境での接続（#428）', () => {
-  const LOCAL_URL = 'postgres://postgres:postgres@localhost:5432/warimaru_dev'
-  const NEON_URL = 'postgresql://user:pass@ep-cool-block-123.ap-northeast-1.aws.neon.tech/warimaru'
-
-  it('node-postgres を選ぶと、原因と対処を添えたエラーになる', async () => {
-    const { createDbConnection } = await import('../../src/client')
-
-    const error = await createDbConnection({
-      databaseUrl: LOCAL_URL,
-      isProduction: false,
-    }).catch((e: unknown) => e)
-
-    expect(error).toBeInstanceOf(Error)
-    expect((error as Error).message).toMatch(/devDependency/)
-    expect((error as Error).message).toMatch(/DATABASE_URL/)
-    // 元のモジュール解決エラーは調査のために cause へ残す
-    expect((error as Error).cause).toBeInstanceOf(Error)
+  it('adapters-postgres は pg と型定義を devDependencies に宣言している', () => {
+    // 「dependencies に無い」だけだと、宣言ごと消えた（= 手元でも解決できない）状態も通ってしまう
+    expect(self?.devDependencies).toHaveProperty('pg')
+    expect(self?.devDependencies).toHaveProperty('@types/pg')
   })
 
-  it('neon-http（本番相当）の接続は pg が居なくても作れる', async () => {
-    // 翻訳したエラーが本番経路にまで漏れていないことを対にして固定する
-    const { createDbConnection } = await import('../../src/client')
-
-    const connection = await createDbConnection({ databaseUrl: NEON_URL, isProduction: true })
-    await connection.close()
-
-    expect(connection.db).toBeDefined()
+  it('本番の neon-http 経路が使う依存は dependencies に残っている', () => {
+    // 「全部 devDependencies へ移した」という別の壊れ方は、上の 2 件では検出できない。
+    // src/client.ts が静的 import する 2 つ（@neondatabase/serverless と drizzle-orm）が対象
+    expect(self?.dependencies).toHaveProperty('@neondatabase/serverless')
+    expect(self?.dependencies).toHaveProperty('drizzle-orm')
+    expect(self?.devDependencies ?? {}).not.toHaveProperty('@neondatabase/serverless')
+    expect(self?.devDependencies ?? {}).not.toHaveProperty('drizzle-orm')
   })
 })
