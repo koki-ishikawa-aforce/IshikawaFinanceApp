@@ -25,9 +25,14 @@ pnpm --filter @warimaru/web dev:mock
   `apiMutate`）が実ネットワークではなく固定 fixture（`src/mocks/`）を返す。
 - **ロール／テーマの切り替え**: URL クエリ `?mockRole=honey` で honey テーマ、無指定または
   `?mockRole=darling` で darling テーマ。ロールは `/api/me` のモック応答経由でテーマに反映される。
-- **fixture の対象**: 現状はダッシュボード（`/api/me`・`/api/dashboard/kpis`・
-  `/api/dashboard/category-breakdown`）。未定義のパスは実 API の 404 相当を返す（画面はエラー状態を表示）。
-  他画面を足すときは `src/mocks/fixtures.ts` に fixture を追加し、`src/mocks/resolve.ts` に経路を追加する。
+- **世帯の状態（シナリオ）の切り替え**: URL クエリ `?mockScenario=accounts-unregistered` で、
+  別銀行貯蓄口座・NISA 口座が未登録の世帯になる（無指定は登録済みの `default`）。未登録のときだけ
+  出る画面（設定 > 口座タブの「別銀行貯蓄口座を追加」「NISA口座を追加」）を再現するためのもので、
+  口座に由来する fixture（口座一覧・残高一覧・残高鮮度・資産合計・資産推移・ダッシュボードの KPI）
+  が揃って未登録の状態を返す。シナリオを足すときは `src/mocks/scenario.ts` に値を追加する。
+- **fixture の対象**: 用意済みの経路は `src/mocks/resolve.ts` の一覧が正。未定義のパスは実 API の
+  404 相当を返す（画面はエラー状態を表示）。他画面を足すときは `src/mocks/fixtures.ts` に fixture を
+  追加し、`src/mocks/resolve.ts` に経路を追加する。
 - **通常ビルドへの影響**: モック分岐は `process.env.NEXT_PUBLIC_MOCK` の定数畳み込みで
   デッドコード除去され、`src/mocks/` は動的 import のため通常の `pnpm build` には読み込まれない。
 
@@ -43,8 +48,9 @@ pnpm --filter @warimaru/web build:mock
 - **サブパス配信**: `NEXT_PUBLIC_BASE_PATH=/<リポジトリ名>/pr-<番号>` を渡すと、その
   パス配下へ置ける成果物になる（Next.js の `basePath`）。未設定なら空文字で、通常の
   ビルド・ローカル開発・VRT の挙動は変わらない。
-- **ロールの保持**: `?mockRole=honey` で指定したロールはタブ単位（`sessionStorage`）で
-  保持される。クエリを持たない画面遷移やリロードの後もテーマとデータが食い違わない。
+- **ロール・シナリオの保持**: `?mockRole=honey` や `?mockScenario=accounts-unregistered` で
+  指定した値はタブ単位（`sessionStorage`）で保持される。クエリを持たない画面遷移やリロードの
+  後もテーマとデータが食い違わない。
 
 ## E2E テスト（Playwright）
 
@@ -61,7 +67,9 @@ pnpm --filter @warimaru/web test:e2e
 
 ### ビジュアルリグレッションテスト
 
-`e2e/visual-regression.spec.ts` が 6画面（dashboard / transactions / balances / reports / settings / onboarding）× 2テーマ（darling / honey）のスクリーンショット比較テストを実行する。ベースライン画像は `e2e/__screenshots__/` に格納され、Git で管理する。
+`e2e/visual-regression.spec.ts` が `e2e/screens.ts` の画面一覧 × 2テーマ（darling / honey）のスクリーンショット比較テストを実行する（一覧を 1 か所に置いているのは、画面を足すときに直す場所を分散させないため）。操作して初めて現れる画面（一括分類・遡及適用）は `e2e/classification-flows.spec.ts` が別に撮る。ベースライン画像は `e2e/__screenshots__/` に格納され、Git で管理する。
+
+対象画面を足すときは `e2e/screens.ts` に 1 行足す。未登録・空といった特定の状態でしか出ない要素は、モック起動モードのシナリオ（`?mockScenario=`）を付けた URL を別の画面として並べる。
 
 #### ベースライン画像の更新手順
 

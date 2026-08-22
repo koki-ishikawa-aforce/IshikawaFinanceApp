@@ -6,7 +6,34 @@
  * 実 API と同じ Zod スキーマ検証を通す。ここにはドメインの不変条件・配色などの
  * 知識は持ち込まない（純粋な表示用サンプル値のみ）。
  */
-import type { DashboardMode, UserRole } from '@warimaru/domain'
+import type { DashboardMode, UserRole, YearMonth } from '@warimaru/domain'
+import { shiftMonth } from '@/lib/month'
+import type { MockScenario } from './scenario'
+
+/**
+ * シャドウ口座（別銀行貯蓄口座・NISA 口座。利用者が自分で登録し、残高も手入力する口座）
+ * が登録済みか。`accounts-unregistered` シナリオでは、これらを持つ fixture から
+ * 一律に取り除く（設定では未登録なのに残高一覧には出ている、という食い違いを作らない）。
+ */
+function hasShadowAccounts(scenario: MockScenario): boolean {
+  return scenario === 'default'
+}
+
+/**
+ * 口座ごとの金額の素の値。ダッシュボードの KPI と残高画面の資産合計を同じ値から導き、
+ * 同じプレビューで画面ごとに違う合計が出ないようにする。
+ * 別銀行貯蓄の 2,000,000 は {@link accountBalanceListFixture} の 2 口座
+ * （楽天銀行 1,740,000 + ゆうちょ銀行 260,000）の合算。
+ */
+function accountAmounts(scenario: MockScenario) {
+  const shadow = hasShadowAccounts(scenario)
+  return {
+    smbcBalance: 1500000,
+    otherSavingsBalance: shadow ? 2000000 : 0,
+    nisaContributionAccumulated: shadow ? 1200000 : 0,
+    cardUnpaidTotal: 120000,
+  }
+}
 
 /** GET /api/me */
 export function meFixture(role: UserRole): unknown {
@@ -16,25 +43,35 @@ export function meFixture(role: UserRole): unknown {
   }
 }
 
-/** GET /api/dashboard/kpis */
-export function dashboardKpisFixture(mode: DashboardMode): unknown {
+/**
+ * GET /api/dashboard/kpis
+ *
+ * 貯蓄・NISA の額は口座の登録状況に従い、資産合計はビューの定義どおりに求める
+ * （貯蓄残高 = SMBC + 別銀行貯蓄合算、資産合計 = 貯蓄残高 + NISA − カード未払金。
+ * `DashboardKpisView` を参照）。素の値は残高画面と共有しているので、シャドウ口座が
+ * 未登録のシナリオでもダッシュボードと残高画面で合計が食い違わない。
+ */
+export function dashboardKpisFixture(mode: DashboardMode, scenario: MockScenario): unknown {
+  const amounts = accountAmounts(scenario)
+  const savingsBalance = amounts.smbcBalance + amounts.otherSavingsBalance
+  const assets = {
+    savingsBalance,
+    nisaContributionAccumulated: amounts.nisaContributionAccumulated,
+    totalAssets: savingsBalance + amounts.nisaContributionAccumulated - amounts.cardUnpaidTotal,
+  }
   if (mode === 'personal') {
     return {
       mode,
       currentMonthSpending: 86000,
       spousePersonalTotal: 72000,
-      savingsBalance: 3240000,
-      nisaContributionAccumulated: 1200000,
-      totalAssets: 4180000,
+      ...assets,
     }
   }
   return {
     mode,
     currentMonthSpending: 248000,
     spousePersonalTotal: 72000,
-    savingsBalance: 3240000,
-    nisaContributionAccumulated: 1200000,
-    totalAssets: 4180000,
+    ...assets,
   }
 }
 
@@ -311,23 +348,27 @@ export function expenseTypeListFixture(): unknown {
 }
 
 /** GET /api/balances */
-export function accountBalanceListFixture(): unknown {
+export function accountBalanceListFixture(scenario: MockScenario): unknown {
+  const automanaged = [
+    {
+      kind: 'smbc_bank',
+      accountId: 'ACC_MOCK_001',
+      displayName: '三井住友銀行',
+      currentBalance: 1500000,
+      lastUpdatedAt: '2026-07-23T00:00:00.000Z',
+    },
+    {
+      kind: 'mitsui_sumitomo_card',
+      accountId: 'ACC_MOCK_002',
+      displayName: '三井住友カード',
+      currentMonthUnpaidTotal: 120000,
+      lastSettledAt: '2026-07-10T00:00:00.000Z',
+    },
+  ]
+  if (!hasShadowAccounts(scenario)) return { items: automanaged }
   return {
     items: [
-      {
-        kind: 'smbc_bank',
-        accountId: 'ACC_MOCK_001',
-        displayName: '三井住友銀行',
-        currentBalance: 1500000,
-        lastUpdatedAt: '2026-07-23T00:00:00.000Z',
-      },
-      {
-        kind: 'mitsui_sumitomo_card',
-        accountId: 'ACC_MOCK_002',
-        displayName: '三井住友カード',
-        currentMonthUnpaidTotal: 120000,
-        lastSettledAt: '2026-07-10T00:00:00.000Z',
-      },
+      ...automanaged,
       {
         kind: 'other_savings',
         accountId: 'ACC_MOCK_003',
@@ -360,8 +401,10 @@ export function accountBalanceListFixture(): unknown {
  * 残高鮮度は本人所有の口座のみを返す（P2-B5 / AT-404）。別銀行貯蓄口座は
  * 1 人 1 件（UNIQUE (owner_user_id, kind)）なので、閲覧者本人の 1 件だけを返し、
  * 鮮度アラートの見た目を両テーマで確認できるようにする。
+ * 鮮度の対象は別銀行貯蓄口座（手入力の口座）なので、それが未登録のシナリオでは空になる。
  */
-export function balanceFreshnessFixture(): unknown {
+export function balanceFreshnessFixture(scenario: MockScenario): unknown {
+  if (!hasShadowAccounts(scenario)) return { items: [] }
   return {
     items: [
       {
@@ -375,20 +418,23 @@ export function balanceFreshnessFixture(): unknown {
   }
 }
 
-/** GET /api/balances/total */
-export function assetTotalFixture(): unknown {
+/** GET /api/balances/total（合計は内訳から求める。内訳と合計が食い違わないため） */
+export function assetTotalFixture(scenario: MockScenario): unknown {
+  const amounts = accountAmounts(scenario)
   return {
     asOf: '2026-07-24T00:00:00.000Z',
-    smbcBalance: 1500000,
-    otherSavingsBalance: 2000000,
-    nisaContributionAccumulated: 1200000,
-    cardUnpaidTotal: 120000,
-    total: 4580000,
+    ...amounts,
+    total:
+      amounts.smbcBalance +
+      amounts.otherSavingsBalance +
+      amounts.nisaContributionAccumulated -
+      amounts.cardUnpaidTotal,
   }
 }
 
 /** GET /api/balances/time-series */
-export function balanceTimeSeriesFixture(): unknown {
+export function balanceTimeSeriesFixture(scenario: MockScenario): unknown {
+  const registered = hasShadowAccounts(scenario)
   return {
     yearMonthRange: { from: '2026-01', to: '2026-07' },
     smbc: [
@@ -396,16 +442,21 @@ export function balanceTimeSeriesFixture(): unknown {
       { date: '2026-04-30T00:00:00.000Z', amount: 1350000 },
       { date: '2026-07-23T00:00:00.000Z', amount: 1500000 },
     ],
-    otherSavings: [
-      { date: '2026-01-31T00:00:00.000Z', amount: 1600000 },
-      { date: '2026-04-30T00:00:00.000Z', amount: 1680000 },
-      { date: '2026-07-20T00:00:00.000Z', amount: 1740000 },
-    ],
-    nisaContribution: [
-      { date: '2026-01-31T00:00:00.000Z', amount: 900000 },
-      { date: '2026-04-30T00:00:00.000Z', amount: 1050000 },
-      { date: '2026-07-01T00:00:00.000Z', amount: 1200000 },
-    ],
+    // 未登録の口座は推移そのものが存在しない（0 の系列を返すと「0 円で推移した」に読める）
+    otherSavings: registered
+      ? [
+          { date: '2026-01-31T00:00:00.000Z', amount: 1600000 },
+          { date: '2026-04-30T00:00:00.000Z', amount: 1680000 },
+          { date: '2026-07-20T00:00:00.000Z', amount: 1740000 },
+        ]
+      : [],
+    nisaContribution: registered
+      ? [
+          { date: '2026-01-31T00:00:00.000Z', amount: 900000 },
+          { date: '2026-04-30T00:00:00.000Z', amount: 1050000 },
+          { date: '2026-07-01T00:00:00.000Z', amount: 1200000 },
+        ]
+      : [],
     cardUnpaid: [
       { date: '2026-01-31T00:00:00.000Z', amount: 95000 },
       { date: '2026-04-30T00:00:00.000Z', amount: 110000 },
@@ -456,32 +507,45 @@ export function settingsProfileFixture(role: UserRole): unknown {
   }
 }
 
-/** GET /api/accounts */
-export function ownAccountListFixture(): unknown {
+/**
+ * GET /api/accounts
+ *
+ * 実 API は本人所有の口座だけを返すため、所有者は閲覧ロールに合わせる
+ * （固定にすると honey で開いたときに相手所有の口座一覧を見ている状態になる）。
+ * `accounts-unregistered` では三井住友系（自動管理）だけを返す。設定 > 口座タブの
+ * 「別銀行貯蓄口座を追加」「NISA口座を追加」は未登録のときだけ出るため、
+ * この状態を用意しないと両ボタンの見た目を自動で写せない（#425）。
+ */
+export function ownAccountListFixture(role: UserRole, scenario: MockScenario): unknown {
+  const ownerUserId = role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK'
+  const automanaged = [
+    {
+      kind: 'smbc_bank',
+      common: {
+        accountId: 'ACC_MOCK_001',
+        ownerUserId,
+        activeness: { kind: 'active' },
+      },
+      balance: { currentBalance: 1500000 },
+    },
+    {
+      kind: 'mitsui_sumitomo_card',
+      common: {
+        accountId: 'ACC_MOCK_002',
+        ownerUserId,
+        activeness: { kind: 'active' },
+      },
+    },
+  ]
+  if (!hasShadowAccounts(scenario)) return { items: automanaged }
   return {
     items: [
-      {
-        kind: 'smbc_bank',
-        common: {
-          accountId: 'ACC_MOCK_001',
-          ownerUserId: 'U_DARLING_MOCK',
-          activeness: { kind: 'active' },
-        },
-        balance: { currentBalance: 1500000 },
-      },
-      {
-        kind: 'mitsui_sumitomo_card',
-        common: {
-          accountId: 'ACC_MOCK_002',
-          ownerUserId: 'U_DARLING_MOCK',
-          activeness: { kind: 'active' },
-        },
-      },
+      ...automanaged,
       {
         kind: 'other_savings',
         common: {
           accountId: 'ACC_MOCK_003',
-          ownerUserId: 'U_DARLING_MOCK',
+          ownerUserId,
           activeness: { kind: 'active' },
         },
         bankName: '楽天銀行',
@@ -491,7 +555,7 @@ export function ownAccountListFixture(): unknown {
         kind: 'nisa',
         common: {
           accountId: 'ACC_MOCK_004',
-          ownerUserId: 'U_DARLING_MOCK',
+          ownerUserId,
           activeness: { kind: 'active' },
         },
         brokerageName: { kind: 'sbi' },
@@ -522,6 +586,127 @@ export function monthlyLimitListFixture(): unknown {
         effectiveFrom: '2026-01-01T00:00:00.000Z',
       },
     ],
+  }
+}
+
+/**
+ * GET /api/expense-settlement/cycles
+ *
+ * 表示中の月のサイクルを集積中で返す。集積中は「按分子取引を生成」「CSV 確定」が
+ * 並ぶ状態で、経費精算画面の操作が最も多く出る（未開始だとカードが空状態と
+ * 「サイクルを開始」だけになり、画面のほとんどが写らない）。
+ */
+export function currentCycleFixture(yearMonth: YearMonth): unknown {
+  return {
+    cycle: {
+      kind: 'accumulating',
+      common: {
+        monthlyExpenseCycleId: 'MEC_MOCK_001',
+        targetYearMonth: yearMonth,
+        // 月次サイクルは月初に始まる（#485）。表示中の月に合わせて食い違わせない
+        cycleStartedAt: `${yearMonth}-01T00:00:00.000Z`,
+      },
+    },
+  }
+}
+
+/**
+ * GET /api/expense-settlement
+ *
+ * 費用区分別の累計は、上限つき（上限に到達した状態）と上限なしの両方を返して
+ * 行の見え方を一覧で確認できるようにする。expenseTypeId は
+ * {@link expenseTypeListFixture} と揃える（揃っていないと画面が名前を解決できず
+ * ID がそのまま出る）。日時は JST の暦日が UTC と食い違わないよう 15:00Z より前に置く。
+ *
+ * 数値は集約の規則どおりに組む（上限超過分は按分子取引へ回るので、
+ * 累計 = 全額計上ぶん + 上限までの残り、按分子取引の金額 = 超過ぶん）。
+ * 画面のどこかで足し算が合わないと、プレビューを見た人が実装の不具合と読む。
+ *
+ * 累計と按分子取引はどの月を開いても同じ内容を返す（モックは月ごとのデータを持たない）。
+ * 直近の確定サイクルだけは表示中の月の前月に合わせる。固定にすると、その月を開いたときに
+ * 「集積中のサイクル」と「同じ月が最終確定済み」が同じ画面に並んで矛盾するため。
+ *
+ * なお、この画面が上限の使い切り具合をどう見せるか（進捗バーと上限額を出すか）は
+ * DESIGN.md §1 と現行実装が食い違っており #505 で判断待ち。ここは現状の画面を
+ * そのまま写すためのデータで、どちらが正かを先取りしない。
+ */
+export function expenseSettlementViewFixture(role: UserRole, yearMonth: YearMonth): unknown {
+  const userId = role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK'
+  const previousMonth = shiftMonth(yearMonth, -1)
+  return {
+    userId,
+    currentAccumulations: [
+      {
+        kind: 'capped',
+        accumulationId: 'ETA_MOCK_001',
+        expenseTypeId: 'ET_MOCK_001',
+        userId,
+        monthlyCap: 30000,
+        currentTotal: 30000,
+        capReached: {
+          kind: 'reached',
+          reachedAt: '2026-07-16T02:10:00.000Z',
+          reachingTransactionId: 'TXN_MOCK_202',
+        },
+        transactionRefs: [
+          {
+            transactionId: 'TXN_MOCK_201',
+            occurredAt: '2026-07-09T01:30:00.000Z',
+            amount: 20800,
+            allocation: { kind: 'full' },
+          },
+          {
+            transactionId: 'TXN_MOCK_202',
+            occurredAt: '2026-07-16T02:10:00.000Z',
+            amount: 12400,
+            allocation: {
+              kind: 'partial',
+              expenseAllocatedAmount: 9200,
+              personalAllocatedAmount: 3200,
+              childTransactionId: 'TXN_MOCK_301',
+            },
+          },
+        ],
+      },
+      {
+        kind: 'unlimited',
+        accumulationId: 'ETA_MOCK_002',
+        expenseTypeId: 'ET_MOCK_002',
+        userId,
+        currentTotal: 7920,
+        transactionRefs: [
+          {
+            transactionId: 'TXN_MOCK_203',
+            occurredAt: '2026-07-11T05:00:00.000Z',
+            amount: 7920,
+            allocation: { kind: 'full' },
+          },
+        ],
+      },
+    ],
+    currentChildTransactions: [
+      {
+        childTransactionId: 'TXN_MOCK_301',
+        parentTransactionId: 'TXN_MOCK_202',
+        userId,
+        personalAmount: 3200,
+        personalExpenseClass: role === 'honey' ? 'personal_honey' : 'personal_darling',
+        derivedAt: '2026-07-16T02:10:00.000Z',
+        prorationBasis: {
+          kind: 'cap_excess_fifo',
+          monthlyExpenseCycleId: 'MEC_MOCK_001',
+          proratedAt: '2026-07-16T02:10:00.000Z',
+          capRemainderAtExcess: 9200,
+        },
+      },
+    ],
+    latestFinalizedCycle: {
+      monthlyExpenseCycleId: 'MEC_MOCK_000',
+      targetYearMonth: previousMonth,
+      // 前月分は当月の 10 日に確定した、という並び（暦日が UTC とずれない 15:00Z 前）
+      finalizedAt: `${yearMonth}-10T03:00:00.000Z`,
+      unapprovedTotal: 4800,
+    },
   }
 }
 
