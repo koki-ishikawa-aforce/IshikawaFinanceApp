@@ -9,8 +9,14 @@ const ROLE_ICONS: Record<UserRole, { Icon: IconType; colorVar: string }> = {
 
 interface RoleIconProps {
   role: UserRole
-  /** 大きさは DESIGN.md §4 のスケール（`common.module.css` の `.iconSm` 等）を渡す */
-  className?: string
+  /**
+   * 大きさは DESIGN.md §4 のスケール（`common.module.css` の `.iconSm` 等）を渡す。
+   *
+   * 省略できるようにすると react-icons 既定の 1em で描画されスケールの外に出るため、
+   * 省略不可にしている（CSS モジュールのクラス名は `string | undefined` 型のため、
+   * 型自体は undefined を受けるが、プロパティを書き忘れればコンパイルエラーになる）。
+   */
+  className: string | undefined
 }
 
 export function RoleIcon({ role, className }: RoleIconProps) {

@@ -44,6 +44,12 @@
   height: var(--icon-lg);
 }
 
+/** 文章の途中に置くアイコン（注意書きの先頭など）。行の中で文字の高さに揃える */
+.iconInline {
+  composes: iconSm;
+  vertical-align: middle;
+}
+
 /** アイコン + ラベルを並べるボタン・リンクに併記する。ボタン種別のクラスと組み合わせて使う */
 .iconLabel {
   display: inline-flex;

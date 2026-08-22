@@ -1051,7 +1051,7 @@ function SettingsPageContent() {
       {tab === 'classification' && <LearningRulesTab />}
 
       <Link href="/onboarding" className={styles.onboardingLink}>
-        <LuRocket aria-hidden="true" className={ui.iconSm} style={{ verticalAlign: 'middle' }} />{' '}
+        <LuRocket aria-hidden="true" className={ui.iconInline} />{' '}
         はじめての設定（オンボーディング）を開く
       </Link>
     </main>

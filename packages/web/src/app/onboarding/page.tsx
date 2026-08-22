@@ -120,12 +120,7 @@ function ErrorNote({ error }: { error: unknown }) {
   if (message === null) return null
   return (
     <p className={styles.note}>
-      <LuTriangleAlert
-        aria-hidden="true"
-        className={ui.iconSm}
-        style={{ verticalAlign: 'middle' }}
-      />{' '}
-      {message}
+      <LuTriangleAlert aria-hidden="true" className={ui.iconInline} /> {message}
     </p>
   )
 }
@@ -315,7 +310,11 @@ export default function OnboardingPage() {
             }
           >
             <span className={styles.stepIndex}>
-              {i < stepIndex ? <LuCheck aria-label="完了" className={ui.iconSm} /> : i + 1}
+              {i < stepIndex ? (
+                <LuCheck role="img" aria-label="完了" className={ui.iconSm} />
+              ) : (
+                i + 1
+              )}
             </span>
             <span className={styles.stepLabel}>{s.label}</span>
           </div>
@@ -378,11 +377,7 @@ export default function OnboardingPage() {
           </p>
           {talkRoomId === null && (
             <p className={styles.note}>
-              <LuTriangleAlert
-                aria-hidden="true"
-                className={ui.iconSm}
-                style={{ verticalAlign: 'middle' }}
-              />{' '}
+              <LuTriangleAlert aria-hidden="true" className={ui.iconInline} />{' '}
               参加を記録するトークルームを特定できません。共通トークルーム内からこの画面を開き直してください。
             </p>
           )}

@@ -152,7 +152,7 @@
   border-radius: var(--radius-full);
   background: var(--accent);
   color: var(--white);
-  /* 中身はアイコンのみ。react-icons の既定サイズ 1em の基準としてこの font-size が効く */
+  /* 中身はアイコンのみ。アイコンの大きさ（--icon-sm）を解決する基準としてこの font-size が効く */
   font-size: var(--text-xl);
   cursor: pointer;
   box-shadow: var(--shadow-lg);

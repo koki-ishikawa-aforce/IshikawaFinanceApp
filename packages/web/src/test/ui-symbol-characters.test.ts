@@ -1,6 +1,6 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { join, sep } from 'node:path'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { collectSources, isTsOrTsx, type Source } from './sources'
 
 /**
  * 記号文字を UI テキストとして使わせないためのリグレッションガード(#344)。
@@ -22,37 +22,22 @@ const FORBIDDEN = [
   { code: 0x203a, name: 'SINGLE RIGHT-POINTING ANGLE QUOTATION MARK' },
 ] as const
 
-/** vitest の root は packages/web なので、そこからの相対で src を辿る */
-const SRC_DIR = join(process.cwd(), 'src')
-
-/** UI 文言は .tsx だけでなく .ts のラベル定義にも置かれるため、両方を走査する */
-function collectSourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      // __tests__ とこのガード自身の置き場は、記号を検証データとして持ちうるので除外する
-      return entry.name === '__tests__' || entry.name === 'test' ? [] : collectSourceFiles(path)
-    }
-    return entry.isFile() && /\.tsx?$/.test(entry.name) ? [path] : []
-  })
-}
-
-function findOffenders(files: readonly string[], char: string): string[] {
-  return files
-    .filter(path => readFileSync(path, 'utf8').includes(char))
-    .map(path => path.slice(SRC_DIR.length + sep.length))
+/** 走査規約（対象の拡張子・除外ディレクトリ）は `sources.ts` に集約している */
+function findOffenders(sources: readonly Source[], char: string): string[] {
+  return sources.filter(({ content }) => content.includes(char)).map(({ path }) => path)
 }
 
 describe('UI テキストの記号文字', () => {
-  const files = collectSourceFiles(SRC_DIR)
+  // UI 文言は .tsx だけでなく .ts のラベル定義にも置かれるため、両方を走査する
+  const sources = collectSources(isTsOrTsx)
 
   it.each(FORBIDDEN)('$name を含むソースが無い', ({ code }) => {
-    expect(findOffenders(files, String.fromCodePoint(code))).toEqual([])
+    expect(findOffenders(sources, String.fromCodePoint(code))).toEqual([])
   })
 
   it('記号を置き換えた画面のソースを走査対象に含めている', () => {
     // 走査が対象を取りこぼしていると、上のテストは中身が空のまま緑になる
-    expect(files.map(path => path.slice(SRC_DIR.length + sep.length))).toEqual(
+    expect(sources.map(({ path }) => path)).toEqual(
       expect.arrayContaining([
         join('app', 'transactions', 'page.tsx'),
         join('app', 'settings', 'page.tsx'),
@@ -66,7 +51,7 @@ describe('UI テキストの記号文字', () => {
 
   it('禁止文字を含むファイルを検出できる', () => {
     // 検出ロジック自体が壊れると全件 0 件で緑になるため、既知の陽性で固定する
-    const guardItself = join(SRC_DIR, 'test', 'ui-symbol-characters.test.ts')
-    expect(findOffenders([guardItself], 'FORBIDDEN')).toHaveLength(1)
+    const guardItself: Source = { path: 'guard.ts', content: 'const FORBIDDEN = []' }
+    expect(findOffenders([guardItself], 'FORBIDDEN')).toEqual(['guard.ts'])
   })
 })

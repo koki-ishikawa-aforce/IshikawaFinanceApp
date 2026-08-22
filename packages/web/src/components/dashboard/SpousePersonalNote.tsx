@@ -50,7 +50,7 @@ export function SpousePersonalNote({ amount, theme }: SpousePersonalNoteProps) {
       aria-label={`${partner.name}の個人費 合計 ${formatMoney(amount)}`}
     >
       <span className={styles.label}>
-        <span className={styles.emoji}>
+        <span className={styles.roleMark}>
           <RoleIcon role={partner.role} className={ui.iconSm} />
         </span>
         {partner.name}の個人費（合計のみ）
