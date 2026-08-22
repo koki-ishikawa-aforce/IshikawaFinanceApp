@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import type { ChildTransactionId, TransactionId } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonProratedChildTransactionRepository } from '../../src/expense-settlement/NeonProratedChildTransactionRepository'
+import { PostgresProratedChildTransactionRepository } from '../../src/expense-settlement/PostgresProratedChildTransactionRepository'
 import { newUlid } from '../../src/newId'
 import { proratedChild } from '../helpers/expenseSettlementFixtures'
 
-const repo = new NeonProratedChildTransactionRepository(db)
+const repo = new PostgresProratedChildTransactionRepository(db)
 
-describe('NeonProratedChildTransactionRepository', () => {
+describe('PostgresProratedChildTransactionRepository', () => {
   it('save → findById の往復同一性', async () => {
     const child = proratedChild()
     await repo.save(child)

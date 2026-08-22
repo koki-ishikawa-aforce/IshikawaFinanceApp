@@ -332,7 +332,7 @@ function asPhase2CompletedOrLater(user: AppUser | undefined): SpouseCompletedUse
  * 両者完了なら both_completed（bothCompletedAt = 遅い方の phase2CompletedAt）、
  * そうでなければ awaiting_spouse。配偶者の AppUser が未登録のときの spouseUserId は
  * deps.resolveSpouseUserId（許可リスト解決）で補う。
- * Query 実装（Neon / モック）はこの規約を共有する。
+ * Query 実装（PostgreSQL / モック）はこの規約を共有する。
  */
 export async function detectSpouseCompletion(
   viewerId: UserId,

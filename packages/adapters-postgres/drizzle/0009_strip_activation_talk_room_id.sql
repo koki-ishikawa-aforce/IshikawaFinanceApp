@@ -15,7 +15,7 @@
 -- 適用順序（この移行は片方向のみ安全）: 先に本 Issue のコードをデプロイし、その後に本移行を
 -- 適用する。逆順にすると、移行前のコードが持つ NotificationActivationState は talkRoomId を
 -- 必須にしているため、有効化済みユーザーの行が AppUserSchema.parse を通らなくなり、
--- NeonAppUserRepository の findById / findByRole が投げてオンボーディング系 API が落ちる。
+-- PostgresAppUserRepository の findById / findByRole が投げてオンボーディング系 API が落ちる。
 -- ローリング更新中も、新インスタンスが保存した talkRoomId 無しの行を旧インスタンスが読むと
 -- 同じ失敗が起きるため、有効化操作が発生しない時間帯に切り替える。
 -- 誤って先に適用した場合は shared_talk_rooms.talk_room_id から jsonb_set で書き戻せば復旧する

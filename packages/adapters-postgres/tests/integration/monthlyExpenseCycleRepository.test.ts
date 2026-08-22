@@ -3,14 +3,14 @@ import { sql } from 'drizzle-orm'
 import type { AccumulatingCycle, MonthlyExpenseCycleId } from '@warimaru/domain'
 import { confirmCycleCsv, InvariantViolationError } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonMonthlyExpenseCycleRepository } from '../../src/expense-settlement/NeonMonthlyExpenseCycleRepository'
+import { PostgresMonthlyExpenseCycleRepository } from '../../src/expense-settlement/PostgresMonthlyExpenseCycleRepository'
 import { newUlid } from '../../src/newId'
 import { DARLING_USER_ID, HONEY_USER_ID, ym } from '../helpers/fixtures'
 import { accumulatingCycle, finalizedCycle } from '../helpers/expenseSettlementFixtures'
 
-const repo = new NeonMonthlyExpenseCycleRepository(db)
+const repo = new PostgresMonthlyExpenseCycleRepository(db)
 
-describe('NeonMonthlyExpenseCycleRepository', () => {
+describe('PostgresMonthlyExpenseCycleRepository', () => {
   it('save → findById の往復同一性（accumulating / csv_confirmed / finalized 全変種）', async () => {
     const accumulating = accumulatingCycle({ targetYearMonth: ym('2026-07') }) as AccumulatingCycle
     await repo.save(accumulating)

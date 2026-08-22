@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest'
 import type { ExpenseTypeId } from '@warimaru/domain'
 import { InvariantViolationError } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonExpenseTypeMasterRepository } from '../../src/master-data/NeonExpenseTypeMasterRepository'
+import { PostgresExpenseTypeMasterRepository } from '../../src/master-data/PostgresExpenseTypeMasterRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import { customExpenseType, defaultExpenseType } from '../helpers/masterDataFixtures'
 
-const repo = new NeonExpenseTypeMasterRepository(db)
+const repo = new PostgresExpenseTypeMasterRepository(db)
 
-describe('NeonExpenseTypeMasterRepository', () => {
+describe('PostgresExpenseTypeMasterRepository', () => {
   it('save → findById の往復同一性（default / custom 両変種）', async () => {
     const def = defaultExpenseType()
     const custom = customExpenseType()

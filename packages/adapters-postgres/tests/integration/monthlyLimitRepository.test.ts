@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest'
 import type { ExpenseTypeId, MonthlyLimitId, UnlimitedMonthlyLimit } from '@warimaru/domain'
 import { InvariantViolationError, MonthlyLimitSchema } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonMonthlyLimitRepository } from '../../src/master-data/NeonMonthlyLimitRepository'
+import { PostgresMonthlyLimitRepository } from '../../src/master-data/PostgresMonthlyLimitRepository'
 import { newUlid } from '../../src/newId'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import { cappedLimit, unlimitedLimit } from '../helpers/masterDataFixtures'
 
-const repo = new NeonMonthlyLimitRepository(db)
+const repo = new PostgresMonthlyLimitRepository(db)
 
-describe('NeonMonthlyLimitRepository', () => {
+describe('PostgresMonthlyLimitRepository', () => {
   it('save → findById の往復同一性（capped / unlimited 両変種）', async () => {
     const capped = cappedLimit()
     const unlimited = unlimitedLimit()

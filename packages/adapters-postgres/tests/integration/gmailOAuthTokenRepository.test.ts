@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest'
 import type { UserId, ValidGmailOAuthToken } from '@warimaru/domain'
 import { detectTokenRevocation } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonGmailOAuthTokenRepository } from '../../src/onboarding-auth/NeonGmailOAuthTokenRepository'
+import { PostgresGmailOAuthTokenRepository } from '../../src/onboarding-auth/PostgresGmailOAuthTokenRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import { revokedGmailToken, validGmailToken } from '../helpers/onboardingFixtures'
 
-const repo = new NeonGmailOAuthTokenRepository(db)
+const repo = new PostgresGmailOAuthTokenRepository(db)
 
-describe('NeonGmailOAuthTokenRepository', () => {
+describe('PostgresGmailOAuthTokenRepository', () => {
   it('save → findByUserId の往復同一性（valid / revocation_detected 両変種）', async () => {
     const valid = validGmailToken({ userId: HONEY_USER_ID })
     const revoked = revokedGmailToken({ userId: DARLING_USER_ID })

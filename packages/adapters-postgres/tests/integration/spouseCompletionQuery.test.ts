@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import type { Allowlist, UserId } from '@warimaru/domain'
 import { AllowlistSchema, InvariantViolationError } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonAppUserRepository } from '../../src/onboarding-auth/NeonAppUserRepository'
-import { NeonSpouseCompletionQuery } from '../../src/onboarding-auth/NeonSpouseCompletionQuery'
+import { PostgresAppUserRepository } from '../../src/onboarding-auth/PostgresAppUserRepository'
+import { PostgresSpouseCompletionQuery } from '../../src/onboarding-auth/PostgresSpouseCompletionQuery'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import {
   operationStartedUser,
@@ -11,18 +11,18 @@ import {
   phase2InProgressUser,
 } from '../helpers/onboardingFixtures'
 
-const repo = new NeonAppUserRepository(db)
+const repo = new PostgresAppUserRepository(db)
 const NOW = new Date('2026-07-07T00:00:00.000Z')
 const allowlist: Allowlist = AllowlistSchema.parse({
   honeyLineUserId: HONEY_USER_ID,
   darlingLineUserId: DARLING_USER_ID,
 })
-const query = new NeonSpouseCompletionQuery(db, {
+const query = new PostgresSpouseCompletionQuery(db, {
   fetchAllowlist: () => Promise.resolve(allowlist),
   now: () => NOW,
 })
 
-describe('NeonSpouseCompletionQuery', () => {
+describe('PostgresSpouseCompletionQuery', () => {
   it('両者 Phase2 完了なら both_completed（bothCompletedAt = 遅い方）', async () => {
     await repo.save(
       phase2CompletedUser({

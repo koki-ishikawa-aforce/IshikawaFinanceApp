@@ -13,11 +13,11 @@ import {
   recordBankDeposit,
 } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonBankDepositRepository } from '../../src/balance-asset-tracking/NeonBankDepositRepository'
+import { PostgresBankDepositRepository } from '../../src/balance-asset-tracking/PostgresBankDepositRepository'
 import { newUlid } from '../../src/newId'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 
-const repo = new NeonBankDepositRepository(db)
+const repo = new PostgresBankDepositRepository(db)
 
 const REIMBURSEMENT_ID = newUlid()
 
@@ -55,7 +55,7 @@ function deposit(
   })
 }
 
-describe('NeonBankDepositRepository', () => {
+describe('PostgresBankDepositRepository', () => {
   it('save → findById の往復同一性（全 4 kind 変種）', async () => {
     const purposes: PurposeKind[] = [
       'salary',

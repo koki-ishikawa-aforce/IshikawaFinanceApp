@@ -21,6 +21,13 @@
  * 遅延させる対象は `pg` だけでなく `drizzle-orm/node-postgres` も含む。こちらが `pg` を
  * 静的に import しているため、ドライバ側だけを動的にしても `pg` は結局読み込まれる。
  * 静的 import に戻していないことは noStaticNodePgImport.test.ts が機械的に検出する。
+ *
+ * `pg` と `@types/pg` の依存宣言は devDependencies に置く（#428）。本番では読み込まないため
+ * 本番向けインストール（`pnpm install --prod`）の成果物からも外す。代わりに、本番向けに
+ * インストールした環境でローカル向けの接続先を指すと `pg` が解決できずに落ちるため、
+ * 読み込みの失敗はモジュール解決エラーのまま投げずに原因と対処へ翻訳する
+ * （`ERR_MODULE_NOT_FOUND` だけを見て「DB がおかしい」と読み違えないように）。
+ * devDependencies に留まっていることは pgDevDependency.test.ts が機械的に検出する。
  */
 import { neon } from '@neondatabase/serverless'
 import { drizzle as drizzleNeonHttp } from 'drizzle-orm/neon-http'
@@ -121,13 +128,35 @@ function createNeonHttpConnection(databaseUrl: string): DbConnection {
   return { db: drizzleNeonHttp(client, { schema }), close: () => Promise.resolve() }
 }
 
+/**
+ * ローカル開発 / 統合テスト専用ドライバの読み込み。
+ * `pg` は devDependencies のため、本番向けにインストールした環境には存在しない（#428）。
+ * その環境でローカル向けの接続先を指すとここで解決に失敗するので、どの設定が原因で
+ * 何をすればよいかを添えて投げ直す（元のエラーは cause に残す）。
+ */
+async function loadNodePgDriver() {
+  try {
+    const [{ drizzle: drizzleNodePg }, { Pool }] = await Promise.all([
+      import('drizzle-orm/node-postgres'),
+      import('pg'),
+    ])
+    return { drizzleNodePg, Pool }
+  } catch (cause) {
+    throw new Error(
+      'Failed to load the node-postgres driver (pg). ' +
+        'pg is a devDependency and is absent from production installs (pnpm install --prod), ' +
+        'which run on Neon over HTTP (neon-http). ' +
+        'Install dev dependencies for local development / integration tests, ' +
+        'or point DATABASE_URL at a Neon endpoint (or set DATABASE_DRIVER=neon-http).',
+      { cause },
+    )
+  }
+}
+
 async function createNodePgConnection(databaseUrl: string): Promise<DbConnection> {
   // ローカル開発 / 統合テスト専用のドライバ。ここで初めて読み込む（本番は評価しない、#349）。
   // drizzle-orm/node-postgres が pg を静的に import しているため、両方まとめて遅延させる。
-  const [{ drizzle: drizzleNodePg }, { Pool }] = await Promise.all([
-    import('drizzle-orm/node-postgres'),
-    import('pg'),
-  ])
+  const { drizzleNodePg, Pool } = await loadNodePgDriver()
   const pool = new Pool({ connectionString: databaseUrl })
   // アイドル接続のエラー（DB 再起動・docker compose down 等）は 'error' で通知される。
   // リスナーが無いと Node が unhandled 'error' としてプロセスごと落とすため、

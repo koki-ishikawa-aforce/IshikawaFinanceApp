@@ -9,7 +9,7 @@ import {
 } from '@warimaru/domain'
 import { db } from './setup'
 import { newUlid } from '../../src/newId'
-import { NeonTransactionCandidateRepository } from '../../src/transaction-import/NeonTransactionCandidateRepository'
+import { PostgresTransactionCandidateRepository } from '../../src/transaction-import/PostgresTransactionCandidateRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import {
   amazonMatchedCandidate,
@@ -19,9 +19,9 @@ import {
   pdfCandidate,
 } from '../helpers/transactionImportFixtures'
 
-const repo = new NeonTransactionCandidateRepository(db)
+const repo = new PostgresTransactionCandidateRepository(db)
 
-describe('NeonTransactionCandidateRepository', () => {
+describe('PostgresTransactionCandidateRepository', () => {
   it('save → findById の往復同一性（normal / amazon_matched / match_timeout 全変種）', async () => {
     for (const candidate of [
       normalCandidate(),
