@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OnboardingPage from '../page'
+import { ApiError } from '@/lib/api-client'
 
 const apiFetch = vi.fn()
 const apiMutate = vi.fn()
@@ -62,73 +63,104 @@ function renderPage() {
   )
 }
 
-/** 応答はワイヤー形式のスキーマを通して返す（画面が受け取れない形なら落ちるようにする） */
-function respondWith(
-  response: unknown,
-): (
-  path: string,
-  options: unknown,
-  schema: { parse: (input: unknown) => unknown },
-) => Promise<unknown> {
-  return (_path, _options, schema) => Promise.resolve(schema.parse(response))
-}
+let friendAddState: 'not_added' | 'added' = 'not_added'
 
 beforeEach(() => {
   apiFetch.mockReset()
   apiMutate.mockReset()
+  friendAddState = 'not_added'
+  // 進捗の「正」はサーバー。確認できた回は記録が残るので、以後の再取得は added を返す
   apiFetch.mockImplementation((path: string, schema: { parse: (input: unknown) => unknown }) => {
     if (path === '/api/me') return Promise.resolve({ viewerId: 'U_HONEY', role: 'honey' })
-    if (path === '/api/onboarding/me') return Promise.resolve(schema.parse(meResponse('not_added')))
+    if (path === '/api/onboarding/me') {
+      return Promise.resolve(schema.parse(meResponse(friendAddState)))
+    }
     return Promise.resolve(schema.parse({}))
   })
 })
 
+/** 押した結果として返す確認結果。confirmed のときは以後の再取得も記録済みに切り替える */
+function respondToCheckWith(kind: 'confirmed' | 'not_friend' | 'unavailable'): void {
+  apiMutate.mockImplementation((_path, _options, schema: { parse: (i: unknown) => unknown }) => {
+    if (kind === 'confirmed') friendAddState = 'added'
+    return Promise.resolve(schema.parse(checkResponse(kind)))
+  })
+}
+
+async function clickCheck(): Promise<void> {
+  await userEvent.click(await screen.findByRole('button', { name: '友だち追加を確認する' }))
+}
+
 describe('友だち追加の確認', () => {
   it('確認を押すと LINE へ問い合わせ直す（登録し直さずに立て直せる）', async () => {
-    apiMutate.mockImplementation(respondWith(checkResponse('confirmed')))
+    respondToCheckWith('not_friend')
     renderPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: '友だち追加を確認する' }))
+    await clickCheck()
 
     await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
     expect(apiMutate.mock.calls[0]?.[0]).toBe('/api/onboarding/phase1/line-friend/check')
     expect(apiMutate.mock.calls[0]?.[1]?.method).toBe('POST')
   })
 
-  it('確認できたら案内は出さず、進捗を取り直す', async () => {
-    apiMutate.mockImplementation(respondWith(checkResponse('confirmed')))
+  it('確認できたら友だち追加の手順が完了し、次の手順へ進む', async () => {
+    respondToCheckWith('confirmed')
     renderPage()
-    await screen.findByRole('button', { name: '友だち追加を確認する' })
-    const fetchesBefore = apiFetch.mock.calls.length
 
-    await userEvent.click(screen.getByRole('button', { name: '友だち追加を確認する' }))
+    await clickCheck()
 
-    await waitFor(() => expect(apiFetch.mock.calls.length).toBeGreaterThan(fetchesBefore))
-    expect(screen.queryByText(/友だち追加を確認できませんでした/)).toBeNull()
-    expect(screen.queryByText(/LINE に問い合わせできませんでした/)).toBeNull()
+    // AT-108 手順3 の期待結果（次の「共通トークルームへ参加」が表示される）と揃える
+    expect(await screen.findByText('共通トークルームへ参加')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '友だち追加を確認する' })).toBeNull()
   })
 
   it('まだ友だち追加されていなければ、先に友だち追加するよう案内する', async () => {
-    apiMutate.mockImplementation(respondWith(checkResponse('not_friend')))
+    respondToCheckWith('not_friend')
     renderPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: '友だち追加を確認する' }))
+    await clickCheck()
 
     const note = await screen.findByText(/友だち追加を確認できませんでした/)
     expect(note.textContent).toContain('もう一度')
     // 結果は押した場所で差し替わるため、読み上げに載せる（使用性 8-4）
     expect(note.closest('[role="status"]')).not.toBeNull()
+    // 手順は進まない（友だち未追加のまま先へ通さない）
+    expect(screen.getByRole('button', { name: '友だち追加を確認する' })).toBeInTheDocument()
   })
 
   it('LINE へ問い合わせできなかったときは、友だち未追加と混同させずにやり直しを案内する', async () => {
-    apiMutate.mockImplementation(respondWith(checkResponse('unavailable')))
+    respondToCheckWith('unavailable')
     renderPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: '友だち追加を確認する' }))
+    await clickCheck()
 
     const note = await screen.findByText(/LINE に問い合わせできませんでした/)
-    expect(note.closest('[role="status"]')).not.toBeNull()
+    expect(note.closest('[role="alert"]')).not.toBeNull()
     // 「友だち追加すればよい」と読める案内を出さない（通信の失敗を利用者の未操作にすり替えない）
+    expect(screen.queryByText(/友だち追加を確認できませんでした/)).toBeNull()
+  })
+
+  it('確認の要求そのものが失敗したときも、問い合わせできなかったときと同じ案内を出す', async () => {
+    // 利用者から見れば同じ出来事（LINE へ問い合わせできなかった）で、次にとる行動も同じ
+    apiMutate.mockRejectedValue(new ApiError(500, 'サーバーエラー'))
+    renderPage()
+
+    await clickCheck()
+
+    expect(await screen.findByText(/LINE に問い合わせできませんでした/)).toBeInTheDocument()
+    expect(screen.queryByText(/友だち追加を確認できませんでした/)).toBeNull()
+  })
+
+  it('やり直したとき、前回の案内は残らない', async () => {
+    respondToCheckWith('not_friend')
+    renderPage()
+    await clickCheck()
+    await screen.findByText(/友だち追加を確認できませんでした/)
+
+    respondToCheckWith('unavailable')
+    await clickCheck()
+
+    expect(await screen.findByText(/LINE に問い合わせできませんでした/)).toBeInTheDocument()
     expect(screen.queryByText(/友だち追加を確認できませんでした/)).toBeNull()
   })
 
@@ -142,7 +174,7 @@ describe('友だち追加の確認', () => {
     )
     renderPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: '友だち追加を確認する' }))
+    await clickCheck()
 
     const pending = await screen.findByRole('button', { name: '確認中...' })
     expect(pending).toBeDisabled()

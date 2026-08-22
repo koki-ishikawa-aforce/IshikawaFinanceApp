@@ -308,9 +308,20 @@ export default function OnboardingPage() {
   const nickname = user?.common.nickname ?? ''
   const spouse = spouseQuery.data
   const talkRoomId = getTalkRoomContextId() ?? CONFIGURED_TALK_ROOM_ID
-  // 確認できた回は友だち追加が記録されて次のステップへ進むため、ここに残るのは
-  // 「まだ友だち追加されていない」「LINE へ問い合わせできなかった」のどちらかになる
-  const friendCheckResult = checkLineFriend.data?.result ?? null
+  /**
+   * 直近の確認結果。確認できた回は友だち追加が記録されて次のステップへ進むため、`confirmed` が
+   * 見えるのは再取得が終わるまでの短いあいだだけになる。
+   *
+   * 確認そのものが失敗した場合（通信断・5xx・応答が想定と違う）も `unavailable` に合流させる。
+   * 利用者から見れば「LINE へ問い合わせできなかった」という同じ出来事で、次にとる行動も同じため、
+   * 同じカードに 2 通りの案内を出さない。
+   * 再確認中は前回の結果を消す（古い案内を残したまま新しい確認が走る状態を作らない）。
+   */
+  const friendCheckResult = checkLineFriend.isPending
+    ? null
+    : checkLineFriend.isError
+      ? 'unavailable'
+      : (checkLineFriend.data?.result.kind ?? null)
 
   return (
     <main className={styles.main}>
@@ -380,21 +391,26 @@ export default function OnboardingPage() {
             {checkLineFriend.isPending ? '確認中...' : '友だち追加を確認する'}
           </button>
           {/* 確認結果は押した場所で差し替わる。読み上げに載せないと結果が伝わらない（使用性 8-4） */}
-          <div role="status">
-            {friendCheckResult?.kind === 'not_friend' && (
-              <p className={styles.note}>
-                友だち追加を確認できませんでした。LINE で「わりまる」を友だち追加してから、もう一度
-                「友だち追加を確認する」を押してください。
-              </p>
-            )}
-            {friendCheckResult?.kind === 'unavailable' && (
-              <p className={ui.error}>
-                LINE に問い合わせできませんでした。通信状況を確かめて、もう一度お試しください。
-              </p>
-            )}
-          </div>
-          <ErrorNote error={checkLineFriend.error} />
+          {friendCheckResult === 'confirmed' && (
+            <p className={styles.note} role="status">
+              <LuCheck aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
+              友だち追加を確認しました。次の手順へ進みます。
+            </p>
+          )}
+          {friendCheckResult === 'not_friend' && (
+            <p className={styles.note} role="status">
+              <LuTriangleAlert aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
+              友だち追加を確認できませんでした。LINE
+              で「わりまる」を友だち追加してから、もう一度お試しください。
+            </p>
+          )}
+          {friendCheckResult === 'unavailable' && (
+            <p className={ui.error} role="alert">
+              LINE に問い合わせできませんでした。通信状況を確かめて、もう一度お試しください。
+            </p>
+          )}
           {/* 自己申告（#298 で廃止予定）。確認が通らないあいだの暫定の逃げ道として残す */}
+          <p className={styles.note}>確認がうまくいかないときは、こちらから先へ進めます。</p>
           <button
             className={ui.buttonGhost}
             disabled={recordLineFriend.isPending}

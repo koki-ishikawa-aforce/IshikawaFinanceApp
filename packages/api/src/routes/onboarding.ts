@@ -33,9 +33,10 @@ import {
   completePhase2,
   completeSectionB,
   completeSectionF,
+  friendshipCheckOutcomeOf,
   judgeRole,
-  lineOperationSettingsOf,
   registerAppUser,
+  requiresFriendshipCheck,
   skipSectionF,
   startPhase2,
 } from '@warimaru/domain'
@@ -47,6 +48,7 @@ import type {
   AppUser,
   AppUserRepository,
   EventBus,
+  FriendshipCheckOutcome,
   GmailOAuthGateway,
   InitialBalanceRegistrationRef,
   LineFriendshipGateway,
@@ -76,16 +78,6 @@ const SectionFBodySchema = z.discriminatedUnion('kind', [
 function traceIdOf(userId: UserId): string {
   return createHash('sha256').update(userId).digest('hex').slice(0, 8)
 }
-
-/**
- * 友だち追加の確認結果（画面向け）。ドメインの友達状態照会結果（08f §2）を、記録まで済ませた
- * うえでの結末へ写したもの:
- *
- *  - `confirmed`: 友だち追加が記録されている（今回の照会で記録した場合と、既に記録済みだった場合）
- *  - `not_friend`: 照会できたが、まだ友だち追加されていない
- *  - `unavailable`: 照会そのものができなかった（API 障害・通信断・トークン解決失敗）
- */
-type FriendshipCheckResultKind = 'confirmed' | 'not_friend' | 'unavailable'
 
 export interface OnboardingRoutesDeps {
   appUserRepository: AppUserRepository
@@ -136,28 +128,25 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
    *  - セットアップ画面からの明示的な確認（`POST /phase1/line-friend/check`、#417 A）。
    *    自己申告 API の廃止（#298）後、利用者が自力で立て直せる唯一の入口になる
    *
-   * 返り値の `result` は画面へ返す確認結果で、ドメインの友達状態照会結果（08f §2）を
-   * 「記録済み（confirmed） / 友だちでなかった（not_friend） / 照会できなかった（unavailable）」
-   * へ写したもの。`not_friend` と `unavailable` を区別するのは、案内すべき次の行動が
-   * 「LINE で友だち追加する」と「通信状況を確かめてやり直す」で異なるため。
+   * 返り値の `result` は 08f §2 の友達追加確認結果（`FriendshipCheckOutcome`）。照会の要否と
+   * 照会結果の写像はドメイン（`requiresFriendshipCheck` / `friendshipCheckOutcomeOf`）が持ち、
+   * ここは照会・記録の保存・ログだけを担う。
    */
   async function checkAndRecordFriendAdded(
     user: AppUser,
     at: Date,
-  ): Promise<{ user: AppUser; result: FriendshipCheckResultKind }> {
+  ): Promise<{ user: AppUser; result: FriendshipCheckOutcome }> {
     const userId = user.common.userId
-    if (lineOperationSettingsOf(user).friendAdd.kind === 'added') {
-      return { user, result: 'confirmed' }
-    }
+    if (!requiresFriendshipCheck(user)) return { user, result: 'confirmed' }
     try {
       const status = await deps.lineFriendshipGateway.checkFriendship(userId)
+      const outcome = friendshipCheckOutcomeOf(status)
       if (status.kind === 'unknown') {
         console.error(
           `LINE 友だち状態の照会に失敗した（${status.detail}, user=${traceIdOf(userId)}）— 次の登録要求または画面からの確認で再照会する`,
         )
-        return { user, result: 'unavailable' }
       }
-      if (status.kind === 'not_friend') return { user, result: 'not_friend' }
+      if (outcome !== 'confirmed') return { user, result: outcome }
       // 照会の待ち時間中に follow Webhook が同じ事実を記録している可能性がある。古いスナップ
       // ショットへ適用すると `recordLineFriendAdded` の冪等判定が効かず、再保存と
       // LineFriendAdded の二重発行、および記録日時の上書きが起きるため、最新を読み直す
@@ -175,8 +164,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
       const settled = latest ?? user
       return {
         user: settled,
-        result:
-          lineOperationSettingsOf(settled).friendAdd.kind === 'added' ? 'confirmed' : 'unavailable',
+        result: requiresFriendshipCheck(settled) ? 'unavailable' : 'confirmed',
       }
     }
   }

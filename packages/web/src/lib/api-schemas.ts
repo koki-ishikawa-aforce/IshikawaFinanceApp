@@ -4,6 +4,7 @@
  * ドメインの z.date() スキーマは流用できず z.coerce.date() で受ける。
  */
 import { z } from 'zod'
+import { FRIENDSHIP_CHECK_OUTCOMES } from '@warimaru/domain'
 
 const IsoDate = z.coerce.date()
 
@@ -625,7 +626,8 @@ export const OnboardingUserWireSchema = z.object({ user: AppUserWireSchema.nulla
  */
 export const LineFriendCheckWireSchema = z.object({
   user: AppUserWireSchema,
-  result: z.object({ kind: z.enum(['confirmed', 'not_friend', 'unavailable']) }),
+  // 3 値はドメインの列挙をそのまま使う（画面とサーバーで別々に書き写して食い違わせない）
+  result: z.object({ kind: z.enum(FRIENDSHIP_CHECK_OUTCOMES) }),
 })
 export type LineFriendCheckResultWire = z.infer<typeof LineFriendCheckWireSchema>['result']
 
