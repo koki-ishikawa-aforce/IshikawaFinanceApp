@@ -28,6 +28,8 @@ import { LuCircleCheck } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ImportJobCard } from '@/components/imports/ImportJobCard'
 import { StatementGuide } from '@/components/imports/StatementGuide'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -126,16 +128,10 @@ function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
           閉じる
         </button>
       </div>
-      {candidatesQuery.isLoading && (
-        <div className={ui.loading} role="status">
-          読み込み中...
-        </div>
-      )}
+      {candidatesQuery.isLoading && <LoadingState />}
       {candidatesQuery.error && (
         <>
-          <div className={ui.error} role="alert">
-            候補の取得に失敗しました
-          </div>
+          <ErrorState>候補の取得に失敗しました</ErrorState>
           <button className={ui.buttonGhost} onClick={() => void candidatesQuery.refetch()}>
             再読み込み
           </button>
@@ -181,9 +177,9 @@ function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
             })}
           </ul>
           {confirm.error && (
-            <div className={ui.error} role="alert">
+            <ErrorState>
               確定できませんでした（{confirm.error.message}）。もう一度お試しください。
-            </div>
+            </ErrorState>
           )}
           <button
             className={ui.button}
@@ -310,16 +306,10 @@ function ImportsPageContent() {
         <h2 id="import-status-title" className={ui.sectionTitle}>
           この月の取込状況
         </h2>
-        {statusQuery.isLoading && (
-          <div className={ui.loading} role="status">
-            読み込み中...
-          </div>
-        )}
+        {statusQuery.isLoading && <LoadingState />}
         {statusQuery.error && (
           <>
-            <div className={ui.error} role="alert">
-              取込状況の取得に失敗しました
-            </div>
+            <ErrorState>取込状況の取得に失敗しました</ErrorState>
             <button className={ui.buttonGhost} onClick={() => void statusQuery.refetch()}>
               再読み込み
             </button>
@@ -387,11 +377,7 @@ function ImportsPageContent() {
           CSV(.csv)と明細 PDF(.pdf)を取り込めます。PDF
           はアップロード後に明細を読み取るため、完了まで 1 分ほどかかることがあります。
         </p>
-        {errorMessage !== null && (
-          <div className={ui.error} role="alert">
-            {errorMessage}
-          </div>
-        )}
+        {errorMessage !== null && <ErrorState>{errorMessage}</ErrorState>}
       </section>
 
       {/* 取込の進行・結果は操作後に差し替わる。ライブリージョンは常時マウントしておかないと
@@ -411,7 +397,7 @@ function ImportsPageContent() {
 
 export default function ImportsPage() {
   return (
-    <Suspense fallback={<div className={ui.loading}>読み込み中...</div>}>
+    <Suspense fallback={<LoadingState announce={false} />}>
       <ImportsPageContent />
     </Suspense>
   )

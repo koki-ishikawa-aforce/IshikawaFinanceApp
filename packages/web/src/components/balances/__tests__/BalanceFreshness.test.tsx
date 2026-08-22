@@ -89,6 +89,29 @@ describe('BalanceFreshnessCard', () => {
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument()
   })
 
+  it('取得に失敗しても、通知はカード側の器ひとつだけで二重に読み上げない', async () => {
+    stubFetch({ ok: false })
+    render(<BalanceFreshnessCard />, { wrapper })
+
+    expect(await screen.findByText('更新状況を取得できませんでした')).toBeInTheDocument()
+    // 器が既に role="status" のため、エラー側は announce={false}(入れ子の live region を作らない)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+  })
+
+  it('取得中も、通知はカード側の器ひとつだけで二重に読み上げない', () => {
+    // 応答しない fetch で isPending のまま留める
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    )
+    render(<BalanceFreshnessCard />, { wrapper })
+
+    const statuses = screen.getAllByRole('status')
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0]).toHaveTextContent('読み込み中...')
+  })
+
   it('入れ替わる領域が支援技術に通知される（role="status"）', async () => {
     stubFetch({ ok: true, body: { items: [alertItem] } })
     render(<BalanceFreshnessCard />, { wrapper })

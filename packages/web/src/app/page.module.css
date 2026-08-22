@@ -21,17 +21,3 @@
     radial-gradient(circle at 85% 75%, var(--accent) 0, transparent 70px);
   opacity: var(--deco-opacity);
 }
-
-.loading {
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  padding: var(--space-5) 0;
-}
-
-.error {
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--error-text);
-  padding: var(--space-5) 0;
-}

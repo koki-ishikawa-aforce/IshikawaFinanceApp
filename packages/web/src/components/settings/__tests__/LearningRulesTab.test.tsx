@@ -210,6 +210,11 @@ describe('LearningRulesTab', () => {
 
     expect(await screen.findByText('学習ルールの取得に失敗しました')).toBeInTheDocument()
 
+    // 読み上げに載るのは失敗の文言だけで、再読み込みボタンは読み上げ範囲の外に置く
+    const alert = screen.getByRole('alert', { name: undefined })
+    expect(alert).toHaveTextContent('学習ルールの取得に失敗しました')
+    expect(within(alert).queryByRole('button')).toBeNull()
+
     mockFetch(respondWith())
     await user.click(screen.getByRole('button', { name: '再読み込み' }))
 

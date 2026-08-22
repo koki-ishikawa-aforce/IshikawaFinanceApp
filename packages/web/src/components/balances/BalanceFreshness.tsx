@@ -12,6 +12,8 @@ import { apiFetch } from '@/lib/api-client'
 import { BalanceFreshnessListWireSchema, type BalanceFreshnessItemWire } from '@/lib/api-schemas'
 import { formatDateTime } from '@/lib/month'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './BalanceFreshness.module.css'
 
@@ -44,13 +46,14 @@ export function BalanceFreshnessCard() {
       {/*
         取得中 → 一覧 / 空 / エラー に入れ替わる領域。ページ遷移を伴わないため
         role="status" をこの器に常設する（docs/design/usability.md 8-4）。
-        入れ替わる側の EmptyState は announce={false} で live region の入れ子を避ける
+        入れ替わる側の LoadingState / ErrorState / EmptyState は announce={false} で
+        live region の入れ子を避ける
       */}
       <div role="status">
-        {freshnessQuery.isPending && <div className={ui.loading}>読み込み中...</div>}
+        {freshnessQuery.isPending && <LoadingState announce={false} />}
         {freshnessQuery.isError && (
           <>
-            <div className={ui.error}>更新状況を取得できませんでした</div>
+            <ErrorState announce={false}>更新状況を取得できませんでした</ErrorState>
             <button
               type="button"
               className={ui.buttonGhost}

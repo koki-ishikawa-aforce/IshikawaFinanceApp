@@ -17,6 +17,8 @@ import { formatDateTime, getCurrentMonth } from '@/lib/month'
 import { LuTriangleAlert } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { BalanceFreshnessCard } from '@/components/balances/BalanceFreshness'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -180,8 +182,8 @@ function ReportsPageContent() {
       <h1 className={ui.pageTitle}>月次レポート</h1>
       <MonthNavigator month={month} onMonthChange={setMonth} />
 
-      {reportQuery.isLoading && <div className={ui.loading}>読み込み中...</div>}
-      {reportQuery.error && <div className={ui.error}>レポートの取得に失敗しました</div>}
+      {reportQuery.isLoading && <LoadingState />}
+      {reportQuery.error && <ErrorState>レポートの取得に失敗しました</ErrorState>}
       {reportQuery.data === null && (
         <div className={ui.card}>
           <EmptyState>
@@ -198,7 +200,7 @@ function ReportsPageContent() {
 
 export default function ReportsPage() {
   return (
-    <Suspense fallback={<div className={ui.loading}>読み込み中...</div>}>
+    <Suspense fallback={<LoadingState announce={false} />}>
       <ReportsPageContent />
     </Suspense>
   )

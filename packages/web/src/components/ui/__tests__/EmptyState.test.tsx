@@ -1,17 +1,7 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { EmptyState } from '../EmptyState'
-
-const SRC_DIR = join(import.meta.dirname, '../../..')
-
-function walk(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
-    const path = join(dir, entry.name)
-    return entry.isDirectory() ? walk(path) : [path]
-  })
-}
+import { definesClass, findDuplicateClassDefinitions, listStylesheets } from '@/test/stylesheets'
 
 describe('EmptyState', () => {
   it('案内文をそのまま表示する', () => {
@@ -68,13 +58,11 @@ describe('空状態スタイルの重複定義の禁止', () => {
   // 検出できるのは「`.empty` という名前で CSS に書かれた重複」だけ。別名クラスで
   // 空状態を書き起こす迂回は検出できないため、集約そのものの担保は各画面のテストで行う
   it('EmptyState 以外の .module.css に .empty が定義されていない', () => {
-    const stylesheets = walk(SRC_DIR).filter(path => path.endsWith('.module.css'))
-    const offenders = stylesheets
-      .filter(path => !path.endsWith('EmptyState.module.css'))
-      .filter(path => /^\.empty\b/m.test(readFileSync(path, 'utf8')))
+    const offenders = findDuplicateClassDefinitions('empty', 'EmptyState.module.css')
 
-    // 走査自体が空振りしていないことを併せて確認する
-    expect(stylesheets.length).toBeGreaterThan(0)
+    // 走査自体が空振りしていないこと・正本が実際に定義していることを併せて確認する
+    expect(listStylesheets().length).toBeGreaterThan(0)
+    expect(definesClass('empty', 'EmptyState.module.css')).toBe(true)
     expect(offenders).toEqual([])
   })
 })

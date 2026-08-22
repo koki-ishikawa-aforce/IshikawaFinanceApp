@@ -17,6 +17,8 @@ import { LEARNING_AXIS_LABELS, learnedAxisLabels } from '@/lib/labels'
 import { formatDateTime } from '@/lib/month'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './LearningRulesTab.module.css'
 
@@ -36,23 +38,14 @@ interface MastersState {
 
 function LoadFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className={ui.error} role="alert">
-      {message}
+    <>
+      <ErrorState>{message}</ErrorState>
       <div className={styles.retryRow}>
         <button className={ui.buttonGhost} onClick={onRetry}>
           再読み込み
         </button>
       </div>
-    </div>
-  )
-}
-
-/** 取得中であることを支援技術にも伝える(ページ遷移を伴わないため、指定が無いと無音になる) */
-function SectionLoading() {
-  return (
-    <div className={ui.loading} role="status">
-      読み込み中...
-    </div>
+    </>
   )
 }
 
@@ -126,10 +119,10 @@ function MerchantActionModal({
     <Modal title={`「${merchantName}」の${text.label}`} onClose={onClose}>
       <p className={text.destructive ? styles.warning : styles.note}>{text.description}</p>
       {mutation.error && (
-        <div className={ui.error} role="alert">
+        <ErrorState>
           {mutation.error.message}
           <span className={styles.errorHint}>時間をおいて、もう一度お試しください。</span>
-        </div>
+        </ErrorState>
       )}
       <button
         className={text.destructive ? ui.buttonDanger : ui.button}
@@ -214,7 +207,7 @@ function MerchantRulesSection({ masters }: { masters: MastersState }) {
           {actionResult}
         </p>
       )}
-      {isPending && <SectionLoading />}
+      {isPending && <LoadingState />}
       {!isPending && error !== null && (
         <LoadFailure
           message="学習ルールの取得に失敗しました"
@@ -293,7 +286,7 @@ function AmazonRulesSection({ masters }: { masters: MastersState }) {
         Amazon
         の支払いは加盟店名がどれも同じになるため、注文した商品ごとに分類を覚えます。商品ごとに学習を止めることはできません。
       </p>
-      {isPending && <SectionLoading />}
+      {isPending && <LoadingState />}
       {!isPending && error !== null && (
         <LoadFailure
           message="Amazon 商品の学習ルールの取得に失敗しました"

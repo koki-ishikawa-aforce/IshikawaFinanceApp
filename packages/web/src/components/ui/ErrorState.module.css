@@ -1,0 +1,8 @@
+.error {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--error-text);
+  padding: var(--space-4) 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

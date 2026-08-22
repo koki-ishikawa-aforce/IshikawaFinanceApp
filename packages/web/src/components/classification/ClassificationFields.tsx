@@ -4,6 +4,8 @@ import { useId } from 'react'
 import { EXPENSE_CLASS_LABELS } from '@/lib/labels'
 import type { ExpenseClassWire } from '@/lib/api-schemas'
 import type { MastersState } from './useMasters'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 
 /** 3 軸（カテゴリ / 費用区分 / 経費種別）の入力値 */
@@ -55,15 +57,15 @@ export function ClassificationFields({ value, onChange, masters }: Classificatio
   const expenseTypeId = `${idPrefix}-expense-type`
 
   if (masters.isPending) {
-    return <div className={ui.loading}>分類の選択肢を読み込み中...</div>
+    return <LoadingState>分類の選択肢を読み込み中...</LoadingState>
   }
 
   if (masters.isError) {
     return (
       <>
-        <div className={ui.error} role="alert">
+        <ErrorState>
           カテゴリ・経費種別を読み込めませんでした。分類にはこの選択肢が必要です。
-        </div>
+        </ErrorState>
         <button className={ui.buttonGhost} onClick={() => masters.refetch()}>
           選択肢を再読み込み
         </button>

@@ -34,7 +34,7 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | **セキュリティ**(外周の攻撃面) | CI: `pnpm audit`(依存脆弱性)→ [dependency-audit.md](./dependency-audit.md)<br>レビュー: `/security-review`、`/ddd-review`(プライバシー3段階ルール = ドメイン内の可視性) | ✅ 担保済み — 依存脆弱性は CI、Webhook 署名検証・IDトークン検証・認可の位置・PII ログ流出は `/security-review` が担保 |
 | **データ互換性**(スキーマ変更とデプロイ) | CI: 統合テスト(空の PostgreSQL への `migrate` 適用 = 構文と適用可能性)<br>レビュー: `/data-review` | ✅ 担保済み — 破壊的スキーマ変更・デプロイ順序・トランザクション境界・イベントハンドラの冪等性は `/data-review` が担保。CI が適用するのは**空の DB** なので、既存データがある本番で失敗する変更はレビュー側でしか捕まらない |
 | **保守性**(設計・テスト品質) | CI: `pnpm lint` / `pnpm typecheck` / `pnpm format:check`<br>レビュー: `/ddd-review`(依存の向き・命名・ユビキタス言語・barrel)、`/test-review`(テストが振る舞いを検証しているか) | ✅ 担保済み — 設計規約は `/ddd-review`、テストが実装をなぞっただけになっていないか・境界値と異常系・否定形テスト・ピラミッドの置き場所は `/test-review` が担保 |
-| **使用性**(使いやすさ) | 規範: [`docs/design/usability.md`](../design/usability.md)<br>レビュー: `/ux-review`、`/ui-review`(デザインシステム適合) | ✅ 担保済み — 規範を `/ux-review` が差分に適用する。ただし §9「既知の未対応」12件は未解消で、本レビューは**新しい画面で繰り返さないこと**を担保する |
+| **使用性**(使いやすさ) | 規範: [`docs/design/usability.md`](../design/usability.md)<br>レビュー: `/ux-review`、`/ui-review`(デザインシステム適合) | ✅ 担保済み — 規範を `/ux-review` が差分に適用する。ただし §9「既知の未対応」11件は未解消で、本レビューは**新しい画面で繰り返さないこと**を担保する |
 
 判定の凡例: ✅ 担保済み / ⚠️ 部分的 / ❌ 未整備
 
