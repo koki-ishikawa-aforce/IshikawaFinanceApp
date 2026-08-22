@@ -4,6 +4,7 @@
  * ドメインの z.date() スキーマは流用できず z.coerce.date() で受ける。
  */
 import { z } from 'zod'
+import { FRIENDSHIP_CHECK_OUTCOMES } from '@warimaru/domain'
 
 const IsoDate = z.coerce.date()
 
@@ -617,6 +618,18 @@ export type AppUserWire = z.infer<typeof AppUserWireSchema>
 
 /** AppUser のみを返すエンドポイント（register / nickname / phase2 各種）のレスポンス */
 export const OnboardingUserWireSchema = z.object({ user: AppUserWireSchema.nullable() })
+
+/**
+ * 友だち追加の確認（POST /phase1/line-friend/check、#417）のレスポンス。
+ * 「まだ友だち追加されていない（not_friend）」と「LINE へ照会できなかった（unavailable）」を
+ * 区別して返すため、案内すべき次の行動を画面で出し分けられる。
+ */
+export const LineFriendCheckWireSchema = z.object({
+  user: AppUserWireSchema,
+  // 3 値はドメインの列挙をそのまま使う（画面とサーバーで別々に書き写して食い違わせない）
+  result: z.object({ kind: z.enum(FRIENDSHIP_CHECK_OUTCOMES) }),
+})
+export type LineFriendCheckResultWire = z.infer<typeof LineFriendCheckWireSchema>['result']
 
 /**
  * 世帯レベルの共通トークルーム参加状態を併せて返すレスポンス

@@ -9,6 +9,7 @@ import {
   AccountBalanceListWireSchema,
   GmailAuthorizeResponseSchema,
   ImportStatusResponseSchema,
+  LineFriendCheckWireSchema,
   OnboardingMeWireSchema,
   OnboardingUserWireSchema,
   SpouseCompletionResultWireSchema,
@@ -156,6 +157,21 @@ export default function OnboardingPage() {
     onSuccess: invalidate,
   })
 
+  /**
+   * 友だち追加の確認をやり直す（#417 A）。
+   * 登録時の照会が失敗した人は「友だち未追加」の扱いのまま止まるため、この入口が唯一の
+   * 立て直し経路になる（自己申告ボタンは #298 で廃止される）。
+   */
+  const checkLineFriend = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        '/api/onboarding/phase1/line-friend/check',
+        { method: 'POST' },
+        LineFriendCheckWireSchema,
+      ),
+    onSuccess: invalidate,
+  })
+
   const recordLineFriend = useMutation({
     mutationFn: () =>
       apiMutate('/api/onboarding/phase1/line-friend', { method: 'POST' }, OnboardingUserWireSchema),
@@ -292,6 +308,20 @@ export default function OnboardingPage() {
   const nickname = user?.common.nickname ?? ''
   const spouse = spouseQuery.data
   const talkRoomId = getTalkRoomContextId() ?? CONFIGURED_TALK_ROOM_ID
+  /**
+   * 直近の確認結果。確認できた回は友だち追加が記録されて次のステップへ進むため、`confirmed` が
+   * 見えるのは再取得が終わるまでの短いあいだだけになる。
+   *
+   * 確認そのものが失敗した場合（通信断・5xx・応答が想定と違う）も `unavailable` に合流させる。
+   * 利用者から見れば「LINE へ問い合わせできなかった」という同じ出来事で、次にとる行動も同じため、
+   * 同じカードに 2 通りの案内を出さない。
+   * 再確認中は前回の結果を消す（古い案内を残したまま新しい確認が走る状態を作らない）。
+   */
+  const friendCheckResult = checkLineFriend.isPending
+    ? null
+    : checkLineFriend.isError
+      ? 'unavailable'
+      : (checkLineFriend.data?.result.kind ?? null)
 
   return (
     <main className={styles.main}>
@@ -349,8 +379,38 @@ export default function OnboardingPage() {
           </div>
           <span className={ui.sectionTitle}>LINE 公式アカウントを友だち追加</span>
           <p className={styles.note}>
-            通知の受け取りに使う「わりまる」公式アカウントを LINE で友だち追加してください。
+            通知の受け取りに使う「わりまる」公式アカウントを LINE
+            で友だち追加してください。追加したら「友だち追加を確認する」を押すと、わりまるが LINE
+            に問い合わせて確認します。
           </p>
+          <button
+            className={ui.button}
+            disabled={checkLineFriend.isPending}
+            onClick={() => checkLineFriend.mutate()}
+          >
+            {checkLineFriend.isPending ? '確認中...' : '友だち追加を確認する'}
+          </button>
+          {/* 確認結果は押した場所で差し替わる。読み上げに載せないと結果が伝わらない（使用性 8-4） */}
+          {friendCheckResult === 'confirmed' && (
+            <p className={styles.note} role="status">
+              <LuCheck aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
+              友だち追加を確認しました。次の手順へ進みます。
+            </p>
+          )}
+          {friendCheckResult === 'not_friend' && (
+            <p className={styles.note} role="status">
+              <LuTriangleAlert aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
+              友だち追加を確認できませんでした。LINE
+              で「わりまる」を友だち追加してから、もう一度お試しください。
+            </p>
+          )}
+          {friendCheckResult === 'unavailable' && (
+            <p className={ui.error} role="alert">
+              LINE に問い合わせできませんでした。通信状況を確かめて、もう一度お試しください。
+            </p>
+          )}
+          {/* 自己申告（#298 で廃止予定）。確認が通らないあいだの暫定の逃げ道として残す */}
+          <p className={styles.note}>確認がうまくいかないときは、こちらから先へ進めます。</p>
           <button
             className={ui.buttonGhost}
             disabled={recordLineFriend.isPending}

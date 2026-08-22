@@ -349,6 +349,249 @@ describe('POST /api/onboarding/register — 登録時の LINE 友だち状態照
   })
 })
 
+/**
+ * 登録時の照会が失敗した回は、画面が登録要求を初回しか送らないため自力では回復できない
+ * （自己申告ボタンは #298 で廃止される）。セットアップ画面からの明示的な確認が回復経路になる。
+ */
+describe('POST /api/onboarding/phase1/line-friend/check — 友だち追加の確認をやり直す（#417 A）', () => {
+  interface CheckResponse {
+    user: AppUser
+    result: { kind: string }
+  }
+
+  const CHECK_FAILED_AT_REGISTRATION: LineFriendshipStatus = {
+    kind: 'unknown',
+    detail: 'LINE profile API 500',
+  }
+
+  async function check(t: TestApp, viewerId = VIEWER_ID): Promise<Response> {
+    return request(t.app, 'POST', '/api/onboarding/phase1/line-friend/check', { viewerId })
+  }
+
+  /** 記録済みの友だち追加日時（記録が無ければ null） */
+  async function friendAddedAtOf(t: TestApp): Promise<Date | null> {
+    const user = await t.deps.appUserRepository.findById(VIEWER_ID)
+    if (user === null) return null
+    const friendAdd = lineOperationSettingsOf(user).friendAdd
+    return friendAdd.kind === 'added' ? friendAdd.followWebhookReceivedAt : null
+  }
+
+  /**
+   * 登録時の照会と、そのあとの確認で返す応答を分けて用意する。
+   * 既定の登録時応答は「照会に失敗した」— この Issue が回復対象とする状況を再現する。
+   */
+  function stubAfterRegistration(
+    after: LineFriendshipStatus[],
+    atRegistration: LineFriendshipStatus = CHECK_FAILED_AT_REGISTRATION,
+  ): { gateway: LineFriendshipGateway; calls: UserId[] } {
+    const responses: LineFriendshipStatus[] = [atRegistration, ...after]
+    return stubFriendshipGateway(() => Promise.resolve(responses.shift() ?? { kind: 'not_friend' }))
+  }
+
+  it('登録時の照会に失敗していても、画面からの確認で友だち追加を記録して回復する', async () => {
+    const stub = stubAfterRegistration([{ kind: 'friend' }])
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      await register(t)
+      expect(await friendAddKindOf(t)).toBe('not_added')
+
+      const res = await check(t)
+
+      expect(res.status).toBe(200)
+      const body = await json<CheckResponse>(res)
+      expect(body.result.kind).toBe('confirmed')
+      expect(body.user.common.lineOperationSettings?.friendAdd.kind).toBe('added')
+      expect(await friendAddKindOf(t)).toBe('added')
+      expect(events).toHaveLength(1)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('まだ友だち追加されていなければ not_friend を返し、記録しない', async () => {
+    const stub = stubAfterRegistration([{ kind: 'not_friend' }], { kind: 'not_friend' })
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+    await register(t)
+
+    const res = await check(t)
+
+    expect(res.status).toBe(200)
+    const body = await json<CheckResponse>(res)
+    expect(body.result.kind).toBe('not_friend')
+    // 画面は同じ応答の user で進捗を描き直すため、user が本人ぶん返り、
+    // かつ記録前の状態であることまで固定する
+    expect(body.user.common.userId).toBe(VIEWER_ID)
+    expect(body.user.common.lineOperationSettings?.friendAdd.kind).not.toBe('added')
+    // 照会したうえで友だちでなかったことを固定する（照会をやめても通る形にしない）
+    expect(stub.calls).toEqual([VIEWER_ID, VIEWER_ID])
+    expect(await friendAddKindOf(t)).toBe('not_added')
+    expect(events).toHaveLength(0)
+  })
+
+  it('照会できなかった場合は unavailable を返す（友だち未追加として確定させない）', async () => {
+    const stub = stubAfterRegistration([{ kind: 'unknown', detail: 'LINE profile API 503' }], {
+      kind: 'not_friend',
+    })
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await register(t)
+
+    try {
+      const res = await check(t)
+
+      expect(res.status).toBe(200)
+      const body = await json<CheckResponse>(res)
+      expect(body.result.kind).toBe('unavailable')
+      expect(body.user.common.userId).toBe(VIEWER_ID)
+      expect(body.user.common.lineOperationSettings?.friendAdd.kind).not.toBe('added')
+      expect(await friendAddKindOf(t)).toBe('not_added')
+      // 無言の握りつぶしと区別する（失敗の理由がログに出ること）
+      expect(logged).toHaveBeenCalledTimes(1)
+      expect(String(logged.mock.calls[0]?.[0])).toContain('LINE profile API 503')
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('照会が例外を投げても 5xx にせず unavailable を返す', async () => {
+    // 登録時の照会は空振りさせ、画面からの確認だけを例外にする
+    let calls = 0
+    const stub = stubFriendshipGateway(() => {
+      calls += 1
+      return calls === 1
+        ? Promise.resolve({ kind: 'not_friend' })
+        : Promise.reject(new Error('boom'))
+    })
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    await register(t)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const res = await check(t)
+
+      expect(res.status).toBe(200)
+      expect((await json<CheckResponse>(res)).result.kind).toBe('unavailable')
+      expect(await friendAddKindOf(t)).toBe('not_added')
+      expect(logged).toHaveBeenCalledTimes(1)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('記録は残ったが後続の処理で落ちた場合は confirmed を返す（記録済みを未確認に倒さない）', async () => {
+    const stub = stubAfterRegistration([{ kind: 'friend' }], { kind: 'not_friend' })
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    await register(t)
+    // 保存は成功させ、そのあとのイベント発行だけを失敗させる
+    const publish = t.deps.eventBus.publish.bind(t.deps.eventBus)
+    t.deps.eventBus.publish = (event: Parameters<typeof publish>[0]): Promise<void> =>
+      event.type === 'LineFriendAdded'
+        ? Promise.reject(new Error('publish failed'))
+        : publish(event)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const res = await check(t)
+
+      expect(res.status).toBe(200)
+      const body = await json<CheckResponse>(res)
+      expect(body.result.kind).toBe('confirmed')
+      expect(body.user.common.lineOperationSettings?.friendAdd.kind).toBe('added')
+      // 記録は永続化されている（画面が進めることと DB の状態が食い違わない）
+      expect(await friendAddKindOf(t)).toBe('added')
+      expect(logged).toHaveBeenCalledTimes(1)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('記録の保存に失敗した場合は unavailable を返す（記録できていないのに進めさせない）', async () => {
+    const stub = stubAfterRegistration([{ kind: 'friend' }], { kind: 'not_friend' })
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    await register(t)
+    const original = t.deps.appUserRepository.save.bind(t.deps.appUserRepository)
+    let saves = 0
+    t.deps.appUserRepository.save = (): Promise<void> => {
+      saves += 1
+      return Promise.reject(new Error('save failed'))
+    }
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const res = await check(t)
+
+      expect(res.status).toBe(200)
+      expect((await json<CheckResponse>(res)).result.kind).toBe('unavailable')
+      // 記録の保存が実際に試みられて失敗したことを固定する（未実行でも通る形にしない）
+      expect(saves).toBe(1)
+      expect(await friendAddKindOf(t)).toBe('not_added')
+    } finally {
+      t.deps.appUserRepository.save = original
+      logged.mockRestore()
+    }
+  })
+
+  it('照会の待ち時間中に follow Webhook が記録しても、二重記録・二重発行にならない', async () => {
+    // 入口が登録要求と画面からの確認の 2 つになったぶん、この競合の露出も増える
+    let holder: TestApp | null = null
+    let calls = 0
+    const stub = stubFriendshipGateway(async () => {
+      calls += 1
+      if (calls === 1) return { kind: 'not_friend' }
+      // 照会の応答を待っているあいだに Webhook が同じ事実を記録した状況を作る
+      if (holder !== null) {
+        await request(holder.app, 'POST', '/api/onboarding/phase1/line-friend', {
+          viewerId: VIEWER_ID,
+        })
+      }
+      return { kind: 'friend' }
+    })
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    holder = t
+    const events = subscribeFriendAdded(t)
+    await register(t)
+
+    const res = await check(t)
+    const recordedAt = await friendAddedAtOf(t)
+
+    expect((await json<CheckResponse>(res)).result.kind).toBe('confirmed')
+    expect(events).toHaveLength(1)
+    // 先に記録された日時が上書きされない（記録は 1 回きり）
+    expect(recordedAt?.getTime()).toBe(events[0]?.receivedAt.getTime())
+  })
+
+  it('記録済みなら照会せずに confirmed を返す（押すたびに外部 API を叩かない）', async () => {
+    const stub = stubAfterRegistration([{ kind: 'friend' }], { kind: 'not_friend' })
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+    const events = subscribeFriendAdded(t)
+    await register(t)
+    expect((await json<CheckResponse>(await check(t))).result.kind).toBe('confirmed')
+    const recordedAt = await friendAddedAtOf(t)
+
+    const res = await check(t)
+
+    expect((await json<CheckResponse>(res)).result.kind).toBe('confirmed')
+    // 登録時 + 回復した 1 回だけ。記録後の押下では照会しない
+    expect(stub.calls).toEqual([VIEWER_ID, VIEWER_ID])
+    // 二重発行も記録日時の上書きも起きない
+    expect(events).toHaveLength(1)
+    expect((await friendAddedAtOf(t))?.getTime()).toBe(recordedAt?.getTime())
+  })
+
+  it('未登録のユーザーからの確認は 404', async () => {
+    const stub = stubFriendshipGateway(() => Promise.resolve({ kind: 'friend' }))
+    const t = createTestApp({ lineFriendshipGateway: stub.gateway })
+
+    expect((await check(t)).status).toBe(404)
+    // 登録していない相手の友だち状態を外部へ問い合わせない
+    expect(stub.calls).toEqual([])
+  })
+})
+
 describe('GET /api/onboarding/me', () => {
   it('未登録なら user: null', async () => {
     const t = createTestApp()
