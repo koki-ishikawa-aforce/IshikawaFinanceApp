@@ -13,6 +13,9 @@ import {
   assetTotalFixture,
   balanceFreshnessFixture,
   balanceTimeSeriesFixture,
+  bulkClassificationAbortedFixture,
+  bulkClassificationCompletedFixture,
+  bulkClassificationSessionFixture,
   categoryBreakdownFixture,
   categoryListFixture,
   dashboardKpisFixture,
@@ -24,10 +27,24 @@ import {
   monthlyReportFixture,
   onboardingMeFixture,
   ownAccountListFixture,
+  pdfConversionFailedResponseFixture,
+  retroactiveApplyResultFixture,
+  retroactiveCandidatesFixture,
   settingsProfileFixture,
   transactionListFixture,
   unclassifiedSummaryFixture,
 } from './fixtures'
+
+/** 実 API の 4xx 応答に相当するモック応答（api-client が ApiError に変換する） */
+export class MockErrorResponse extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(`Mock error ${status}`)
+    this.name = 'MockErrorResponse'
+  }
+}
 
 /** モックに fixture を用意していないパスへのアクセス（実 API の 404 相当） */
 export class MockNotFoundError extends Error {
@@ -60,7 +77,12 @@ export function resolveMock(method: string, path: string): unknown {
       case '/api/transactions':
         return transactionListFixture(getMockRole())
       case '/api/transactions/unclassified-summary':
-        return unclassifiedSummaryFixture()
+        return unclassifiedSummaryFixture(getMockRole())
+      case '/api/classification/bulk-sessions/current':
+        // 進行中のセッションが無い状態を既定にする（「まとめて分類する」の導線が出る）
+        return { session: null }
+      case '/api/classification/retroactive-candidates':
+        return retroactiveCandidatesFixture(getMockRole(), params.get('merchantName') ?? '')
       case '/api/categories':
         return categoryListFixture()
       case '/api/expense-types':
@@ -87,6 +109,32 @@ export function resolveMock(method: string, path: string): unknown {
         return merchantLearningRuleListFixture(getMockRole())
       case '/api/classification/amazon-rules':
         return amazonProductKeyLearningRuleListFixture(getMockRole())
+    }
+  }
+
+  if (method === 'POST' && pathname === '/api/imports/pdf') {
+    // 変換の成否は Anthropic API 次第でモックでは再現できない。画面確認の価値が高い
+    // 失敗側（422 + 失敗ジョブ）を返す。成功系は CSV 取込で確認する
+    throw new MockErrorResponse(422, JSON.stringify(pdfConversionFailedResponseFixture()))
+  }
+
+  // 一括分類・遡及適用は操作して初めて画面が現れるため、モック起動モードでも
+  // 書き込み系を返す（サーバー状態は持たないので、同じ入力には常に同じ応答を返す）
+  if (method === 'POST' || method === 'PUT') {
+    if (pathname === '/api/classification/bulk-sessions') {
+      return bulkClassificationSessionFixture(getMockRole())
+    }
+    if (pathname === '/api/classification/retroactive-candidates/apply') {
+      return retroactiveApplyResultFixture()
+    }
+    if (/^\/api\/classification\/bulk-sessions\/[^/]+\/complete$/.test(pathname)) {
+      return bulkClassificationCompletedFixture(getMockRole())
+    }
+    if (/^\/api\/classification\/bulk-sessions\/[^/]+\/abort$/.test(pathname)) {
+      return bulkClassificationAbortedFixture(getMockRole())
+    }
+    if (/^\/api\/transactions\/[^/]+\/classify$/.test(pathname)) {
+      return {}
     }
   }
 

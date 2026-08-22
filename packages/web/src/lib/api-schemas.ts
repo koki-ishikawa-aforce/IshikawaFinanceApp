@@ -42,6 +42,91 @@ export const UnclassifiedSummaryWireSchema = z.object({
 })
 export type UnclassifiedSummaryWire = z.infer<typeof UnclassifiedSummaryWireSchema>
 
+// ---------- 自動分類・学習（#402: 一括分類セッション / 遡及一括再分類） ----------
+
+/** 未分類理由。ドメインの `UnclassifiedReason` をミラーする */
+export const UnclassifiedReasonWireSchema = z.enum([
+  'merchant_rule_unlearned',
+  'amazon_product_key_unlearned',
+  'amazon_product_info_undecidable',
+  'amazon_match_timeout',
+  'learning_disabled',
+])
+export type UnclassifiedReasonWire = z.infer<typeof UnclassifiedReasonWireSchema>
+
+export const BulkClassificationTargetWireSchema = z.object({
+  kind: z.literal('unclassified'),
+  transactionId: z.string(),
+  merchantName: z.string(),
+  reason: UnclassifiedReasonWireSchema,
+  defaultExpenseClass: PersonalExpenseClassWireSchema,
+})
+export type BulkClassificationTargetWire = z.infer<typeof BulkClassificationTargetWireSchema>
+
+const BulkClassificationSessionCommonWire = z.object({
+  bulkClassificationSessionId: z.string(),
+  userId: z.string(),
+  trigger: z.object({ kind: z.enum(['csv_import', 'single_correction']) }).passthrough(),
+  targets: z.array(BulkClassificationTargetWireSchema),
+})
+
+/** 一括分類セッション集約のワイヤー形式（kind ごとの必須フィールドはドメインの union をミラー） */
+export const BulkClassificationSessionWireSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('in_progress'),
+    common: BulkClassificationSessionCommonWire,
+    startedAt: IsoDate,
+    remainingCount: z.number().int(),
+  }),
+  z.object({
+    kind: z.literal('completed'),
+    common: BulkClassificationSessionCommonWire,
+    startedAt: IsoDate,
+    completedAt: IsoDate,
+    processedCount: z.number().int(),
+  }),
+  z.object({
+    kind: z.literal('aborted'),
+    common: BulkClassificationSessionCommonWire,
+    startedAt: IsoDate,
+    abortedAt: IsoDate,
+    remainingCount: z.number().int(),
+  }),
+])
+export type BulkClassificationSessionWire = z.infer<typeof BulkClassificationSessionWireSchema>
+
+export type InProgressBulkClassificationSessionWire = Extract<
+  BulkClassificationSessionWire,
+  { kind: 'in_progress' }
+>
+
+/** GET /api/classification/bulk-sessions/current（進行中が無ければ null） */
+export const CurrentBulkSessionWireSchema = z.object({
+  session: BulkClassificationSessionWireSchema.nullable(),
+})
+
+/** GET /api/classification/retroactive-candidates */
+export const RetroactiveCandidatesWireSchema = z.object({
+  userId: z.string(),
+  merchantName: z.string(),
+  candidates: z.array(
+    z.object({
+      transactionId: z.string(),
+      occurredAt: IsoDate,
+      amount: z.number(),
+    }),
+  ),
+  proposedAt: IsoDate,
+})
+export type RetroactiveCandidatesWire = z.infer<typeof RetroactiveCandidatesWireSchema>
+
+/** POST /api/classification/retroactive-candidates/apply */
+export const RetroactiveApplyResultWireSchema = z.object({
+  merchantName: z.string(),
+  appliedCount: z.number().int(),
+})
+export type RetroactiveApplyResultWire = z.infer<typeof RetroactiveApplyResultWireSchema>
+
 // ---------- 月次レポート（#27） ----------
 
 const BalanceTrendPointWire = z.object({ date: IsoDate }).passthrough()
@@ -264,7 +349,23 @@ export const DepositListWireSchema = z.object({
   items: z.array(DepositWireSchema),
 })
 
-// ---------- CSV 取込（#30） ----------
+// ---------- CSV / PDF 取込（#30・#403） ----------
+
+/**
+ * 取込ジョブの失敗理由。`reason` は PDF 変換失敗のみが持つ構造化理由（#61）で、
+ * 形式検証失敗・取込中エラーには存在しない。
+ * @see packages/domain/src/transaction-import/value-objects/ImportJobFailureReason.ts
+ */
+export const ImportJobFailureWireSchema = z.object({
+  // 未知の種別（サーバー先行デプロイ）でも画面が落ちないようフォールバックする
+  kind: z
+    .enum(['pdf_conversion_failed', 'format_validation_failed', 'import_error'])
+    .catch('import_error'),
+  failureDetail: z.string(),
+  /** PDF 変換失敗のみが持つ。未知の値も落とさず受けて文言側でフォールバックする */
+  reason: z.string().optional(),
+})
+export type ImportJobFailureWire = z.infer<typeof ImportJobFailureWireSchema>
 
 export const ImportJobWireSchema = z.object({
   kind: z.enum([
@@ -290,11 +391,13 @@ export const ImportJobWireSchema = z.object({
       duplicateExcludedCount: z.number().int(),
     })
     .optional(),
-  failure: z.object({ kind: z.string(), failureDetail: z.string() }).passthrough().optional(),
+  // サーバーの失敗ジョブは `failureReason` で返す（domain の FailedJob と同名）
+  failureReason: ImportJobFailureWireSchema.optional(),
 })
 export type ImportJobWire = z.infer<typeof ImportJobWireSchema>
 
-export const CsvUploadResponseSchema = z.object({ job: ImportJobWireSchema })
+/** CSV(`POST /api/imports/csv`)・PDF(`POST /api/imports/pdf`)共通のアップロード応答 */
+export const ImportUploadResponseSchema = z.object({ job: ImportJobWireSchema })
 
 export const CandidateWireSchema = z.object({
   kind: z.enum(['normal', 'amazon_matched', 'match_timeout', 'confirmed']),

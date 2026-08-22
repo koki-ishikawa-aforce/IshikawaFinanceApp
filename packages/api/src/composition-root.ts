@@ -21,6 +21,7 @@ import type {
   ExpenseSettlementManagementQuery,
   ExpenseTypeDeletionRequestRepository,
   ExpenseTypeMasterRepository,
+  GmailMailFetchGateway,
   GmailOAuthGateway,
   GmailOAuthTokenRepository,
   LineDeliveryLogRepository,
@@ -98,6 +99,11 @@ import {
 } from './gmail-oauth/mock.js'
 import { createLineFriendshipGateway } from './line-friendship/line-friendship-gateway.js'
 import { createMockLineFriendshipGateway } from './line-friendship/mock.js'
+import {
+  createGmailMailFetchGateway,
+  createUnconfiguredGmailMailFetchGateway,
+} from './mail-fetch/gmail-mail-fetch-gateway.js'
+import { createMockGmailMailFetchGateway } from './mail-fetch/mock.js'
 import { createLineTalkRoomMembershipGateway } from './line-talk-room-membership/line-talk-room-membership-gateway.js'
 import { createMockLineTalkRoomMembershipGateway } from './line-talk-room-membership/mock.js'
 import {
@@ -205,6 +211,11 @@ export interface AppDeps {
   spouseCompletionQuery: SpouseCompletionQuery
   allowlistQuery: AllowlistQuery
   gmailOAuthGateway: GmailOAuthGateway
+  /**
+   * 日次メール取込の Gmail 取得（#412）。取込対象期間の SMBC 通知メール / Amazon 注文確認
+   * メールをパース前の外部表現のまま取得する。消費側は日次バッチワーカー（#414）。
+   */
+  gmailMailFetchGateway: GmailMailFetchGateway
   /**
    * LINE 友だち状態の照会（#297、OQ-55 ③）。アプリユーザーの新規登録完了時に呼び、
    * 登録前に友だち追加していた場合の取りこぼし（follow Webhook が破棄される）を拾い直す。
@@ -408,6 +419,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     gmailOAuthGateway: createMockGmailOAuthGateway(
       createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
     ),
+    gmailMailFetchGateway: createMockGmailMailFetchGateway(),
     lineFriendshipGateway: createMockLineFriendshipGateway(),
     lineTalkRoomMembershipGateway: createMockLineTalkRoomMembershipGateway(),
     // 開発モードは Phase0Config も Parameter Store も無いため、環境変数か固定値で署名検証を通す
@@ -507,6 +519,16 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
           },
         )
       : createUnconfiguredGmailOAuthGateway()
+  // メール取得は認可時に保管したトークンを読み直してアクセストークンを更新するため、
+  // OAuth クライアントの設定が要る（未設定なら呼出し時に失敗として返す）
+  const gmailMailFetchGateway =
+    env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET
+      ? createGmailMailFetchGateway({
+          clientId: env.GOOGLE_OAUTH_CLIENT_ID,
+          clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+          resolveTokenJson: path => parameterStore.read(path),
+        })
+      : createUnconfiguredGmailMailFetchGateway()
 
   // LINE Channel Access Token はマスタ管理（Phase0Config）の保管参照 → Parameter Store 復号
   // で毎回解決する（08g「LINE Channel設定値を取得する」。未投入・AWS 未構成は送信失敗に翻訳される）
@@ -564,6 +586,7 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
       now,
     }),
     gmailOAuthGateway,
+    gmailMailFetchGateway,
     resolveLineChannelSecret,
     dashboardQuery: new NeonDashboardQuery(db, { resolveCategoryNames, resolveViewerRole, now }),
     transactionListQuery: new NeonTransactionListQuery(db, {

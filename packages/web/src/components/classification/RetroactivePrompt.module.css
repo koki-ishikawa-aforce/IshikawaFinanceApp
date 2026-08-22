@@ -1,0 +1,53 @@
+.lead {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1_5);
+}
+
+/* 面（背景・角丸・影）は common の .card を合成して受け取る */
+.row {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-1_5);
+  padding: var(--space-2) var(--space-2_5);
+  cursor: pointer;
+}
+
+.row input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.date {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.amount {
+  font-size: var(--text-sm);
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.hint {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.result {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.6;
+}

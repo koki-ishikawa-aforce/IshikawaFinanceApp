@@ -1,16 +1,28 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useCallback, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CategoryIdSchema, YearMonthSchema, type YearMonth } from '@warimaru/domain'
+import {
+  CategoryIdSchema,
+  ImportJobIdSchema,
+  YearMonthSchema,
+  type YearMonth,
+} from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { BulkClassificationEntry } from '@/components/classification/BulkClassificationEntry'
+import { RetroactivePrompt } from '@/components/classification/RetroactivePrompt'
+import {
+  ClassificationFields,
+  classificationBody,
+  classificationValid,
+  type ClassificationInput,
+} from '@/components/classification/ClassificationFields'
+import { useMasters } from '@/components/classification/useMasters'
 import { apiFetch, apiMutate } from '@/lib/api-client'
 import {
-  CategoryListWireSchema,
-  ExpenseTypeListWireSchema,
   TransactionListWireSchema,
   UnclassifiedSummaryWireSchema,
   UnknownResponseSchema,
@@ -20,101 +32,11 @@ import {
 import { EXPENSE_CLASS_LABELS, expenseClassLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatMonthLabel, getCurrentMonth } from '@/lib/month'
-import { LuPlus, LuTriangleAlert } from '@/components/ui/icons'
+import { LuPlus } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
 type ClassFilter = ExpenseClassWire | 'all'
-
-interface ClassificationInput {
-  categoryId: string
-  expenseClass: ExpenseClassWire
-  expenseTypeId?: string
-}
-
-function useMasters() {
-  const categories = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => apiFetch('/api/categories', CategoryListWireSchema),
-    staleTime: 60_000,
-  })
-  const expenseTypes = useQuery({
-    queryKey: ['expense-types'],
-    queryFn: () => apiFetch('/api/expense-types', ExpenseTypeListWireSchema),
-    staleTime: 60_000,
-  })
-  return { categories: categories.data?.items ?? [], expenseTypes: expenseTypes.data?.items ?? [] }
-}
-
-interface ClassificationFieldsProps {
-  value: ClassificationInput
-  onChange: (value: ClassificationInput) => void
-  categories: { categoryId: string; name: string }[]
-  expenseTypes: { expenseTypeId: string; name: string }[]
-}
-
-function ClassificationFields({
-  value,
-  onChange,
-  categories,
-  expenseTypes,
-}: ClassificationFieldsProps) {
-  return (
-    <>
-      <div className={ui.field}>
-        <label className={ui.fieldLabel}>カテゴリ</label>
-        <select
-          className={ui.select}
-          value={value.categoryId}
-          onChange={e => onChange({ ...value, categoryId: e.target.value })}
-        >
-          <option value="">選択してください</option>
-          {categories.map(category => (
-            <option key={category.categoryId} value={category.categoryId}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className={ui.field}>
-        <label className={ui.fieldLabel}>費用区分</label>
-        <select
-          className={ui.select}
-          value={value.expenseClass}
-          onChange={e => onChange({ ...value, expenseClass: e.target.value as ExpenseClassWire })}
-        >
-          {Object.entries(EXPENSE_CLASS_LABELS).map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </div>
-      {value.expenseClass === 'business_expense' && (
-        <div className={ui.field}>
-          <label className={ui.fieldLabel}>経費種別</label>
-          <select
-            className={ui.select}
-            value={value.expenseTypeId ?? ''}
-            onChange={e =>
-              onChange({
-                ...value,
-                expenseTypeId: e.target.value === '' ? undefined : e.target.value,
-              })
-            }
-          >
-            <option value="">選択してください</option>
-            {expenseTypes.map(expenseType => (
-              <option key={expenseType.expenseTypeId} value={expenseType.expenseTypeId}>
-                {expenseType.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-    </>
-  )
-}
 
 function toDateInputValue(date: Date): string {
   const y = date.getFullYear()
@@ -128,22 +50,6 @@ function defaultOccurredAt(month: YearMonth): string {
   return month === getCurrentMonth() ? toDateInputValue(new Date()) : `${month}-01`
 }
 
-function classificationBody(input: ClassificationInput): Record<string, unknown> {
-  return {
-    categoryId: input.categoryId,
-    expenseClass: input.expenseClass,
-    ...(input.expenseClass === 'business_expense' && input.expenseTypeId !== undefined
-      ? { expenseTypeId: input.expenseTypeId }
-      : {}),
-  }
-}
-
-function classificationValid(input: ClassificationInput): boolean {
-  if (input.categoryId === '') return false
-  if (input.expenseClass === 'business_expense' && (input.expenseTypeId ?? '') === '') return false
-  return true
-}
-
 interface CreateModalProps {
   month: YearMonth
   onClose: () => void
@@ -151,7 +57,7 @@ interface CreateModalProps {
 
 function CreateModal({ month, onClose }: CreateModalProps) {
   const queryClient = useQueryClient()
-  const { categories, expenseTypes } = useMasters()
+  const masters = useMasters()
   const [merchantName, setMerchantName] = useState('')
   const [amount, setAmount] = useState('')
   const [occurredAt, setOccurredAt] = useState(() => defaultOccurredAt(month))
@@ -232,8 +138,7 @@ function CreateModal({ month, onClose }: CreateModalProps) {
         <ClassificationFields
           value={classification}
           onChange={setClassification}
-          categories={categories}
-          expenseTypes={expenseTypes}
+          masters={masters}
         />
       )}
       {mutation.error && <div className={ui.error}>{mutation.error.message}</div>}
@@ -255,7 +160,7 @@ interface DetailModalProps {
 
 function DetailModal({ transaction, onClose }: DetailModalProps) {
   const queryClient = useQueryClient()
-  const { categories, expenseTypes } = useMasters()
+  const masters = useMasters()
   const [merchantName, setMerchantName] = useState(transaction.merchantName ?? '')
   const [amount, setAmount] = useState(
     transaction.amount !== null ? String(transaction.amount) : '',
@@ -265,6 +170,8 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
     categoryId: transaction.categoryId ?? '',
     expenseClass: transaction.expenseClass,
   })
+  // 分類の確定後に開く「過去未分類への遡及」の確認（J-3・AT-203）
+  const [retroactiveFor, setRetroactiveFor] = useState<string | null>(null)
 
   const invalidateAndClose = async () => {
     await queryClient.invalidateQueries({ queryKey: ['transactions'] })
@@ -291,7 +198,18 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
         { method: 'PUT', body: classificationBody(classification) },
         UnknownResponseSchema,
       ),
-    onSuccess: invalidateAndClose,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      // 手動分類はその場で学習ルールになる（I-1 即時反映）。同じ加盟店で未分類の
+      // まま残っている過去の取引があれば、続けて遡及の確認を出す（J-3）。
+      // 加盟店名が見えない行（配偶者の個人取引）は下の editable=false で分類自体が
+      // できないため、この分岐は保険
+      if (transaction.merchantName === null) {
+        onClose()
+        return
+      }
+      setRetroactiveFor(transaction.merchantName)
+    },
   })
 
   const remove = useMutation({
@@ -313,6 +231,18 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
     Number.isInteger(Number(amount)) &&
     occurredAt !== ''
   const error = update.error ?? classify.error ?? remove.error
+  const closeRetroactive = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['transactions'] })
+    onClose()
+  }, [queryClient, onClose])
+
+  if (retroactiveFor !== null) {
+    return (
+      <Modal title="過去の取引にも適用" onClose={closeRetroactive}>
+        <RetroactivePrompt merchantName={retroactiveFor} onDone={closeRetroactive} />
+      </Modal>
+    )
+  }
 
   return (
     <Modal title={transaction.isUnclassified ? '未分類取引' : '取引の編集'} onClose={onClose}>
@@ -365,8 +295,7 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
           <ClassificationFields
             value={classification}
             onChange={setClassification}
-            categories={categories}
-            expenseTypes={expenseTypes}
+            masters={masters}
           />
           <button
             className={ui.button}
@@ -400,6 +329,12 @@ function parseMonthParam(value: string | null): YearMonth {
   return parsed.success ? parsed.data : getCurrentMonth()
 }
 
+/** 取込完了からの Deep Link。ULID として不正なら「取込起因なし」として扱う */
+function parseImportJobParam(value: string | null): string | null {
+  const parsed = ImportJobIdSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
 /** Deep Link の categoryId パラメータ。ULID として不正なら「すべてのカテゴリ」にフォールバック */
 function parseCategoryParam(value: string | null): string {
   const parsed = CategoryIdSchema.safeParse(value)
@@ -418,6 +353,8 @@ function TransactionsPageContent() {
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false)
   const [creating, setCreating] = useState(false)
   const [selected, setSelected] = useState<TransactionListItemWire | null>(null)
+  // CSV 取込完了から来た場合の取込ジョブ ID（一括分類を「CSV取込起因」で始める）
+  const importJobId = parseImportJobParam(searchParams.get('importJobId'))
   const { categories } = useMasters()
 
   const listQuery = useQuery({
@@ -440,6 +377,8 @@ function TransactionsPageContent() {
       ),
   })
 
+  const unclassifiedCount = summaryQuery.data?.count ?? 0
+
   const items = listQuery.data ?? []
   const total = items.reduce((sum, item) => sum + (item.amount ?? 0), 0)
 
@@ -448,11 +387,24 @@ function TransactionsPageContent() {
       <h1 className={ui.pageTitle}>取引一覧</h1>
       <MonthNavigator month={month} onMonthChange={setMonth} />
 
-      {summaryQuery.data && summaryQuery.data.count > 0 && (
-        <button className={styles.unclassifiedBanner} onClick={() => setUnclassifiedOnly(true)}>
-          <LuTriangleAlert aria-hidden="true" className={styles.unclassifiedIcon} />
-          未分類の取引が {summaryQuery.data.count} 件あります
-        </button>
+      {summaryQuery.error && (
+        <>
+          <div className={ui.error} role="alert">
+            未分類の件数を取得できませんでした
+          </div>
+          <button className={ui.buttonGhost} onClick={() => void summaryQuery.refetch()}>
+            再読み込み
+          </button>
+        </>
+      )}
+
+      {summaryQuery.data && (
+        <BulkClassificationEntry
+          month={month}
+          unclassifiedCount={unclassifiedCount}
+          importJobId={importJobId}
+          onFilterUnclassified={() => setUnclassifiedOnly(true)}
+        />
       )}
 
       <div className={styles.filters}>

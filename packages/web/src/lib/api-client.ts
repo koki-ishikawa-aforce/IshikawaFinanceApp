@@ -31,10 +31,11 @@ export async function apiFetch<T>(
   // 通常ビルドでは process.env の畳み込みにより if(false) となり、
   // この分岐と動的 import される src/mocks/* チャンクがデッドコード除去される。
   if (process.env.NEXT_PUBLIC_MOCK === '1') {
-    const { resolveMock, MockNotFoundError } = await import('@/mocks/resolve')
+    const { resolveMock, MockErrorResponse, MockNotFoundError } = await import('@/mocks/resolve')
     try {
       return schema.parse(resolveMock('GET', path))
     } catch (err) {
+      if (err instanceof MockErrorResponse) throw new ApiError(err.status, err.body)
       if (err instanceof MockNotFoundError) throw new ApiError(err.status, err.message)
       throw err
     }
@@ -73,10 +74,11 @@ export async function apiMutate<T>(
   schema: { parse: (input: unknown) => T },
 ): Promise<T> {
   if (process.env.NEXT_PUBLIC_MOCK === '1') {
-    const { resolveMock, MockNotFoundError } = await import('@/mocks/resolve')
+    const { resolveMock, MockErrorResponse, MockNotFoundError } = await import('@/mocks/resolve')
     try {
       return schema.parse(resolveMock(options.method, path))
     } catch (err) {
+      if (err instanceof MockErrorResponse) throw new ApiError(err.status, err.body)
       if (err instanceof MockNotFoundError) throw new ApiError(err.status, err.message)
       throw err
     }
