@@ -21,8 +21,10 @@ import {
   ChildTransactionIdSchema,
   ExpenseReimbursementIdSchema,
   type ExpenseReimbursementId,
+  type MonthlyExpenseCycleId,
+  type UserId,
 } from '../../shared/ids'
-import { YearMonthSchema } from '../../shared/value-objects/YearMonth'
+import { YearMonthSchema, type YearMonth } from '../../shared/value-objects/YearMonth'
 import {
   UnapprovedExpenseTransferSchema,
   type UnapprovedExpenseTransfer,
@@ -140,6 +142,35 @@ export function calculateSettlementMatchDifference(
     })
   }
   return SettlementMatchDifferenceSchema.parse({ kind: 'exact_match' })
+}
+
+/**
+ * 月次経費サイクルの開始（08e §2「月次経費サイクルをリセットする」）。
+ *
+ * 経費種別累計・按分子取引参照とも空の集積中サイクルを作る（同 behavior の事後条件）。
+ * 手動開始（`POST /api/expense-settlement/cycles`）と月初の自動開始（スケジューラ）は
+ * ともにこの関数を通る。生成の形を application 層で組み立て直さない。
+ *
+ * 「ユーザーID + 対象年月で一意」は集約の外の制約のため、ここでは検査しない
+ * （既存サイクルの有無は application 層が Repository.findByUserAndMonth で確かめる）。
+ */
+export function startMonthlyExpenseCycle(params: {
+  monthlyExpenseCycleId: MonthlyExpenseCycleId
+  userId: UserId
+  targetYearMonth: YearMonth
+  at: Date
+}): AccumulatingCycle {
+  return MonthlyExpenseCycleSchema.parse({
+    kind: 'accumulating',
+    common: {
+      monthlyExpenseCycleId: params.monthlyExpenseCycleId,
+      userId: params.userId,
+      targetYearMonth: params.targetYearMonth,
+      cycleStartedAt: params.at,
+      accumulations: [],
+      childTransactionRefs: [],
+    },
+  }) as AccumulatingCycle
 }
 
 /** 状態遷移: 集積中 → CSV確定 */

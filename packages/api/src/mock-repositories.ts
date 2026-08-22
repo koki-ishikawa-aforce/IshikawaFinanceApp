@@ -399,6 +399,19 @@ export function createMockMonthlyExpenseCycleRepository(): MonthlyExpenseCycleRe
       )
     },
     async save(cycle: MonthlyExpenseCycle) {
+      // Neon 実装の unique (user_id, target_year_month) と同じ失敗モードを再現する
+      // （読み出し → 存在確認 → 保存の間に別経路が同じ月を作った場合の結末を api 層で再現できる）
+      const conflict = [...store.values()].find(
+        c =>
+          c.common.userId === cycle.common.userId &&
+          c.common.targetYearMonth === cycle.common.targetYearMonth &&
+          c.common.monthlyExpenseCycleId !== cycle.common.monthlyExpenseCycleId,
+      )
+      if (conflict !== undefined) {
+        throw new InvariantViolationError(
+          `月次経費サイクルはユーザー + 対象年月で一意: (${cycle.common.userId}, ${cycle.common.targetYearMonth}) は既に存在する`,
+        )
+      }
       store.set(cycle.common.monthlyExpenseCycleId, cycle)
     },
   }

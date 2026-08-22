@@ -49,7 +49,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### expense-settlement（経費精算、08e）
 
-- 集約: `MonthlyExpenseCycle`（`accumulating` / `csv_confirmed` / `finalized`。`cycleExpenseTotal` / `calculateSettlementMatchDifference` で突合差額を算出）, `ProratedChildTransaction`, `ExpenseReimbursementDeposit`（`awaiting_match` / `matched` / `unrecognized_confirmed`）
+- 集約: `MonthlyExpenseCycle`（`accumulating` / `csv_confirmed` / `finalized`。月初リセットの生成 `startMonthlyExpenseCycle`（08e §2。手動開始・月初の自動開始の共通生成経路）、`cycleExpenseTotal` / `calculateSettlementMatchDifference` で突合差額を算出）, `ProratedChildTransaction`, `ExpenseReimbursementDeposit`（`awaiting_match` / `matched` / `unrecognized_confirmed`）
 - 値オブジェクト: `ExpenseTypeAccumulation`（`capped` / `unlimited`、論点15 構造分離）, `ExpenseJudgment`, `SettlementMatchDifference`
 - Repository I/F: `MonthlyExpenseCycleRepository`, `ProratedChildTransactionRepository`, `ExpenseReimbursementDepositRepository`
 - Query I/F: `ExpenseSettlementManagementQuery`（本人のみ可視・論点11）+ `ExpenseSettlementManagementView`
