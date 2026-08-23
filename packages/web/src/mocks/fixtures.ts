@@ -20,6 +20,14 @@ function hasShadowAccounts(scenario: MockScenario): boolean {
 }
 
 /**
+ * 口座を 1 件でも登録済みか。`accounts-none` は #395 以降の新規利用者の初期状態
+ * （三井住友系も利用者が登録するようになったため、口座がまったく無い状態から始まる）。
+ */
+function hasAnyAccounts(scenario: MockScenario): boolean {
+  return scenario !== 'accounts-none'
+}
+
+/**
  * 口座ごとの金額の素の値。ダッシュボードの KPI と残高画面の資産合計を同じ値から導き、
  * 同じプレビューで画面ごとに違う合計が出ないようにする。
  * 別銀行貯蓄の 2,000,000 は {@link accountBalanceListFixture} の 2 口座
@@ -27,11 +35,12 @@ function hasShadowAccounts(scenario: MockScenario): boolean {
  */
 function accountAmounts(scenario: MockScenario) {
   const shadow = hasShadowAccounts(scenario)
+  const any = hasAnyAccounts(scenario)
   return {
-    smbcBalance: 1500000,
+    smbcBalance: any ? 1500000 : 0,
     otherSavingsBalance: shadow ? 2000000 : 0,
     nisaContributionAccumulated: shadow ? 1200000 : 0,
-    cardUnpaidTotal: 120000,
+    cardUnpaidTotal: any ? 120000 : 0,
   }
 }
 
@@ -365,6 +374,7 @@ export function accountBalanceListFixture(scenario: MockScenario): unknown {
       lastSettledAt: '2026-07-10T00:00:00.000Z',
     },
   ]
+  if (!hasAnyAccounts(scenario)) return { items: [] }
   if (!hasShadowAccounts(scenario)) return { items: automanaged }
   return {
     items: [
@@ -435,13 +445,16 @@ export function assetTotalFixture(scenario: MockScenario): unknown {
 /** GET /api/balances/time-series */
 export function balanceTimeSeriesFixture(scenario: MockScenario): unknown {
   const registered = hasShadowAccounts(scenario)
+  const any = hasAnyAccounts(scenario)
   return {
     yearMonthRange: { from: '2026-01', to: '2026-07' },
-    smbc: [
-      { date: '2026-01-31T00:00:00.000Z', amount: 1200000 },
-      { date: '2026-04-30T00:00:00.000Z', amount: 1350000 },
-      { date: '2026-07-23T00:00:00.000Z', amount: 1500000 },
-    ],
+    smbc: any
+      ? [
+          { date: '2026-01-31T00:00:00.000Z', amount: 1200000 },
+          { date: '2026-04-30T00:00:00.000Z', amount: 1350000 },
+          { date: '2026-07-23T00:00:00.000Z', amount: 1500000 },
+        ]
+      : [],
     // 未登録の口座は推移そのものが存在しない（0 の系列を返すと「0 円で推移した」に読める）
     otherSavings: registered
       ? [
@@ -457,11 +470,13 @@ export function balanceTimeSeriesFixture(scenario: MockScenario): unknown {
           { date: '2026-07-01T00:00:00.000Z', amount: 1200000 },
         ]
       : [],
-    cardUnpaid: [
-      { date: '2026-01-31T00:00:00.000Z', amount: 95000 },
-      { date: '2026-04-30T00:00:00.000Z', amount: 110000 },
-      { date: '2026-07-10T00:00:00.000Z', amount: 120000 },
-    ],
+    cardUnpaid: any
+      ? [
+          { date: '2026-01-31T00:00:00.000Z', amount: 95000 },
+          { date: '2026-04-30T00:00:00.000Z', amount: 110000 },
+          { date: '2026-07-10T00:00:00.000Z', amount: 120000 },
+        ]
+      : [],
   }
 }
 
@@ -512,9 +527,10 @@ export function settingsProfileFixture(role: UserRole): unknown {
  *
  * 実 API は本人所有の口座だけを返すため、所有者は閲覧ロールに合わせる
  * （固定にすると honey で開いたときに相手所有の口座一覧を見ている状態になる）。
- * `accounts-unregistered` では三井住友系（自動管理）だけを返す。設定 > 口座タブの
- * 「別銀行貯蓄口座を追加」「NISA口座を追加」は未登録のときだけ出るため、
- * この状態を用意しないと両ボタンの見た目を自動で写せない（#425）。
+ * `accounts-unregistered` では三井住友系だけを、`accounts-none` では 1 件も返さない。
+ * 設定 > 口座タブの追加ボタンは未登録の種別にだけ出るため、この 2 つの状態を用意しないと
+ * ボタンの見た目を自動で写せない（#425 / #395。口座 4 種すべての追加ボタンが並ぶのは
+ * `accounts-none` のときだけ）。
  */
 export function ownAccountListFixture(role: UserRole, scenario: MockScenario): unknown {
   const ownerUserId = role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK'
@@ -537,6 +553,7 @@ export function ownAccountListFixture(role: UserRole, scenario: MockScenario): u
       },
     },
   ]
+  if (!hasAnyAccounts(scenario)) return { items: [] }
   if (!hasShadowAccounts(scenario)) return { items: automanaged }
   return {
     items: [
