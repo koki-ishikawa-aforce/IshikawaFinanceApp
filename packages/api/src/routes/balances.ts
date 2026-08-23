@@ -35,7 +35,7 @@ export function balancesRoutes(
       from: c.req.query('from'),
       to: c.req.query('to'),
     })
-    const result = await balanceTimeSeriesQuery.fetch(params.from, params.to)
+    const result = await balanceTimeSeriesQuery.fetch(c.get('viewerId'), params.from, params.to)
     return c.json(result)
   })
 

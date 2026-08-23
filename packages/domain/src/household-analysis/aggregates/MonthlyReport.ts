@@ -17,7 +17,7 @@ import {
   type TransactionId,
   type UserId,
 } from '../../shared/ids'
-import { MoneySchema } from '../../shared/value-objects/Money'
+import { MoneySchema, type Money } from '../../shared/value-objects/Money'
 import { YearMonthSchema } from '../../shared/value-objects/YearMonth'
 import { type UserRole } from '../../shared/value-objects/UserRole'
 import {
@@ -26,7 +26,13 @@ import {
 } from '../../shared/value-objects/UnapprovedExpenseTransfer'
 import { type Transaction } from './Transaction'
 
-/** 残高推移パート（残高・資産推移管理から借用する Read-only データ） */
+/**
+ * 残高推移パート（残高・資産推移管理から借用する Read-only データ）
+ *
+ * #398 以降は **LINE 配信時点の値を残す凍結値**。資産の推移グラフが読む正は
+ * 残高変動履歴（08d）に移り、ここは「配信したサマリに何と書いたか」の記録になった。
+ * したがって後から書き換えない（配信済みの文面と食い違うため）。
+ */
 export const BalanceTrendSchema = z.object({
   smbcBalanceTrend: z.array(z.object({ date: z.date(), balance: MoneySchema })),
   otherSavingsBalanceTrend: z.array(z.object({ date: z.date(), balance: MoneySchema })),
@@ -171,6 +177,29 @@ export function refreshCsvConfirmed(
     common: { ...report.common, ...totals },
     csvConfirmedAt: report.csvConfirmedAt,
     causingTransactionIds,
+  }) as CsvConfirmedReport
+}
+
+/**
+ * behavior 月次レポートに残高の凍結値を入れる（08c §2、#398）
+ *
+ * 残高変動履歴（08d）から取り出した当月の 4 軸の点と NISA 積立累計を、レポートへ写し取る。
+ * LINE の月次サマリはこの凍結値を読むため、ここが空だと残高 3 行がサマリから消える。
+ *
+ * 再集計（refreshCsvConfirmed）は残高部分を触らないので、CSV 取込のたびに本関数で
+ * 入れ直す。凍結の意味は「配信した時点の写し」であり、配信前の入れ直しは矛盾しない。
+ */
+export function freezeBalanceSnapshot(
+  report: CsvConfirmedReport,
+  snapshot: { balanceTrend: BalanceTrend; nisaContributionAccumulated: Money },
+): CsvConfirmedReport {
+  return MonthlyReportSchema.parse({
+    ...report,
+    common: {
+      ...report.common,
+      balanceTrend: snapshot.balanceTrend,
+      nisaContributionAccumulated: snapshot.nisaContributionAccumulated,
+    },
   }) as CsvConfirmedReport
 }
 

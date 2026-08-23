@@ -1,41 +1,112 @@
 import { describe, it, expect } from 'vitest'
 import { PostgresBalanceTimeSeriesQuery } from '../../src/balance-asset-tracking/PostgresBalanceTimeSeriesQuery'
-import { PostgresMonthlyReportRepository } from '../../src/household-analysis/PostgresMonthlyReportRepository'
+import { PostgresBalanceHistoryRepository } from '../../src/balance-asset-tracking/PostgresBalanceHistoryRepository'
+import { PostgresAccountRepository } from '../../src/balance-asset-tracking/PostgresAccountRepository'
 import { db } from './setup'
-import { csvConfirmedReport, ym } from '../helpers/fixtures'
+import {
+  DARLING_USER_ID,
+  HONEY_USER_ID,
+  balanceHistoryEntry,
+  smbcAccount,
+  ym,
+} from '../helpers/fixtures'
 
-const repo = new PostgresMonthlyReportRepository(db)
+const accounts = new PostgresAccountRepository(db)
+const history = new PostgresBalanceHistoryRepository(db)
 const query = new PostgresBalanceTimeSeriesQuery(db)
 
-describe('PostgresBalanceTimeSeriesQuery', () => {
-  it('月範囲の monthly_reports payload から 4 軸を date 昇順で合成する（欠損月は点なし）', async () => {
-    // 2026-04, 2026-06 のみ存在（2026-05 は欠損月）
-    await repo.save(csvConfirmedReport({ targetYearMonth: ym('2026-04') }))
-    await repo.save(csvConfirmedReport({ targetYearMonth: ym('2026-06') }))
-    // 範囲外
-    await repo.save(csvConfirmedReport({ targetYearMonth: ym('2026-03') }))
-    await repo.save(csvConfirmedReport({ targetYearMonth: ym('2026-07') }))
+/** 履歴は accounts への FK を持つため、先に口座を用意してその ID を使う */
+async function givenAccount(): Promise<string> {
+  const account = smbcAccount()
+  await accounts.save(account)
+  return account.common.accountId
+}
 
-    const view = await query.fetch(ym('2026-04'), ym('2026-06'))
+describe('PostgresBalanceTimeSeriesQuery', () => {
+  it('残高変動履歴から月範囲の 4 軸を date 昇順で合成する（点が無い月は飛ばす）', async () => {
+    const accountId = await givenAccount()
+    // 2026-04 と 2026-06 にだけ点がある（2026-05 は変動なし）
+    await history.append(
+      balanceHistoryEntry({
+        accountId,
+        balance: 1500000,
+        occurredAt: new Date('2026-04-10T00:00:00.000Z'),
+      }),
+    )
+    await history.append(
+      balanceHistoryEntry({
+        accountId,
+        balance: 1800000,
+        occurredAt: new Date('2026-06-10T00:00:00.000Z'),
+      }),
+    )
+    await history.append(
+      balanceHistoryEntry({
+        accountId,
+        axis: 'nisa_contribution',
+        balance: 300000,
+        occurredAt: new Date('2026-04-20T00:00:00.000Z'),
+      }),
+    )
+    // 範囲外（前後の月。JST で 2026-03-31 23:00 と 2026-07-01 09:00）
+    await history.append(
+      balanceHistoryEntry({
+        accountId,
+        balance: 100,
+        occurredAt: new Date('2026-03-31T14:00:00.000Z'),
+      }),
+    )
+    await history.append(
+      balanceHistoryEntry({
+        accountId,
+        balance: 200,
+        occurredAt: new Date('2026-07-01T00:00:00.000Z'),
+      }),
+    )
+
+    const view = await query.fetch(HONEY_USER_ID, ym('2026-04'), ym('2026-06'))
     expect(view.yearMonthRange).toEqual({ from: '2026-04', to: '2026-06' })
-    // フィクスチャは各レポート 4 軸 × 1 点 → 2 レポート分で各軸 2 点
-    expect(view.smbc).toHaveLength(2)
-    expect(view.otherSavings).toHaveLength(2)
-    expect(view.nisaContribution).toHaveLength(2)
-    expect(view.cardUnpaid).toHaveLength(2)
-    // date 昇順
-    for (const axis of [view.smbc, view.otherSavings, view.nisaContribution, view.cardUnpaid]) {
-      const times = axis.map(p => p.date.getTime())
-      expect(times).toEqual([...times].sort((a, b) => a - b))
-    }
-    // BalanceTrend のフィールド名変換（balance / accumulated / unpaidTotal → amount）
-    expect(view.smbc[0]).toMatchObject({ amount: 1500000 })
-    expect(view.nisaContribution[0]).toMatchObject({ amount: 300000 })
-    expect(view.cardUnpaid[0]).toMatchObject({ amount: 42000 })
+    expect(view.smbc.map(p => p.amount)).toEqual([1500000, 1800000])
+    expect(view.nisaContribution.map(p => p.amount)).toEqual([300000])
+    expect(view.otherSavings).toEqual([])
+    expect(view.cardUnpaid).toEqual([])
   })
 
-  it('レポートが 1 件もない範囲は空の 4 軸を返す', async () => {
-    const view = await query.fetch(ym('2025-01'), ym('2025-03'))
+  it('月の境界は JST で切る（JST 深夜帯の変動が隣の月へずれない）', async () => {
+    const accountId = await givenAccount()
+    // 2026-05-01 00:30 JST = 2026-04-30 15:30 UTC。UTC で月を切ると 4 月に落ちる
+    await history.append(
+      balanceHistoryEntry({
+        accountId,
+        balance: 111,
+        occurredAt: new Date('2026-04-30T15:30:00.000Z'),
+      }),
+    )
+
+    const may = await query.fetch(HONEY_USER_ID, ym('2026-05'), ym('2026-05'))
+    expect(may.smbc.map(p => p.amount)).toEqual([111])
+    const april = await query.fetch(HONEY_USER_ID, ym('2026-04'), ym('2026-04'))
+    expect(april.smbc).toEqual([])
+  })
+
+  it('残高は世帯フルオープンのため、閲覧者が相手（配偶者）でも同じ 4 軸が返る', async () => {
+    const accountId = await givenAccount() // 所有者は HONEY
+    await history.append(
+      balanceHistoryEntry({
+        accountId,
+        balance: 1500000,
+        occurredAt: new Date('2026-05-10T00:00:00.000Z'),
+      }),
+    )
+
+    const owner = await query.fetch(HONEY_USER_ID, ym('2026-05'), ym('2026-05'))
+    const spouse = await query.fetch(DARLING_USER_ID, ym('2026-05'), ym('2026-05'))
+    expect(spouse).toEqual(owner)
+    expect(spouse.smbc.map(p => p.amount)).toEqual([1500000])
+  })
+
+  it('変動が 1 件もない範囲は空の 4 軸を返す', async () => {
+    const view = await query.fetch(HONEY_USER_ID, ym('2025-01'), ym('2025-03'))
     expect(view.smbc).toEqual([])
     expect(view.otherSavings).toEqual([])
     expect(view.nisaContribution).toEqual([])

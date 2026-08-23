@@ -4,6 +4,7 @@ import {
   finalize,
   confirmCsv,
   refreshCsvConfirmed,
+  freezeBalanceSnapshot,
   aggregateMonthlyReportTotals,
   isIncompleteMonthReport,
   selfTotalsOf,
@@ -290,6 +291,67 @@ describe('confirmCsv() / refreshCsvConfirmed()', () => {
       new Date('2026-06-10'),
     )
     expect(isIncompleteMonthReport(finalized.common)).toBe(true)
+  })
+})
+
+describe('freezeBalanceSnapshot()（#398）', () => {
+  const snapshot = {
+    balanceTrend: {
+      smbcBalanceTrend: [{ date: new Date('2026-04-10'), balance: 1500000 as never }],
+      otherSavingsBalanceTrend: [{ date: new Date('2026-04-11'), balance: 800000 as never }],
+      nisaContributionTrend: [
+        { date: new Date('2026-04-12'), accumulated: 300000 as never },
+        { date: new Date('2026-04-20'), accumulated: 350000 as never },
+      ],
+      cardUnpaidTrend: [{ date: new Date('2026-04-13'), unpaidTotal: 42000 as never }],
+    },
+    nisaContributionAccumulated: 350000 as never,
+  }
+
+  it('残高の 4 軸と NISA 積立累計を写し取る（これが無いと LINE の残高 3 行が消える）', () => {
+    const report = confirmCsv(baseCommon as never, [], new Date('2026-05-01'))
+    const frozen = freezeBalanceSnapshot(report, snapshot)
+
+    expect(frozen.common.balanceTrend.smbcBalanceTrend).toHaveLength(1)
+    expect(frozen.common.balanceTrend.cardUnpaidTrend[0]?.unpaidTotal).toBe(42000)
+    expect(frozen.common.nisaContributionAccumulated).toBe(350000)
+  })
+
+  it('集計値・起因取引ID・CSV確定日時は触らない', () => {
+    const report = confirmCsv(
+      { ...baseCommon, personalTotalHoney: 1200 } as never,
+      ['01TX0000000000000000000001' as never],
+      new Date('2026-05-01'),
+    )
+    const frozen = freezeBalanceSnapshot(report, snapshot)
+
+    expect(frozen.common.personalTotalHoney).toBe(1200)
+    expect(frozen.causingTransactionIds).toEqual(['01TX0000000000000000000001'])
+    expect(frozen.csvConfirmedAt).toEqual(new Date('2026-05-01'))
+    expect(frozen.common.monthlyReportId).toBe(baseCommon.monthlyReportId)
+  })
+
+  it('同じ写しを二度当てても結果は変わらない（履歴が正なので何度写しても収束する）', () => {
+    const report = confirmCsv(baseCommon as never, [], new Date('2026-05-01'))
+    const once = freezeBalanceSnapshot(report, snapshot)
+    expect(freezeBalanceSnapshot(once, snapshot)).toEqual(once)
+  })
+
+  it('元のレポートは書き換えない', () => {
+    const report = confirmCsv(baseCommon as never, [], new Date('2026-05-01'))
+    freezeBalanceSnapshot(report, snapshot)
+    expect(report.common.balanceTrend.smbcBalanceTrend).toEqual([])
+    expect(report.common.nisaContributionAccumulated).toBe(0)
+  })
+
+  it('壊れた写し（小数の金額）は throw する', () => {
+    const report = confirmCsv(baseCommon as never, [], new Date('2026-05-01'))
+    expect(() =>
+      freezeBalanceSnapshot(report, {
+        ...snapshot,
+        nisaContributionAccumulated: 1.5 as never,
+      }),
+    ).toThrow()
   })
 })
 

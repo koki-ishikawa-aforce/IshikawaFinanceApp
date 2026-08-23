@@ -23,6 +23,7 @@ import { registerMonthlyReportDeliveryEventHandlers } from './monthly-report-del
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
 import { createDeepLinkBuilder } from '../notification/deep-links.js'
 import { registerUnpaidBalanceUpdateEventHandlers } from './unpaid-balance-update.js'
+import { registerBalanceHistoryRecordEventHandlers } from './balance-history-record.js'
 import { registerExpenseReimbursementArrivalEventHandlers } from './expense-reimbursement-arrival.js'
 
 export { domainEventBase } from './event-base.js'
@@ -72,11 +73,20 @@ export function registerEventHandlers(deps: AppDeps): void {
     monthlyLimitRepository: deps.monthlyLimitRepository,
     monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
   })
-  // CSV取込確定 → 月次レポート更新 (#69)
+  // 残高の変動 → 残高変動履歴への記録 (#398)。資産の推移グラフが読む正を作る。
+  // 未払金計上・消込の購読より先に登録する（同一イベントの購読順は登録順で、
+  // 記録の失敗を後続の重い処理より前に見せたい）
+  registerBalanceHistoryRecordEventHandlers(deps.eventBus, {
+    accountRepository: deps.accountRepository,
+    mitsuiSumitomoUnpaidRepository: deps.mitsuiSumitomoUnpaidRepository,
+    balanceHistoryRepository: deps.balanceHistoryRepository,
+  })
+  // CSV取込確定 → 月次レポート更新 (#69)。残高部分は履歴から凍結値を写す (#398)
   registerMonthlyReportCsvConfirmationEventHandlers(deps.eventBus, {
     appUserRepository: deps.appUserRepository,
     transactionRepository: deps.transactionRepository,
     monthlyReportRepository: deps.monthlyReportRepository,
+    balanceHistoryRepository: deps.balanceHistoryRepository,
   })
   // 未払金計上・消込 → 口座残高更新 (#69)
   registerUnpaidBalanceUpdateEventHandlers(deps.eventBus, {

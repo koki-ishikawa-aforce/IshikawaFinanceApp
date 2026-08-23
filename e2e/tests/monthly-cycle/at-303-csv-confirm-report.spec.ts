@@ -61,19 +61,26 @@ test.describe('AT-303: CSV 確定とレポート状態昇格', () => {
     expect(body.kind).toBe('csv_confirmed')
   })
 
-  test('AT-303-3: 月次レポートが取得できる', async ({ request }) => {
+  test('AT-303-3: 月次レポートが取得でき、残高の枠を備えている', async ({ request }) => {
+    // 404 を skip で読み飛ばさない（#398）。読み飛ばすと「レポートが生成されていない」
+    // という回帰がそのまま緑で通り抜ける
     const res = await request.get(`${API_URL}/api/monthly-reports?month=${TARGET_MONTH}`, {
       headers: HEADERS,
     })
 
-    if (res.status() === 404) {
-      test.skip(true, 'MonthlyReport is not generated for the test month (no report query data)')
-      return
-    }
-
     expect(res.status()).toBe(200)
     const body = await res.json()
-    expect(body).toBeDefined()
+    expect(body.status).toBe('csv_confirmed')
+    expect(body.common.targetYearMonth).toBe(TARGET_MONTH)
+    // 残高部分は残高変動履歴からの凍結値（#398）。この月は残高が動いていないため
+    // 4 軸とも空になるが、枠そのものが欠けていないことを確かめる
+    expect(body.common.balanceTrend).toMatchObject({
+      smbcBalanceTrend: [],
+      otherSavingsBalanceTrend: [],
+      nisaContributionTrend: [],
+      cardUnpaidTrend: [],
+    })
+    expect(typeof body.common.nisaContributionAccumulated).toBe('number')
   })
 
   test('AT-303-4: 未分類取引が残っていてもサイクル確定は成立している', async ({ request }) => {

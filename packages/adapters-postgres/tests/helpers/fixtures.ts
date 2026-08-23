@@ -3,6 +3,8 @@
  */
 import type {
   Account,
+  BalanceAxis,
+  BalanceHistoryEntry,
   CategoryId,
   MitsuiSumitomoUnpaid,
   MonthlyReport,
@@ -12,6 +14,7 @@ import type {
 } from '@warimaru/domain'
 import {
   AccountSchema,
+  BalanceHistoryEntrySchema,
   MitsuiSumitomoUnpaidSchema,
   MonthlyReportSchema,
   TransactionSchema,
@@ -288,5 +291,22 @@ export function unpaidAggregate(input: {
     currentMonthUnpaidTotal: bookedAmounts.reduce((a, b) => a + b, 0),
     entries: [...entries, ...settled],
     lastSettledAt: input.withSettledEntry === true ? new Date('2026-06-26T00:00:00.000Z') : null,
+  })
+}
+
+export function balanceHistoryEntry(input: {
+  accountId: string
+  axis?: BalanceAxis
+  balance?: number
+  occurredAt?: Date
+  sourceEventId?: string
+}): BalanceHistoryEntry {
+  return BalanceHistoryEntrySchema.parse({
+    entryId: newUlid(),
+    axis: input.axis ?? 'smbc_balance',
+    accountId: input.accountId,
+    balance: input.balance ?? 1500000,
+    occurredAt: input.occurredAt ?? new Date('2026-05-10T00:00:00.000Z'),
+    sourceEventId: input.sourceEventId ?? newUlid(),
   })
 }
