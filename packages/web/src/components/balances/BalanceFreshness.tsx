@@ -52,7 +52,11 @@ export function BalanceFreshnessCard() {
       <div role="status">
         {freshnessQuery.isPending && <LoadingState announce={false} />}
         {freshnessQuery.isError && (
-          <ErrorState announce={false} onRetry={() => void freshnessQuery.refetch()}>
+          <ErrorState
+            announce={false}
+            onRetry={() => void freshnessQuery.refetch()}
+            isRetrying={freshnessQuery.isFetching}
+          >
             {describeRequestFailure(freshnessQuery.error, '更新状況を取得できませんでした')}
           </ErrorState>
         )}

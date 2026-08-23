@@ -389,7 +389,7 @@ export default function OnboardingPage() {
         <h1 className={ui.pageTitle}>はじめての設定</h1>
         <div className={ui.card}>
           <span className={ui.sectionTitle}>読み込みに失敗しました</span>
-          <ErrorState onRetry={() => void meQuery.refetch()}>
+          <ErrorState onRetry={() => void meQuery.refetch()} isRetrying={meQuery.isFetching}>
             {describeRequestFailure(meQuery.error, '設定の状況を取得できませんでした')}
           </ErrorState>
         </div>

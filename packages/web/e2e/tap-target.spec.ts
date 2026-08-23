@@ -109,9 +109,11 @@ test('ダッシュボードの月送り・切り替え・カテゴリ行が下�
   for (const name of ['前月', '次月']) {
     await expectTapTargetSize(page.getByRole('button', { name }), `月送り（${name}）`, min)
   }
+  // 世帯/個人の切り替えは共通部品（SegmentedControl）に寄せたので、押せる受け皿はラジオ
+  const mode = page.getByRole('radiogroup', { name: '集計の範囲' })
   for (const name of ['世帯', '個人']) {
     await expectTapTargetSize(
-      page.getByRole('button', { name, exact: true }),
+      mode.getByRole('radio', { name, exact: true }),
       `世帯/個人の切り替え（${name}）`,
       min,
     )
@@ -122,4 +124,21 @@ test('ダッシュボードの月送り・切り替え・カテゴリ行が下�
     'カテゴリ内訳の凡例（食費）',
     min,
   )
+
+  // 並んだ的の間隔(§4-4)。行を 44px に広げたぶん、負のマージンや gap の詰めで
+  // 隣の行と密着すると誤タップにつながる。行の実寸の隙間として測る
+  const first = await page
+    .getByRole('link', { name: /住居費/ })
+    .first()
+    .boundingBox()
+  const second = await page.getByRole('link', { name: /食費/ }).first().boundingBox()
+  expect(first, '凡例の 1 行目の大きさを取得できる').not.toBeNull()
+  expect(second, '凡例の 2 行目の大きさを取得できる').not.toBeNull()
+  const gap = (second?.y ?? 0) - ((first?.y ?? 0) + (first?.height ?? 0))
+  // 下限は --space-2(8px)。トークンの値をここに書き写さないよう、CSS から読む
+  const minGap = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-2')),
+  )
+  expect(minGap, '--space-2 が px で定義されている').toBeGreaterThan(0)
+  expect(gap, '凡例の行どうしの隙間').toBeGreaterThanOrEqual(minGap)
 })

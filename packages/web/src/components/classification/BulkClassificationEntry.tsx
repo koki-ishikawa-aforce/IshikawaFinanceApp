@@ -127,15 +127,15 @@ export function BulkClassificationEntry({
     // （1 ユーザー 1 セッション）ため、開始の導線は出さずに再試行を促す
     return (
       <div className={styles.section}>
-        <ErrorState>
+        <ErrorState
+          onRetry={() => void currentSessionQuery.refetch()}
+          isRetrying={currentSessionQuery.isFetching}
+        >
           {describeRequestFailure(
             currentSessionQuery.error,
             'まとめて分類の状況を取得できませんでした。',
           )}
         </ErrorState>
-        <button className={ui.buttonGhost} onClick={() => void currentSessionQuery.refetch()}>
-          再読み込み
-        </button>
       </div>
     )
   }

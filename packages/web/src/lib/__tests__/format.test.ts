@@ -21,6 +21,7 @@ describe('formatMoney', () => {
 
   it('記号（¥）を混ぜない', () => {
     // 5-3 は記号と単位の混在を禁じている。片方だけ残ると画面間で表記がぶれる
+    expect(formatMoney(1580)).toBe('1,580円')
     expect(formatMoney(1580)).not.toContain('¥')
   })
 })

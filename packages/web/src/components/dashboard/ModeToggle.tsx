@@ -1,28 +1,32 @@
 'use client'
 
 import type { DashboardMode } from '@warimaru/domain'
-import styles from './ModeToggle.module.css'
+import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/SegmentedControl'
 
 interface ModeToggleProps {
   mode: DashboardMode
   onModeChange: (mode: DashboardMode) => void
 }
 
+const MODE_OPTIONS: readonly SegmentedControlOption<DashboardMode>[] = [
+  { value: 'household', label: '世帯' },
+  { value: 'personal', label: '個人' },
+]
+
+/**
+ * ダッシュボードの集計範囲(世帯 / 個人)の切り替え。
+ *
+ * 見た目と挙動は共通部品 `SegmentedControl` に委ね、ここは選択肢の定義だけを持つ
+ * (`docs/design/usability.md` §6-9。独自のタブ風ボタンは採用しない)。共通部品に寄せることで、
+ * 選択中がラジオの `checked` として支援技術にも伝わり、押せる範囲と隣接間隔の下限も満たす
+ */
 export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
   return (
-    <div className={styles.container}>
-      <button
-        className={`${styles.segment} ${mode === 'household' ? styles.active : ''}`}
-        onClick={() => onModeChange('household')}
-      >
-        世帯
-      </button>
-      <button
-        className={`${styles.segment} ${mode === 'personal' ? styles.active : ''}`}
-        onClick={() => onModeChange('personal')}
-      >
-        個人
-      </button>
-    </div>
+    <SegmentedControl
+      label="集計の範囲"
+      options={MODE_OPTIONS}
+      value={mode}
+      onChange={onModeChange}
+    />
   )
 }

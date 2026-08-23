@@ -210,7 +210,7 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 | **6-6 空状態** | 共通部品 `EmptyState`(`packages/web/src/components/ui/EmptyState.tsx`)。インラインのテキストで、イラスト・空状態専用カードは採用しない。置き場所はその空状態が説明するセクションの器(`ui.card` かモーダル)の内側。`*.module.css` に独自の空状態スタイルを定義しない |
 | **6-7 月の切り替え** | 画面上部の月ナビゲーション。日付ピッカーで月を選ばせない |
 | **6-8 補足情報・手順の格納** | カード内の開閉トグル(見出しが `aria-expanded` + `aria-controls` を持つボタンを包む)。主操作の前に読まなくてよい補足はこれで畳む。モーダル・別ページ・常時展開は採用しない |
-| **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。本部品より前からある未追随の箇所が 2 つある。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は独自実装でタップ下限(§4-3)も満たしておらず、#366 でそこを直すときに本部品へ寄せる。口座追加の証券会社(3 択、`components/accounts/AccountAddModal.tsx`)はセレクトのままで、次にその画面を触るときに本部品へ寄せる |
+| **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は #366 で本部品へ寄せた。未追随は口座追加の証券会社(3 択、`components/accounts/AccountAddModal.tsx`)だけで、セレクトのまま。次にその画面を触るときに本部品へ寄せる |
 
 ### 違反例
 
@@ -333,7 +333,7 @@ return <span>{formatMoney(query.data.total)}</span>
 | 4 | 4-3 | 共通の操作部品(`.button` / `.buttonGhost` / `.buttonDanger` / `.select` / `.input`)とモーダルの閉じるボタンは #568 で対応済み(`--tap-target-min` トークンも #463 で定義済み)。ダッシュボードの月送り(`MonthNavigator`)・世帯/個人の切り替え(`ModeToggle`)・カテゴリ内訳の凡例行は #366 で対応済み。残るのは共通部品を使わない他の画面固有の操作部品 | 設定のタブ・残高の期間ボタン・精算の小ボタン・取込の「閉じる」・下部ナビ(`AppNav`)・チェック行。追跡は #467 |
 | 5 | 6-1 / 3-2 | 破壊的操作の確認が `window.confirm`(取引削除)で、`Modal` 採用パターンと不統一。文言に影響(学習ルールの扱い)が書かれていない | `packages/web/src/app/transactions/page.tsx:378` |
 | 6 | 4-1 | 金額入力が `type="number"` のみで、規範の `type="text"` + `inputMode="numeric"` になっていない | `transactions/page.tsx:207,335`、`expense-settlement/page.tsx:97`、`settings/page.tsx:207,263,916` |
-| 7 | 1-3 | 再試行手段の**出し方**は #366 で `ErrorState` の `onRetry` に集約済み(渡せば同じ文言・同じ位置で出る)。残るのは、まだ渡していない画面で取得失敗が文言だけになること | `expense-settlement/page.tsx`、`reports/page.tsx`、`settings/page.tsx` の各取得クエリほか |
+| 7 | 1-3 | 再試行手段は #366 で `ErrorState` の `onRetry` に集約し、自前のボタンを並べていた箇所も寄せ切った(同じ文言・同じ位置で出る)。残るのは、まだ `onRetry` を渡していない画面で取得失敗が文言だけになること | `expense-settlement/page.tsx`、`reports/page.tsx`、`settings/page.tsx` の各取得クエリほか |
 | 8 | 1-2 | 空状態が次の行動を示していないものがある(`この条件の取引はありません`、`当月の按分子取引はありません` 等)。示しているもの(`突合待ちの入金がありません。先に…`)と混在 | `transactions/page.tsx`、`expense-settlement/page.tsx` ほか。共通部品化は #341 で完了済みで、残るのは文言の見直し |
 | 9 | 1-4 | 部分失敗の扱いが定義されていない。複数クエリを並べる画面で一部だけ失敗した場合の表示方針が実装ごとに異なる | `app/page.tsx`(ダッシュボード)、`reports/page.tsx`、`balances/page.tsx` |
 | 10 | 8-7 | `Modal` に `role="dialog"` / `aria-modal` / `aria-labelledby`・フォーカストラップ・Esc 閉じが無い | `packages/web/src/components/ui/Modal.tsx` |

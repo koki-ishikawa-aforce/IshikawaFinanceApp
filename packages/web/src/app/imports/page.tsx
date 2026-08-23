@@ -155,14 +155,12 @@ function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
       </div>
       {candidatesQuery.isLoading && <LoadingState />}
       {candidatesQuery.error && (
-        <>
-          <ErrorState>
-            {describeRequestFailure(candidatesQuery.error, '候補の取得に失敗しました')}
-          </ErrorState>
-          <button className={ui.buttonGhost} onClick={() => void candidatesQuery.refetch()}>
-            再読み込み
-          </button>
-        </>
+        <ErrorState
+          onRetry={() => void candidatesQuery.refetch()}
+          isRetrying={candidatesQuery.isFetching}
+        >
+          {describeRequestFailure(candidatesQuery.error, '候補の取得に失敗しました')}
+        </ErrorState>
       )}
       {!candidatesQuery.isLoading && candidates.length === 0 && (
         <EmptyState>候補がありません（すべて重複除外された可能性があります）</EmptyState>
@@ -374,14 +372,12 @@ function ImportsPageContent() {
         </h2>
         {statusQuery.isLoading && <LoadingState />}
         {statusQuery.error && (
-          <>
-            <ErrorState>
-              {describeRequestFailure(statusQuery.error, '取込状況の取得に失敗しました')}
-            </ErrorState>
-            <button className={ui.buttonGhost} onClick={() => void statusQuery.refetch()}>
-              再読み込み
-            </button>
-          </>
+          <ErrorState
+            onRetry={() => void statusQuery.refetch()}
+            isRetrying={statusQuery.isFetching}
+          >
+            {describeRequestFailure(statusQuery.error, '取込状況の取得に失敗しました')}
+          </ErrorState>
         )}
         {statusQuery.data &&
           (completion !== null ? (

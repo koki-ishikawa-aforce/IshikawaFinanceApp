@@ -29,6 +29,8 @@ import styles from './LearningRulesTab.module.css'
 interface MastersState {
   isPending: boolean
   error: Error | null
+  /** 再取得も含めて通信中か。再読み込みの進行中を出すために使う */
+  isFetching: boolean
   refetch: () => void
   categoryNameOf: (categoryId: string) => string | undefined
   expenseTypeNameOf: (expenseTypeId: string) => string | undefined
@@ -38,12 +40,18 @@ function LoadFailure({
   error,
   message,
   onRetry,
+  isRetrying,
 }: {
   error: unknown
   message: string
   onRetry: () => void
+  isRetrying: boolean
 }) {
-  return <ErrorState onRetry={onRetry}>{describeRequestFailure(error, message)}</ErrorState>
+  return (
+    <ErrorState onRetry={onRetry} isRetrying={isRetrying}>
+      {describeRequestFailure(error, message)}
+    </ErrorState>
+  )
 }
 
 function LearnedAxes({ refs, masters }: { refs: LearningRefsWire; masters: MastersState }) {
@@ -223,6 +231,7 @@ function MerchantRulesSection({ masters }: { masters: MastersState }) {
             void rulesQuery.refetch()
             masters.refetch()
           }}
+          isRetrying={rulesQuery.isFetching || masters.isFetching}
         />
       )}
       {!isPending &&
@@ -289,6 +298,7 @@ export function LearningRulesTab() {
   const masters: MastersState = {
     isPending: categoriesQuery.isPending || expenseTypesQuery.isPending,
     error: categoriesQuery.error ?? expenseTypesQuery.error,
+    isFetching: categoriesQuery.isFetching || expenseTypesQuery.isFetching,
     refetch: () => {
       void categoriesQuery.refetch()
       void expenseTypesQuery.refetch()

@@ -45,6 +45,6 @@
 }
 
 .heroValue {
-  font-size: min(24px, 16cqi);
+  font-size: min(var(--text-2xl), 16cqi);
   font-weight: 800;
 }

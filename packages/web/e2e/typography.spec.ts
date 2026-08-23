@@ -47,7 +47,11 @@ test('ダッシュボードの世帯/個人トグルが設計書体の日本語�
   const formControls = await page.locator(FORM_SELECTOR).count()
   expect(formControls).toBeGreaterThan(0)
 
-  const toggle = page.getByRole('button', { name: '世帯' })
+  // 2 択の切り替えは SegmentedControl（透明なラジオ + 見た目を担うラベル）。書体が効くのは
+  // 見た目を担うラベルの側なので、そちらを測る
+  const toggle = page
+    .getByRole('radiogroup', { name: '集計の範囲' })
+    .getByText('世帯', { exact: true })
   await expect(toggle).toBeVisible()
   await expect(toggle).toHaveCSS('font-family', new RegExp(DESIGN_FONT_FAMILY))
 

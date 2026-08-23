@@ -390,7 +390,10 @@ function TransactionsPageContent() {
       <MonthNavigator month={month} onMonthChange={setMonth} />
 
       {summaryQuery.error && (
-        <ErrorState onRetry={() => void summaryQuery.refetch()}>
+        <ErrorState
+          onRetry={() => void summaryQuery.refetch()}
+          isRetrying={summaryQuery.isFetching}
+        >
           {describeRequestFailure(summaryQuery.error, '未分類の件数を取得できませんでした')}
         </ErrorState>
       )}

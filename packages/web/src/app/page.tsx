@@ -43,7 +43,7 @@ export default function DashboardPage() {
 
       {kpis.isLoading && <LoadingState />}
       {kpis.error && (
-        <ErrorState onRetry={() => void kpis.refetch()}>
+        <ErrorState onRetry={() => void kpis.refetch()} isRetrying={kpis.isFetching}>
           {describeRequestFailure(kpis.error, 'KPI の取得に失敗しました')}
         </ErrorState>
       )}
@@ -61,7 +61,7 @@ export default function DashboardPage() {
         </span>
         {breakdown.isLoading && <LoadingState />}
         {breakdown.error && (
-          <ErrorState onRetry={() => void breakdown.refetch()}>
+          <ErrorState onRetry={() => void breakdown.refetch()} isRetrying={breakdown.isFetching}>
             {describeRequestFailure(breakdown.error, 'カテゴリ内訳の取得に失敗しました')}
           </ErrorState>
         )}

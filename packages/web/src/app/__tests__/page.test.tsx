@@ -8,6 +8,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { CategoryBreakdownViewSchema, DashboardKpisViewSchema } from '@warimaru/domain'
 import DashboardPage from '../page'
 
 const apiFetch = vi.fn()
@@ -43,17 +44,26 @@ function breakdownResponse(): unknown {
         categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VWX',
         categoryName: '食費',
         total: 100000,
+        count: 3,
         percentage: 100,
       },
     ],
   }
 }
 
-/** パスで応答を振り分ける。KPI と内訳は別々のクエリなので、片方だけ失敗させられる */
+/**
+ * パスで応答を振り分ける。KPI と内訳は別々のクエリなので、片方だけ失敗させられる。
+ *
+ * 応答は実際の画面と同じスキーマ(`@warimaru/domain`)に通してから返す。素通しにすると、
+ * 画面が読む形と fixture がずれたことに気づけないまま緑になる
+ */
 function respond(options: { kpis?: unknown; breakdown?: unknown }): void {
   apiFetch.mockImplementation((path: string) => {
-    const value = path.includes('/api/dashboard/kpis') ? options.kpis : options.breakdown
-    return value instanceof Error ? Promise.reject(value) : Promise.resolve(value)
+    const isKpis = path.includes('/api/dashboard/kpis')
+    const value = isKpis ? options.kpis : options.breakdown
+    if (value instanceof Error) return Promise.reject(value)
+    const schema = isKpis ? DashboardKpisViewSchema : CategoryBreakdownViewSchema
+    return Promise.resolve(schema.parse(value))
   })
 }
 
@@ -111,7 +121,11 @@ describe('ダッシュボード', () => {
     respond({ kpis: kpisResponse(), breakdown: breakdownResponse() })
     await user.click(screen.getByRole('button', { name: '再読み込み' }))
 
+    // 押した直後も、取り直しが終わったあとも、成功している KPI は出たまま
+    expect(screen.getByText('2,450,000円')).toBeInTheDocument()
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(3))
+    expect(await screen.findByRole('link', { name: /食費/ })).toBeInTheDocument()
+    expect(screen.getByText('2,450,000円')).toBeInTheDocument()
     const paths = apiFetch.mock.calls.map(call => String(call[0]))
     expect(paths.filter(path => path.includes('/api/dashboard/kpis'))).toHaveLength(1)
   })
