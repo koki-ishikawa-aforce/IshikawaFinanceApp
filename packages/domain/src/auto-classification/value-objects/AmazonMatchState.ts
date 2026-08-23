@@ -10,13 +10,11 @@
  */
 import { z } from 'zod'
 import { TransactionIdSchema, AmazonOrderIdSchema } from '../../shared/ids'
-import { AmazonProductKeySchema } from '../../shared/value-objects/AmazonProductKey'
 
 export const AmazonMatchStateSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('matched'),
     transactionId: TransactionIdSchema,
-    amazonProductKey: AmazonProductKeySchema,
     matchedAt: z.date(),
   }),
   z.object({

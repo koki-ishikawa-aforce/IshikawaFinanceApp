@@ -30,20 +30,17 @@ const DISABLED_RULE = {
   disabledAt: '2026-06-30T12:00:00.000Z',
 }
 
-const MERCHANT_RULES = { items: [ACTIVE_RULE, DISABLED_RULE] }
-
-const AMAZON_RULES = {
-  items: [
-    {
-      userId: 'U_ME',
-      amazonProductKey: '技術書 / プログラミング',
-      categoryRef: { kind: 'learned', categoryId: 'CAT_OTHER' },
-      expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
-      expenseTypeRef: { kind: 'learned', expenseTypeId: 'ET_BOOKS' },
-      lastUpdatedAt: '2026-07-12T09:00:00.000Z',
-    },
-  ],
+/** 経費(会社)を経費種別まで学習済みのルール。ID ではなくマスタ名で出ることの検証に使う */
+const EXPENSE_RULE = {
+  kind: 'active',
+  common: { userId: 'U_ME', merchantName: 'ブックストア 恵比寿' },
+  categoryRef: { kind: 'learned', categoryId: 'CAT_OTHER' },
+  expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+  expenseTypeRef: { kind: 'learned', expenseTypeId: 'ET_BOOKS' },
+  lastUpdatedAt: '2026-07-12T09:00:00.000Z',
 }
+
+const MERCHANT_RULES = { items: [ACTIVE_RULE, EXPENSE_RULE, DISABLED_RULE] }
 
 const CATEGORIES = {
   items: [
@@ -74,7 +71,6 @@ type Responder = (path: string) => unknown
 function respondWith(overrides: Record<string, unknown> = {}): Responder {
   const table: Record<string, unknown> = {
     '/api/classification/merchant-rules': MERCHANT_RULES,
-    '/api/classification/amazon-rules': AMAZON_RULES,
     '/api/categories': CATEGORIES,
     '/api/expense-types': EXPENSE_TYPES,
     ...overrides,
@@ -118,7 +114,6 @@ function renderTab() {
 async function waitForRulesLoaded(queryClient: QueryClient): Promise<void> {
   await waitFor(() => {
     expect(queryClient.getQueryState(['classification', 'merchant-rules'])?.status).toBe('success')
-    expect(queryClient.getQueryState(['classification', 'amazon-rules'])?.status).toBe('success')
   })
 }
 
@@ -150,16 +145,17 @@ beforeEach(() => {
 })
 
 describe('LearningRulesTab', () => {
-  it('加盟店ルールと Amazon 商品ルールを、マスタ名に解決して一覧表示する', async () => {
+  it('加盟店ルールを、マスタ名に解決して一覧表示する', async () => {
     mockFetch(respondWith())
     renderTab()
 
     expect(await screen.findByText('ライフ 中目黒店')).toBeInTheDocument()
-    expect(screen.getByText('技術書 / プログラミング')).toBeInTheDocument()
     // カテゴリ ID ではなくマスタ名で表示する
     expect(screen.getByText('食費')).toBeInTheDocument()
-    expect(screen.getByText('書籍代')).toBeInTheDocument()
     expect(screen.queryByText('CAT_FOOD')).not.toBeInTheDocument()
+    // 経費種別も ID ではなくマスタ名で表示する(カテゴリ名と取り違えていない)
+    expect(within(rowOf('ブックストア 恵比寿')).getByText('書籍代')).toBeInTheDocument()
+    expect(screen.queryByText('ET_BOOKS')).not.toBeInTheDocument()
     // 最終更新日は lastUpdatedAt 由来（disabledAt と取り違えていない）
     expect(within(rowOf('ライフ 中目黒店')).getByText('最終更新日: 2026/7/18')).toBeInTheDocument()
   })
@@ -194,21 +190,20 @@ describe('LearningRulesTab', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('Amazon 商品の行には学習を止める操作を出さない（商品ごとの停止はできない）', async () => {
+  it('Amazon 商品の学習は一覧も取得も行わない（X-1 取り下げ、#572）', async () => {
     mockFetch(respondWith())
     renderTab()
 
-    await screen.findByText('技術書 / プログラミング')
-    expect(within(rowOf('技術書 / プログラミング')).queryByRole('button')).not.toBeInTheDocument()
+    await screen.findByText('ライフ 中目黒店')
+    expect(screen.queryByText('Amazon 商品の学習')).not.toBeInTheDocument()
+    expect(apiMock.apiFetch).not.toHaveBeenCalledWith(
+      '/api/classification/amazon-rules',
+      expect.anything(),
+    )
   })
 
-  it('学習ルールが 1 件も無いとき、両方の一覧が何をすれば埋まるかを示す', async () => {
-    mockFetch(
-      respondWith({
-        '/api/classification/merchant-rules': { items: [] },
-        '/api/classification/amazon-rules': { items: [] },
-      }),
-    )
+  it('学習ルールが 1 件も無いとき、一覧が何をすれば埋まるかを示す', async () => {
+    mockFetch(respondWith({ '/api/classification/merchant-rules': { items: [] } }))
     renderTab()
 
     expect(
@@ -216,7 +211,6 @@ describe('LearningRulesTab', () => {
         '覚えている加盟店はまだありません。取引一覧で分類すると、その加盟店の分類をここに覚えます。',
       ),
     ).toBeInTheDocument()
-    expect(screen.getByText(/覚えている Amazon 商品はまだありません。/)).toBeInTheDocument()
   })
 
   it('取得に失敗したら再読み込みの手段を出し、押すと取り直す', async () => {
@@ -240,22 +234,11 @@ describe('LearningRulesTab', () => {
     expect(screen.queryByText('学習ルールの取得に失敗しました')).not.toBeInTheDocument()
   })
 
-  it('片方の一覧の取得失敗が、もう片方の一覧の表示を巻き込まない', async () => {
-    mockFetch(respondWith({ '/api/classification/amazon-rules': new Error('boom') }))
-    renderTab()
-
-    expect(
-      await screen.findByText('Amazon 商品の学習ルールの取得に失敗しました'),
-    ).toBeInTheDocument()
-    expect(screen.getByText('ライフ 中目黒店')).toBeInTheDocument()
-  })
-
-  it('マスタの取得に失敗したら、名前を「（不明）」に落とさず両方の一覧をエラーにする', async () => {
+  it('マスタの取得に失敗したら、名前を「（不明）」に落とさず一覧をエラーにする', async () => {
     mockFetch(respondWith({ '/api/categories': new Error('boom') }))
     renderTab()
 
     expect(await screen.findByText('学習ルールの取得に失敗しました')).toBeInTheDocument()
-    expect(screen.getByText('Amazon 商品の学習ルールの取得に失敗しました')).toBeInTheDocument()
     expect(screen.queryByText('（不明）')).not.toBeInTheDocument()
     expect(screen.queryByText('ライフ 中目黒店')).not.toBeInTheDocument()
   })
@@ -269,7 +252,7 @@ describe('LearningRulesTab', () => {
     await waitForRulesLoaded(queryClient)
     expect(screen.queryByText('ライフ 中目黒店')).not.toBeInTheDocument()
     expect(screen.queryByText('（不明）')).not.toBeInTheDocument()
-    expect(screen.getAllByText('読み込み中...').length).toBe(2)
+    expect(screen.getAllByText('読み込み中...').length).toBe(1)
 
     categories.resolve(CATEGORIES)
 

@@ -170,7 +170,6 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     classificationRoutes({
       retroactiveCandidateQuery: deps.retroactiveCandidateQuery,
       merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
-      amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
       bulkClassificationSessionRepository: deps.bulkClassificationSessionRepository,
       transactionRepository: deps.transactionRepository,
       resolveViewerRole: deps.resolveViewerRole,

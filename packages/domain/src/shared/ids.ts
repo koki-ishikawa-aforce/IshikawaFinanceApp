@@ -86,7 +86,7 @@ export const AmazonOrderIdSchema = externalIdSchema.brand<'AmazonOrderId'>()
 export type AmazonOrderId = z.infer<typeof AmazonOrderIdSchema>
 
 // --- Phase 5 M-A: 自動分類・学習 ---
-// 加盟店学習ルール / Amazon商品キー学習ルールは自然キー（ユーザーID + 加盟店名 / 商品キー）のため
+// 加盟店学習ルールは自然キー（ユーザーID + 加盟店名）のため
 // 専用 ID を設けない（09-aggregates.md #4/#5）。
 
 export const BulkClassificationSessionIdSchema = ulidSchema.brand<'BulkClassificationSessionId'>()

@@ -25,7 +25,6 @@ export function expenseClassLabel(expenseClass: ExpenseClassWire): string {
  */
 export const UNCLASSIFIED_REASON_LABELS: Record<UnclassifiedReasonWire, string> = {
   merchant_rule_unlearned: 'この店舗はまだ学習していません',
-  amazon_product_key_unlearned: 'Amazon の商品がまだ学習されていません',
   amazon_product_info_undecidable: 'Amazon の商品を特定できませんでした',
   amazon_match_timeout: 'Amazon の注文と結び付けられませんでした',
   learning_disabled: 'この店舗は学習しない設定です',

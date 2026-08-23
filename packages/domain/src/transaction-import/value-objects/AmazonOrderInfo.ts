@@ -6,11 +6,14 @@
 import { z } from 'zod'
 import { AmazonOrderIdSchema, UserIdSchema, GmailMessageIdSchema } from '../../shared/ids'
 import { MoneySchema } from '../../shared/value-objects/Money'
-import { AmazonProductKeySchema } from '../../shared/value-objects/AmazonProductKey'
 
+/**
+ * 注文確認メールから実際に取り出せる項目だけを持つ（商品名・金額）。
+ * 商品カテゴリ（旧 Amazon商品キー）はメールに含まれないことが実メール調査で判明したため、
+ * X-1 の取り下げ（2026-08-23 / #391・#572）に伴い削除した。
+ */
 export const AmazonProductInfoSchema = z.object({
   productName: z.string().min(1),
-  amazonProductKey: AmazonProductKeySchema,
   productAmount: MoneySchema,
 })
 export type AmazonProductInfo = z.infer<typeof AmazonProductInfoSchema>

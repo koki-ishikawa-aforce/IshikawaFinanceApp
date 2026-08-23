@@ -1,5 +1,4 @@
 import {
-  AmazonProductKeyLearningRuleSchema,
   CategoryLearningRulesRemappedSchema,
   CategoryTransactionsRemappedSchema,
   ClassifiedDetailsSchema,
@@ -9,7 +8,6 @@ import {
   TransactionSchema,
 } from '@warimaru/domain'
 import type {
-  AmazonProductKeyLearningRuleRepository,
   CategoryDeletionRemapRequested,
   CategoryDeletionRequestRepository,
   EventBus,
@@ -23,7 +21,6 @@ import { domainEventBase } from './event-base.js'
 export interface MasterDataRemapHandlerDeps {
   transactionRepository: TransactionRepository
   merchantLearningRuleRepository: MerchantLearningRuleRepository
-  amazonProductKeyLearningRuleRepository: AmazonProductKeyLearningRuleRepository
   categoryDeletionRequestRepository: CategoryDeletionRequestRepository
   expenseTypeDeletionRequestRepository: ExpenseTypeDeletionRequestRepository
 }
@@ -119,26 +116,6 @@ export function registerMasterDataRemapEventHandlers(
         affectedLearningRuleCount++
       }
 
-      const amazonRules = await deps.amazonProductKeyLearningRuleRepository.findAllByUser(
-        request.requestedByUserId,
-      )
-      for (const rule of amazonRules) {
-        if (
-          rule.categoryRef.kind !== 'learned' ||
-          rule.categoryRef.categoryId !== event.targetCategoryId
-        ) {
-          continue
-        }
-        await deps.amazonProductKeyLearningRuleRepository.save(
-          AmazonProductKeyLearningRuleSchema.parse({
-            ...rule,
-            categoryRef: { kind: 'learned', categoryId: event.destinationCategoryId },
-            lastUpdatedAt: now,
-          }),
-        )
-        affectedLearningRuleCount++
-      }
-
       await eventBus.publish(
         CategoryLearningRulesRemappedSchema.parse({
           ...domainEventBase(event.occurredAt),
@@ -205,26 +182,6 @@ export function registerMasterDataRemapEventHandlers(
         }
         await deps.merchantLearningRuleRepository.save(
           MerchantLearningRuleSchema.parse({
-            ...rule,
-            expenseTypeRef: { kind: 'learned', expenseTypeId: event.destinationExpenseTypeId },
-            lastUpdatedAt: now,
-          }),
-        )
-        affectedLearningRuleCount++
-      }
-
-      const amazonRules = await deps.amazonProductKeyLearningRuleRepository.findAllByUser(
-        request.requestedByUserId,
-      )
-      for (const rule of amazonRules) {
-        if (
-          rule.expenseTypeRef.kind !== 'learned' ||
-          rule.expenseTypeRef.expenseTypeId !== event.targetExpenseTypeId
-        ) {
-          continue
-        }
-        await deps.amazonProductKeyLearningRuleRepository.save(
-          AmazonProductKeyLearningRuleSchema.parse({
             ...rule,
             expenseTypeRef: { kind: 'learned', expenseTypeId: event.destinationExpenseTypeId },
             lastUpdatedAt: now,

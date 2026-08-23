@@ -4,7 +4,6 @@ import type {
   AllowlistQuery,
   BalanceHistoryRepository,
   BankDepositRepository,
-  AmazonProductKeyLearningRuleRepository,
   AppUserRepository,
   BalanceTimeSeriesQuery,
   BulkClassificationSessionRepository,
@@ -58,7 +57,6 @@ import {
   PostgresAppUserRepository,
   PostgresGmailOAuthTokenRepository,
   PostgresSpouseCompletionQuery,
-  PostgresAmazonProductKeyLearningRuleRepository,
   PostgresBulkClassificationSessionRepository,
   PostgresCategoryDeletionRequestRepository,
   PostgresCategoryMasterRepository,
@@ -139,7 +137,6 @@ import {
   createMockBankDepositRepository,
   createMockAppUserRepository,
   createMockGmailOAuthTokenRepository,
-  createMockAmazonProductKeyLearningRuleRepository,
   createMockPdfToCsvConverter,
   createMockBulkClassificationSessionRepository,
   createMockCategoryDeletionRequestRepository,
@@ -199,7 +196,6 @@ export interface AppDeps {
   // 自動分類 (#24)
   retroactiveCandidateQuery: RetroactiveCandidateQuery
   merchantLearningRuleRepository: MerchantLearningRuleRepository
-  amazonProductKeyLearningRuleRepository: AmazonProductKeyLearningRuleRepository
   bulkClassificationSessionRepository: BulkClassificationSessionRepository
   // 経費精算 (#25)
   monthlyExpenseCycleRepository: MonthlyExpenseCycleRepository
@@ -494,7 +490,6 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     pdfToCsvConverter: createMockPdfToCsvConverter(),
     retroactiveCandidateQuery: createMockRetroactiveCandidateQuery(),
     merchantLearningRuleRepository: createMockMerchantLearningRuleRepository(),
-    amazonProductKeyLearningRuleRepository: createMockAmazonProductKeyLearningRuleRepository(),
     bulkClassificationSessionRepository: createMockBulkClassificationSessionRepository(),
     monthlyExpenseCycleRepository: createMockMonthlyExpenseCycleRepository(),
     proratedChildTransactionRepository: createMockProratedChildTransactionRepository(),
@@ -660,7 +655,6 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     pdfToCsvConverter: new AnthropicPdfToCsvConverter(),
     retroactiveCandidateQuery: new PostgresRetroactiveCandidateQuery(db, { now }),
     merchantLearningRuleRepository: new PostgresMerchantLearningRuleRepository(db),
-    amazonProductKeyLearningRuleRepository: new PostgresAmazonProductKeyLearningRuleRepository(db),
     bulkClassificationSessionRepository: new PostgresBulkClassificationSessionRepository(db),
     monthlyExpenseCycleRepository: new PostgresMonthlyExpenseCycleRepository(db),
     proratedChildTransactionRepository: new PostgresProratedChildTransactionRepository(db),

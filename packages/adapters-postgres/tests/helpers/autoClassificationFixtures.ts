@@ -1,17 +1,8 @@
 /**
  * 自動分類・学習コンテキストのテストフィクスチャ
  */
-import type {
-  AmazonProductKeyLearningRule,
-  BulkClassificationSession,
-  MerchantLearningRule,
-  UserId,
-} from '@warimaru/domain'
-import {
-  AmazonProductKeyLearningRuleSchema,
-  BulkClassificationSessionSchema,
-  MerchantLearningRuleSchema,
-} from '@warimaru/domain'
+import type { BulkClassificationSession, MerchantLearningRule, UserId } from '@warimaru/domain'
+import { BulkClassificationSessionSchema, MerchantLearningRuleSchema } from '@warimaru/domain'
 import { newUlid } from '../../src/newId'
 import { HONEY_USER_ID } from './fixtures'
 
@@ -41,19 +32,6 @@ export function disabledMerchantRule(
       merchantName: input.merchantName ?? '学習しないストア',
     },
     disabledAt: new Date('2026-07-02T00:00:00.000Z'),
-  })
-}
-
-export function amazonRule(
-  input: { userId?: UserId; amazonProductKey?: string } = {},
-): AmazonProductKeyLearningRule {
-  return AmazonProductKeyLearningRuleSchema.parse({
-    userId: input.userId ?? HONEY_USER_ID,
-    amazonProductKey: input.amazonProductKey ?? '本',
-    categoryRef: { kind: 'learned', categoryId: newUlid() },
-    expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
-    expenseTypeRef: { kind: 'learned', expenseTypeId: newUlid() },
-    lastUpdatedAt: new Date('2026-07-01T00:00:00.000Z'),
   })
 }
 

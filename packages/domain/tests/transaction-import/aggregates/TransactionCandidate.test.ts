@@ -60,7 +60,6 @@ describe('TransactionCandidate 集約', () => {
         products: [
           {
             productName: 'ドメイン駆動設計',
-            amazonProductKey: '本' as never,
             productAmount: 2500 as never,
           },
         ],
@@ -77,7 +76,6 @@ describe('TransactionCandidate 集約', () => {
         products: [
           {
             productName: 'ドメイン駆動設計',
-            amazonProductKey: '本' as never,
             productAmount: 2500 as never,
           },
         ],
@@ -153,7 +151,6 @@ describe('confirmCandidate 状態遷移', () => {
       products: [
         {
           productName: 'ドメイン駆動設計',
-          amazonProductKey: '本' as never,
           productAmount: 2500 as never,
         },
       ],

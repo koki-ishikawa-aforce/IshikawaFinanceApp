@@ -48,7 +48,6 @@ export type UnclassifiedSummaryWire = z.infer<typeof UnclassifiedSummaryWireSche
 /** 未分類理由。ドメインの `UnclassifiedReason` をミラーする */
 export const UnclassifiedReasonWireSchema = z.enum([
   'merchant_rule_unlearned',
-  'amazon_product_key_unlearned',
   'amazon_product_info_undecidable',
   'amazon_match_timeout',
   'learning_disabled',
@@ -546,22 +545,6 @@ export type MerchantLearningRuleWire = z.infer<typeof MerchantLearningRuleWireSc
 
 export const MerchantLearningRuleListWireSchema = z.object({
   items: z.array(MerchantLearningRuleWireSchema),
-})
-
-/** Amazon 商品キー学習ルール（X-1: AMAZON.CO.JP の取引はこちらで学習する。無効化の概念は無い） */
-export const AmazonProductKeyLearningRuleWireSchema = z
-  .object({
-    userId: z.string(),
-    amazonProductKey: z.string(),
-    lastUpdatedAt: IsoDate,
-  })
-  .merge(LearningRefsWireSchema)
-export type AmazonProductKeyLearningRuleWire = z.infer<
-  typeof AmazonProductKeyLearningRuleWireSchema
->
-
-export const AmazonProductKeyLearningRuleListWireSchema = z.object({
-  items: z.array(AmazonProductKeyLearningRuleWireSchema),
 })
 
 // ---------- オンボーディング（#42） ----------
