@@ -420,20 +420,22 @@ describe('POST /api/imports/mail-batch', () => {
     expect(res.status).toBe(400)
   })
 
-  it('Gmail 未連携なら 409 で返り、取り込めなかったことが結末に載る', async () => {
+  it('Gmail 未連携なら 409 で返り、取込を起動しなかったことが結末に載る', async () => {
     // 成功と同じ 200 で返すと、呼んだ人が「取り込めた」と受け取ってしまう
-    const { app } = createTestApp()
+    const { app, deps } = createTestApp()
     const res = await request(app, 'POST', '/api/imports/mail-batch', {
       body: { from: '2026-07-09T00:00:00Z', to: '2026-07-10T00:00:00Z' },
     })
     expect(res.status).toBe(409)
     const json = (await res.json()) as {
-      batch: { kind: string }
-      result: { status: string; failureKind?: string }
+      batch: { kind: string } | null
+      result: { status: string; reason?: string }
     }
-    expect(json.result.status).toBe('failed')
-    expect(json.result.failureKind).toBe('gmail_not_authorized')
-    expect(json.batch.kind).toBe('failed')
+    expect(json.result.status).toBe('not_launched')
+    expect(json.result.reason).toBe('not_linked')
+    // 起動していないのでバッチ記録は残らない（失敗記録が毎回積み上がらない）
+    expect(json.batch).toBeNull()
+    expect(await deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
   })
 
   it('Gmail 連携済みならメールを取り込んで完了する', async () => {

@@ -112,19 +112,33 @@ export interface DailyMailImportParams {
 
 /**
  * 取込を止めた失敗の種別。再認可が要るのか、待てば直るのかを呼出し元が区別できるようにする。
- *  - `gmail_not_authorized`: Gmail 連携がまだ無い / 失効検知済みで再認可待ち
  *  - `oauth_revocation_detected`: 取得の途中でトークン失効を検知した（再認可導線 #392 の起点）
  *  - `other_fetch_failure`: 通信断・API 障害・設定不備などの取得失敗
  *  - `unexpected_error`: 取得後の処理（パース結果の保存など）で想定外の失敗が起きた
+ *
+ * 連携がそもそも無い場合はここに含めない。バッチを起動する前に弾いて `not_launched` として
+ * 返すため、「起動したが失敗した」種別としては現れない（OQ-57 / #488）。
  */
 export type DailyMailImportFailureKind =
-  | 'gmail_not_authorized'
   | 'oauth_revocation_detected'
   | 'other_fetch_failure'
   | 'unexpected_error'
 
 /**
+ * バッチを起動しなかった理由（08a `behavior 日次メール取込バッチを起動する` の事前条件
+ * 「ユーザーが Gmail OAuth 連携を完了している」を満たさない状態）。
+ *  - `not_linked`: 連携前・連携解除後（トークンが無い）
+ *  - `revocation_detected`: 失効を検知済みで、再認可されるまで取り込めない
+ */
+export type MailImportNotLaunchedReason = 'not_linked' | 'revocation_detected'
+
+/**
  * 1 ユーザーぶんの取込結果。
+ *
+ * `not_launched` は「起動の事前条件を満たさないので始めなかった」結末で、失敗（起動したが
+ * 取り込めなかった）とは別の層に置く。再認可されるまで何度実行しても結果は変わらないため、
+ * 毎日の実行のたびに失敗記録を積み上げると、通信断や失効など本当に追うべき失敗が埋もれる
+ * （OQ-57 / #488）。バッチ記録を残さないので `importBatchId` も持たない。
  *
  * `resumed` は、前回の実行が最後まで進まずに残していたバッチを引き継いだかを表す。
  * `otherNotificationCount` は、パースには成功したが取引候補にしない種別（銀行入金・引落確定
@@ -132,28 +146,35 @@ export type DailyMailImportFailureKind =
  * `duplicateExcludedCount` / `failedCount` はこの実行で数えたぶんだが、`importedCount` だけは
  * バッチに永続化される累計（再開時は引き継いだ件数から続けて数える）。
  */
-export type DailyMailImportOutcome = {
-  importBatchId: ImportBatchId
-  targetPeriod: ImportTargetPeriod
-  resumed: boolean
-} & (
+export type DailyMailImportOutcome =
   | {
-      status: 'completed'
-      /** バッチに積み上がった取込済み件数（再開したときは前回ぶんを含む） */
-      importedCount: number
-      duplicateExcludedCount: number
-      failedCount: number
-      otherNotificationCount: number
-    }
-  | {
-      status: 'failed'
-      failureKind: DailyMailImportFailureKind
-      /** 同じ実行をやり直せば結果が変わりうるか（翌日の再走査で回収できるか） */
-      retryable: boolean
+      status: 'not_launched'
+      reason: MailImportNotLaunchedReason
       /** ログ・応答に載る短い文言。シークレット・PII・メール本文を含めない */
-      failureDetail: string
+      detail: string
     }
-)
+  | ({
+      importBatchId: ImportBatchId
+      targetPeriod: ImportTargetPeriod
+      resumed: boolean
+    } & (
+      | {
+          status: 'completed'
+          /** バッチに積み上がった取込済み件数（再開したときは前回ぶんを含む） */
+          importedCount: number
+          duplicateExcludedCount: number
+          failedCount: number
+          otherNotificationCount: number
+        }
+      | {
+          status: 'failed'
+          failureKind: DailyMailImportFailureKind
+          /** 同じ実行をやり直せば結果が変わりうるか（翌日の再走査で回収できるか） */
+          retryable: boolean
+          /** ログ・応答に載る短い文言。シークレット・PII・メール本文を含めない */
+          failureDetail: string
+        }
+    ))
 
 /**
  * トークン失効を検知した事実を残す（08f §2「Gmail OAuth トークンの失効を検知する」）。
@@ -234,13 +255,37 @@ function failureKindOf(failure: MailFetchFailure): DailyMailImportFailureKind {
  *
  * 取得に失敗したバッチは失敗（終端）として記録する。取込中のまま残すと二重起動防止の
  * ロックが解けず、翌日以降の取込まで止まる。
+ *
+ * Gmail 連携が無い / 失効検知済みのときは、そもそもバッチを起動しない（08a の事前条件
+ * 「ユーザーが Gmail OAuth 連携を完了している」。OQ-57 / #488）。起動記録も失敗記録も
+ * 残さず `not_launched` を返す。
  */
 export async function runDailyMailImportForUser(
   deps: DailyMailImportDeps,
   params: DailyMailImportParams,
 ): Promise<DailyMailImportOutcome> {
   const at = params.at ?? new Date()
+  // 期間の不変条件（from < to）をここで弾く。組み立てるだけで保存はしないため、この後の
+  // 連携チェックで起動を見送っても記録は残らない（手動実行の不正な期間は 400 のまま）
   const launched = buildLaunchedBatch(params, at)
+
+  const token = await deps.gmailOAuthTokenRepository.findByUserId(params.userId)
+  if (token === null || token.kind === 'revocation_detected') {
+    // 連携前・連携解除後・失効検知済みのいずれか。再認可されるまで何度実行しても取り込めない
+    // ため、取得を試みないだけでなく起動記録も残さない（毎日 1 件ずつ失敗記録が積み上がると、
+    // 通信断・失効など本当に追うべき失敗が埋もれる）。
+    // 無言で終わると「カード利用が家計簿に出てこない」状態が誰にも気づかれないまま続くので、
+    // 対象外として結果に残し、ログにも残す（毎日のバッチ全体の成否は #514 の決定どおり
+    // 呼出し元が異常として扱う）
+    const reason: MailImportNotLaunchedReason =
+      token === null ? 'not_linked' : 'revocation_detected'
+    const detail =
+      token === null ? 'Gmail 連携が未設定のため取り込めない' : 'Gmail 連携が失効しており再認可待ち'
+    console.warn(
+      `[transaction-import] Gmail 連携が無いためメール取込を起動しなかった（reason=${reason}）— ${detail}`,
+    )
+    return { status: 'not_launched', reason, detail }
+  }
 
   const inProgress = await deps.dailyMailImportBatchRepository.findInProgressByUser(params.userId)
   const active =
@@ -291,19 +336,6 @@ export async function runDailyMailImportForUser(
   ): Promise<DailyMailImportOutcome> => {
     await deps.dailyMailImportBatchRepository.save(failBatch(batch, failureDetail, new Date()))
     return { ...outcomeBase, status: 'failed', failureKind, retryable, failureDetail }
-  }
-
-  const token = await deps.gmailOAuthTokenRepository.findByUserId(params.userId)
-  if (token === null || token.kind === 'revocation_detected') {
-    // 連携前・連携解除後・失効検知済みのいずれか。再認可されるまで何度実行しても取り込めない
-    // ため、取得は試みない。無言で終わると「カード利用が家計簿に出てこない」状態が誰にも
-    // 気づかれないまま続くので、失敗として記録したうえでログにも残す
-    const detail =
-      token === null ? 'Gmail 連携が未設定のため取り込めない' : 'Gmail 連携が失効しており再認可待ち'
-    console.error(
-      `[transaction-import] Gmail 連携が無いためメール取込を実行できない（${batchLabel(batch)}）— ${detail}`,
-    )
-    return fail('gmail_not_authorized', detail, false)
   }
 
   const fetched = await deps.gmailMailFetchGateway.fetchMails({
@@ -591,9 +623,21 @@ async function createCardUsageCandidate(
 
 /** 世帯一括取込のユーザー単位の結末 */
 export type HouseholdMemberMailImportResult =
-  | { role: UserRole; status: 'imported'; outcome: DailyMailImportOutcome }
+  | {
+      role: UserRole
+      status: 'imported'
+      outcome: Exclude<DailyMailImportOutcome, { status: 'not_launched' }>
+    }
   /** その役割のユーザーが未登録（オンボーディング前）。取込対象が存在しない */
   | { role: UserRole; status: 'not_registered' }
+  /**
+   * Gmail 連携が無いため取込を起動しなかった（対象外）。未登録と同じ「取込を始めなかった」層で、
+   * 失敗（起動したが取り込めなかった）とは区別する。再認可されるまで結果は変わらないため、
+   * 呼出し元は失敗記録の積み上げではなく状態として扱う（OQ-57 / #488）。
+   * ただし取り込めない日が続く事実には気づける必要があるため、毎日のバッチ全体の成否では
+   * 引き続き異常として扱う（#514）
+   */
+  | { role: UserRole; status: 'not_launched'; reason: MailImportNotLaunchedReason }
   /**
    * 取込の手続きそのものが落ちた（バッチ記録を残せなかった等）。理由はエラー種別だけを持つ
    * — 呼出し元が結果をログや通知へ載せても、DB エラーの内部情報が外へ出ないようにする
@@ -631,6 +675,10 @@ export async function runDailyMailImportForHousehold(
         at,
         ...(params.scanDays === undefined ? {} : { scanDays: params.scanDays }),
       })
+      if (outcome.status === 'not_launched') {
+        results.push({ role, status: 'not_launched', reason: outcome.reason })
+        continue
+      }
       results.push({ role, status: 'imported', outcome })
     } catch (e) {
       const failureKind = e instanceof Error ? e.name : 'unknown'

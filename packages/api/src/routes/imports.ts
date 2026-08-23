@@ -446,6 +446,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
    * 取込が失敗した場合は成功と同じ 200 では返さない（呼び出した人が「取り込めた」と
    * 受け取ってしまう）。Gmail の連携が切れているなら再認可が要るので 409、外部の障害なら
    * 時間をおいて再実行すれば直りうるので 502 を返す。結末の詳細は `result` に入る。
+   * 連携がそもそも無い場合はバッチを起動しないため 409 で `batch` は null になる（#488）。
    */
   app.post('/mail-batch', async c => {
     const rawBody = await c.req.text()
@@ -482,15 +483,16 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
       userId: viewerId,
       ...(period === undefined ? {} : { period }),
     })
+    if (result.status === 'not_launched') {
+      // Gmail 連携が無いので取込は起動していない。再認可は利用者の操作待ちなので 409。
+      // バッチ記録を残さない結末なので `batch` は無い（OQ-57 / #488）
+      return c.json({ batch: null, result }, 409)
+    }
     const batch = await deps.dailyMailImportBatchRepository.findById(result.importBatchId)
     if (result.status === 'failed') {
-      // 再認可が要る失敗（連携なし・失効）は利用者の操作待ちなので 409、それ以外は
-      // 外部の取得・保存の失敗なので 502
-      const status =
-        result.failureKind === 'gmail_not_authorized' ||
-        result.failureKind === 'oauth_revocation_detected'
-          ? 409
-          : 502
+      // 取得の途中で失効を検知した場合は再認可が要る（利用者の操作待ち）ので 409、
+      // それ以外は外部の取得・保存の失敗なので 502
+      const status = result.failureKind === 'oauth_revocation_detected' ? 409 : 502
       return c.json({ batch, result }, status)
     }
     return c.json({ batch, result })

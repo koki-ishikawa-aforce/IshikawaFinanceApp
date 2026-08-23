@@ -27,6 +27,7 @@ import type {
   MailFetchRequest,
   MailFetchResult,
   MailImportBatchCompleted,
+  MailImportBatchLaunched,
   MailImportResumed,
   MailParseFailed,
   SmbcNotificationMailBody,
@@ -40,6 +41,7 @@ import {
   runDailyMailImportForHousehold,
   runDailyMailImportForUser,
   type DailyMailImportDeps,
+  type DailyMailImportOutcome,
 } from '../src/daily-mail-import.js'
 import { createTestApp, SPOUSE_ID, VIEWER_ID, type TestApp } from './helpers/test-app.js'
 
@@ -192,6 +194,19 @@ async function savedCandidates(t: TestApp, ids: string[]): Promise<TransactionCa
   return found.filter((c): c is TransactionCandidate => c !== null)
 }
 
+/**
+ * バッチを起動した結末に絞る（起動しなかった結末は `importBatchId` を持たない）。
+ * 起動していなければその場で落として、後続の検証が黙って素通りしないようにする。
+ */
+function launched(
+  outcome: DailyMailImportOutcome,
+): Exclude<DailyMailImportOutcome, { status: 'not_launched' }> {
+  if (outcome.status === 'not_launched') {
+    throw new Error(`バッチが起動されなかった（reason=${outcome.reason}）`)
+  }
+  return outcome
+}
+
 function collect<E extends DomainEvent>(t: TestApp, type: E['type']): E[] {
   const log: E[] = []
   t.deps.eventBus.subscribe<E>(type, e => {
@@ -226,7 +241,9 @@ describe('日次メール取込ワーカー: 取得 → パース → 候補生�
       gmailMessageId: 'gmail-1',
     })
 
-    const batch = await t.deps.dailyMailImportBatchRepository.findById(outcome.importBatchId)
+    const batch = await t.deps.dailyMailImportBatchRepository.findById(
+      launched(outcome).importBatchId,
+    )
     expect(batch?.kind).toBe('completed')
     expect(extracted).toHaveLength(1)
     expect(completedEvents[0]?.importedCount).toBe(1)
@@ -397,7 +414,7 @@ describe('日次メール取込ワーカー: パース結果の扱い', () => {
 })
 
 describe('日次メール取込ワーカー: 取得できないときの結末', () => {
-  it('Gmail 未連携なら取得を試みずに失敗として閉じる', async () => {
+  it('Gmail 未連携なら取得を試みず、対象外として返す', async () => {
     const t = createTestApp()
     const gateway = fetchGatewayReturning([mailBody('gmail-1')])
     const deps: DailyMailImportDeps = {
@@ -408,15 +425,26 @@ describe('日次メール取込ワーカー: 取得できないときの結末',
 
     const outcome = await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
 
-    expect(outcome).toMatchObject({
-      status: 'failed',
-      failureKind: 'gmail_not_authorized',
-      retryable: false,
-    })
+    expect(outcome).toMatchObject({ status: 'not_launched', reason: 'not_linked' })
     expect(gateway.requests).toHaveLength(0)
-    const batch = await t.deps.dailyMailImportBatchRepository.findById(outcome.importBatchId)
-    expect(batch?.kind).toBe('failed')
-    // 失敗は終端なので、次の実行が新しいバッチを起動できる（ロックが残らない）
+  })
+
+  it('Gmail 未連携ならバッチ起動の記録も起動イベントも残さない', async () => {
+    // 再認可されるまで結果は変わらないため、毎日の実行のたびに記録が積み上がると
+    // 通信断・失効など本当に追うべき失敗が埋もれる（OQ-57 / #488）
+    const t = createTestApp()
+    const save = vi.spyOn(t.deps.dailyMailImportBatchRepository, 'save')
+    const launchedEvents = collect<MailImportBatchLaunched>(t, 'MailImportBatchLaunched')
+    const deps: DailyMailImportDeps = {
+      ...t.deps,
+      gmailMailFetchGateway: fetchGatewayReturning([mailBody('gmail-1')]),
+      parseSmbcNotificationMail: cardUsageParser(),
+    }
+
+    await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
+
+    expect(save).not.toHaveBeenCalled()
+    expect(launchedEvents).toHaveLength(0)
     expect(await t.deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
   })
 
@@ -439,8 +467,9 @@ describe('日次メール取込ワーカー: 取得できないときの結末',
       { userId: VIEWER_ID, at: AT },
     )
 
-    expect(outcome).toMatchObject({ status: 'failed', failureKind: 'gmail_not_authorized' })
+    expect(outcome).toMatchObject({ status: 'not_launched', reason: 'revocation_detected' })
     expect(gateway.requests).toHaveLength(0)
+    expect(await t.deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
   })
 
   it('トークン失効の検知は、その他の取得失敗と区別して記録する', async () => {
@@ -520,8 +549,8 @@ describe('日次メール取込ワーカー: 途中で終わった取込の再�
 
     const outcome = await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
 
-    expect(outcome.resumed).toBe(true)
-    expect(outcome.importBatchId).toBe(LEFTOVER_BATCH_ID)
+    expect(launched(outcome).resumed).toBe(true)
+    expect(launched(outcome).importBatchId).toBe(LEFTOVER_BATCH_ID)
     // 引き継いだバッチが起動時に決めた期間で取り直す（前回の取りこぼしを検索範囲から外さない）
     expect(gateway.requests[0]?.period).toEqual(leftover.common.targetPeriod)
     expect(resumedEvents).toHaveLength(1)
@@ -536,7 +565,7 @@ describe('日次メール取込ワーカー: 途中で終わった取込の再�
       at: new Date(AT.getTime() + 60_000),
     })
 
-    expect(first.importBatchId).not.toBe(second.importBatchId)
+    expect(launched(first).importBatchId).not.toBe(launched(second).importBatchId)
     expect(second).toMatchObject({ status: 'completed', importedCount: 0, resumed: false })
     expect(await savedCandidates(t, ['gmail-1'])).toHaveLength(1)
   })
@@ -579,7 +608,9 @@ describe('日次メール取込ワーカー: 進捗の記録と引き継ぎ', ()
 
     // 前回 12 件 + 今回 10 件。0 から数え直すと「取込済み件数は減らせない」に触れて失敗する
     expect(outcome).toMatchObject({ status: 'completed', resumed: true, importedCount: 22 })
-    const batch = await t.deps.dailyMailImportBatchRepository.findById(outcome.importBatchId)
+    const batch = await t.deps.dailyMailImportBatchRepository.findById(
+      launched(outcome).importBatchId,
+    )
     expect(batch).toMatchObject({ kind: 'completed', importedCount: 22 })
   })
 
@@ -731,6 +762,28 @@ describe('日次メール取込ワーカー: 世帯一括', () => {
 
     expect(outcome.results.find(r => r.role === 'honey')?.status).toBe('imported')
     expect(outcome.results.find(r => r.role === 'darling')?.status).toBe('not_registered')
+    expect(gateway.requests).toHaveLength(1)
+  })
+
+  it('片方が Gmail 未連携なら「対象外」として結果に残り、もう片方の取込は実行される', async () => {
+    const t = createTestApp()
+    await t.deps.appUserRepository.save(registerAppUser(VIEWER_ID, 'honey', undefined, AT))
+    await t.deps.appUserRepository.save(registerAppUser(SPOUSE_ID, 'darling', undefined, AT))
+    await authorize(t, VIEWER_ID)
+    const gateway = fetchGatewayReturning([mailBody('gmail-1')])
+
+    const outcome = await runDailyMailImportForHousehold(
+      { ...t.deps, gmailMailFetchGateway: gateway, parseSmbcNotificationMail: cardUsageParser() },
+      { at: AT },
+    )
+
+    expect(outcome.results.find(r => r.role === 'honey')?.status).toBe('imported')
+    expect(outcome.results.find(r => r.role === 'darling')).toMatchObject({
+      status: 'not_launched',
+      reason: 'not_linked',
+    })
+    // 未連携は「失敗」ではない（失敗として数えると毎日の記録に失敗が積み上がる）
+    expect(outcome.results.map(r => r.status)).not.toContain('failed')
     expect(gateway.requests).toHaveLength(1)
   })
 

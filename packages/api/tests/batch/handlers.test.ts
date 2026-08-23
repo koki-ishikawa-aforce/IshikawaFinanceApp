@@ -222,7 +222,7 @@ describe('日次メール取込ハンドラー', () => {
     expect(outcomeOf(summary.outcomes, 'darling')).toBe('role=darling status=not_registered')
   })
 
-  it('Gmail 未連携の人がいれば失敗として投げる（連携が切れている限り家計簿に出てこないため）', async () => {
+  it('Gmail 未連携の人がいれば、取込を起動しなくても失敗として投げる（連携が切れている限り家計簿に出てこないため）', async () => {
     const t = createTestApp()
     await registerHousehold(t)
     await authorizeGmail(t, VIEWER_ID)
@@ -239,7 +239,7 @@ describe('日次メール取込ハンドラー', () => {
 
     await expect(handler({ time: '2026-08-10T00:00:00Z' })).rejects.toMatchObject({
       name: 'ScheduledJobFailedError',
-      message: expect.stringContaining('kind=gmail_not_authorized'),
+      message: expect.stringContaining('status=not_launched reason=not_linked'),
     })
     expect(gateway.requests.map(r => r.userId)).toEqual([VIEWER_ID])
   })
@@ -286,7 +286,7 @@ describe('日次メール取込ハンドラー', () => {
       message: expect.not.stringContaining(VIEWER_ID),
     })
     const logged = [...warn.mock.calls, ...error.mock.calls].flat().join(' ')
-    expect(logged).toContain('kind=gmail_not_authorized')
+    expect(logged).toContain('status=not_launched reason=not_linked')
     expect(logged).not.toContain(VIEWER_ID)
   })
 })

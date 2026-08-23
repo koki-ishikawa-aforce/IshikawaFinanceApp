@@ -97,8 +97,10 @@ function finish(summary: ScheduledJobSummary, failures: string[]): ScheduledJobS
  * 日次メール取込（AT-902）。
  *
  * さかのぼり日数を省略するとワーカー既定の 5 日を使う（論点22 / OQ-31）。
- * Gmail 連携が無い・失効しているユーザーの取込失敗も失敗として扱う — その状態が続く限り
- * カード利用が家計簿に出てこないため、毎回黙って成功にすると誰も気づけない。
+ * Gmail 連携が無い・失効しているユーザーは取込を起動しない（対象外。OQ-57 / #488）が、
+ * ジョブとしては失敗に数える — その状態が続く限りカード利用が家計簿に出てこないため、
+ * 毎回黙って成功にすると誰も気づけない（#514）。「取込結果に失敗記録を積まない」ことと
+ * 「毎日のバッチの成否で気づける」ことは別の層の話で、後者はここが担う。
  */
 export async function runDailyMailImportJob(
   deps: HouseholdDailyMailImportDeps,
@@ -116,6 +118,14 @@ export async function runDailyMailImportJob(
     if (result.status === 'not_registered') {
       // オンボーディング前は取込対象が存在しない（想定内）。失敗には数えない
       record(job, outcomes, `role=${result.role} status=not_registered`)
+      continue
+    }
+    if (result.status === 'not_launched') {
+      // 取込は起動していない（対象外）が、再認可されるまでカード利用は家計簿に出てこない。
+      // 失敗に数えてジョブ全体を異常にし、気づける状態を保つ（#514 の決定）
+      const line = `role=${result.role} status=not_launched reason=${result.reason}`
+      record(job, outcomes, line, true)
+      failures.push(line)
       continue
     }
     if (result.status === 'failed') {
