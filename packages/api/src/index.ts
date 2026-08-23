@@ -1,25 +1,10 @@
 import 'dotenv/config'
 import { serve } from '@hono/node-server'
-import { createDeps } from './composition-root.js'
+import { compositionEnvFromEnvironment, createDeps } from './composition-root.js'
 import { createApp } from './app.js'
 
 // DB ドライバの選択で pg を遅延読み込みするため合成は非同期（#349）
-const deps = await createDeps({
-  NODE_ENV: process.env['NODE_ENV'],
-  DATABASE_URL: process.env['DATABASE_URL'],
-  DATABASE_DRIVER: process.env['DATABASE_DRIVER'],
-  GOOGLE_OAUTH_CLIENT_ID: process.env['GOOGLE_OAUTH_CLIENT_ID'],
-  GOOGLE_OAUTH_CLIENT_SECRET: process.env['GOOGLE_OAUTH_CLIENT_SECRET'],
-  GOOGLE_OAUTH_REDIRECT_URI: process.env['GOOGLE_OAUTH_REDIRECT_URI'],
-  GMAIL_OAUTH_STATE_SECRET: process.env['GMAIL_OAUTH_STATE_SECRET'],
-  LINE_CHANNEL_SECRET: process.env['LINE_CHANNEL_SECRET'],
-  AWS_REGION: process.env['AWS_REGION'],
-  FAILSAFE_EMAIL_FROM: process.env['FAILSAFE_EMAIL_FROM'],
-  FAILSAFE_EMAIL_TO: process.env['FAILSAFE_EMAIL_TO'],
-  FAILSAFE_FAILURE_THRESHOLD: process.env['FAILSAFE_FAILURE_THRESHOLD'],
-  CORS_ALLOWED_ORIGINS: process.env['CORS_ALLOWED_ORIGINS'],
-  WEB_BASE_URL: process.env['WEB_BASE_URL'],
-})
+const deps = await createDeps(compositionEnvFromEnvironment())
 const app = createApp(deps)
 const port = Number(process.env['PORT'] ?? 3001)
 

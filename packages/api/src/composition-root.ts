@@ -306,6 +306,34 @@ export interface CompositionEnv {
   WEB_BASE_URL?: string | undefined
 }
 
+/**
+ * プロセスの環境変数から合成用の設定を読み出す。
+ *
+ * 起動口は API サーバ（`index.ts`）とバッチのエントリポイント（`batch/`、#416）の 2 つあり、
+ * どちらも同じ `createDeps` を通す。読み出しを各起動口に置くと、片方にだけ新しい環境変数を
+ * 足したときに「API では効くのにバッチでは効かない」ずれが生まれるため、ここに一本化する。
+ */
+export function compositionEnvFromEnvironment(
+  source: Record<string, string | undefined> = process.env,
+): CompositionEnv {
+  return {
+    NODE_ENV: source['NODE_ENV'],
+    DATABASE_URL: source['DATABASE_URL'],
+    DATABASE_DRIVER: source['DATABASE_DRIVER'],
+    GOOGLE_OAUTH_CLIENT_ID: source['GOOGLE_OAUTH_CLIENT_ID'],
+    GOOGLE_OAUTH_CLIENT_SECRET: source['GOOGLE_OAUTH_CLIENT_SECRET'],
+    GOOGLE_OAUTH_REDIRECT_URI: source['GOOGLE_OAUTH_REDIRECT_URI'],
+    GMAIL_OAUTH_STATE_SECRET: source['GMAIL_OAUTH_STATE_SECRET'],
+    LINE_CHANNEL_SECRET: source['LINE_CHANNEL_SECRET'],
+    AWS_REGION: source['AWS_REGION'],
+    FAILSAFE_EMAIL_FROM: source['FAILSAFE_EMAIL_FROM'],
+    FAILSAFE_EMAIL_TO: source['FAILSAFE_EMAIL_TO'],
+    FAILSAFE_FAILURE_THRESHOLD: source['FAILSAFE_FAILURE_THRESHOLD'],
+    CORS_ALLOWED_ORIGINS: source['CORS_ALLOWED_ORIGINS'],
+    WEB_BASE_URL: source['WEB_BASE_URL'],
+  }
+}
+
 /** FAILSAFE_EMAIL_TO（カンマ区切り）→ 宛先リスト */
 function parseFailsafeRecipients(value: string | undefined): string[] {
   return (value ?? '')

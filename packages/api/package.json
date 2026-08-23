@@ -8,6 +8,9 @@
   "scripts": {
     "build": "tsc -b",
     "dev": "tsx watch src/index.ts",
+    "batch:daily": "tsx src/batch/run-local.ts daily",
+    "batch:monthly": "tsx src/batch/run-local.ts monthly",
+    "batch:csv-reminder": "tsx src/batch/run-local.ts csv-reminder",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "lint": "eslint src --ext .ts"
