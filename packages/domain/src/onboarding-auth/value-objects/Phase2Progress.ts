@@ -84,3 +84,38 @@ export const Phase2ProgressSchema = z.object({
   sectionF: SectionFProgressSchema,
 })
 export type Phase2Progress = z.infer<typeof Phase2ProgressSchema>
+
+/**
+ * セクション識別（08f §3「セクション識別」）。確認のみで完了扱いにできる SectionC/D/E を指す。
+ * 確認イベント（SectionConfirmed）と確認操作（confirmSection）が同じ列挙を共有する。
+ */
+export const SectionIdentifierSchema = z.enum(['section_c', 'section_d', 'section_e'])
+export type SectionIdentifier = z.infer<typeof SectionIdentifierSchema>
+
+/** 確認セクション（C/D/E）の進捗。未確認・確認済みに加え、C/D は編集済み・E は変更済みを持つ */
+export type SectionConfirmationProgress = SectionCProgress | SectionDProgress | SectionEProgress
+
+/** セクション識別から確認セクションの進捗を読む */
+export function sectionConfirmationOf(
+  progress: Phase2Progress,
+  section: SectionIdentifier,
+): SectionConfirmationProgress {
+  switch (section) {
+    case 'section_c':
+      return progress.sectionC
+    case 'section_d':
+      return progress.sectionD
+    case 'section_e':
+      return progress.sectionE
+  }
+}
+
+/**
+ * そのセクションに手が付いているか（確認済み、または確認せずに編集・変更した）。
+ *
+ * 「未確認かどうか」の判定を呼び出し側ごとに書き分けると C/D/E で判定が割れるため、
+ * 述語をここに一本化する（確認操作の冪等判定と、順序強制の検査の両方が使う）。
+ */
+export function isSectionConfirmed(confirmation: SectionConfirmationProgress): boolean {
+  return confirmation.kind !== 'unconfirmed'
+}

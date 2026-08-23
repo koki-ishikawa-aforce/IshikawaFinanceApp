@@ -11,7 +11,9 @@ import {
   completeSectionA,
   completeSectionB,
   completeSectionF,
+  confirmSection,
   skipSectionF,
+  updatePhase2Progress,
   type Phase1CompletedUser,
   type Phase2InProgressUser,
 } from '../../../src/onboarding-auth/aggregates/AppUser'
@@ -229,6 +231,69 @@ describe('Phase2 セクション遷移関数（#41）', () => {
 
     const b = completeSectionB(reauth, sectionBCompleted.initialBalanceRef as never, at)
     expect(b.progress.sectionB.kind).toBe('completed')
+  })
+
+  /** SectionC/D/E の確認ができる状態（A → B 完了済み）まで進める */
+  const sectionBDone = (at: Date): Phase2InProgressUser =>
+    completeSectionB(
+      completeSectionA(inProgress(), '/warimaru/gmail/honey/token' as never, at),
+      sectionBCompleted.initialBalanceRef as never,
+      at,
+    )
+
+  it('SectionB 未完了で confirmSection は InvariantViolationError（論点8）', () => {
+    const at = new Date()
+    const sectionAOnly = completeSectionA(inProgress(), '/warimaru/gmail/honey/token' as never, at)
+    expect(() => confirmSection(sectionAOnly, 'section_c', at)).toThrow(InvariantViolationError)
+  })
+
+  it.each([
+    ['section_c', 'sectionC'],
+    ['section_d', 'sectionD'],
+    ['section_e', 'sectionE'],
+  ] as const)(
+    '%s を確認すると %s だけが確認済みになる（識別子の取り違えを防ぐ）',
+    (section, key) => {
+      const at = new Date('2026-08-01T00:00:00.000Z')
+      const confirmed = confirmSection(sectionBDone(at), section, at)
+
+      expect(confirmed.progress[key]).toEqual({ kind: 'confirmed', confirmedAt: at })
+      const others = (['sectionC', 'sectionD', 'sectionE'] as const).filter(k => k !== key)
+      for (const other of others) {
+        expect(confirmed.progress[other].kind).toBe('unconfirmed')
+      }
+    },
+  )
+
+  it('確認済みセクションの再確認は冪等（確認日時を上書きしない）', () => {
+    const at = new Date('2026-08-01T00:00:00.000Z')
+    const confirmed = confirmSection(sectionBDone(at), 'section_c', at)
+
+    const again = confirmSection(confirmed, 'section_c', new Date('2026-08-02T00:00:00.000Z'))
+    expect(again).toBe(confirmed)
+    expect(again.progress.sectionC).toEqual({ kind: 'confirmed', confirmedAt: at })
+  })
+
+  it('編集済み・変更済みのセクションを確認しても、編集件数を失わない', () => {
+    const at = new Date('2026-08-01T00:00:00.000Z')
+    const edited = updatePhase2Progress(sectionBDone(at), {
+      ...sectionBDone(at).progress,
+      sectionC: { kind: 'edited', editedAt: at, editCount: 2 },
+      sectionE: { kind: 'changed', changedAt: at, changeCount: 1 },
+    })
+
+    expect(confirmSection(edited, 'section_c', new Date())).toBe(edited)
+    expect(confirmSection(edited, 'section_e', new Date())).toBe(edited)
+  })
+
+  it('C / D / E が未確認のままでも Phase2 は完了できる（論点8: C/D/E は任意）', () => {
+    const at = new Date()
+    const user = sectionBDone(at)
+    expect(user.progress.sectionC.kind).toBe('unconfirmed')
+    expect(user.progress.sectionD.kind).toBe('unconfirmed')
+    expect(user.progress.sectionE.kind).toBe('unconfirmed')
+
+    expect(completePhase2(user, at).kind).toBe('phase2_completed')
   })
 
   it('SectionF はスキップ → 完了のやり直しは可、完了 → スキップは不可', () => {

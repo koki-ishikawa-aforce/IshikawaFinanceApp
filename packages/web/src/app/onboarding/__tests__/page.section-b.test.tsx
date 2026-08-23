@@ -45,6 +45,9 @@ function meResponse(): unknown {
       progress: {
         sectionA: { kind: 'completed' },
         sectionB: { kind: 'not_started' },
+        sectionC: { kind: 'unconfirmed' },
+        sectionD: { kind: 'unconfirmed' },
+        sectionE: { kind: 'unconfirmed' },
         sectionF: { kind: 'skipped' },
       },
     },
