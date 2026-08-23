@@ -112,6 +112,24 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 
 マージ後の検証が失敗したときは `notify-main-failure` ジョブが Issue を立て、オーナーを assign して @メンションする(メール通知)。CI は「`main` と合体させた状態」を検証するため、**`main` が赤いままだと以降の全ての PR が同じ失敗で赤くなる**。気づくのが遅れるほど巻き添えが増えるので、`main` の赤は最優先で直す。
 
+### `main` のブランチ保護
+
+CI が判定した結果を**マージの可否に効かせる**ための設定。GitHub の設定画面(Settings → Branches)で管理しており、リポジトリのファイルには現れないのでここに記録する。
+
+| 項目 | 値 | 理由 |
+| --- | --- | --- |
+| Require a pull request before merging | オン | `main` への直接 push を禁止する |
+| └ Require approvals | **0** | 下の「承認を必須にしてはいけない」を参照 |
+| Require status checks to pass | オン | CI が赤いままマージできる状態を塞ぐ |
+| └ 必須にするチェック | **`verify` のみ** | `notify-main-failure` などの条件付きジョブは通常 `skipped` になる。必須に含めると skipped の扱いでマージがブロックされうる |
+| Require branches to be up to date | オフ | 下の「追従を必須にしていない理由」を参照 |
+
+**承認を必須にしてはいけない。** このリポジトリの collaborator はオーナー 1 人で、PR もすべてそのアカウントで作られる(無人モードの Routine を含む)。GitHub は自分の PR を自分で承認できないため、Require approvals を 1 以上にすると**承認できる人が存在せず、全ての PR が永久にマージ不能になる**。設定画面で「Require a pull request before merging」を有効にすると Require approvals が既定で 1 になるので、必ず 0 へ下げる。
+
+**追従を必須にしていない理由。** Require branches to be up to date をオンにすると、互いに別のファイルを触っていても意味の上で衝突する変更(semantic conflict)をマージ前に検出できる。実際 #494 と #503 はこれで防げた組み合わせだった。ただしマージのたびに他の PR が「古い」判定になり、追従 → CI 再実行(数分)を挟むため、連続マージの多いこのリポジトリでは待ち時間が積み上がる。その待ちを自動化する**マージキューは organization 所有のリポジトリでしか使えず**、このリポジトリ(ユーザー所有)では選べない。
+
+現状は `notify-main-failure` によって「`main` に載った数分後に気づける」ため、**完全な予防より検知でカバーする**判断にしている。semantic conflict が繰り返すようなら、この設定をオンに切り替える(後から足せる)。
+
 ## 5. 観点を追加するときの手順
 
 1. §1 の切り分け原則で **CI かレビュースキルか** を決める
