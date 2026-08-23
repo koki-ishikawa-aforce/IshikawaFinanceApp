@@ -64,7 +64,7 @@ export function judgeRole(
  * 閲覧者が許可リストに含まれなければ不変条件違反（`judgeRole` の拒否と同じ根拠）。
  *
  * 許可リストはマスタ管理からのクロスコンテキスト借用（08f §1: ID のみ借用）のため、
- * `judgeRole` と同じく構造的型で受ける。Query 実装（Neon / モック）が共有する。
+ * `judgeRole` と同じく構造的型で受ける。Query 実装（PostgreSQL / モック）が共有する。
  */
 export function resolveSpouseUserId(
   viewerId: UserId,

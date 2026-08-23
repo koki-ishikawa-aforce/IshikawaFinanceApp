@@ -397,13 +397,13 @@ export default function OnboardingPage() {
           {/* 確認結果は押した場所で差し替わる。読み上げに載せないと結果が伝わらない（使用性 8-4） */}
           {friendCheckResult === 'confirmed' && (
             <p className={styles.note} role="status">
-              <LuCheck aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
+              <LuCheck aria-hidden="true" className={ui.iconInline} />{' '}
               友だち追加を確認しました。次の手順へ進みます。
             </p>
           )}
           {friendCheckResult === 'not_friend' && (
             <p className={styles.note} role="status">
-              <LuTriangleAlert aria-hidden="true" style={{ verticalAlign: 'middle' }} />{' '}
+              <LuTriangleAlert aria-hidden="true" className={ui.iconInline} />{' '}
               友だち追加を確認できませんでした。LINE
               で「わりまる」を友だち追加してから、もう一度お試しください。
             </p>

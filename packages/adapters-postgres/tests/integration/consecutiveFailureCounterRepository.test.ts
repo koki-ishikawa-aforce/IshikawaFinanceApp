@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { db } from './setup'
-import { NeonConsecutiveFailureCounterRepository } from '../../src/notification-delivery/NeonConsecutiveFailureCounterRepository'
+import { PostgresConsecutiveFailureCounterRepository } from '../../src/notification-delivery/PostgresConsecutiveFailureCounterRepository'
 import { DARLING_USER_ID } from '../helpers/fixtures'
 import {
   failingCounter,
@@ -9,9 +9,9 @@ import {
   zeroCounter,
 } from '../helpers/notificationFixtures'
 
-const repo = new NeonConsecutiveFailureCounterRepository(db)
+const repo = new PostgresConsecutiveFailureCounterRepository(db)
 
-describe('NeonConsecutiveFailureCounterRepository（複合 PK ref_kind + ref_id）', () => {
+describe('PostgresConsecutiveFailureCounterRepository（複合 PK ref_kind + ref_id）', () => {
   it('save → findByRef の往復同一性（user / talk_room 両参照）', async () => {
     const userCounter = zeroCounter(userCounterRef())
     const roomCounter = failingCounter(talkRoomCounterRef())

@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { db } from './setup'
-import { NeonTransactionRepository } from '../../src/household-analysis/NeonTransactionRepository'
-import { NeonRetroactiveCandidateQuery } from '../../src/auto-classification/NeonRetroactiveCandidateQuery'
+import { PostgresTransactionRepository } from '../../src/household-analysis/PostgresTransactionRepository'
+import { PostgresRetroactiveCandidateQuery } from '../../src/auto-classification/PostgresRetroactiveCandidateQuery'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import { classifiedTransaction, unclassifiedTransaction } from '../helpers/fixtures'
 
-const txRepo = new NeonTransactionRepository(db)
+const txRepo = new PostgresTransactionRepository(db)
 const NOW = new Date('2026-07-07T00:00:00.000Z')
-const query = new NeonRetroactiveCandidateQuery(db, { now: () => NOW })
+const query = new PostgresRetroactiveCandidateQuery(db, { now: () => NOW })
 
-describe('NeonRetroactiveCandidateQuery（J-3 遡及提案、transactions を Read 横断）', () => {
+describe('PostgresRetroactiveCandidateQuery（J-3 遡及提案、transactions を Read 横断）', () => {
   it('本人の同一加盟店・未分類のみを発生日時昇順で返す', async () => {
     const older = unclassifiedTransaction({
       ownerUserId: HONEY_USER_ID,

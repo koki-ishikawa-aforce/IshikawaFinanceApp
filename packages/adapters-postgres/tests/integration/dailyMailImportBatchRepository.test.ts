@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest'
 import type { ImportBatchId, StartedImportBatch } from '@warimaru/domain'
 import { completeBatch, InvariantViolationError, startBatchImporting } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonDailyMailImportBatchRepository } from '../../src/transaction-import/NeonDailyMailImportBatchRepository'
+import { PostgresDailyMailImportBatchRepository } from '../../src/transaction-import/PostgresDailyMailImportBatchRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import { completedBatch, startedBatch } from '../helpers/transactionImportFixtures'
 
-const repo = new NeonDailyMailImportBatchRepository(db)
+const repo = new PostgresDailyMailImportBatchRepository(db)
 
-describe('NeonDailyMailImportBatchRepository', () => {
+describe('PostgresDailyMailImportBatchRepository', () => {
   it('save → findById の往復同一性（started → importing → completed の遷移上書き）', async () => {
     const started = startedBatch() as StartedImportBatch
     await repo.save(started)

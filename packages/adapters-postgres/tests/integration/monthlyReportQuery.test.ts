@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { NeonMonthlyReportQuery } from '../../src/household-analysis/NeonMonthlyReportQuery'
-import { NeonMonthlyReportRepository } from '../../src/household-analysis/NeonMonthlyReportRepository'
+import { PostgresMonthlyReportQuery } from '../../src/household-analysis/PostgresMonthlyReportQuery'
+import { PostgresMonthlyReportRepository } from '../../src/household-analysis/PostgresMonthlyReportRepository'
 import { db } from './setup'
 import {
   DARLING_USER_ID,
@@ -11,10 +11,10 @@ import {
 } from '../helpers/fixtures'
 import { stubResolveViewerRole } from '../helpers/stubs'
 
-const repo = new NeonMonthlyReportRepository(db)
-const query = new NeonMonthlyReportQuery(db, { resolveViewerRole: stubResolveViewerRole })
+const repo = new PostgresMonthlyReportRepository(db)
+const query = new PostgresMonthlyReportQuery(db, { resolveViewerRole: stubResolveViewerRole })
 
-describe('NeonMonthlyReportQuery', () => {
+describe('PostgresMonthlyReportQuery', () => {
   it('csv_confirmed は finalizedAt / unapprovedTransfers が null の View になる', async () => {
     const report = csvConfirmedReport({ targetYearMonth: ym('2026-06') })
     await repo.save(report)
@@ -93,7 +93,7 @@ describe('NeonMonthlyReportQuery', () => {
   })
 })
 
-describe('NeonMonthlyReportQuery プライバシー否定形テスト', () => {
+describe('PostgresMonthlyReportQuery プライバシー否定形テスト', () => {
   it('fetchByMonth: honey の経費(会社)合計が darling に漏れない', async () => {
     const report = csvConfirmedReport({ targetYearMonth: ym('2026-02') })
     await repo.save(report)

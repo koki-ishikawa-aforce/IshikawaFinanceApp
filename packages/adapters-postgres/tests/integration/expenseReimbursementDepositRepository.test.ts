@@ -6,7 +6,7 @@ import type {
 } from '@warimaru/domain'
 import { matchDeposit } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonExpenseReimbursementDepositRepository } from '../../src/expense-settlement/NeonExpenseReimbursementDepositRepository'
+import { PostgresExpenseReimbursementDepositRepository } from '../../src/expense-settlement/PostgresExpenseReimbursementDepositRepository'
 import { newUlid } from '../../src/newId'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import {
@@ -15,9 +15,9 @@ import {
   unrecognizedConfirmedDeposit,
 } from '../helpers/expenseSettlementFixtures'
 
-const repo = new NeonExpenseReimbursementDepositRepository(db)
+const repo = new PostgresExpenseReimbursementDepositRepository(db)
 
-describe('NeonExpenseReimbursementDepositRepository', () => {
+describe('PostgresExpenseReimbursementDepositRepository', () => {
   it('save → findById の往復同一性（全 3 kind 変種）', async () => {
     for (const deposit of [awaitingDeposit(), matchedDeposit(), unrecognizedConfirmedDeposit()]) {
       await repo.save(deposit)

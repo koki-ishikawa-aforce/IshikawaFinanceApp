@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import type { CategoryId } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonCategoryMasterRepository } from '../../src/master-data/NeonCategoryMasterRepository'
+import { PostgresCategoryMasterRepository } from '../../src/master-data/PostgresCategoryMasterRepository'
 import { createDbResolveCategoryNames } from '../../src/master-data/resolveCategoryNames'
 import { customCategory, defaultCategory } from '../helpers/masterDataFixtures'
 
 describe('createDbResolveCategoryNames（第1波 queryDeps スタブの実 DB 差し替え）', () => {
-  const repo = new NeonCategoryMasterRepository(db)
+  const repo = new PostgresCategoryMasterRepository(db)
   const resolve = createDbResolveCategoryNames(db)
 
   it('登録済み ID を名前に解決し、未知 ID は Map に含めない', async () => {
