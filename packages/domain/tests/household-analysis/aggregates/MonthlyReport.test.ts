@@ -5,6 +5,7 @@ import {
   confirmCsv,
   refreshCsvConfirmed,
   aggregateMonthlyReportTotals,
+  isIncompleteMonthReport,
   selfTotalsOf,
   CommonMonthlyReportAttrsSchema,
   type CsvConfirmedReport,
@@ -291,5 +292,26 @@ describe('selfTotalsOf', () => {
   it('配偶者側のキー（Honey / Darling 別の項目）を返り値に含めない', () => {
     const totals = selfTotalsOf(CommonMonthlyReportAttrsSchema.parse(common), 'honey')
     expect(Object.keys(totals).sort()).toEqual(['businessExpenseTotalSelf', 'personalTotalSelf'])
+  })
+})
+
+describe('isIncompleteMonthReport', () => {
+  const parsed = (isIncompleteMonth?: boolean) =>
+    CommonMonthlyReportAttrsSchema.parse(
+      isIncompleteMonth === undefined ? baseCommon : { ...baseCommon, isIncompleteMonth },
+    )
+
+  it('不完全月フラグが付いた月は不完全と判定する', () => {
+    expect(isIncompleteMonthReport(parsed(true))).toBe(true)
+  })
+
+  it('フラグが未設定の月（通常の月）は不完全としない', () => {
+    const common = parsed()
+    expect(common.isIncompleteMonth).toBeUndefined()
+    expect(isIncompleteMonthReport(common)).toBe(false)
+  })
+
+  it('フラグが明示的に false の月も不完全としない', () => {
+    expect(isIncompleteMonthReport(parsed(false))).toBe(false)
   })
 })

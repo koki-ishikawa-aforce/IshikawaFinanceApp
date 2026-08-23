@@ -4,7 +4,7 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { YearMonthSchema, type YearMonth } from '@warimaru/domain'
+import { isIncompleteMonthReport, YearMonthSchema, type YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { apiFetch, ApiError } from '@/lib/api-client'
 import {
@@ -67,7 +67,7 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
         <div className={styles.statusDates}>
           <span>CSV確認: {formatDateTime(report.csvConfirmedAt)}</span>
           {report.finalizedAt !== null && <span>確定: {formatDateTime(report.finalizedAt)}</span>}
-          {report.common.isIncompleteMonth === true && (
+          {isIncompleteMonthReport(report.common) && (
             <span className={styles.incomplete}>
               <LuTriangleAlert
                 aria-hidden="true"
