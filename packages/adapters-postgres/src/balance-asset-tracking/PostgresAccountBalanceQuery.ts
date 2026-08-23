@@ -35,8 +35,10 @@ import {
   AccountSchema,
   AssetTotalViewSchema,
   MitsuiSumitomoUnpaidSchema,
-  MoneySchema,
+  SPOUSE_TOTAL_VISIBLE_ACCOUNT_KINDS,
   brokerageNameToDisplay,
+  canListAccountInBalanceList,
+  spouseVisibleAssetTotal,
 } from '@warimaru/domain'
 import type { Db } from '../client'
 import { accounts, mitsuiSumitomoUnpaids } from '../schema'
@@ -53,19 +55,26 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
   constructor(private readonly db: Db) {}
 
   async fetchBalanceList(viewerId: UserId): Promise<AccountBalanceListView> {
-    const rows = await this.db
-      .select({ payload: accounts.payload, unpaidPayload: mitsuiSumitomoUnpaids.payload })
-      .from(accounts)
-      .leftJoin(mitsuiSumitomoUnpaids, eq(mitsuiSumitomoUnpaids.accountId, accounts.accountId))
-      .where(and(eq(accounts.ownerUserId, viewerId), eq(accounts.isActive, true)))
+    // 本番は 1 文 = 1 往復（neon-http）のため、本人の口座と配偶者の口座は並行に読む
+    const [rows, spouseAccounts] = await Promise.all([
+      this.db
+        .select({ payload: accounts.payload, unpaidPayload: mitsuiSumitomoUnpaids.payload })
+        .from(accounts)
+        .leftJoin(mitsuiSumitomoUnpaids, eq(mitsuiSumitomoUnpaids.accountId, accounts.accountId))
+        .where(and(eq(accounts.ownerUserId, viewerId), eq(accounts.isActive, true))),
+      this.fetchSpouseVisibleAccounts(viewerId),
+    ])
 
-    const parsed = rows.map(row => ({
-      account: parsePayload(AccountSchema, row.payload),
-      unpaid:
-        row.unpaidPayload === null
-          ? null
-          : parsePayload(MitsuiSumitomoUnpaidSchema, row.unpaidPayload),
-    }))
+    const parsed = rows
+      .map(row => ({
+        account: parsePayload(AccountSchema, row.payload),
+        unpaid:
+          row.unpaidPayload === null
+            ? null
+            : parsePayload(MitsuiSumitomoUnpaidSchema, row.unpaidPayload),
+      }))
+      // 絞り込みは SQL 側で済んでいるが、可視判定の正はドメインに置く
+      .filter(({ account }) => canListAccountInBalanceList(account, viewerId))
 
     parsed.sort((a, b) => {
       const byKind = KIND_ORDER[a.account.kind] - KIND_ORDER[b.account.kind]
@@ -76,16 +85,16 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
     const items = parsed.map(({ account, unpaid }) => this.toItem(account, unpaid))
     return AccountBalanceListViewSchema.parse({
       items,
-      spouseOtherSavingsAndNisaTotal: await this.sumSpouseOtherSavingsAndNisa(viewerId),
+      // 合計の求め方と「対象口座が無ければ null」の規約はドメイン側が持つ
+      spouseOtherSavingsAndNisaTotal: spouseVisibleAssetTotal(spouseAccounts, viewerId),
     })
   }
 
   /**
-   * 配偶者の別銀行貯蓄残高 + NISA 積立累計の合計（P2-B5 の「合計のみ配偶者可視」）。
-   * 対象の active 口座が 1 件も無ければ null を返し、「0 円」と「口座が無い」を
-   * 呼び出し側が区別できるようにする（0 円で返すと未登録の配偶者にも合計行が出る）。
+   * 配偶者のうち、閲覧者に合計だけを見せてよい口座（P2-B5 の「合計のみ配偶者可視」）。
+   * 対象の口座種別はドメインの定義を参照し、絞り込みだけを SQL で行う。
    */
-  private async sumSpouseOtherSavingsAndNisa(viewerId: UserId): Promise<Money | null> {
+  private async fetchSpouseVisibleAccounts(viewerId: UserId): Promise<Account[]> {
     const rows = await this.db
       .select({ payload: accounts.payload })
       .from(accounts)
@@ -93,18 +102,10 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
         and(
           ne(accounts.ownerUserId, viewerId),
           eq(accounts.isActive, true),
-          inArray(accounts.kind, ['other_savings', 'nisa']),
+          inArray(accounts.kind, [...SPOUSE_TOTAL_VISIBLE_ACCOUNT_KINDS]),
         ),
       )
-    if (rows.length === 0) return null
-
-    let total = 0
-    for (const row of rows) {
-      const account = parsePayload(AccountSchema, row.payload)
-      if (account.kind === 'other_savings') total += account.balance.currentBalance
-      if (account.kind === 'nisa') total += account.contribution.currentAccumulated
-    }
-    return MoneySchema.parse(total)
+    return rows.map(row => parsePayload(AccountSchema, row.payload))
   }
 
   async fetchAssetTotal(asOf: Date): Promise<AssetTotalView> {

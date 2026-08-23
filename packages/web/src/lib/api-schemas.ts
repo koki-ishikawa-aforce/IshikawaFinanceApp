@@ -203,10 +203,14 @@ export type AccountBalanceItemWire = z.infer<typeof AccountBalanceItemWireSchema
  * 残高一覧（GET /api/balances）。
  * `items` は本人の口座のみ。配偶者の分は「別銀行貯蓄 + NISA 積立累計」の合計 1 件だけが
  * 返る（P2-B5 / AT-404）。配偶者に対象の口座が無ければ null で、画面は合計行を出さない。
+ *
+ * 相手の合計は `.catch(null)` で「無ければ null」に倒す。web（静的書き出し）と API は
+ * 別々にデプロイされるため、web が先に出た混在期間は旧 API がこの項目を返さない。
+ * 必須のまま扱うと、合計行が出ないどころか残高一覧そのものが取得エラーになる。
  */
 export const AccountBalanceListWireSchema = z.object({
   items: z.array(AccountBalanceItemWireSchema),
-  spouseOtherSavingsAndNisaTotal: z.number().nullable(),
+  spouseOtherSavingsAndNisaTotal: z.number().nullable().catch(null),
 })
 
 /**

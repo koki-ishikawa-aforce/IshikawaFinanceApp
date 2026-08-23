@@ -110,8 +110,17 @@ describe('PostgresAccountBalanceQuery.fetchBalanceList', () => {
     expect(view.items).toHaveLength(1)
     expect(view.items[0]).toMatchObject({ kind: 'other_savings', currentBalance: 90000 })
     expect(JSON.stringify(view.items)).not.toContain('楽天銀行')
-    // 配偶者の SMBC 残高・カード未払金は合計にも含めない
-    expect(view.spouseOtherSavingsAndNisaTotal).toBe(800000 + 300000)
+    // 配偶者の SMBC 残高（1,500,000）・カード未払金（42,000）は合計にも含めない。
+    // 合計は配偶者の別銀行貯蓄 800,000 + NISA 300,000 のみ
+    expect(view.spouseOtherSavingsAndNisaTotal).toBe(1100000)
+  })
+
+  it('配偶者の別銀行貯蓄が残高 0 円でも合計は 0 を返す（null にしない）', async () => {
+    // 取り崩して 0 円になった状態を「口座が無い」に倒すと、合計行が黙って画面から消える
+    await accountRepo.save(otherSavingsAccount({ ownerUserId: HONEY_USER_ID, currentBalance: 0 }))
+
+    const view = await query.fetchBalanceList(DARLING_USER_ID)
+    expect(view.spouseOtherSavingsAndNisaTotal).toBe(0)
   })
 
   it('配偶者の inactive な別銀行貯蓄・NISA は合計に含めない', async () => {

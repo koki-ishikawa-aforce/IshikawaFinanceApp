@@ -136,6 +136,8 @@ describe('resolveMock: 口座未登録シナリオ', () => {
     visit(UNREGISTERED)
     const balances = AccountBalanceListWireSchema.parse(resolveMock('GET', '/api/balances'))
     expect(balances.items.map(b => b.kind)).toEqual(AUTOMANAGED_KINDS)
+    // 相手の合計行も出ない（別銀行貯蓄・NISA が未登録のシナリオのため）
+    expect(balances.spouseOtherSavingsAndNisaTotal).toBeNull()
 
     // 鮮度の対象は手入力の別銀行貯蓄口座だけなので、未登録なら知らせるものが無い
     const freshness = BalanceFreshnessListWireSchema.parse(
@@ -171,6 +173,10 @@ describe('resolveMock: 口座未登録シナリオ', () => {
       return sum
     }, 0)
     const total = AssetTotalWireSchema.parse(resolveMock('GET', '/api/balances/total'))
+    // 軸をまたいだ付け替え（一覧の貯蓄を増やし NISA を同額減らす等）も検出できるよう、
+    // 突き合わせだけでなく本人分・相手分それぞれの額も固定する
+    expect(listed).toBe(2_940_000)
+    expect(balances.spouseOtherSavingsAndNisaTotal).toBe(260_000)
     expect(listed + (balances.spouseOtherSavingsAndNisaTotal ?? 0)).toBe(
       total.otherSavingsBalance + total.nisaContributionAccumulated,
     )
