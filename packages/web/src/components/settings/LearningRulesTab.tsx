@@ -4,12 +4,10 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch, apiMutate, describeRequestFailure, NetworkError } from '@/lib/api-client'
 import {
-  AmazonProductKeyLearningRuleListWireSchema,
   CategoryListWireSchema,
   ExpenseTypeListWireSchema,
   MerchantLearningRuleListWireSchema,
   UnknownResponseSchema,
-  type AmazonProductKeyLearningRuleWire,
   type LearningRefsWire,
   type MerchantLearningRuleWire,
 } from '@/lib/api-schemas'
@@ -214,6 +212,12 @@ function MerchantRulesSection({ masters }: { masters: MastersState }) {
       <p className={styles.note}>
         取引を手動で分類すると、その加盟店の分類を覚えて次回から自動で分類します。覚えた内容の確認と、加盟店ごとに学習を止める・再開することができます。ここに出るのはあなたの学習だけで、配偶者の学習とは共有されません。
       </p>
+      {/* 「何度分類しても Amazon が一覧に出てこない」を不具合と誤解させないため、
+          学習の対象外であることをこの画面で明示する（X-1 取り下げ、#572）。
+          除外そのものを続けるかは判断待ちのため、変わったらこの文言も直す（#391） */}
+      <p className={styles.note}>
+        Amazon（AMAZON.CO.JP）の支払いは、加盟店名がどれも同じで中身を見分けられないため学習の対象外です。この一覧には出てこず、毎回その場で分類してください。
+      </p>
       {actionResult !== null && (
         <p className={styles.actionResult} role="status">
           {actionResult}
@@ -264,79 +268,16 @@ function MerchantRulesSection({ masters }: { masters: MastersState }) {
   )
 }
 
-// ---------- Amazon 商品キー学習ルール ----------
-
-function AmazonRuleRow({
-  rule,
-  masters,
-}: {
-  rule: AmazonProductKeyLearningRuleWire
-  masters: MastersState
-}) {
-  return (
-    <li className={styles.ruleRow}>
-      <span className={styles.ruleName}>{rule.amazonProductKey}</span>
-      <LearnedAxes refs={rule} masters={masters} />
-      <span className={styles.ruleMeta}>最終更新日: {formatDateTime(rule.lastUpdatedAt)}</span>
-    </li>
-  )
-}
-
-function AmazonRulesSection({ masters }: { masters: MastersState }) {
-  const rulesQuery = useQuery({
-    queryKey: ['classification', 'amazon-rules'],
-    queryFn: () =>
-      apiFetch('/api/classification/amazon-rules', AmazonProductKeyLearningRuleListWireSchema),
-  })
-
-  const isPending = rulesQuery.isPending || masters.isPending
-  const error = rulesQuery.error ?? masters.error
-
-  return (
-    <section className={ui.card}>
-      <h2 className={ui.sectionTitle}>Amazon 商品の学習</h2>
-      <p className={styles.note}>
-        Amazon
-        の支払いは加盟店名がどれも同じになるため、注文した商品ごとに分類を覚えます。商品ごとに学習を止めることはできません。
-      </p>
-      {isPending && <LoadingState />}
-      {!isPending && error !== null && (
-        <LoadFailure
-          error={error}
-          message="Amazon 商品の学習ルールの取得に失敗しました"
-          onRetry={() => {
-            void rulesQuery.refetch()
-            masters.refetch()
-          }}
-        />
-      )}
-      {!isPending &&
-        error === null &&
-        rulesQuery.data !== undefined &&
-        (rulesQuery.data.items.length === 0 ? (
-          <EmptyState>
-            覚えている Amazon 商品はまだありません。Amazon
-            の取引を分類すると、その商品の分類をここに覚えます。
-          </EmptyState>
-        ) : (
-          <ul className={styles.ruleList}>
-            {rulesQuery.data.items.map(rule => (
-              <AmazonRuleRow key={rule.amazonProductKey} rule={rule} masters={masters} />
-            ))}
-          </ul>
-        ))}
-    </section>
-  )
-}
-
 // ---------- タブ ----------
 
 /**
  * 学習ルールの管理(#400)。
  *
- * 加盟店学習ルールの一覧・学習の停止 / 再開と、Amazon 商品キー学習ルールの一覧を表示する。
- * API はいずれも閲覧者本人のルールだけを返す(08b F-1)ため、配偶者のルールはここに現れない。
- * 2 つの一覧は別々の取得なので、片方が失敗しても他方はそのまま表示する(部分失敗)。
+ * 加盟店学習ルールの一覧と、学習の停止 / 再開を表示する。
+ * API は閲覧者本人のルールだけを返す(08b F-1)ため、配偶者のルールはここに現れない。
+ *
+ * Amazon 商品ごとの学習(X-1)は 2026-08-23 に取り下げたため一覧を持たない(#391・#572)。
+ * AMAZON.CO.JP の取引は加盟店としても学習しないので、どこにも現れない。
  */
 export function LearningRulesTab() {
   const categoriesQuery = useQuery({
@@ -365,10 +306,5 @@ export function LearningRulesTab() {
     expenseTypeNameOf: id => expenseTypeNames.get(id),
   }
 
-  return (
-    <>
-      <MerchantRulesSection masters={masters} />
-      <AmazonRulesSection masters={masters} />
-    </>
-  )
+  return <MerchantRulesSection masters={masters} />
 }

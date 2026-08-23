@@ -16,11 +16,8 @@ import type {
   MitsuiSumitomoUnpaid,
   MitsuiSumitomoUnpaidId,
   MitsuiSumitomoUnpaidRepository,
-  AmazonProductKey,
   AppUser,
   AppUserRepository,
-  AmazonProductKeyLearningRule,
-  AmazonProductKeyLearningRuleRepository,
   BalanceHistoryEntry,
   BalanceHistoryRepository,
   BankDeposit,
@@ -347,22 +344,6 @@ export function createMockMerchantLearningRuleRepository(): MerchantLearningRule
     },
     async save(rule: MerchantLearningRule) {
       store.set(key(rule.common.userId, rule.common.merchantName), rule)
-    },
-  }
-}
-
-export function createMockAmazonProductKeyLearningRuleRepository(): AmazonProductKeyLearningRuleRepository {
-  const store = new Map<string, AmazonProductKeyLearningRule>()
-  const key = (userId: string, productKey: string): string => `${userId} ${productKey}`
-  return {
-    async findByProductKey(userId: UserId, amazonProductKey: AmazonProductKey) {
-      return store.get(key(userId, amazonProductKey)) ?? null
-    },
-    async findAllByUser(userId: UserId) {
-      return [...store.values()].filter(r => r.userId === userId)
-    },
-    async save(rule: AmazonProductKeyLearningRule) {
-      store.set(key(rule.userId, rule.amazonProductKey), rule)
     },
   }
 }

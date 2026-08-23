@@ -41,9 +41,7 @@ export type ExpenseTypeLearningRef = z.infer<typeof ExpenseTypeLearningRefSchema
 
 /**
  * T-2 の 3 軸参照をまとめて保持する共通形。
- * 加盟店学習ルール（`MerchantLearningRule`）と Amazon商品キー学習ルール
- * （`AmazonProductKeyLearningRule`）はどちらもこの 3 軸を独立に持つため、
- * 反映・適用のロジックを両者で共有する（X-1 の加盟店/Amazon 二系統でも T-2 は同一）。
+ * 加盟店学習ルール（`MerchantLearningRule`）がこの 3 軸を独立に持つ。
  */
 export interface LearningRefs {
   categoryRef: CategoryLearningRef
@@ -113,7 +111,7 @@ export function deriveLearnedRefs(
  * この不変条件を domain に一元化し、api / adapters 層で再実装しない（CLAUDE.md）。
  *  - カテゴリ・費用区分のいずれかが未学習 → 適用不可
  *  - 経費(会社) かつ経費種別が未学習 → 適用不可
- * `label` は不変条件違反メッセージ用の識別子（加盟店名 / Amazon商品キー）。
+ * `label` は不変条件違反メッセージ用の識別子（加盟店名）。
  */
 export function applicableClassificationFromRefs(
   refs: LearningRefs,

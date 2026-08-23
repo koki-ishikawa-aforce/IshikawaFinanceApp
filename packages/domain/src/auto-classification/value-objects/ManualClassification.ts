@@ -3,10 +3,8 @@
  * @see docs/domain/08b-ul-自動分類学習.md §2
  *
  * 用途は2つ:
- *  - `reflectManualClassification` / `reflectAmazonProductKeyManualClassification` の入力
- *    （08b §2「手動修正を学習に反映する」）
- *  - `applicableClassification` / `applicableAmazonProductKeyClassification` の出力
- *    （学習済みルールから導く適用可能な分類）
+ *  - `reflectManualClassification` の入力（08b §2「手動修正を学習に反映する」）
+ *  - `applicableClassification` の出力（学習済みルールから導く適用可能な分類）
  *
  * 経費種別ID は費用区分が経費（business_expense）のときのみ意味を持つ。
  * 家計分析の `ConfirmedClassificationSchema`（取引確定入力）とは意図的に

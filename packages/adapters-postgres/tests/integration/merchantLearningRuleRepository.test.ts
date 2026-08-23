@@ -1,15 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import type { ActiveMerchantLearningRule, AmazonProductKey } from '@warimaru/domain'
-import { AmazonProductKeySchema, disableMerchantLearning } from '@warimaru/domain'
+import type { ActiveMerchantLearningRule } from '@warimaru/domain'
+import { disableMerchantLearning } from '@warimaru/domain'
 import { db } from './setup'
 import { PostgresMerchantLearningRuleRepository } from '../../src/auto-classification/PostgresMerchantLearningRuleRepository'
-import { PostgresAmazonProductKeyLearningRuleRepository } from '../../src/auto-classification/PostgresAmazonProductKeyLearningRuleRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
-import {
-  activeMerchantRule,
-  amazonRule,
-  disabledMerchantRule,
-} from '../helpers/autoClassificationFixtures'
+import { activeMerchantRule, disabledMerchantRule } from '../helpers/autoClassificationFixtures'
 
 const repo = new PostgresMerchantLearningRuleRepository(db)
 
@@ -52,29 +47,5 @@ describe('PostgresMerchantLearningRuleRepository（複合自然キー PK）', ()
     await repo.save(darlings)
     expect(await repo.findByMerchant(HONEY_USER_ID, 'スーパーA')).toEqual(honeys)
     expect(await repo.findByMerchant(DARLING_USER_ID, 'スーパーA')).toEqual(darlings)
-  })
-})
-
-describe('PostgresAmazonProductKeyLearningRuleRepository（複合自然キー PK）', () => {
-  const amazonRepo = new PostgresAmazonProductKeyLearningRuleRepository(db)
-  const key = (v: string): AmazonProductKey => AmazonProductKeySchema.parse(v)
-
-  it('save → findByProductKey の往復同一性', async () => {
-    const rule = amazonRule({ amazonProductKey: '本' })
-    await amazonRepo.save(rule)
-    expect(await amazonRepo.findByProductKey(HONEY_USER_ID, key('本'))).toEqual(rule)
-    expect(await amazonRepo.findByProductKey(HONEY_USER_ID, key('家電'))).toBeNull()
-  })
-
-  it('同一 (userId, amazonProductKey) の再 save は上書き', async () => {
-    await amazonRepo.save(amazonRule({ amazonProductKey: '本' }))
-    const updated = amazonRule({ amazonProductKey: '本' })
-    await amazonRepo.save(updated)
-    expect(await amazonRepo.findByProductKey(HONEY_USER_ID, key('本'))).toEqual(updated)
-  })
-
-  it('F-1: 配偶者のルールは引けない', async () => {
-    await amazonRepo.save(amazonRule({ userId: DARLING_USER_ID, amazonProductKey: '本' }))
-    expect(await amazonRepo.findByProductKey(HONEY_USER_ID, key('本'))).toBeNull()
   })
 })

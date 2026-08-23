@@ -15,7 +15,6 @@ import { UnclassifiedReasonSchema } from '../../shared/value-objects/Unclassifie
 
 export const ExpenseJudgmentPendingReasonSchema = UnclassifiedReasonSchema.extract([
   'merchant_rule_unlearned',
-  'amazon_product_key_unlearned',
 ])
 export type ExpenseJudgmentPendingReason = z.infer<typeof ExpenseJudgmentPendingReasonSchema>
 

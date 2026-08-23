@@ -35,7 +35,7 @@ Domain IshikawaHousehold {
 
     Subdomain ClassificationLearningSubdomain {
         type = CORE_DOMAIN
-        domainVisionStatement "F-1 個人別学習・T-2 フィールド独立マッピング・X-1 Amazon 商品キー特例の固有ロジック"
+        domainVisionStatement "F-1 個人別学習・T-2 フィールド独立マッピングの固有ロジック（X-1 Amazon 商品キー特例は #572 で取り下げ）"
     }
 
     Subdomain HouseholdAnalysisSubdomain {
@@ -85,7 +85,7 @@ BoundedContext TransactionImport implements TransactionIngestionSubdomain {
 
 BoundedContext AutoClassification implements ClassificationLearningSubdomain {
     type = APPLICATION
-    domainVisionStatement "取引候補に対して加盟店名/Amazon 商品キーから per-user の memorization 学習データを引いてカテゴリ・費用区分・経費種別を当て、ユーザー手動修正を学習データに反映する"
+    domainVisionStatement "取引候補に対して加盟店名から per-user の memorization 学習データを引いてカテゴリ・費用区分・経費種別を当て、ユーザー手動修正を学習データに反映する"
     responsibilities = "自動分類", "学習データ更新", "Amazon 突合", "未分類遡及"
 }
 

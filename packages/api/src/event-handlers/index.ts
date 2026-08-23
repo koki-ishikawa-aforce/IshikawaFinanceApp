@@ -36,13 +36,11 @@ export function registerEventHandlers(deps: AppDeps): void {
   registeredBuses.add(deps.eventBus)
   registerAutoClassificationEventHandlers(deps.eventBus, {
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
-    amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
   })
   // マスタ削除リマップ: 各コンテキストが付け替えて完了通知を発行する（#89 / #223）
   registerMasterDataRemapEventHandlers(deps.eventBus, {
     transactionRepository: deps.transactionRepository,
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
-    amazonProductKeyLearningRuleRepository: deps.amazonProductKeyLearningRuleRepository,
     categoryDeletionRequestRepository: deps.categoryDeletionRequestRepository,
     expenseTypeDeletionRequestRepository: deps.expenseTypeDeletionRequestRepository,
   })

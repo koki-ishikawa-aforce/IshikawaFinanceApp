@@ -38,7 +38,6 @@ import {
   NisaContributionAddedSchema,
   // shared (Phase 5 M-A)
   ParameterStorePathSchema,
-  AmazonProductKeySchema,
   UserRoleSchema,
   PersonalExpenseClassSchema,
   DefaultExpenseClassSchema,
@@ -48,7 +47,6 @@ import {
   UnapprovedExpenseTransferSchema,
   // auto-classification
   MerchantLearningRuleSchema,
-  AmazonProductKeyLearningRuleSchema,
   BulkClassificationSessionSchema,
   ClassificationResultSchema,
   AmazonMatchStateSchema,
@@ -146,7 +144,6 @@ describe('@warimaru/domain 公開 API', () => {
     expect(NisaContributionAddedSchema).toBeDefined()
     // shared (Phase 5 M-A)
     expect(ParameterStorePathSchema).toBeDefined()
-    expect(AmazonProductKeySchema).toBeDefined()
     expect(UserRoleSchema).toBeDefined()
     expect(PersonalExpenseClassSchema).toBeDefined()
     expect(DefaultExpenseClassSchema).toBeDefined()
@@ -156,7 +153,6 @@ describe('@warimaru/domain 公開 API', () => {
     expect(UnapprovedExpenseTransferSchema).toBeDefined()
     // auto-classification
     expect(MerchantLearningRuleSchema).toBeDefined()
-    expect(AmazonProductKeyLearningRuleSchema).toBeDefined()
     expect(BulkClassificationSessionSchema).toBeDefined()
     expect(ClassificationResultSchema).toBeDefined()
     expect(AmazonMatchStateSchema).toBeDefined()

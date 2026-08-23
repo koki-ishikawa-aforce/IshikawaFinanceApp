@@ -98,7 +98,7 @@ export function amazonMatchedCandidate(
       amount: 3480,
       occurredAt: new Date('2026-07-04T03:00:00.000Z'),
     },
-    products: [{ productName: 'ドメイン駆動設計', amazonProductKey: '本', productAmount: 3480 }],
+    products: [{ productName: 'ドメイン駆動設計', productAmount: 3480 }],
     matchedAt: new Date('2026-07-04T09:00:00.000Z'),
   })
 }

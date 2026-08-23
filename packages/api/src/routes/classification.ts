@@ -22,7 +22,6 @@ import {
 } from '@warimaru/domain'
 import type {
   ActiveMerchantLearningRule,
-  AmazonProductKeyLearningRuleRepository,
   BulkClassificationSession,
   BulkClassificationSessionRepository,
   ClassifiedDetails,
@@ -62,7 +61,6 @@ const BulkSessionCreateBodySchema = z.object({
 export interface ClassificationRoutesDeps {
   retroactiveCandidateQuery: RetroactiveCandidateQuery
   merchantLearningRuleRepository: MerchantLearningRuleRepository
-  amazonProductKeyLearningRuleRepository: AmazonProductKeyLearningRuleRepository
   bulkClassificationSessionRepository: BulkClassificationSessionRepository
   transactionRepository: TransactionRepository
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
@@ -241,13 +239,6 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
       }),
     )
     return c.json(reenabled)
-  })
-
-  /** Amazon 商品キー学習ルール一覧 */
-  app.get('/amazon-rules', async c => {
-    const viewerId = c.get('viewerId')
-    const items = await deps.amazonProductKeyLearningRuleRepository.findAllByUser(viewerId)
-    return c.json({ items })
   })
 
   /** 一括分類セッションの開始 */

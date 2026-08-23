@@ -4,7 +4,6 @@ import {
   CategoryMasterSchema,
   ExpenseTypeDeletionRemapRequestedSchema,
   MerchantLearningRuleSchema,
-  AmazonProductKeyLearningRuleSchema,
   TransactionIdSchema,
   TransactionSchema,
   YearMonthSchema,
@@ -72,7 +71,12 @@ async function seedClassifiedTransaction(
   return transactionId
 }
 
-/** 経費種別軸のみを学習した加盟店ルール・Amazon商品キールールを1件ずつ用意する */
+/**
+ * 削除対象の経費種別を学習した加盟店ルールを1件と、別の経費種別を学習した
+ * 巻き添え確認用のルールを1件用意する(付け替えが対象 ID に限られることの検証)
+ */
+const UNRELATED_EXPENSE_TYPE_ID = '01EXP000000000000000000009'
+
 async function seedExpenseTypeLearningRules(t: TestApp, expenseTypeId: string): Promise<void> {
   await t.deps.merchantLearningRuleRepository.save(
     MerchantLearningRuleSchema.parse({
@@ -84,13 +88,13 @@ async function seedExpenseTypeLearningRules(t: TestApp, expenseTypeId: string): 
       lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
     }),
   )
-  await t.deps.amazonProductKeyLearningRuleRepository.save(
-    AmazonProductKeyLearningRuleSchema.parse({
-      userId: VIEWER_ID,
-      amazonProductKey: '本',
+  await t.deps.merchantLearningRuleRepository.save(
+    MerchantLearningRuleSchema.parse({
+      kind: 'active',
+      common: { userId: VIEWER_ID, merchantName: 'ストアZ' },
       categoryRef: { kind: 'unlearned' },
-      expenseClassRef: { kind: 'unlearned' },
-      expenseTypeRef: { kind: 'learned', expenseTypeId },
+      expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+      expenseTypeRef: { kind: 'learned', expenseTypeId: UNRELATED_EXPENSE_TYPE_ID },
       lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
     }),
   )
@@ -112,16 +116,6 @@ describe('POST /api/categories/:id/deletion-requests', () => {
         lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
       }),
     )
-    await t.deps.amazonProductKeyLearningRuleRepository.save(
-      AmazonProductKeyLearningRuleSchema.parse({
-        userId: VIEWER_ID,
-        amazonProductKey: '本',
-        categoryRef: { kind: 'learned', categoryId: target },
-        expenseClassRef: { kind: 'unlearned' },
-        expenseTypeRef: { kind: 'unlearned' },
-        lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
-      }),
-    )
 
     const res = await request(t.app, 'POST', `/api/categories/${target}/deletion-requests`, {
       body: { destinationCategoryId: destination, destinationExpenseClass: 'household' },
@@ -134,7 +128,7 @@ describe('POST /api/categories/:id/deletion-requests', () => {
     }
     expect(deletionRequest.state.kind).toBe('remap_completed')
     expect(deletionRequest.state.affectedTransactionCount).toBe(1)
-    expect(deletionRequest.state.affectedLearningRuleCount).toBe(2)
+    expect(deletionRequest.state.affectedLearningRuleCount).toBe(1)
 
     // マスタは物理削除済み
     expect(await t.deps.categoryMasterRepository.findById(target as never)).toBeNull()
@@ -255,7 +249,7 @@ describe('POST /api/expense-types/:id/deletion-requests', () => {
     expect(deletionRequest.state.kind).toBe('remap_completed')
     // 経費精算・自動分類の両コンテキストの完了通知が揃ってはじめて確定する件数
     expect(deletionRequest.state.affectedTransactionCount).toBe(1)
-    expect(deletionRequest.state.affectedLearningRuleCount).toBe(2)
+    expect(deletionRequest.state.affectedLearningRuleCount).toBe(1)
 
     expect(await t.deps.expenseTypeMasterRepository.findById(target as never)).toBeNull()
     const remapped = await t.deps.transactionRepository.findById(
@@ -269,10 +263,18 @@ describe('POST /api/expense-types/:id/deletion-requests', () => {
     })
     // 学習ルールも経費種別軸のみ付け替え済み
     const rules = await t.deps.merchantLearningRuleRepository.findAllByUser(VIEWER_ID)
-    const rule = rules[0]
+    const rule = rules.find(r => r.common.merchantName === 'スーパーA')
     if (rule?.kind !== 'active') throw new Error('active を期待')
     expect(rule.expenseTypeRef).toEqual({ kind: 'learned', expenseTypeId: destination })
     expect(rule.categoryRef).toEqual({ kind: 'unlearned' })
+    // 別の経費種別を学習していたルールは触られていない(件数 1 も対象限定の帰結)
+    const unrelated = rules.find(r => r.common.merchantName === 'ストアZ')
+    if (unrelated?.kind !== 'active') throw new Error('active を期待')
+    expect(unrelated.expenseTypeRef).toEqual({
+      kind: 'learned',
+      expenseTypeId: UNRELATED_EXPENSE_TYPE_ID,
+    })
+    expect(unrelated.lastUpdatedAt).toEqual(new Date('2026-07-01T00:00:00Z'))
     // 削除対象の月次上限は物理削除済み
     expect(
       await t.deps.monthlyLimitRepository.findByUserAndExpenseType(VIEWER_ID, target as never),
@@ -516,7 +518,7 @@ describe('マスタ削除完了の通知と物理削除の順序（#363）', () 
           TransactionIdSchema.parse(transactionId),
         )
         const rules = await t.deps.merchantLearningRuleRepository.findAllByUser(VIEWER_ID)
-        const rule = rules[0]
+        const rule = rules.find(r => r.common.merchantName === 'スーパーA')
         observed.push({
           masterDeleted: master === null,
           transactionExpenseTypeId:
@@ -544,7 +546,7 @@ describe('マスタ削除完了の通知と物理削除の順序（#363）', () 
       deletionRequest.expenseTypeDeletionRequestId,
     )
     expect(completed[0]?.affectedTransactionCount).toBe(1)
-    expect(completed[0]?.affectedLearningRuleCount).toBe(2)
+    expect(completed[0]?.affectedLearningRuleCount).toBe(1)
     // 完了イベントは物理削除の後に発行されるため、購読時点の状態が順序の証拠になる
     // （取引・学習ルールの付け替えが済んでいなければ、参照先を失ったマスタ削除になる）
     expect(observed).toEqual([
@@ -598,7 +600,7 @@ describe('マスタ削除完了の通知と物理削除の順序（#363）', () 
     expect(reread?.state.kind).toBe('remap_completed')
     if (reread?.state.kind === 'remap_completed') {
       expect(reread.state.affectedTransactionCount).toBe(1)
-      expect(reread.state.affectedLearningRuleCount).toBe(2)
+      expect(reread.state.affectedLearningRuleCount).toBe(1)
     }
   })
 
