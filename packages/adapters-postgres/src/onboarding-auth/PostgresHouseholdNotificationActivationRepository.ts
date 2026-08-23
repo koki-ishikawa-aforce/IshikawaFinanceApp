@@ -36,9 +36,26 @@ export class PostgresHouseholdNotificationActivationRepository implements Househ
   }
 
   async save(activation: ActivatedHouseholdNotification): Promise<void> {
-    await this.db
+    const inserted = await this.db
       .insert(householdNotificationActivations)
       .values({ activatedAt: activation.activatedAt })
       .onConflictDoNothing({ target: householdNotificationActivations.singleton })
+      .returning({ activatedAt: householdNotificationActivations.activatedAt })
+    if (inserted.length > 0) return
+
+    // 競合して捨てた側の有効化日時が既存と違う場合だけ記録する。発火の起点は 4 つあり、
+    // 同時に走った 2 つが別の有効化日時でイベントを発行すると配信側の冪等性キーもずれるため、
+    // テストメッセージが 2 通届いた事実が記録上たどれなくなる（日時のみで PII は含まない）
+    const current = await this.find()
+    if (
+      current.kind === 'activated' &&
+      current.activatedAt.getTime() !== activation.activatedAt.getTime()
+    ) {
+      console.warn(
+        `[onboarding] 世帯の通知機能有効化の記録が競合した（既存=${current.activatedAt.toISOString()}, ` +
+          `要求=${activation.activatedAt.toISOString()}）— 既存を正とする。` +
+          '別の有効化日時で発行された回はテストメッセージが二重に届いている可能性がある',
+      )
+    }
   }
 }

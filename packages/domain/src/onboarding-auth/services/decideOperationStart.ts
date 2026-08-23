@@ -21,6 +21,10 @@ import {
   type AppUser,
   type OperationStartedUser,
 } from '../aggregates/AppUser'
+import {
+  isHouseholdNotificationActivated,
+  type HouseholdNotificationActivation,
+} from '../aggregates/HouseholdNotificationActivation'
 import { joinedTalkRoomIdOf, type SharedTalkRoom } from '../aggregates/SharedTalkRoom'
 import { activateNotification } from './activateNotification'
 
@@ -131,6 +135,8 @@ export type HouseholdNotificationBlocker =
 
 export type HouseholdNotificationDecision =
   | { kind: 'not_ready'; blocker: HouseholdNotificationBlocker }
+  /** 世帯として有効化済み（テスト送信を依頼済み。イベントは再発行しない、#447） */
+  | { kind: 'already_activated' }
   | {
       kind: 'activate'
       /** テスト送信の配信先。世帯レベルの `SharedTalkRoom` が唯一の正（#334） */
@@ -148,15 +154,22 @@ export type HouseholdNotificationDecision =
 /**
  * 世帯の通知機能を有効化するか判定する（08f §2「通知機能を有効化する」）。
  *
- * 事前条件は「両者が運用開始済み」「両者とも友達追加済み」「世帯が共通トークルーム参加済み」。
+ * 事前条件は「世帯が未有効化」「両者が運用開始済み」「両者とも友達追加済み」
+ * 「世帯が共通トークルーム参加済み」の 4 つ。behavior の事前条件を application 層に割らないため、
+ * 「もう依頼したか」の判定（`householdActivation`）もここで受け取る（#447）。
  * 有効化そのものは per-user の `activateNotification` に委ね、2 集約横断の不変条件を
  * 二重に実装しない。
  */
 export function decideHouseholdNotificationActivation(
   members: HouseholdMembers,
   sharedTalkRoom: SharedTalkRoom,
+  householdActivation: HouseholdNotificationActivation,
   at: Date,
 ): HouseholdNotificationDecision {
+  // 世帯レベルの記録が「もう依頼したか」の唯一の根拠。per-user の有効化状態は根拠にしない
+  // （保存に成功して発行に失敗した回を「もう送った」と誤認しないため、#447）
+  if (isHouseholdNotificationActivated(householdActivation)) return { kind: 'already_activated' }
+
   const { honey, darling } = members
   if (
     honey === null ||

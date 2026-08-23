@@ -30,10 +30,10 @@ import { bodyLimit } from 'hono/body-limit'
 import type {
   AppUserRepository,
   EventBus,
+  HouseholdNotificationActivationRepository,
   LineTalkRoomMembershipGateway,
   LineTalkRoomMembershipStatus,
   SharedTalkRoomJoinSkipReason,
-  HouseholdNotificationActivationRepository,
   SharedTalkRoomRepository,
 } from '@warimaru/domain'
 import type { LineTalkRoomKind, TalkRoomId, UserId, UserRole } from '@warimaru/domain'

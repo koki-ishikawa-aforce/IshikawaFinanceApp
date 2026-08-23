@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import {
+  NotificationActivatedSchema,
   activateNotification,
   completePhase2,
   completeSectionA,
@@ -23,6 +24,7 @@ import {
   type UserId,
   type UserRole,
 } from '@warimaru/domain'
+import { domainEventBase } from '../src/event-handlers/event-base.js'
 import { fireOperationStartIfReady, tryFireOperationStart } from '../src/operation-start.js'
 import type { TestApp } from './helpers/test-app.js'
 import { createTestApp, SPOUSE_ID, VIEWER_ID } from './helpers/test-app.js'
@@ -114,6 +116,11 @@ describe('fireOperationStartIfReady', () => {
     expect(log.operationStarted).toHaveLength(1)
     expect(log.notificationActivated).toHaveLength(1)
     expect(log.testMessageSent).toHaveLength(1)
+    // 記録するのは呼出し時刻ではなく保存済みの有効化日時（配信の冪等性キーの一部）
+    expect(await t.deps.householdNotificationActivationRepository.find()).toEqual({
+      kind: 'activated',
+      activatedAt: AT,
+    })
   })
 
   it('発火済みの世帯で再実行しても何も発行しない（冪等）', async () => {
@@ -212,6 +219,8 @@ describe('fireOperationStartIfReady', () => {
       await expect(
         fireOperationStartIfReady(t.deps, { trigger: 'phase2_complete', at: AT }),
       ).rejects.toThrow('publish failed')
+      // 「自動では再発行されない」から「次の発火の起点で再試行される」へ意味が反転した記録
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining('次の発火の起点で再試行される'))
     } finally {
       t.deps.eventBus.publish = publish
       logged.mockRestore()
@@ -228,6 +237,80 @@ describe('fireOperationStartIfReady', () => {
     // 有効化日時は保存済みの per-user の値から導くため、やり直しでも変わらない
     // （配信側の冪等性キーがずれて同じメッセージが二重に届くことを防ぐ）
     expect(log.notificationActivated[0]?.activatedAt).toEqual(AT)
+  })
+
+  it('マイグレーション直後の既存世帯は再発行されるが、テストメッセージは二重に届かない（#447）', async () => {
+    // 世帯記録テーブルは空で新設され backfill を持たない（per-user から埋めると、まさに
+    // #447 のバグ状態＝有効化済み・未送信の世帯が「送信済み」で凍結されるため）。
+    // 既に受け取り済みの世帯は最初の起点で 1 度だけ再発行され、配信側の冪等性キーで止まる
+    const t = createTestApp()
+    const log = subscribeEvents(t)
+    const room = recordSharedTalkRoomJoined(NOT_JOINED_SHARED_TALK_ROOM, TALK_ROOM_ID as never, AT)
+    await joinTalkRoom(t)
+    await seedUsers(t, [
+      activateNotification(startOperation(honeyReady(), AT), room, AT),
+      activateNotification(startOperation(darlingReady(), AT), room, AT),
+    ])
+    // デプロイ前に配信済みだった 1 通を再現する
+    await t.deps.eventBus.publish(
+      NotificationActivatedSchema.parse({
+        ...domainEventBase(AT),
+        type: 'NotificationActivated',
+        talkRoomId: TALK_ROOM_ID,
+        activatedAt: AT,
+      }),
+    )
+    const deliveredKey = `test_message:${TALK_ROOM_ID}:${AT.toISOString()}`
+    expect(
+      await t.deps.lineDeliveryLogRepository.findAllByIdempotencyKey(deliveredKey),
+    ).toHaveLength(1)
+
+    const outcome = await fireOperationStartIfReady(t.deps, {
+      trigger: 'spouse_completion_check',
+      at: new Date('2026-03-02T09:00:00Z'),
+    })
+    expect(outcome).toEqual({ operation: 'already_started', notification: 'activated' })
+    // 再発行はされるが、配信ログは 1 件のまま（テストメッセージは 2 通目が届かない）
+    expect(log.notificationActivated).toHaveLength(2)
+    expect(
+      await t.deps.lineDeliveryLogRepository.findAllByIdempotencyKey(deliveredKey),
+    ).toHaveLength(1)
+    expect(log.testMessageSent).toHaveLength(1)
+  })
+
+  it('記録の保存に失敗しても、次の発火でテストメッセージが二重に届かない（#447）', async () => {
+    const t = createTestApp()
+    await seedUsers(t, [honeyReady(), darlingReady()])
+    await joinTalkRoom(t)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const save = t.deps.householdNotificationActivationRepository.save.bind(
+      t.deps.householdNotificationActivationRepository,
+    )
+    t.deps.householdNotificationActivationRepository.save = (): Promise<void> =>
+      Promise.reject(new Error('save failed'))
+    try {
+      await expect(
+        fireOperationStartIfReady(t.deps, { trigger: 'phase2_complete', at: AT }),
+      ).rejects.toThrow('save failed')
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining('イベントは発行済み'))
+    } finally {
+      t.deps.householdNotificationActivationRepository.save = save
+      logged.mockRestore()
+    }
+
+    const log = subscribeEvents(t)
+    await fireOperationStartIfReady(t.deps, {
+      trigger: 'spouse_completion_check',
+      at: new Date('2026-03-02T09:00:00Z'),
+    })
+    expect(log.notificationActivated).toHaveLength(1)
+    // 冪等性キーは変わらないため 2 通目は配信されない
+    expect(log.testMessageSent).toHaveLength(0)
+    expect(
+      await t.deps.lineDeliveryLogRepository.findAllByIdempotencyKey(
+        `test_message:${TALK_ROOM_ID}:${AT.toISOString()}`,
+      ),
+    ).toHaveLength(1)
   })
 
   it('発行に成功した世帯は、per-user の状態に関わらず再発行しない（#447）', async () => {

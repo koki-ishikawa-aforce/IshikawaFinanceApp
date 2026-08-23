@@ -20,10 +20,15 @@
  * 冪等性: 判定は現在の状態のみに依存する。両者が運用開始済みなら遷移も発行も行わないため、
  * 何度呼んでも `OperationStarted` は 1 度しか出ない。片方の保存だけが済んだ状態からの再実行は
  * 残り 1 人を遷移させて回復する。通知機能有効化は世帯レベルの記録
- * （`HouseholdNotificationActivation`）が「発行済み」の唯一の根拠であり、**イベントの発行が
- * 成功して初めて記録する**（#447）。発行が失敗した回は記録が残らないため、次の発火の起点で
- * やり直せる（per-user の有効化状態の組み合わせから推測していた従来の作りでは、この回が
+ * （`HouseholdNotificationActivation`）が「発行済み」の唯一の根拠であり、**`NotificationActivated`
+ * の発行が成功して初めて記録する**（#447）。発行が失敗した回は記録が残らないため、次の発火の
+ * 起点でやり直せる（per-user の有効化状態の組み合わせから推測していた従来の作りでは、この回が
  * 「もう送った」と誤認され、テストメッセージが世帯へ二度と届かなかった）。
+ *
+ * この回復が効くのは**発行そのものが失敗した回に限る**。購読側（テストメッセージ配信）の失敗は
+ * `safeSubscribe` が受け止めるため publish は成功し、LINE への送信が最終的に失敗した回
+ * （配信サービスの `retry_abandoned`）でも記録は書かれる。その回のテストメッセージは本記録では
+ * 回復しない（記録の確定を配信の到達まで遅らせるかは配信コンテキストとの結合に触れるため #590）。
  */
 import { createHash } from 'node:crypto'
 import {
@@ -31,7 +36,6 @@ import {
   OperationStartedSchema,
   decideHouseholdNotificationActivation,
   decideOperationStart,
-  isHouseholdNotificationActivated,
   lineOperationSettingsOf,
   recordHouseholdNotificationActivated,
   type AppUserRepository,
@@ -93,11 +97,6 @@ export async function fireOperationStartIfReady(
   const sharedTalkRoom = await deps.sharedTalkRoomRepository.find()
   const members: HouseholdMembers = { honey, darling }
 
-  // 通知機能有効化の「発行済み」判定。世帯レベルの記録が唯一の根拠で、記録が無ければ
-  // per-user が有効化済みでも（＝発行に失敗した回でも）やり直す（#447）
-  const householdActivation = await deps.householdNotificationActivationRepository.find()
-  const notificationWasActive = isHouseholdNotificationActivated(householdActivation)
-
   const decision = decideOperationStart(members, at)
   if (decision.kind === 'not_ready') {
     return { operation: 'not_ready', notification: 'not_ready' }
@@ -123,9 +122,19 @@ export async function fireOperationStartIfReady(
     )
   }
   const operation = decision.kind === 'start' ? 'started' : 'already_started'
-  if (notificationWasActive) return { operation, notification: 'already_active' }
 
-  const activation = decideHouseholdNotificationActivation(decision.household, sharedTalkRoom, at)
+  // 「もう依頼したか」の根拠となる世帯レベルの記録。運用開始の遷移とは独立なので、
+  // 大半の呼び出しが返る `not_ready` の後ろで読む（発火の起点は 4 つあり毎操作で通る）
+  const householdActivation = await deps.householdNotificationActivationRepository.find()
+  const activation = decideHouseholdNotificationActivation(
+    decision.household,
+    sharedTalkRoom,
+    householdActivation,
+    at,
+  )
+  if (activation.kind === 'already_activated') {
+    return { operation, notification: 'already_active' }
+  }
   if (activation.kind === 'not_ready') {
     // 運用開始したのにテスト送信が起きない状態は、利用者からは「設定したのに何も来ない」に見える。
     // 前提が欠けたまま止まったことを追えるようにしておく（回復は前提が揃ったときの再発火）。
@@ -162,12 +171,22 @@ export async function fireOperationStartIfReady(
     )
     throw e
   }
-  // 発行が成功して初めて「依頼済み」を記録する（#447）。ここで保存が失敗した場合は次の起点で
-  // 再発行されるが、配信側の冪等性キー（トークルーム × 有効化日時）は保存済みの per-user の
-  // 有効化日時から導かれ再発火のたびに変わらないため、テストメッセージが二重に届くことはない
-  await deps.householdNotificationActivationRepository.save(
-    recordHouseholdNotificationActivated(householdActivation, activation.activatedAt),
-  )
+  // 発行が成功して初めて「依頼済み」を記録する（#447）
+  try {
+    await deps.householdNotificationActivationRepository.save(
+      recordHouseholdNotificationActivated(householdActivation, activation.activatedAt),
+    )
+  } catch (e) {
+    // ここまで来た時点でイベントは発行済み（テストメッセージも送信済み）。「発火に失敗した」と
+    // だけ記録されると運用者は「送られていない」と誤読するため、実態を明示してから返す
+    console.error(
+      `[onboarding] 世帯の通知機能有効化の記録に失敗した（${e instanceof Error ? e.name : 'unknown'}, ` +
+        `trigger=${trigger}, event=${event.eventId}, activatedAt=${activation.activatedAt.toISOString()}）— ` +
+        'イベントは発行済み。次の起点で再発行されるが、配信側の冪等性キー（トークルーム × 有効化日時）は' +
+        '変わらないためテストメッセージが二重に届くことはない',
+    )
+    throw e
+  }
   console.info(
     `[onboarding] 世帯の通知機能を有効化した（trigger=${trigger}, event=${event.eventId}, ` +
       `activatedAt=${activation.activatedAt.toISOString()}）`,

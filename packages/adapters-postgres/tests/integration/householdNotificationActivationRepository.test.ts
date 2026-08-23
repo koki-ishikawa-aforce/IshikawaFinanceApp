@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { sql } from 'drizzle-orm'
 import {
   NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
   recordHouseholdNotificationActivated,
@@ -30,5 +31,22 @@ describe('PostgresHouseholdNotificationActivationRepository', () => {
     expect(await repo.find()).toEqual({ kind: 'activated', activatedAt: AT })
     const rows = await db.select().from(householdNotificationActivations)
     expect(rows).toHaveLength(1)
+  })
+
+  it('singleton = false の 2 行目は CHECK 違反（23514）', async () => {
+    // CHECK が落ちると 2 行目が成立し、find() の limit(1) がどちらを返すか不定になる
+    // （「有効化済みか」の唯一の根拠が不定になる）
+    const inserted = db.execute(
+      sql`INSERT INTO household_notification_activations (singleton, activated_at)
+          VALUES (false, now())`,
+    )
+    let code: string | undefined
+    try {
+      await inserted
+    } catch (e) {
+      const err = e as { code?: string; cause?: { code?: string } }
+      code = err.cause?.code ?? err.code
+    }
+    expect(code).toBe('23514')
   })
 })

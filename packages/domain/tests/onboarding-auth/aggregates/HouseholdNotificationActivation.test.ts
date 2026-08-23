@@ -31,6 +31,14 @@ describe('世帯通知有効化記録（世帯レベル、#447）', () => {
     ).toBe(true)
   })
 
+  it('未有効化は既定値と一致し、未知の状態は受け付けない', () => {
+    // Repository は「行が無い」ときに定数をそのまま返すため、定義がずれても気づけない
+    expect(HouseholdNotificationActivationSchema.parse({ kind: 'not_activated' })).toEqual(
+      NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
+    )
+    expect(() => HouseholdNotificationActivationSchema.parse({ kind: 'deactivated' })).toThrow()
+  })
+
   it('有効化済みは有効化日時を必須とする', () => {
     expect(() => HouseholdNotificationActivationSchema.parse({ kind: 'activated' })).toThrow()
     expect(() =>

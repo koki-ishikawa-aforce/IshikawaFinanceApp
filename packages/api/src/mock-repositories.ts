@@ -8,6 +8,7 @@ import {
   deliveryLogOccurredAt,
   InvariantViolationError,
   NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
+  recordHouseholdNotificationActivated,
   NOT_JOINED_SHARED_TALK_ROOM,
 } from '@warimaru/domain'
 import type {
@@ -640,7 +641,9 @@ export function createMockHouseholdNotificationActivationRepository(): Household
       return activation
     },
     async save(next: ActivatedHouseholdNotification) {
-      activation = next
+      // 本番実装（onConflictDoNothing）と同じく上書きしない。有効化日時は配信の冪等性キーの
+      // 一部であり、モックだけが上書きするとその不変条件の破れをテストが見逃す
+      activation = recordHouseholdNotificationActivated(activation, next.activatedAt)
     },
   }
 }

@@ -53,10 +53,10 @@ import type {
   EventBus,
   FriendshipCheckOutcome,
   GmailOAuthGateway,
+  HouseholdNotificationActivationRepository,
   InitialBalanceRegistrationRef,
   LineFriendshipGateway,
   Phase2InProgressUser,
-  HouseholdNotificationActivationRepository,
   SharedTalkRoomRepository,
   SpouseCompletionQuery,
   UserId,
@@ -353,10 +353,10 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
    * — 08f §2 のとおり両者の運用開始が揃った時点で一元発行する（`fireOperationStartIfReady`）。
    * ここが記録するのは運用開始前に事前蓄積する per-user の有効化状態（08f §1 実装ノート）。
    *
-   * 運用開始発火を先に呼ぶ理由: 世帯としての有効化済み判定は per-user の有効化状態の合成で表す
-   * （世帯レベルの記録を持たない）ため、本人ぶんだけを先に有効化すると、運用開始済みの世帯では
-   * 「発行済み」と誤認されてテスト送信が起きなくなる。先に発火させれば、条件が揃った回に
-   * 世帯としての有効化とイベント発行がまとめて行われる。
+   * 運用開始発火を先に呼ぶ理由: 世帯としての有効化とイベント発行は、条件が揃った回に
+   * `fireOperationStartIfReady` がまとめて行う（本人ぶんの有効化はその中で保存される）。
+   * 先に本人ぶんだけを保存しても発火の結論は変わらない（判定の根拠は世帯レベルの記録、#447）が、
+   * 発火を後回しにすると同じ状態を 2 度読むことになるため順序を保つ。
    */
   app.post('/phase1/notification', async c => {
     const viewerId = c.get('viewerId')
