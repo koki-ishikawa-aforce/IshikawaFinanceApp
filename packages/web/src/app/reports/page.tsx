@@ -157,7 +157,7 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
           <p className={styles.finalizeNote}>
             月次レポートは経費精算サイクルの最終確定（精算入金との突合）によって確定されます。
           </p>
-          <Link href="/expense-settlement" className={ui.button} style={{ textAlign: 'center' }}>
+          <Link href="/expense-settlement" className={`${ui.button} ${ui.buttonLink}`}>
             経費精算へ進む
           </Link>
         </div>

@@ -128,6 +128,7 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 - **4-1 金額入力は `type="text"` + `inputMode="numeric"` にする**。`type="number"` は使わない(小数・`e`・`+/-` を受け付け §4-2 に反するほか、スクロールで値が変わるブラウザがある)。日付は `type="date"`、数値以外の数字列(口座番号など)も `inputMode` を明示する。モバイルキーボードの切り替えを利用者にさせない
 - **4-2** 金額に小数を使わない(円単位)。小数キーが出る指定をしない
 - **4-3 タップターゲットは最小 44×44 px を確保する**。`padding` だけに頼らず、`min-height` で保証する。アイコンのみのボタンは特に確認する
+  - 値は `--tap-target-min`(`packages/web/src/app/globals.css`)を参照する。`min-height` はレイアウト用途と区別できず stylelint で縛れないため、共通の操作部品については `packages/web/src/test/tap-target.test.ts`(宣言)と `packages/web/e2e/tap-target.spec.ts`(描画後の実寸)が機械的に検出する
 - **4-4** 並んだタップターゲットの間隔を最低 `--space-2` 確保する。誤タップを防ぐ
 - **4-5** 主要操作は**画面下部 1/3 に置く**(片手の親指が届く範囲)。長いフォームの送信ボタンを画面最上部に置かない
 - **4-6** 既定値を埋められる入力は埋める(対象月 = 表示中の月、発生日 = 当日など)。毎回同じ値を手で入れさせない
@@ -297,7 +298,7 @@ return <span>{formatMoney(query.data.total)}</span>
 | 1 | 8-3 | `<label>` が `htmlFor` でもラップでも入力に関連付けられていない(`ui.fieldLabel` を使う全箇所が `.field` 内の兄弟要素) | `packages/web/src/app/transactions/page.tsx`、`settings/page.tsx`、`expense-settlement/page.tsx` ほか |
 | 2 | 8-5 | セクション見出しが `<span className={ui.sectionTitle}>` で、`<h2>` が存在しない(見出し階層が `<h1>` のみ) | `expense-settlement/page.tsx:255,317,343,369`、`settings/page.tsx:96,403,610,792,954` ほか |
 | 3 | 8-1 | フォーカスの可視スタイルが `.input:focus` にしか無い。`.button` / `.buttonGhost` / `.buttonDanger` / `.select` は `:hover` のみ | `packages/web/src/components/ui/common.module.css` |
-| 4 | 4-3 | タップターゲットの最小サイズ規定が無い。`.button` は縦パディング 8px + フォント 12px で実効高 約30px | `packages/web/src/components/ui/common.module.css`。`--tap-target-min` トークンも未定義 |
+| 4 | 4-3 | 共通の操作部品(`.button` / `.buttonGhost` / `.buttonDanger` / `.select` / `.input`)とモーダルの閉じるボタンは #568 で対応済み(`--tap-target-min` トークンも #463 で定義済み)。残るのは共通部品を使わない画面固有の操作部品 | 設定のタブ・残高の期間ボタン・精算の小ボタン・取込の「閉じる」・月送り(`MonthNavigator`)・下部ナビ(`AppNav`)・チェック行。追跡は #467 |
 | 5 | 6-1 / 3-2 | 破壊的操作の確認が `window.confirm`(取引削除)で、`Modal` 採用パターンと不統一。文言に影響(学習ルールの扱い)が書かれていない | `packages/web/src/app/transactions/page.tsx:378` |
 | 6 | 4-1 | 金額入力が `type="number"` のみで、規範の `type="text"` + `inputMode="numeric"` になっていない | `transactions/page.tsx:207,335`、`expense-settlement/page.tsx:97`、`settings/page.tsx:207,263,916` |
 | 7 | 1-3 | データ取得失敗時の再試行手段が画面ごとに不統一。onboarding は「再読み込み」ボタンあり、transactions / expense-settlement は文言のみ | `transactions/page.tsx:494`、`expense-settlement/page.tsx:263,323` ほか |

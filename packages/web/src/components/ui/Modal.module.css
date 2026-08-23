@@ -32,10 +32,13 @@
   color: var(--text-primary);
 }
 
+/* 中身がアイコンだけなので、高さに加えて幅も下限を確保する(usability §4-3) */
 .close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: var(--tap-target-min);
+  min-width: var(--tap-target-min);
   border: none;
   background: none;
   font-size: var(--text-base);
