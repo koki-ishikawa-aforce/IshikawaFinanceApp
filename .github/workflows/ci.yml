@@ -215,6 +215,10 @@ jobs:
   # ワークフローを起動しない GitHub の仕様があり、ここで作った Issue では
   # issues: labeled が発火しないため。同じ狙い(assign + @メンションで
   # Participating 通知=メールを起こす)をこの job の中で行う。
+  #
+  # 無人モードが PR を自分でマージするようになったため(マージゲート)、マージ前に
+  # 人間が目視する機会はもう無い。この job が立てる Issue は「main が壊れたことに
+  # 気づく最後の砦」なので、needs-decision を付けて /decide のアジェンダにも載せる。
   notify-main-failure:
     needs: verify
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -275,7 +279,12 @@ jobs:
                 '1. 上の run のログで失敗しているステップを特定する',
                 '2. 修正の PR を出す(main へ直接 push しない)',
                 '3. マージ後に main の CI が緑へ戻ったことを確認し、この Issue を閉じる',
+                '',
+                '無人モードは fire ごとに main の CI を確認し、赤い間はマージも新規着手も',
+                '行わない(赤い main の上に PR を積み増さないため)。つまりバックログの',
+                '消化はこれが直るまで止まる。',
               ].join('\n'),
+              labels: ['needs-decision'],
             });
             await github.rest.issues.addAssignees({
               owner,

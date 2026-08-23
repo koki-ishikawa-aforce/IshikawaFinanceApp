@@ -40,10 +40,12 @@ description: 無人運用(Routine による /issue-work・/pr-steward)の失敗�
 
    (GitHub MCP の場合は `search_pull_requests` に `repo:<owner>/<repo> created:>=<起点>` / `merged:>=<起点>` / `closed:>=<起点>` の 3 クエリを投げ、`number` で重複排除する。)
 
-   Routine 起点の判別基準は `/pr-steward` と同じ(本文に「無人モードの選定理由」セクションがある / head ブランチが `feat/issue-N-` または `claude/issue-N-` で始まる / マージ判断 Issue が紐づく)。各 PR について次を読み取る:
+   Routine 起点の判別基準は `/issue-work` の「マージゲート」条件1と同じ(本文に「無人モードの選定理由」セクションがある / head ブランチが `feat/issue-N-`・`claude/issue-N-`・`chore/cleanup-pr-screenshots` で始まる)。各 PR について次を読み取る:
    - **マージまでの往復回数**: コミット数・force-push 回数・「コンフリクト解消」「CI 修復」を示す本文/コミットの記述
    - **マージされずにクローズされた PR**: 却下理由(あればレビューコメント)
    - **本文の異常**: リテラル `\n` の混入、`Closes #` の番号欠落(auto-close 不発の兆候)
+   - **自動マージが止まった PR**: `needs-decision` が付いた PR と、マージゲートのどの条件で落ちたか。同じ条件で繰り返し止まっているならゲートか手順に改善余地がある
+   - **自動マージ後に `main` を壊した PR**: `[main 赤]` Issue と対応するマージ。ローカル `/verify` と CI の乖離、semantic conflict のどちらが原因かを分類する
 
 2. **`needs-decision` Issue**(open + 直近クローズ):
 
@@ -51,7 +53,7 @@ description: 無人運用(Routine による /issue-work・/pr-steward)の失敗�
    gh issue list --state all --label "needs-decision" --json number,title,body,state,createdAt,closedAt,labels --search "created:>=<起点>"
    ```
 
-   種別(マージ判断 / 見送り追認 / 撤退時の確認)ごとに数え、**撤退時の確認**は理由の偏りに注目する(受け入れ条件の曖昧さ・設計判断の未解決など、どの原因が多いか)。
+   種別(`main` 赤 / マージ保留 PR / 見送り追認 / 撤退時の確認)ごとに数え、**撤退時の確認**は理由の偏りに注目する(受け入れ条件の曖昧さ・設計判断の未解決など、どの原因が多いか)。`main` 赤の件数は、自動マージが `main` を壊した頻度そのものなので単独で追う。
 
 3. **撤退記録**: 撤退は元 Issue へのコメント(`/issue-work` 無人モード)や、先行 PR 検知時の元 Issue コメントに残る。上記 Issue の最新コメント(`gh issue view <番号> --comments`)から撤退理由を抽出する。同じ Issue で撤退が繰り返されていないかを確認する。
 
