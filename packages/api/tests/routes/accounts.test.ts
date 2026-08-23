@@ -16,6 +16,7 @@ import { createTestApp, request, SPOUSE_ID, VIEWER_ID } from '../helpers/test-ap
 interface AccountWire {
   kind: string
   common: { accountId: string; ownerUserId: string; activeness: { kind: string } }
+  unpaidAggregateRef?: string
   bankName?: string
   brokerageName?: { kind: string; customName?: string }
   balance?: { currentBalance: number; initialBalance: number }
@@ -67,6 +68,19 @@ async function registerOtherSavings(
       initialBalance: 500000,
     },
   })
+}
+
+async function registerSmbcBank(
+  t: TestApp,
+  options: { initialBalance?: number } = {},
+): Promise<Response> {
+  return request(t.app, 'POST', '/api/accounts', {
+    body: { kind: 'smbc_bank', initialBalance: options.initialBalance ?? 1500000 },
+  })
+}
+
+async function registerCard(t: TestApp): Promise<Response> {
+  return request(t.app, 'POST', '/api/accounts', { body: { kind: 'mitsui_sumitomo_card' } })
 }
 
 async function registerNisa(t: TestApp): Promise<Response> {
@@ -131,17 +145,76 @@ describe('POST /api/accounts', () => {
     expect(res.status).toBe(201)
   })
 
-  it('SMBC 銀行・三井住友カードは登録対象外（400）', async () => {
+  it('SMBC 銀行口座を登録できる（201、現在残高 = 初期残高）', async () => {
     const t = createTestApp()
-    const res = await request(t.app, 'POST', '/api/accounts', {
-      body: { kind: 'smbc_bank', initialBalance: 0 },
+    const res = await registerSmbcBank(t)
+    expect(res.status).toBe(201)
+    const { account } = await json<{ account: AccountWire }>(res)
+    expect(account.kind).toBe('smbc_bank')
+    expect(account.common.ownerUserId).toBe(VIEWER_ID)
+    expect(account.common.activeness.kind).toBe('active')
+    expect(account.balance?.currentBalance).toBe(1500000)
+    expect(account.balance?.initialBalance).toBe(1500000)
+  })
+
+  it('三井住友カード口座を登録すると、未払金集約が開設されて口座から参照される', async () => {
+    const t = createTestApp()
+    const res = await registerCard(t)
+    expect(res.status).toBe(201)
+    const { account } = await json<{ account: AccountWire }>(res)
+    expect(account.kind).toBe('mitsui_sumitomo_card')
+    expect(account.unpaidAggregateRef).toBeDefined()
+
+    const unpaid = await t.deps.mitsuiSumitomoUnpaidRepository.findByCardAccountId(
+      AccountIdSchema.parse(account.common.accountId),
+    )
+    expect(unpaid).not.toBeNull()
+    expect(unpaid?.unpaidAggregateId).toBe(account.unpaidAggregateRef)
+    expect(unpaid?.currentMonthUnpaidTotal).toBe(0)
+    expect(unpaid?.entries).toEqual([])
+  })
+
+  it('三井住友カードの登録では InitialBalanceRegistered を発行しない（初期残高を持たないため）', async () => {
+    const t = createTestApp()
+    const log = subscribeEvents(t)
+    const { account } = await json<{ account: AccountWire }>(await registerCard(t))
+    expect(log.registered).toHaveLength(1)
+    expect(log.registered[0]).toMatchObject({
+      accountId: account.common.accountId,
+      accountKind: 'mitsui_sumitomo_card',
     })
-    expect(res.status).toBe(400)
+    expect(log.initialBalance).toHaveLength(0)
+  })
+
+  it('SMBC 銀行口座の重複登録は 409', async () => {
+    const t = createTestApp()
+    await registerSmbcBank(t)
+    expect((await registerSmbcBank(t)).status).toBe(409)
+  })
+
+  it('三井住友カード口座の重複登録は 409', async () => {
+    const t = createTestApp()
+    await registerCard(t)
+    expect((await registerCard(t)).status).toBe(409)
+  })
+
+  it('負の初期残高は 409、上限超えは 400（後修正と同じ入力制約）', async () => {
+    const t = createTestApp()
+    expect((await registerSmbcBank(t, { initialBalance: -1 })).status).toBe(409)
+    expect((await registerSmbcBank(t, { initialBalance: 1_000_000_001 })).status).toBe(400)
   })
 
   it('空の銀行名は 400（BankName の不変条件）', async () => {
     const t = createTestApp()
     const res = await registerOtherSavings(t, { bankName: '' })
+    expect(res.status).toBe(400)
+  })
+
+  it('未知の口座種別は 400', async () => {
+    const t = createTestApp()
+    const res = await request(t.app, 'POST', '/api/accounts', {
+      body: { kind: 'crypto', initialBalance: 0 },
+    })
     expect(res.status).toBe(400)
   })
 })

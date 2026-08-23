@@ -6,17 +6,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useViewerRole } from '@/hooks/useViewerRole'
 import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
 import {
-  AccountBalanceListWireSchema,
   GmailAuthorizeResponseSchema,
   ImportStatusResponseSchema,
   LineFriendCheckWireSchema,
   OnboardingMeWireSchema,
   OnboardingUserWireSchema,
+  OwnAccountListWireSchema,
   SpouseCompletionResultWireSchema,
   type AppUserWire,
   type LineOperationSettingsWire,
+  type OwnAccountWire,
   type SharedTalkRoomWire,
 } from '@/lib/api-schemas'
+import { ACCOUNT_KIND_LABELS } from '@/lib/labels'
+import { AccountAddModal } from '@/components/accounts/AccountAddModal'
 import { getTalkRoomContextId, openExternal } from '@/lib/liff'
 import { getCurrentMonth } from '@/lib/month'
 import { RoleIcon } from '@/components/ui/RoleIcon'
@@ -59,6 +62,14 @@ const EMPTY_LINE_SETTINGS: LineOperationSettingsWire = {
 
 /** 世帯の共通トークルーム参加状態の既定値（読み込み完了前は step 判定に到達しない） */
 const NOT_JOINED_TALK_ROOM: SharedTalkRoomWire = { kind: 'not_joined' }
+
+/**
+ * Section B（初期残高の登録）に必要な口座種別。
+ * 初期残高登録参照（08f §1）が SMBC 銀行・別銀行貯蓄・NISA の 3 口座を要求するため、
+ * このどれかが未登録だと Section B を完了できない。三井住友カードは未払金集約が正で
+ * 初期残高を持たないため、この 3 種には含まれない。
+ */
+const SECTION_B_REQUIRED_KINDS: OwnAccountWire['kind'][] = ['smbc_bank', 'other_savings', 'nisa']
 
 /**
  * ワイヤー形式向けの LINE 運用設定の読取り。
@@ -131,6 +142,8 @@ export default function OnboardingPage() {
   const queryClient = useQueryClient()
   const [nicknameInput, setNicknameInput] = useState('')
   const [notificationsDeferred, setNotificationsDeferred] = useState(false)
+  /** Section B から開いている口座登録モーダルの対象種別（null は未表示） */
+  const [registeringKind, setRegisteringKind] = useState<OwnAccountWire['kind'] | null>(null)
 
   const meQuery = useQuery({
     queryKey: ['onboarding', 'me'],
@@ -250,24 +263,34 @@ export default function OnboardingPage() {
   const needsSectionB = progress?.sectionB.kind === 'not_started'
   const needsSectionF = progress?.sectionF.kind === 'not_started'
 
-  // Section B: 初期残高登録参照は登録済み口座（残高一覧）から組み立てる
-  const balancesQuery = useQuery({
-    queryKey: ['balances', 'list'],
-    queryFn: () => apiFetch('/api/balances', AccountBalanceListWireSchema),
+  /**
+   * Section B: 初期残高登録参照は「自分が所有する」登録済み口座から組み立てる。
+   * 残高一覧（/api/balances）は世帯の口座をすべて返すため、そちらから拾うと配偶者名義の
+   * 口座 ID を自分の初期残高として送ってしまい、API 側の所有者照合で 404 になる。
+   */
+  const accountsQuery = useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => apiFetch('/api/accounts', OwnAccountListWireSchema),
     enabled: needsSectionB,
   })
-  const accounts = balancesQuery.data?.items ?? []
-  const smbcAccount = accounts.find(item => item.kind === 'smbc_bank')
-  const otherSavingsAccount = accounts.find(item => item.kind === 'other_savings')
-  const nisaAccount = accounts.find(item => item.kind === 'nisa')
+  const ownAccounts = accountsQuery.data?.items ?? []
+  const ownAccountOf = (kind: OwnAccountWire['kind']) => ownAccounts.find(a => a.kind === kind)
+  const smbcAccount = ownAccountOf('smbc_bank')
+  const otherSavingsAccount = ownAccountOf('other_savings')
+  const nisaAccount = ownAccountOf('nisa')
   const initialBalanceRef =
     smbcAccount !== undefined && otherSavingsAccount !== undefined && nisaAccount !== undefined
       ? {
-          smbcAccountId: smbcAccount.accountId,
-          otherSavingsAccountId: otherSavingsAccount.accountId,
-          nisaAccountId: nisaAccount.accountId,
+          smbcAccountId: smbcAccount.common.accountId,
+          otherSavingsAccountId: otherSavingsAccount.common.accountId,
+          nisaAccountId: nisaAccount.common.accountId,
         }
       : null
+  /** 初期残高の登録に必要なのに、まだ登録されていない口座種別 */
+  const missingRequiredKinds = SECTION_B_REQUIRED_KINDS.filter(
+    kind => ownAccountOf(kind) === undefined,
+  )
+  const cardUnregistered = ownAccountOf('mitsui_sumitomo_card') === undefined
 
   // Section F: 今月分の取込完了があれば、その取込ジョブで完了扱いにできる
   const currentMonth = getCurrentMonth()
@@ -549,23 +572,79 @@ export default function OnboardingPage() {
             {progress.sectionB.kind !== 'completed' && (
               <>
                 <p className={styles.note}>
-                  口座の現在残高を登録して資産管理を始めます。登録済みの口座（SMBC・その他貯蓄・NISA）を初期残高として記録します。
+                  口座の現在残高を登録して資産管理を始めます。登録済みの口座（SMBC銀行口座・別銀行貯蓄口座・NISA口座）の残高を、初期残高として記録します。
                 </p>
-                {initialBalanceRef !== null ? (
-                  <button
-                    className={ui.buttonGhost}
-                    disabled={progress.sectionA.kind !== 'completed' || completeSectionB.isPending}
-                    onClick={() => completeSectionB.mutate(initialBalanceRef)}
-                  >
-                    {progress.sectionA.kind === 'completed'
-                      ? '登録済みの口座で確定する'
-                      : 'A の完了後に登録できます'}
-                  </button>
-                ) : (
-                  <p className={styles.note}>
-                    口座（SMBC・その他貯蓄・NISA）が未登録です。
-                    <Link href="/balances">残高ページ</Link>で登録状況を確認してください。
-                  </p>
+                {accountsQuery.isPending && <p className={styles.note}>口座を確認しています...</p>}
+                {accountsQuery.isError && (
+                  <>
+                    <p className={ui.error} role="alert">
+                      口座の登録状況を確認できませんでした。
+                    </p>
+                    <button
+                      className={ui.buttonGhost}
+                      disabled={accountsQuery.isFetching}
+                      onClick={() => void accountsQuery.refetch()}
+                    >
+                      もう一度確認する
+                    </button>
+                  </>
+                )}
+                {!accountsQuery.isPending && !accountsQuery.isError && (
+                  <>
+                    {initialBalanceRef !== null ? (
+                      <button
+                        className={ui.buttonGhost}
+                        disabled={
+                          progress.sectionA.kind !== 'completed' || completeSectionB.isPending
+                        }
+                        onClick={() => completeSectionB.mutate(initialBalanceRef)}
+                      >
+                        {progress.sectionA.kind === 'completed'
+                          ? '登録済みの口座で確定する'
+                          : 'A の完了後に登録できます'}
+                      </button>
+                    ) : (
+                      <>
+                        <p className={styles.note}>
+                          次の口座がまだ登録されていません:{' '}
+                          {missingRequiredKinds.map(kind => ACCOUNT_KIND_LABELS[kind]).join('・')}
+                          。それぞれ登録すると、この手順を完了できます。
+                        </p>
+                        <div className={ui.row}>
+                          {missingRequiredKinds.map(kind => (
+                            <button
+                              key={kind}
+                              className={ui.buttonGhost}
+                              onClick={() => setRegisteringKind(kind)}
+                            >
+                              {ACCOUNT_KIND_LABELS[kind]}を登録
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {cardUnregistered && (
+                      <>
+                        <p className={styles.note}>
+                          クレジットカードの利用を取り込むには
+                          {ACCOUNT_KIND_LABELS['mitsui_sumitomo_card']}
+                          の登録も必要です（この手順の完了には必須ではありません）。
+                        </p>
+                        <button
+                          className={ui.buttonGhost}
+                          onClick={() => setRegisteringKind('mitsui_sumitomo_card')}
+                        >
+                          {ACCOUNT_KIND_LABELS['mitsui_sumitomo_card']}を登録
+                        </button>
+                      </>
+                    )}
+                    {registeringKind !== null && (
+                      <AccountAddModal
+                        kind={registeringKind}
+                        onClose={() => setRegisteringKind(null)}
+                      />
+                    )}
+                  </>
                 )}
                 <ErrorNote error={completeSectionB.error} />
               </>

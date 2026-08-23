@@ -2,7 +2,8 @@
  * 口座管理エンドポイント（#48、残高・資産推移管理コンテキスト）
  * @see docs/domain/08d-ul-残高資産推移管理.md §2
  * @see docs/superpowers/specs/2026-05-01-phase3.5-ux-ui-design.md §13（別銀行貯蓄: 銀行名 /
- *      NISA: 証券会社名が編集可。三井住友系は固定のため登録・編集の対象外）
+ *      NISA: 証券会社名が編集可。三井住友系は名称が固定のため編集の対象外。登録は #395 で
+ *      4 種すべてを受け付ける）
  *
  * - 一覧は viewer 本人が所有する口座のみ（世帯合算の残高表示は /api/balances が担う）
  * - 「同一ユーザー × 口座種別の一意性」は Repository.save の一意制約が最終保証（409 に翻訳）
@@ -27,6 +28,7 @@ import {
   InactivationReasonSchema,
   InitialBalanceCorrectedSchema,
   InitialBalanceRegisteredSchema,
+  MitsuiSumitomoUnpaidIdSchema,
   MoneySchema,
   NotFoundError,
   OtherSavingsBalanceUpdatedSchema,
@@ -38,8 +40,11 @@ import {
   correctInitialBalance,
   correctOtherSavingsBalance,
   inactivateAccount,
+  openMitsuiSumitomoUnpaid,
+  registerMitsuiSumitomoCardAccount,
   registerNisaAccount,
   registerOtherSavingsAccount,
+  registerSmbcBankAccount,
   subtractMoney,
   withdrawOtherSavings,
 } from '@warimaru/domain'
@@ -48,6 +53,7 @@ import type {
   AccountId,
   AccountRepository,
   EventBus,
+  MitsuiSumitomoUnpaidRepository,
   Money,
   OtherSavingsUpdateSource,
   UserId,
@@ -57,6 +63,12 @@ import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 
 const RegisterBodySchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('smbc_bank'),
+    initialBalance: MoneySchema,
+  }),
+  // カードは残高ではなく未払金集約が正（08d §1）のため、登録時に受け取る項目が無い
+  z.object({ kind: z.literal('mitsui_sumitomo_card') }),
   z.object({
     kind: z.literal('other_savings'),
     bankName: BankNameSchema,
@@ -78,6 +90,8 @@ const InactivateBodySchema = z.object({ reason: InactivationReasonSchema })
 
 export interface AccountsRoutesDeps {
   accountRepository: AccountRepository
+  /** 三井住友カード口座の登録と対で開設する未払金集約の保存先（#395） */
+  mitsuiSumitomoUnpaidRepository: MitsuiSumitomoUnpaidRepository
   eventBus: EventBus
 }
 
@@ -111,30 +125,79 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
   })
 
   /**
-   * 口座の登録（別銀行貯蓄 / NISA）。三井住友系（SMBC 銀行・カード）は取込基盤側で
-   * 管理するため対象外。同種別の重複登録は一意制約により 409。
+   * 口座の登録（口座種別 4 種すべて。08d §1「口座種別 = SMBC銀行 OR 三井住友カード OR
+   * 別銀行貯蓄 OR NISA」）。同種別の重複登録は一意制約により 409。
+   *
+   * 三井住友系（SMBC 銀行・カード）はメール取込が自動で更新する口座だが、その器を作る経路は
+   * ここにしかない（#395。開発用フィクスチャは本番に存在しない）。作られていないと
+   * オンボーディング Section B が完走できず、カード利用・引落の取込先も無い。
+   *
+   * カードは口座と未払金集約が対になるため、参照先の未払金集約を先に永続化してから口座を保存する。
+   * 逆順だと、間で失敗したときに「参照先の無いカード口座」が残り、以降のカード利用の計上が
+   * 毎回落ち続ける（未払金集約を後から作り直す経路が無い）。先に集約を保存した側で失敗した
+   * 場合に残るのは、どの口座からも参照されない未払金集約 1 件で、再実行は新しい集約を作って
+   * やり直せる。
    */
   app.post('/', async c => {
     const body = RegisterBodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
     const now = new Date()
     const accountId = AccountIdSchema.parse(newUlid())
-    const account =
-      body.kind === 'other_savings'
-        ? registerOtherSavingsAccount({
-            accountId,
-            ownerUserId: viewerId,
-            bankName: body.bankName,
+
+    async function registerAccount(): Promise<{ account: Account; initialBalance: Money | null }> {
+      switch (body.kind) {
+        case 'smbc_bank':
+          return {
+            account: registerSmbcBankAccount({
+              accountId,
+              ownerUserId: viewerId,
+              initialBalance: body.initialBalance,
+              at: now,
+            }),
             initialBalance: body.initialBalance,
-            at: now,
-          })
-        : registerNisaAccount({
-            accountId,
-            ownerUserId: viewerId,
-            brokerageName: body.brokerageName,
-            initialAccumulated: body.initialAccumulated,
-            at: now,
-          })
+          }
+        case 'mitsui_sumitomo_card': {
+          const unpaidAggregateId = MitsuiSumitomoUnpaidIdSchema.parse(newUlid())
+          await deps.mitsuiSumitomoUnpaidRepository.save(
+            openMitsuiSumitomoUnpaid({ unpaidAggregateId, accountId }),
+          )
+          return {
+            account: registerMitsuiSumitomoCardAccount({
+              accountId,
+              ownerUserId: viewerId,
+              unpaidAggregateRef: unpaidAggregateId,
+              at: now,
+            }),
+            // カードは初期残高を持たない（未払金集約が正）
+            initialBalance: null,
+          }
+        }
+        case 'other_savings':
+          return {
+            account: registerOtherSavingsAccount({
+              accountId,
+              ownerUserId: viewerId,
+              bankName: body.bankName,
+              initialBalance: body.initialBalance,
+              at: now,
+            }),
+            initialBalance: body.initialBalance,
+          }
+        case 'nisa':
+          return {
+            account: registerNisaAccount({
+              accountId,
+              ownerUserId: viewerId,
+              brokerageName: body.brokerageName,
+              initialAccumulated: body.initialAccumulated,
+              at: now,
+            }),
+            initialBalance: body.initialAccumulated,
+          }
+      }
+    }
+
+    const { account, initialBalance } = await registerAccount()
     await deps.accountRepository.save(account)
     await deps.eventBus.publish(
       AccountRegisteredSchema.parse({
@@ -145,17 +208,19 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
         accountKind: account.kind,
       }),
     )
-    // 登録は UL の「口座をアプリに登録する」+「初期残高を登録する」の統合アクション（08d §2）
-    await deps.eventBus.publish(
-      InitialBalanceRegisteredSchema.parse({
-        ...domainEventBase(now),
-        type: 'InitialBalanceRegistered',
-        userId: viewerId,
-        accountId,
-        initialBalance:
-          body.kind === 'other_savings' ? body.initialBalance : body.initialAccumulated,
-      }),
-    )
+    // 登録は UL の「口座をアプリに登録する」+「初期残高を登録する」の統合アクション（08d §2）。
+    // 初期残高を持たないカードは前者だけになる
+    if (initialBalance !== null) {
+      await deps.eventBus.publish(
+        InitialBalanceRegisteredSchema.parse({
+          ...domainEventBase(now),
+          type: 'InitialBalanceRegistered',
+          userId: viewerId,
+          accountId,
+          initialBalance,
+        }),
+      )
+    }
     return c.json({ account }, 201)
   })
 
