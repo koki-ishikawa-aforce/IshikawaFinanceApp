@@ -16,6 +16,7 @@ import {
   correctInitialBalance,
   correctOtherSavingsBalance,
   inactivateAccount,
+  reactivateAccount,
   registerMitsuiSumitomoCardAccount,
   registerNisaAccount,
   registerOtherSavingsAccount,
@@ -1327,6 +1328,99 @@ describe('inactivateAccount()', () => {
         at: new Date('2026-08-01'),
       }),
     ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('reactivateAccount()', () => {
+  /** 非アクティブな三井住友系の口座（inactivateAccount では作れないため直接組み立てる） */
+  function inactiveSmbcBank(): Account {
+    return AccountSchema.parse({
+      ...smbcBank(),
+      common: {
+        ...smbcBank().common,
+        activeness: { kind: 'inactive', inactivatedAt: new Date('2026-05-01'), reason: '解約済み' },
+      },
+    })
+  }
+
+  it('アクティブに戻り、解除する非アクティブ記録（日時・理由）を返す', () => {
+    const { account, clearedInactivation } = reactivateAccount(otherSavings({ inactive: true }), {
+      operatorUserId: OWNER,
+    })
+    expect(account.common.activeness).toEqual({ kind: 'active' })
+    expect(clearedInactivation).toEqual({
+      inactivatedAt: new Date('2026-05-01'),
+      reason: '解約済み',
+    })
+  })
+
+  it('NISA 口座も戻せる', () => {
+    const { account } = reactivateAccount(nisa({ inactive: true }), { operatorUserId: OWNER })
+    expect(account.common.activeness.kind).toBe('active')
+  })
+
+  it('三井住友系の口座も戻せる（口座種別で絞らない — 閉じた口座を取り残さないため）', () => {
+    // 非アクティブ化は別銀行貯蓄・NISA のみだが、戻す側を種別で拒むと、何らかの理由で
+    // 非アクティブになった三井住友系の口座に復旧手段が無くなる
+    const { account, clearedInactivation } = reactivateAccount(inactiveSmbcBank(), {
+      operatorUserId: OWNER,
+    })
+    expect(account.common.activeness).toEqual({ kind: 'active' })
+    expect(clearedInactivation.reason).toBe('解約済み')
+  })
+
+  it('戻した三井住友系の口座は残高変動を再び受け付ける', () => {
+    const { account } = reactivateAccount(inactiveSmbcBank(), { operatorUserId: OWNER })
+    if (account.kind !== 'smbc_bank') throw new Error('unreachable')
+    expect(applySmbcBalanceChange(account, 1000 as never, AT).balance.currentBalance).toBe(301000)
+  })
+
+  it('戻した口座は残高変動を再び受け付ける（非アクティブ化を取り消せる）', () => {
+    const inactive = inactivateAccount(otherSavings({ currentBalance: 500000 }), {
+      reason: '解約したため',
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    const { account } = reactivateAccount(inactive, { operatorUserId: OWNER })
+    if (account.kind !== 'other_savings') throw new Error('unreachable')
+    const withdrawn = withdrawOtherSavings(account, {
+      amount: 100000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(withdrawn.balance.currentBalance).toBe(400000)
+  })
+
+  it('残高・最終更新日時・鮮度根拠は閉じる前のまま（戻した時点を「最近確認した」ことにしない）', () => {
+    const { account } = reactivateAccount(
+      otherSavings({ inactive: true, currentBalance: 500000 }),
+      {
+        operatorUserId: OWNER,
+      },
+    )
+    if (account.kind !== 'other_savings') throw new Error('unreachable')
+    expect(account.balance.currentBalance).toBe(500000)
+    expect(account.balance.lastUpdatedAt).toEqual(new Date('2026-04-01'))
+    expect(account.freshnessSource.lastUpdatedAt).toEqual(new Date('2026-04-01'))
+  })
+
+  it('配偶者は戻せない（PermissionDeniedError）', () => {
+    expect(() =>
+      reactivateAccount(otherSavings({ inactive: true }), { operatorUserId: SPOUSE }),
+    ).toThrow(PermissionDeniedError)
+  })
+
+  it('アクティブな口座への実行は InvariantViolationError', () => {
+    expect(() => reactivateAccount(otherSavings(), { operatorUserId: OWNER })).toThrow(
+      InvariantViolationError,
+    )
+  })
+
+  it('版数は動かない（保存時の照合に使う「読み出したときの版」のまま）', () => {
+    const base = otherSavings({ inactive: true })
+    const inactive = AccountSchema.parse({ ...base, common: { ...base.common, version: 7 } })
+    const { account } = reactivateAccount(inactive, { operatorUserId: OWNER })
+    expect(account.common.version).toBe(7)
   })
 })
 

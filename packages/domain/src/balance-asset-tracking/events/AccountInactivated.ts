@@ -5,10 +5,11 @@
 import { z } from 'zod'
 import { DomainEventBaseSchema } from '../../shared/events/DomainEvent'
 import { AccountIdSchema } from '../../shared/ids'
+import { InactivationReasonSchema } from '../value-objects/InactivationReason'
 
 export const AccountInactivatedSchema = DomainEventBaseSchema.extend({
   type: z.literal('AccountInactivated'),
   accountId: AccountIdSchema,
-  reason: z.string().min(1),
+  reason: InactivationReasonSchema,
 })
 export type AccountInactivated = z.infer<typeof AccountInactivatedSchema>
