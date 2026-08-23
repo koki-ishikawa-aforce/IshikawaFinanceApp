@@ -15,6 +15,8 @@ import {
   TransactionIdSchema,
   UnpaidEntryIdSchema,
   SettlementNoticeIdSchema,
+  type AccountId,
+  type MitsuiSumitomoUnpaidId,
   type TransactionId,
   type UnpaidEntryId,
   type SettlementNoticeId,
@@ -70,6 +72,30 @@ export type MitsuiSumitomoUnpaid = z.infer<typeof MitsuiSumitomoUnpaidSchema>
 
 export type BookedUnpaidEntry = Extract<UnpaidEntry, { kind: 'booked' }>
 export type SettledUnpaidEntry = Extract<UnpaidEntry, { kind: 'settled' }>
+
+/**
+ * behavior 三井住友カード未払金集約を開設する（08d §2、#395）
+ * 三井住友カード口座の登録と同時に、その口座の未払金を積む空の集約を作る。
+ * 計上中エントリなし・当月未払金合計 0・未消込（最終消込日時なし）で始まる。
+ *
+ * カード利用の計上（`bookUnpaid`）はこの集約が既にあることを前提にしており、
+ * 口座だけを登録して集約を作らないと、以降のカード利用が毎回「未払金集約が見つからない」で
+ * 落ち続ける。そのため口座の登録経路（`registerMitsuiSumitomoCardAccount`）は必ず
+ * この開設と対で呼ぶ。永続化の順は口座 → 未払金集約（未払金集約の口座IDが口座への
+ * 外部キーのため、口座行が無いうちは保存できない）。
+ */
+export function openMitsuiSumitomoUnpaid(params: {
+  unpaidAggregateId: MitsuiSumitomoUnpaidId
+  accountId: AccountId
+}): MitsuiSumitomoUnpaid {
+  return MitsuiSumitomoUnpaidSchema.parse({
+    unpaidAggregateId: params.unpaidAggregateId,
+    accountId: params.accountId,
+    currentMonthUnpaidTotal: money(0),
+    entries: [],
+    lastSettledAt: null,
+  })
+}
 
 /**
  * behavior 取引で未払金を計上する（08d §2）
