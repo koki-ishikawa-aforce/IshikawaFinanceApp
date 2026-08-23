@@ -8,7 +8,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 ## パッケージ構成(ヘキサゴナル)
 
 - `packages/domain` — 純粋ドメイン層。依存は zod のみ(I/O・フレームワーク依存は禁止)。8つの境界づけられたコンテキスト + `shared`
-- `packages/adapters-postgres` — Drizzle ORM + PostgreSQL(本番は Neon、ローカル開発と統合テストは素の PostgreSQL)。実装クラスは `Neon*Repository` / `Neon*Query` 命名
+- `packages/adapters-postgres` — Drizzle ORM + PostgreSQL(本番は Neon、ローカル開発と統合テストは素の PostgreSQL)。実装クラスは `Postgres*Repository` / `Postgres*Query` 命名
 - `packages/api` — Hono。`src/composition-root.ts` で DI 合成
 - `packages/web` — Next.js 15 Static Export + React 19 + LIFF
 
@@ -36,6 +36,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 一次資料(詳細はこちらを読む。CLAUDE.md には複製しない):
 
 - 命名規約・公開 API 一覧: `packages/domain/README.md`
+- 永続化層の規約: `packages/adapters-postgres/README.md`(実装クラスの命名・`pg` の依存宣言・適用済みマイグレーションの扱い)
 - ドメイン概要・設計原則: `docs/domain/01-overview.md`
 - 境界づけられたコンテキスト: `docs/domain/07-bounded-contexts.md`
 - ユビキタス言語: `docs/domain/08-ubiquitous-language.md`(BC 別: 08a〜08h)

@@ -5,13 +5,13 @@ import type {
 } from '@warimaru/domain'
 import { completeBulkClassificationSession, InvariantViolationError } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonBulkClassificationSessionRepository } from '../../src/auto-classification/NeonBulkClassificationSessionRepository'
+import { PostgresBulkClassificationSessionRepository } from '../../src/auto-classification/PostgresBulkClassificationSessionRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import { abortedSession, inProgressSession } from '../helpers/autoClassificationFixtures'
 
-const repo = new NeonBulkClassificationSessionRepository(db)
+const repo = new PostgresBulkClassificationSessionRepository(db)
 
-describe('NeonBulkClassificationSessionRepository', () => {
+describe('PostgresBulkClassificationSessionRepository', () => {
   it('save → findById の往復同一性（in_progress / completed / aborted 全変種）', async () => {
     const inProgress = inProgressSession() as InProgressBulkClassificationSession
     await repo.save(inProgress)

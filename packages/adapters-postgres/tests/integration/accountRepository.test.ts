@@ -6,7 +6,7 @@ import {
   applyUnpaidSettlementToSmbcBalance,
   money,
 } from '@warimaru/domain'
-import { NeonAccountRepository } from '../../src/balance-asset-tracking/NeonAccountRepository'
+import { PostgresAccountRepository } from '../../src/balance-asset-tracking/PostgresAccountRepository'
 import { accounts } from '../../src/schema'
 import { newUlid } from '../../src/newId'
 import { db } from './setup'
@@ -19,9 +19,9 @@ import {
   smbcAccount,
 } from '../helpers/fixtures'
 
-const repo = new NeonAccountRepository(db)
+const repo = new PostgresAccountRepository(db)
 
-describe('NeonAccountRepository', () => {
+describe('PostgresAccountRepository', () => {
   it('save → findById の往復で 4 kind（inactive 含む）が同一に復元される', async () => {
     const variants = [
       smbcAccount(),

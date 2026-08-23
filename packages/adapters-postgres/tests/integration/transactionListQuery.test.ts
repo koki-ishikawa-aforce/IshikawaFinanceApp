@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { ExpenseClass } from '@warimaru/domain'
-import { NeonTransactionListQuery } from '../../src/household-analysis/NeonTransactionListQuery'
-import { NeonTransactionRepository } from '../../src/household-analysis/NeonTransactionRepository'
+import { PostgresTransactionListQuery } from '../../src/household-analysis/PostgresTransactionListQuery'
+import { PostgresTransactionRepository } from '../../src/household-analysis/PostgresTransactionRepository'
 import { db } from './setup'
 import {
   HONEY_USER_ID,
@@ -14,18 +14,18 @@ import {
 } from '../helpers/fixtures'
 import { stubResolveCategoryNames, stubResolveViewerRole } from '../helpers/stubs'
 
-const repo = new NeonTransactionRepository(db)
+const repo = new PostgresTransactionRepository(db)
 
 const CATEGORY_FOOD = newCategoryId()
 
-const query = new NeonTransactionListQuery(db, {
+const query = new PostgresTransactionListQuery(db, {
   resolveCategoryNames: stubResolveCategoryNames({ [CATEGORY_FOOD]: '食費' }),
   resolveViewerRole: stubResolveViewerRole,
 })
 
 const JUL = ym('2026-07')
 
-describe('NeonTransactionListQuery.fetch（プライバシー 3 段階）', () => {
+describe('PostgresTransactionListQuery.fetch（プライバシー 3 段階）', () => {
   it('配偶者の個人取引・経費(会社)・未分類・削除済みはリストから完全除外され、世帯取引のみ残る（A①）', async () => {
     const householdByDarling = classifiedTransaction({
       ownerUserId: DARLING_USER_ID,
@@ -217,7 +217,7 @@ describe('NeonTransactionListQuery.fetch（プライバシー 3 段階）', () =
   })
 })
 
-describe('NeonTransactionListQuery プライバシー否定形テスト', () => {
+describe('PostgresTransactionListQuery プライバシー否定形テスト', () => {
   it('darling から honey の個人取引・経費(会社)・未分類はリストから完全除外される（対称性）', async () => {
     const personalByHoney = classifiedTransaction({
       ownerUserId: HONEY_USER_ID,
@@ -292,7 +292,7 @@ describe('NeonTransactionListQuery プライバシー否定形テスト', () => 
   })
 })
 
-describe('NeonTransactionListQuery.fetchUnclassifiedSummary', () => {
+describe('PostgresTransactionListQuery.fetchUnclassifiedSummary', () => {
   it('本人の未分類のみ数え、recentIds は直近 5 件（occurredAt 降順）', async () => {
     const own = await Promise.all(
       Array.from({ length: 7 }, (_, i) => {

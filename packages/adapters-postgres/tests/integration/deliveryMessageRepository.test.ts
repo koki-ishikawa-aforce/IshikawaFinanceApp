@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { DeliveryMessageId, FailsafeEmailId } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonDeliveryMessageRepository } from '../../src/notification-delivery/NeonDeliveryMessageRepository'
-import { NeonFailsafeEmailRepository } from '../../src/notification-delivery/NeonFailsafeEmailRepository'
+import { PostgresDeliveryMessageRepository } from '../../src/notification-delivery/PostgresDeliveryMessageRepository'
+import { PostgresFailsafeEmailRepository } from '../../src/notification-delivery/PostgresFailsafeEmailRepository'
 import {
   failedTestMessage,
   reservedFailsafeEmail,
@@ -11,8 +11,8 @@ import {
   sentPersonalSummaryMessage,
 } from '../helpers/notificationFixtures'
 
-describe('NeonDeliveryMessageRepository', () => {
-  const repo = new NeonDeliveryMessageRepository(db)
+describe('PostgresDeliveryMessageRepository', () => {
+  const repo = new PostgresDeliveryMessageRepository(db)
 
   it('save → findById の往復同一性（reserved / sent / failed 変種、両配信先）', async () => {
     for (const message of [
@@ -30,8 +30,8 @@ describe('NeonDeliveryMessageRepository', () => {
   })
 })
 
-describe('NeonFailsafeEmailRepository', () => {
-  const repo = new NeonFailsafeEmailRepository(db)
+describe('PostgresFailsafeEmailRepository', () => {
+  const repo = new PostgresFailsafeEmailRepository(db)
 
   it('save → findById の往復同一性（reserved / sent 変種と状態遷移上書き）', async () => {
     const reserved = reservedFailsafeEmail()

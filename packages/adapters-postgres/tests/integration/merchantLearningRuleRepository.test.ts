@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import type { ActiveMerchantLearningRule, AmazonProductKey } from '@warimaru/domain'
 import { AmazonProductKeySchema, disableMerchantLearning } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonMerchantLearningRuleRepository } from '../../src/auto-classification/NeonMerchantLearningRuleRepository'
-import { NeonAmazonProductKeyLearningRuleRepository } from '../../src/auto-classification/NeonAmazonProductKeyLearningRuleRepository'
+import { PostgresMerchantLearningRuleRepository } from '../../src/auto-classification/PostgresMerchantLearningRuleRepository'
+import { PostgresAmazonProductKeyLearningRuleRepository } from '../../src/auto-classification/PostgresAmazonProductKeyLearningRuleRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import {
   activeMerchantRule,
@@ -11,9 +11,9 @@ import {
   disabledMerchantRule,
 } from '../helpers/autoClassificationFixtures'
 
-const repo = new NeonMerchantLearningRuleRepository(db)
+const repo = new PostgresMerchantLearningRuleRepository(db)
 
-describe('NeonMerchantLearningRuleRepository（複合自然キー PK）', () => {
+describe('PostgresMerchantLearningRuleRepository（複合自然キー PK）', () => {
   it('save → findByMerchant の往復同一性（active / disabled 両変種）', async () => {
     const active = activeMerchantRule({ merchantName: 'スーパーA' })
     const disabled = disabledMerchantRule({ merchantName: 'ストアB' })
@@ -55,8 +55,8 @@ describe('NeonMerchantLearningRuleRepository（複合自然キー PK）', () => 
   })
 })
 
-describe('NeonAmazonProductKeyLearningRuleRepository（複合自然キー PK）', () => {
-  const amazonRepo = new NeonAmazonProductKeyLearningRuleRepository(db)
+describe('PostgresAmazonProductKeyLearningRuleRepository（複合自然キー PK）', () => {
+  const amazonRepo = new PostgresAmazonProductKeyLearningRuleRepository(db)
   const key = (v: string): AmazonProductKey => AmazonProductKeySchema.parse(v)
 
   it('save → findByProductKey の往復同一性', async () => {

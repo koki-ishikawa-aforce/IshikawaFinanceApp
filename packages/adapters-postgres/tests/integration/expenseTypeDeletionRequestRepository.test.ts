@@ -10,10 +10,10 @@ import {
 import { eq } from 'drizzle-orm'
 import { db } from './setup'
 import { expenseTypeDeletionRequests } from '../../src/schema'
-import { NeonExpenseTypeDeletionRequestRepository } from '../../src/master-data/NeonExpenseTypeDeletionRequestRepository'
+import { PostgresExpenseTypeDeletionRequestRepository } from '../../src/master-data/PostgresExpenseTypeDeletionRequestRepository'
 import { expenseTypeDeletionRequest } from '../helpers/masterDataFixtures'
 
-const repo = new NeonExpenseTypeDeletionRequestRepository(db)
+const repo = new PostgresExpenseTypeDeletionRequestRepository(db)
 
 /** 昇格列 state_kind は findById の select に含まれないため、テーブルから直接読む */
 async function selectStateKind(id: ExpenseTypeDeletionRequestId): Promise<string | undefined> {
@@ -24,7 +24,7 @@ async function selectStateKind(id: ExpenseTypeDeletionRequestId): Promise<string
   return rows[0]?.stateKind
 }
 
-describe('NeonExpenseTypeDeletionRequestRepository', () => {
+describe('PostgresExpenseTypeDeletionRequestRepository', () => {
   it('save → findById の往復同一性（pending_remap）', async () => {
     const request = expenseTypeDeletionRequest()
     await repo.save(request)

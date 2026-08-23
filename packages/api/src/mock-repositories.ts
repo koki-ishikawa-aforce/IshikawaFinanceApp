@@ -1,6 +1,6 @@
 /**
  * DATABASE_URL 未設定時（開発モード）のインメモリ Repository 実装。
- * プロセス再起動でデータは消える。永続化・一意制約の最終保証は Neon 実装側が担う。
+ * プロセス再起動でデータは消える。永続化・一意制約の最終保証は PostgreSQL 実装側が担う。
  */
 import {
   concludesDelivery,
@@ -95,7 +95,7 @@ import type {
   YearMonth,
 } from '@warimaru/domain'
 
-/** JST（UTC+9）暦日ベースの 'YYYY-MM' / 'YYYY-MM-DD'（Neon 実装の月境界規約に合わせる） */
+/** JST（UTC+9）暦日ベースの 'YYYY-MM' / 'YYYY-MM-DD'（PostgreSQL 実装の月境界規約に合わせる） */
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000
 function jstYearMonth(d: Date): string {
   return new Date(d.getTime() + JST_OFFSET_MS).toISOString().slice(0, 7)
@@ -404,7 +404,7 @@ export function createMockMonthlyExpenseCycleRepository(): MonthlyExpenseCycleRe
       )
     },
     async save(cycle: MonthlyExpenseCycle) {
-      // Neon 実装の unique (user_id, target_year_month) と同じ失敗モードを再現する
+      // PostgreSQL 実装の unique (user_id, target_year_month) と同じ失敗モードを再現する
       // （読み出し → 存在確認 → 保存の間に別経路が同じ月を作った場合の結末を api 層で再現できる）
       const conflict = [...store.values()].find(
         c =>
@@ -429,11 +429,11 @@ export function createMockMonthlyReportRepository(): MonthlyReportRepository {
       return store.get(id) ?? null
     },
     async findByMonth(month: YearMonth) {
-      // target_year_month UNIQUE（Neon 実装と同じく 0..1 件）
+      // target_year_month UNIQUE（PostgreSQL 実装と同じく 0..1 件）
       return [...store.values()].find(r => r.common.targetYearMonth === month) ?? null
     },
     async save(report: MonthlyReport) {
-      // target_year_month UNIQUE を Neon 実装と同じ失敗モードで再現する
+      // target_year_month UNIQUE を PostgreSQL 実装と同じ失敗モードで再現する
       const conflict = [...store.values()].find(
         r =>
           r.common.targetYearMonth === report.common.targetYearMonth &&
@@ -493,7 +493,7 @@ export function createMockAccountRepository(): AccountRepository {
         .sort((a, b) => a.kind.localeCompare(b.kind))
     },
     async save(account: Account) {
-      // Neon 実装の UNIQUE (owner_user_id, kind) と同じ失敗モードを再現する
+      // PostgreSQL 実装の UNIQUE (owner_user_id, kind) と同じ失敗モードを再現する
       const conflict = [...store.values()].find(
         a =>
           a.common.ownerUserId === account.common.ownerUserId &&
@@ -529,7 +529,7 @@ export function createMockBankDepositRepository(): BankDepositRepository {
         )
     },
     async save(deposit: BankDeposit) {
-      // Neon 実装の UNIQUE (transaction_id) と同じ失敗モードを再現する
+      // PostgreSQL 実装の UNIQUE (transaction_id) と同じ失敗モードを再現する
       const conflict = [...store.values()].find(
         d =>
           d.common.transactionId === deposit.common.transactionId &&
@@ -555,7 +555,7 @@ export function createMockAppUserRepository(): AppUserRepository {
       return [...store.values()].find(u => u.common.role === role) ?? null
     },
     async save(user: AppUser) {
-      // Neon 実装の unique (role) と同じ「Honey / Darling 各 1 名」を模倣する
+      // PostgreSQL 実装の unique (role) と同じ「Honey / Darling 各 1 名」を模倣する
       const conflict = [...store.values()].find(
         u => u.common.role === user.common.role && u.common.userId !== user.common.userId,
       )
@@ -623,7 +623,7 @@ export function createMockLineDeliveryLogRepository(): LineDeliveryLogRepository
     },
     async save(log: LineDeliveryLog) {
       // append-only + 確定済み配信の idempotency_key partial unique を
-      // Postgres 実装と同じ失敗モードで再現する（失敗ログは何件でも積める）
+      // PostgreSQL 実装と同じ失敗モードで再現する（失敗ログは何件でも積める）
       const conflict = [...store.values()].find(
         existing =>
           existing.deliveryLogId === log.deliveryLogId ||

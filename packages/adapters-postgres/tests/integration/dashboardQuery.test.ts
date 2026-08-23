@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { NeonDashboardQuery } from '../../src/household-analysis/NeonDashboardQuery'
-import { NeonTransactionRepository } from '../../src/household-analysis/NeonTransactionRepository'
-import { NeonAccountRepository } from '../../src/balance-asset-tracking/NeonAccountRepository'
-import { NeonMitsuiSumitomoUnpaidRepository } from '../../src/balance-asset-tracking/NeonMitsuiSumitomoUnpaidRepository'
+import { PostgresDashboardQuery } from '../../src/household-analysis/PostgresDashboardQuery'
+import { PostgresTransactionRepository } from '../../src/household-analysis/PostgresTransactionRepository'
+import { PostgresAccountRepository } from '../../src/balance-asset-tracking/PostgresAccountRepository'
+import { PostgresMitsuiSumitomoUnpaidRepository } from '../../src/balance-asset-tracking/PostgresMitsuiSumitomoUnpaidRepository'
 import { db } from './setup'
 import {
   HONEY_USER_ID,
@@ -18,14 +18,14 @@ import {
 } from '../helpers/fixtures'
 import { stubResolveCategoryNames, stubResolveViewerRole } from '../helpers/stubs'
 
-const txRepo = new NeonTransactionRepository(db)
-const accountRepo = new NeonAccountRepository(db)
-const unpaidRepo = new NeonMitsuiSumitomoUnpaidRepository(db)
+const txRepo = new PostgresTransactionRepository(db)
+const accountRepo = new PostgresAccountRepository(db)
+const unpaidRepo = new PostgresMitsuiSumitomoUnpaidRepository(db)
 
 const CATEGORY_FOOD = newCategoryId()
 const CATEGORY_DAILY = newCategoryId()
 
-const query = new NeonDashboardQuery(db, {
+const query = new PostgresDashboardQuery(db, {
   resolveCategoryNames: stubResolveCategoryNames({
     [CATEGORY_FOOD]: '食費',
     [CATEGORY_DAILY]: '日用品',
@@ -118,7 +118,7 @@ async function seedAccounts(): Promise<void> {
   await accountRepo.save(smbcAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 999999 }))
 }
 
-describe('NeonDashboardQuery.fetchKpis', () => {
+describe('PostgresDashboardQuery.fetchKpis', () => {
   it('世帯モード: 世帯支出合計（JST 月境界込み）+ viewer 所有口座の資産 KPI', async () => {
     await seedTransactions()
     await seedAccounts()
@@ -159,7 +159,7 @@ describe('NeonDashboardQuery.fetchKpis', () => {
   })
 })
 
-describe('NeonDashboardQuery.fetchCategoryBreakdown', () => {
+describe('PostgresDashboardQuery.fetchCategoryBreakdown', () => {
   it('世帯モード: カテゴリ別合計・件数・割合（合計降順、カテゴリ名解決）', async () => {
     await seedTransactions()
     const view = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'household')
@@ -234,7 +234,7 @@ describe('NeonDashboardQuery.fetchCategoryBreakdown', () => {
   })
 })
 
-describe('NeonDashboardQuery プライバシー否定形テスト', () => {
+describe('PostgresDashboardQuery プライバシー否定形テスト', () => {
   async function seedAllClasses(): Promise<void> {
     await txRepo.save(
       classifiedTransaction({
@@ -350,9 +350,9 @@ describe('NeonDashboardQuery プライバシー否定形テスト', () => {
   })
 })
 
-describe('NeonDashboardQuery.fetchBalanceFreshness', () => {
+describe('PostgresDashboardQuery.fetchBalanceFreshness', () => {
   const FIXED_NOW = new Date('2026-07-26T00:00:00.000Z')
-  const freshnessQuery = new NeonDashboardQuery(db, {
+  const freshnessQuery = new PostgresDashboardQuery(db, {
     resolveCategoryNames: stubResolveCategoryNames({}),
     resolveViewerRole: stubResolveViewerRole,
     now: () => FIXED_NOW,

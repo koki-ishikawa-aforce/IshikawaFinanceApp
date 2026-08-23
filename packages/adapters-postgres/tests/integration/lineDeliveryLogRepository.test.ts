@@ -8,12 +8,12 @@ import {
   SendFailureReasonSchema,
 } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonLineDeliveryLogRepository } from '../../src/notification-delivery/NeonLineDeliveryLogRepository'
+import { PostgresLineDeliveryLogRepository } from '../../src/notification-delivery/PostgresLineDeliveryLogRepository'
 import { deliveryLog, failedDeliveryLog, skippedDeliveryLog } from '../helpers/notificationFixtures'
 
-const repo = new NeonLineDeliveryLogRepository(db)
+const repo = new PostgresLineDeliveryLogRepository(db)
 
-describe('NeonLineDeliveryLogRepository（append-only 監査レコード）', () => {
+describe('PostgresLineDeliveryLogRepository（append-only 監査レコード）', () => {
   it('save → findById / findAllByIdempotencyKey の往復同一性', async () => {
     const log = deliveryLog({ idempotencyKey: 'idem-2026-07-reminder' })
     await repo.save(log)

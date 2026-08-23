@@ -8,17 +8,18 @@
  * （yearMonthToUtcRange の月境界規約と同根）。
  */
 import type { YearMonth } from '@warimaru/domain'
-import { YearMonthSchema } from '@warimaru/domain'
+import { YearMonthSchema, jstCalendarParts } from '@warimaru/domain'
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000
-
-/** 例: 2026-06-30T15:00:00Z（= JST 7/1 00:00）→ '2026-07-01' */
+/**
+ * 例: 2026-06-30T15:00:00Z（= JST 7/1 00:00）→ '2026-07-01'
+ *
+ * JST の暦日を読み取る計算そのものはドメイン（`jstCalendarParts`）に置いてある。ここは
+ * 「date 型の列に入れる文字列表現」への整形だけを持つ（オフセットを層ごとに持つと、
+ * 取込側が作る発生日時と検索側が導出する発生日の規約が割れる）。
+ */
 export function dateToJstCalendarDate(date: Date): string {
-  const jst = new Date(date.getTime() + JST_OFFSET_MS)
-  const y = jst.getUTCFullYear()
-  const m = String(jst.getUTCMonth() + 1).padStart(2, '0')
-  const d = String(jst.getUTCDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  const { year, month, day } = jstCalendarParts(date)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
 /** 例: 2026-06-30T15:00:00Z（= JST 7/1 00:00）→ '2026-07' */

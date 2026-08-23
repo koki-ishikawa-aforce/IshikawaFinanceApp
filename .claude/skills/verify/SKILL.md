@@ -33,7 +33,7 @@ CI(`.github/workflows/ci.yml`)と同一のチェックをローカルで全 gree
 - `packages/adapters-postgres` の `src/`(特に `src/schema/`)や `drizzle/`
 - `packages/domain`(集約・value object・Query 契約・プライバシーフィルタなどの**振る舞い**)
 
-理由: 統合テストは `NeonTransactionListQuery` などの実装だけでなく、**domain 層のプライバシー/Query 挙動**を通しで検証する。domain の振る舞いを変えると adapters-postgres の実装ファイルを一切触らなくても統合テストが壊れることがある(実例: `applyPrivacyFilter` の変更で `transactionListQuery.test.ts` が失敗)。判定を「adapters-postgres の変更」だけに閉じると、この種の回帰を取りこぼす。迷ったら実行する。
+理由: 統合テストは `PostgresTransactionListQuery` などの実装だけでなく、**domain 層のプライバシー/Query 挙動**を通しで検証する。domain の振る舞いを変えると adapters-postgres の実装ファイルを一切触らなくても統合テストが壊れることがある(実例: `applyPrivacyFilter` の変更で `transactionListQuery.test.ts` が失敗)。判定を「adapters-postgres の変更」だけに閉じると、この種の回帰を取りこぼす。迷ったら実行する。
 
 ### 実行方法
 
