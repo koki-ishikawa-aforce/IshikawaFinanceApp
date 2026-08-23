@@ -19,7 +19,7 @@ Routine(定期 fire): /pr-steward を実行
 
 設計原則:
 
-- **マージは行わない** — PR 執事の仕事は「PR を green にする」と「スクリーンショット残骸の削除 PR を作る」まで。マージ可否の判定と実行は `.claude/skills/issue-work/SKILL.md` の「マージゲート」が唯一の定義であり、PR 執事は同じ判定を二重に持たない。ここで green にした PR とスクリーンショット削除 PR は、次のバックログ fire の**回収マージ**が拾う(バックログ Routine は約20分に1 fire なので待ち時間は短い)
+- **マージは行わない** — PR 執事の仕事は「PR を green にする」と「スクリーンショット残骸の削除 PR を作る」まで。マージ可否の判定と実行は `.claude/skills/issue-work/SKILL.md` の「マージゲート」が唯一の定義であり、PR 執事は同じ判定を二重に持たない。ここで green にした PR とスクリーンショット削除 PR は、次のバックログ fire の**回収マージ**が拾う(バックログ Routine は毎時1 fire なので、待ち時間は最長でも1時間)
 - **自動クローズはしない** — 重複 PR や対象 Issue がクローズ済みの場合も `needs-decision` で人間に委ねる
 - **対象は Routine 起点の PR のみ** — 人間が手動で作成した PR には触れない(PR 本文の「無人モードの選定理由」セクション・head ブランチ名で判別。判別基準はマージゲート条件1と同一)
 - **修正は `/verify` 経由** — CI 修復・コンフリクト解消の push 前に必ず `/verify` 全 green を確認する
@@ -38,12 +38,11 @@ Routine(定期 fire): /pr-steward を実行
   ```
   /pr-steward を実行してください。
 
-  - Routine が無人モードで作成した open PR を巡回し、CI 失敗の修復・コンフリクト解消・重複検知を行ってください
-  - 手順は .claude/skills/pr-steward/SKILL.md に従ってください
-  - マージは行わないでください(マージは /issue-work のマージゲートが担います。green にした PR は次のバックログ fire の回収マージが拾います)
-  - 重複 PR を検知した場合は自動クローズせず needs-decision で人間に委ねてください
+  - 手順は .claude/skills/pr-steward/SKILL.md に従ってください(マージを行わないことを含め、すべてそこが正です)
   - 最終的な報告は日本語を使ってください。
   ```
+
+  プロンプトに手順を書かない理由と、Routine を更新できる経路の制約は `backlog-routine.md`「プロンプトは薄く保つ」を参照。
 
 ## バックログ Routine との関係
 
@@ -52,7 +51,7 @@ Routine(定期 fire): /pr-steward を実行
 | バックログ Routine (`/issue-work` 無人モード) | Issue → 実装 → PR 作成 → CI green 確認 → **マージ**。preflight で Routine 起点 open PR のコンフリクト先解消と**回収マージ**も行う | PR / マージ / コンフリクト解消 commit |
 | PR 執事 Routine (`/pr-steward`) | 既存 PR の保守(CI 修復・コンフリクト解消)+ スクリーンショット残骸の掃除 | 修正 commit(PR は既存)/ スクリーンショット削除 PR(新規) |
 
-**コンフリクト解消は2か所が担う**。毎時のバックログ Routine が preflight で先解消するため放置時間の上限は最長でも fire 間隔（Routine の登録数とスケジュールに依存）に収まり、PR 執事 Routine はより広い間隔で CI 修復とあわせて保守する。どちらもコンフリクト判定は mergeable 状態で機械的に行い(`mergeable == CONFLICTING` / `mergeable_state == dirty`)、`unknown`(計算中)は数秒待って再照会する。**マージはバックログ Routine 側だけが行う**(マージゲートの定義を1箇所に保つため)。
+**コンフリクト解消は2か所が担う**。毎時のバックログ Routine が preflight で先解消するため放置時間の上限は最長でも1時間に収まり、PR 執事 Routine はより広い間隔(3時間ごと)で CI 修復とあわせて保守する。どちらもコンフリクト判定は mergeable 状態で機械的に行い(`mergeable == CONFLICTING` / `mergeable_state == dirty`)、`unknown`(計算中)は数秒待って再照会する。**マージはバックログ Routine 側だけが行う**(マージゲートの定義を1箇所に保つため)。
 
 2か所が同じ PR ブランチをほぼ同時に修復すると、片方の push が non-fast-forward(リモートが先に進んでいて早送りできない状態)で拒否されうる。拒否されたセッションはリモートを fetch し直して mergeable を再確認し、**既に別セッションが解消済みなら何もせず次へ進む**。まだコンフリクトが残る場合のみ取り直した head に base を再度マージして1回だけやり直し、それでも失敗したらその PR の解消を保留して完了報告に記す(競合時の詳細手順は `.claude/skills/issue-work/SKILL.md` のコンフリクト修復 preflight と `.claude/skills/pr-steward/SKILL.md` 手順2c に定義)。
 
