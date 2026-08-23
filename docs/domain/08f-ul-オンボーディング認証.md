@@ -7,6 +7,8 @@
 > 改訂（2026-07-24・判断セッション / #73、OQ-55）: 共通トークルーム参加状態を per-user の LINE_運用設定 から**世帯レベルの置き場**へ分離（§1「LINE 運用設定」参照）。join Webhook が userId を含まず、参加は世帯にひとつの事実のため。あわせて Phase 1 の自己申告 API（line-friend / talk-room）は廃止し、follow / join Webhook を唯一の正とする（登録前 follow の取りこぼしは登録完了時の LINE 友だち状態照会でカバー）。
 > 改訂（2026-07-25・判断セッション / #334、OQ-55 ①）: `data 有効化済み` から**共通トークルームID を削除**し、`有効化日時` のみとした（§1「通知機能有効化状態」参照）。トークルームID の正は世帯レベルの `共通トークルーム` 1 か所であり、有効化時点の ID を per-user に複製すると招待し直し（トークルーム作り直し）で古い ID が残り、二重保持のまま誰も検知できないため。`data 通知機能有効化イベント` の共通トークルームID は配信先として引き続き持つが、発行側は世帯レベルの記録から取得する。
 
+> 改訂（2026-08-23・判断セッション / #544）: SectionC/D/E の進捗のうち **`SectionC編集済み` / `SectionD編集済み` / `SectionE変更済み` へ遷移する経路は持たない**ことを確定した。設定画面でカテゴリ・経費種別・月次上限を編集してもオンボーディングの進捗には伝わらず、確認済みにするのは確認操作のみである（マスタ管理からオンボーディングへ配線を足さない判断）。編集した人は「はじめての設定」に戻って確認操作を行う。下記 `behavior Phase2 SectionC/D/E を確認する` の事後条件もこれに合わせて改めた。
+
 ## 責務
 
 LIFF 初期化／LINE Login／LINE userID と許可リスト（Honey／Darling）の役割判定／ニックネーム管理／Gmail OAuth 連携と再認可／初期残高登録呼出／配偶者完了検知／LINE 友達追加・グループ招待・運用開始発火を一貫した利用者ライフサイクルとして担う。Phase 0 セットアップ（システム管理者視点）はマスタ管理に帰属する一方、Phase 1〜4（ユーザー視点）と運用中の認証維持は本コンテキストの責務（§1.1.5 確定）。
@@ -95,11 +97,11 @@ data SectionF進捗 = SectionF未着手 OR SectionFスキップ OR SectionF完�
 data SectionA完了 = Gmail_OAuth_トークン参照 AND 完了日時
 data SectionB完了 = 初期残高登録参照 AND 完了日時
 data SectionC確認済み = 確認日時
-data SectionC編集済み = 編集日時 AND 編集件数
+data SectionC編集済み = 編集日時 AND 編集件数 // 遷移経路なし（改訂 2026-08-23 / #544）
 data SectionD確認済み = 確認日時
-data SectionD編集済み = 編集日時 AND 編集件数
+data SectionD編集済み = 編集日時 AND 編集件数 // 遷移経路なし（改訂 2026-08-23 / #544）
 data SectionE確認済み = 確認日時
-data SectionE変更済み = 変更日時 AND 変更件数
+data SectionE変更済み = 変更日時 AND 変更件数 // 遷移経路なし（改訂 2026-08-23 / #544）
 data SectionFスキップ = スキップ日時
 data SectionF完了 = 取込ジョブID AND 完了日時
 
@@ -242,7 +244,7 @@ behavior Phase2 SectionB を完了する = Phase2進行中ユーザー AND 初�
 
 behavior Phase2 SectionC/D/E を確認する = Phase2進行中ユーザー -> Phase2進行中ユーザー AND SectionC/D/E確認イベント
 // 事前: SectionB 完了済み
-// 事後: 確認のみで完了扱い、編集も可能
+// 事後: 確認操作のみで完了扱い（設定画面での編集は進捗に伝わらない。改訂 2026-08-23 / #544）
 
 behavior Phase2 SectionF を実行する = Phase2進行中ユーザー AND 取込ジョブID -> Phase2進行中ユーザー AND SectionF完了イベント
 // 事後: 取引取込が初期 CSV/PDF 取込を実行する
