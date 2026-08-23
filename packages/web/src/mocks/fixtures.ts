@@ -28,10 +28,16 @@ function hasAnyAccounts(scenario: MockScenario): boolean {
 }
 
 /**
+ * 相手（配偶者）の別銀行貯蓄 + NISA 積立累計の合計。相手について見えるのはこの合計だけで、
+ * 銀行名も口座件数も出ない（P2-B5 / AT-404）。世帯合計の内数。
+ */
+const SPOUSE_SAVINGS_NISA_TOTAL = 260000
+
+/**
  * 口座ごとの金額の素の値。ダッシュボードの KPI と残高画面の資産合計を同じ値から導き、
- * 同じプレビューで画面ごとに違う合計が出ないようにする。
- * 別銀行貯蓄の 2,000,000 は {@link accountBalanceListFixture} の 2 口座
- * （楽天銀行 1,740,000 + ゆうちょ銀行 260,000）の合算。
+ * 同じプレビューで画面ごとに違う合計が出ないようにする。いずれも世帯（夫婦 2 人分）の合計。
+ * 別銀行貯蓄の 2,000,000 は本人の楽天銀行 1,740,000 と相手の 260,000
+ * （{@link SPOUSE_SAVINGS_NISA_TOTAL}）の合算。
  */
 function accountAmounts(scenario: MockScenario) {
   const shadow = hasShadowAccounts(scenario)
@@ -356,7 +362,14 @@ export function expenseTypeListFixture(): unknown {
   }
 }
 
-/** GET /api/balances */
+/**
+ * GET /api/balances
+ *
+ * 一覧に並ぶのは閲覧者本人の口座だけで、相手の分は「別銀行貯蓄 + NISA」の合計 1 件に
+ * まとまる（P2-B5 / AT-404）。本人の別銀行貯蓄が 1 件なのは、口座種別ごとに 1 人 1 件
+ * （UNIQUE (owner_user_id, kind)）のため。相手の合計 {@link SPOUSE_SAVINGS_NISA_TOTAL} は
+ * 世帯合計（{@link accountAmounts}）の内数で、本人分と足すと資産合計の内訳に一致する。
+ */
 export function accountBalanceListFixture(scenario: MockScenario): unknown {
   const automanaged = [
     {
@@ -374,24 +387,18 @@ export function accountBalanceListFixture(scenario: MockScenario): unknown {
       lastSettledAt: '2026-07-10T00:00:00.000Z',
     },
   ]
-  if (!hasAnyAccounts(scenario)) return { items: [] }
-  if (!hasShadowAccounts(scenario)) return { items: automanaged }
+  if (!hasAnyAccounts(scenario)) return { items: [], spouseOtherSavingsAndNisaTotal: null }
+  if (!hasShadowAccounts(scenario))
+    return { items: automanaged, spouseOtherSavingsAndNisaTotal: null }
   return {
     items: [
       ...automanaged,
+      // 鮮度アラート（35 日以上未更新）の見た目を両テーマで確認するため、最終更新を古くする
       {
         kind: 'other_savings',
         accountId: 'ACC_MOCK_003',
         displayName: '楽天銀行',
         currentBalance: 1740000,
-        lastUpdatedAt: '2026-07-20T00:00:00.000Z',
-      },
-      // 鮮度アラート（35 日以上未更新）の見た目を両テーマで確認するための口座
-      {
-        kind: 'other_savings',
-        accountId: 'ACC_MOCK_005',
-        displayName: 'ゆうちょ銀行',
-        currentBalance: 260000,
         lastUpdatedAt: '2026-06-14T00:00:00.000Z',
       },
       {
@@ -402,6 +409,7 @@ export function accountBalanceListFixture(scenario: MockScenario): unknown {
         lastUpdatedAt: '2026-07-01T00:00:00.000Z',
       },
     ],
+    spouseOtherSavingsAndNisaTotal: SPOUSE_SAVINGS_NISA_TOTAL,
   }
 }
 
@@ -418,8 +426,8 @@ export function balanceFreshnessFixture(scenario: MockScenario): unknown {
   return {
     items: [
       {
-        accountId: 'ACC_MOCK_005',
-        displayName: 'ゆうちょ銀行',
+        accountId: 'ACC_MOCK_003',
+        displayName: '楽天銀行',
         lastUpdatedAt: '2026-06-14T00:00:00.000Z',
         daysSinceLastUpdate: 40,
         status: 'alert',

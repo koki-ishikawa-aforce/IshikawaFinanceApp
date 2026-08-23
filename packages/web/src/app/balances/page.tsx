@@ -11,9 +11,13 @@ import {
   type BalanceFreshnessItemWire,
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
+import { partnerOf } from '@/lib/partner'
 import { formatDateTime, getCurrentMonth, shiftMonth } from '@/lib/month'
+import { useTheme } from '@/theme/ThemeProvider'
+import type { Theme } from '@/theme/tokens'
 import { TimeSeriesChart, type ChartSeries } from '@/components/balances/TimeSeriesChart'
 import { FreshnessBadge, useBalanceFreshnessQuery } from '@/components/balances/BalanceFreshness'
+import { RoleIcon } from '@/components/ui/RoleIcon'
 import { LuLandmark, LuCreditCard, LuPiggyBank, LuTrendingUp } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -90,8 +94,30 @@ function BalanceItem({
   }
 }
 
+/**
+ * 相手の「別銀行貯蓄 + NISA 積立累計」の合計 1 行（P2-B5 / AT-404）。
+ *
+ * 口座ごとの残高は本人のみが見られるため、相手の分は銀行名も件数も出さず合計だけを出す。
+ * 黙って伏せると「相手は貯めていない」に読めるため、合計だけ公開であることを明示する
+ * （docs/design/usability.md 2-1）。
+ */
+function SpouseSharedTotalItem({ total, theme }: { total: number; theme: Theme }) {
+  const partner = partnerOf(theme)
+  return (
+    <div className={styles.balanceItem}>
+      <div className={styles.balanceHead}>
+        <RoleIcon role={partner.role} className={`${ui.iconSm} ${styles.spouseIcon}`} />
+        <span className={styles.balanceName}>{partner.name}の貯蓄・NISA（合計のみ）</span>
+      </div>
+      <span className={styles.balanceValue}>{formatMoney(total)}</span>
+      <span className={styles.balanceMeta}>口座ごとの内訳は本人だけが見られます</span>
+    </div>
+  )
+}
+
 export default function BalancesPage() {
   const [rangeMonths, setRangeMonths] = useState<number>(6)
+  const theme = useTheme()
 
   const listQuery = useQuery({
     queryKey: ['balances', 'list'],
@@ -191,7 +217,8 @@ export default function BalancesPage() {
             </ErrorState>
           )}
           {balanceListReady &&
-            (listQuery.data.items.length === 0 ? (
+            (listQuery.data.items.length === 0 &&
+            listQuery.data.spouseOtherSavingsAndNisaTotal === null ? (
               <EmptyState announce={false}>登録されている口座がありません</EmptyState>
             ) : (
               <div className={styles.balanceList}>
@@ -202,6 +229,12 @@ export default function BalancesPage() {
                     freshness={freshnessByAccountId.get(item.accountId)}
                   />
                 ))}
+                {listQuery.data.spouseOtherSavingsAndNisaTotal !== null && (
+                  <SpouseSharedTotalItem
+                    total={listQuery.data.spouseOtherSavingsAndNisaTotal}
+                    theme={theme}
+                  />
+                )}
               </div>
             ))}
         </div>

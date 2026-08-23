@@ -1,11 +1,13 @@
 /**
- * 残高画面のテスト。押さえているのは 2 つ。
+ * 残高画面のテスト。押さえているのは 3 つ。
  *
  * - 口座残高カードは、取得中 / エラー / 一覧 が入れ替わる領域を常時マウントの
  *   `role="status"` で包んでいる。中の表示が自前で live region を作ると同じ文言が
  *   二重に読み上げられるため、その入れ子が無いことを固定する
  * - 画面上部の資産合計カードの呼称と金額表記。VRT の基準画像を撮り直すだけでは、
  *   呼称や表記が変わったことを止められない（#366）
+ * - 相手の「別銀行貯蓄 + NISA」の合計行（P2-B5 / AT-404 / #453）。合計だけの公開だと
+ *   分かる書き方で出すこと、相手に対象の口座が無ければ出さないこと
  */
 import { render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -103,5 +105,67 @@ describe('残高画面の口座残高カード', () => {
     const statuses = within(balanceCard()).getAllByRole('status')
     expect(statuses).toHaveLength(1)
     expect(statuses[0]).toHaveTextContent('読み込み中...')
+  })
+})
+
+/** 残高一覧・鮮度の応答をまとめて差し替える（他のエンドポイントは使わない） */
+function mockBalanceList(list: unknown): void {
+  apiFetch.mockImplementation((path: string) => {
+    if (path === '/api/balances') return Promise.resolve(list)
+    if (path.startsWith('/api/dashboard/balance-freshness')) return Promise.resolve({ items: [] })
+    return new Promise(() => {})
+  })
+}
+
+describe('相手の貯蓄・NISA の合計行', () => {
+  it('合計だけの公開だと分かる書き方で、相手の合計を出す', async () => {
+    // 相手の口座は 1 件ずつ見せない代わりに合計を出す（P2-B5 / AT-404）。
+    // 黙って伏せると「相手は貯めていない」と読めるため、合計のみである旨を併記する
+    mockBalanceList({ items: [], spouseOtherSavingsAndNisaTotal: 260000 })
+    renderPage()
+
+    // 既定テーマ（darling）の相手は Honey
+    expect(await screen.findByText('Honeyの貯蓄・NISA（合計のみ）')).toBeInTheDocument()
+    expect(within(balanceCard()).getByText('260,000円')).toBeInTheDocument()
+    expect(
+      within(balanceCard()).getByText('口座ごとの内訳は本人だけが見られます'),
+    ).toBeInTheDocument()
+  })
+
+  it('相手に対象の口座が無ければ合計行を出さない', async () => {
+    mockBalanceList({
+      items: [
+        {
+          kind: 'smbc_bank',
+          accountId: 'ACC_1',
+          displayName: '三井住友銀行',
+          currentBalance: 1500000,
+          // apiFetch を差し替えているためスキーマの日付変換は通らない。実 API 経由と
+          // 同じく Date が渡る前提の画面なので、ここでも Date で渡す
+          lastUpdatedAt: new Date('2026-08-01T00:00:00.000Z'),
+        },
+      ],
+      spouseOtherSavingsAndNisaTotal: null,
+    })
+    renderPage()
+
+    expect(await screen.findByText('三井住友銀行')).toBeInTheDocument()
+    expect(screen.queryByText(/合計のみ/)).toBeNull()
+  })
+
+  it('本人の口座が 0 件でも、相手の合計があれば「口座がありません」にしない', async () => {
+    // 相手の合計だけが返る状態を空扱いにすると、出ている金額と文言が食い違う
+    mockBalanceList({ items: [], spouseOtherSavingsAndNisaTotal: 0 })
+    renderPage()
+
+    expect(await screen.findByText('Honeyの貯蓄・NISA（合計のみ）')).toBeInTheDocument()
+    expect(screen.queryByText('登録されている口座がありません')).toBeNull()
+  })
+
+  it('本人の口座も相手の合計も無ければ、口座が無いことを伝える', async () => {
+    mockBalanceList({ items: [], spouseOtherSavingsAndNisaTotal: null })
+    renderPage()
+
+    expect(await screen.findByText('登録されている口座がありません')).toBeInTheDocument()
   })
 })

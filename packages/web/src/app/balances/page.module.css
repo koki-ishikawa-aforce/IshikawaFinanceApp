@@ -83,6 +83,15 @@
   color: var(--text-secondary);
 }
 
+/*
+ * 相手の合計行に置くロール識別アイコン。色は RoleIcon が役割色（--role-*）で与えるため、
+ * ここでは口座アイコン（.balanceIcon）と同じ大きさの基準だけを合わせる。
+ */
+.spouseIcon {
+  font-size: var(--text-base);
+  flex-shrink: 0;
+}
+
 .balanceName {
   font-size: var(--text-sm);
   font-weight: 700;

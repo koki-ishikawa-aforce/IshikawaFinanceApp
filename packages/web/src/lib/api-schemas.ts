@@ -199,8 +199,14 @@ export const AccountBalanceItemWireSchema = z.discriminatedUnion('kind', [
 ])
 export type AccountBalanceItemWire = z.infer<typeof AccountBalanceItemWireSchema>
 
+/**
+ * 残高一覧（GET /api/balances）。
+ * `items` は本人の口座のみ。配偶者の分は「別銀行貯蓄 + NISA 積立累計」の合計 1 件だけが
+ * 返る（P2-B5 / AT-404）。配偶者に対象の口座が無ければ null で、画面は合計行を出さない。
+ */
 export const AccountBalanceListWireSchema = z.object({
   items: z.array(AccountBalanceItemWireSchema),
+  spouseOtherSavingsAndNisaTotal: z.number().nullable(),
 })
 
 /**

@@ -2,8 +2,14 @@
  * AccountBalanceQuery の PostgreSQL 実装
  * @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §4.3
  *
- * 残高・資産推移管理は世帯共有のため viewerId を取らず、両者の全 active 口座を読む
- * （口座数は一桁で全走査に問題なし）。inactive 口座は残高一覧・資産合計に含めない。
+ * 残高一覧（fetchBalanceList）は本人のみ可視（P2-B5 / AT-404 / OQ-60 ①）。閲覧者所有の
+ * active 口座だけを並べ、配偶者の口座は 1 件も返さない。配偶者については別銀行貯蓄残高と
+ * NISA 積立累計の合計だけを返す（配偶者の SMBC 残高・カード未払金・銀行名・口座件数は
+ * 一切返さない）。
+ *
+ * 資産合計（fetchAssetTotal）は世帯の合計と 4 つの内訳を出し続けるため閲覧者で絞らず、
+ * 両者の全 active 口座を読む（OQ-60 ②。口座数は一桁で全走査に問題なし）。
+ * inactive 口座は残高一覧・資産合計いずれにも含めない。
  *
  * 別銀行貯蓄口座の残高鮮度（経過日数・鮮度状態）は本 Query では返さない。08d L244 の
  * とおり本コンテキストは最終更新日時のみを供給し、閾値判定は家計分析側
@@ -13,7 +19,7 @@
  * データモデル上、過去時点の残高復元（historical as-of）はサポートしない
  * （過去の推移は残高変動履歴を読む BalanceTimeSeriesQuery が担う — #398）。
  */
-import { and, eq, sum } from 'drizzle-orm'
+import { and, eq, inArray, ne, sum } from 'drizzle-orm'
 import type {
   Account,
   AccountBalanceItem,
@@ -22,12 +28,14 @@ import type {
   AssetTotalView,
   MitsuiSumitomoUnpaid,
   Money,
+  UserId,
 } from '@warimaru/domain'
 import {
   AccountBalanceListViewSchema,
   AccountSchema,
   AssetTotalViewSchema,
   MitsuiSumitomoUnpaidSchema,
+  MoneySchema,
   brokerageNameToDisplay,
 } from '@warimaru/domain'
 import type { Db } from '../client'
@@ -44,12 +52,12 @@ const KIND_ORDER: Record<Account['kind'], number> = {
 export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
   constructor(private readonly db: Db) {}
 
-  async fetchBalanceList(): Promise<AccountBalanceListView> {
+  async fetchBalanceList(viewerId: UserId): Promise<AccountBalanceListView> {
     const rows = await this.db
       .select({ payload: accounts.payload, unpaidPayload: mitsuiSumitomoUnpaids.payload })
       .from(accounts)
       .leftJoin(mitsuiSumitomoUnpaids, eq(mitsuiSumitomoUnpaids.accountId, accounts.accountId))
-      .where(eq(accounts.isActive, true))
+      .where(and(eq(accounts.ownerUserId, viewerId), eq(accounts.isActive, true)))
 
     const parsed = rows.map(row => ({
       account: parsePayload(AccountSchema, row.payload),
@@ -66,7 +74,37 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
     })
 
     const items = parsed.map(({ account, unpaid }) => this.toItem(account, unpaid))
-    return AccountBalanceListViewSchema.parse({ items })
+    return AccountBalanceListViewSchema.parse({
+      items,
+      spouseOtherSavingsAndNisaTotal: await this.sumSpouseOtherSavingsAndNisa(viewerId),
+    })
+  }
+
+  /**
+   * 配偶者の別銀行貯蓄残高 + NISA 積立累計の合計（P2-B5 の「合計のみ配偶者可視」）。
+   * 対象の active 口座が 1 件も無ければ null を返し、「0 円」と「口座が無い」を
+   * 呼び出し側が区別できるようにする（0 円で返すと未登録の配偶者にも合計行が出る）。
+   */
+  private async sumSpouseOtherSavingsAndNisa(viewerId: UserId): Promise<Money | null> {
+    const rows = await this.db
+      .select({ payload: accounts.payload })
+      .from(accounts)
+      .where(
+        and(
+          ne(accounts.ownerUserId, viewerId),
+          eq(accounts.isActive, true),
+          inArray(accounts.kind, ['other_savings', 'nisa']),
+        ),
+      )
+    if (rows.length === 0) return null
+
+    let total = 0
+    for (const row of rows) {
+      const account = parsePayload(AccountSchema, row.payload)
+      if (account.kind === 'other_savings') total += account.balance.currentBalance
+      if (account.kind === 'nisa') total += account.contribution.currentAccumulated
+    }
+    return MoneySchema.parse(total)
   }
 
   async fetchAssetTotal(asOf: Date): Promise<AssetTotalView> {

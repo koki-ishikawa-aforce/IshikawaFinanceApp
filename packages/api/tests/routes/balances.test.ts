@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { createTestApp, request } from '../helpers/test-app.js'
+import { describe, it, expect, vi } from 'vitest'
+import type { AccountBalanceQuery } from '@warimaru/domain'
+import { createTestApp, request, VIEWER_ID, SPOUSE_ID } from '../helpers/test-app.js'
 
 describe('GET /api/balances', () => {
   it('口座残高一覧ビューを返す', async () => {
@@ -7,6 +8,25 @@ describe('GET /api/balances', () => {
     const res = await request(t.app, 'GET', '/api/balances')
     expect(res.status).toBe(200)
     expect(((await res.json()) as { items: unknown[] }).items).toEqual([])
+  })
+
+  // 一覧は本人のみ可視（P2-B5 / AT-404）。閲覧者を渡し損ねると相手の口座まで並ぶため、
+  // 呼び出し側がヘッダーの利用者をそのまま Query に渡していることを固定する
+  it('リクエストの利用者を閲覧者として Query に渡す', async () => {
+    const fetchBalanceList = vi
+      .fn<AccountBalanceQuery['fetchBalanceList']>()
+      .mockResolvedValue({ items: [], spouseOtherSavingsAndNisaTotal: null })
+    const t = createTestApp({
+      accountBalanceQuery: {
+        fetchBalanceList,
+        fetchAssetTotal: vi.fn(),
+      } as unknown as AccountBalanceQuery,
+    })
+
+    await request(t.app, 'GET', '/api/balances', { viewerId: SPOUSE_ID })
+
+    expect(fetchBalanceList).toHaveBeenCalledWith(SPOUSE_ID)
+    expect(fetchBalanceList).not.toHaveBeenCalledWith(VIEWER_ID)
   })
 })
 

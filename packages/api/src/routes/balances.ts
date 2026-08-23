@@ -49,7 +49,7 @@ export function balancesRoutes(
   const app = new Hono<AppEnv>()
 
   app.get('/', async c => {
-    const result = await accountBalanceQuery.fetchBalanceList()
+    const result = await accountBalanceQuery.fetchBalanceList(c.get('viewerId'))
     return c.json(result)
   })
 
