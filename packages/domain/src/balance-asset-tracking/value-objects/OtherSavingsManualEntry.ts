@@ -19,11 +19,15 @@ import { UserIdSchema } from '../../shared/ids'
 import { MoneySchema } from '../../shared/value-objects/Money'
 
 /**
- * 手入力に添えるメモ。空文字は「書いていない」と区別が付かないため許さず、
- * 未記入は項目ごと省く。上限は口座 payload に恒久的に積み上がる自由入力のため
- * 非アクティブ理由（100）より広めに置きつつ有限にする。
+ * 手入力に添えるメモ。空文字・空白のみは「書いていない」と区別が付かないため許さず
+ * （未記入は項目ごと省く）、前後の空白を取り除いた実質が 1 文字以上あることを求める。
+ * 上限は口座 payload に恒久的に積み上がる自由入力のため、非アクティブ理由（100）より
+ * 広めに置きつつ有限にする（前後の空白を含めた入力長で数える）。
  */
-export const ManualEntryMemoSchema = z.string().min(1).max(200)
+export const ManualEntryMemoSchema = z
+  .string()
+  .max(200)
+  .refine(v => v.trim().length > 0, { message: 'メモは空白のみにできない' })
 
 export const OtherSavingsManualEntrySchema = z.discriminatedUnion('kind', [
   z.object({

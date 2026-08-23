@@ -818,6 +818,35 @@ describe('withdrawOtherSavings()', () => {
       }),
     ).toThrow(ZodError)
   })
+
+  it('空白のみメモは受け付けない（未記入と区別できないため）', () => {
+    expect(() =>
+      withdrawOtherSavings(otherSavings(), {
+        amount: 1000 as never,
+        operatorUserId: OWNER,
+        at: AT,
+        memo: '　  ',
+      }),
+    ).toThrow(ZodError)
+  })
+
+  it('メモは 200 文字まで受け付け、201 文字は拒否する（境界値）', () => {
+    const at200 = withdrawOtherSavings(otherSavings(), {
+      amount: 1000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+      memo: 'あ'.repeat(200),
+    })
+    expect(at200.balance.manualEntries[0]).toMatchObject({ memo: 'あ'.repeat(200) })
+    expect(() =>
+      withdrawOtherSavings(otherSavings(), {
+        amount: 1000 as never,
+        operatorUserId: OWNER,
+        at: AT,
+        memo: 'あ'.repeat(201),
+      }),
+    ).toThrow(ZodError)
+  })
 })
 
 describe('correctOtherSavingsBalance()', () => {

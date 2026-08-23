@@ -51,8 +51,9 @@ export class PostgresAccountRepository implements AccountRepository {
       ownerUserId: account.common.ownerUserId,
       kind: account.kind,
       isActive: account.common.activeness.kind === 'active',
-      // payload にも新しい版を載せておく（読みでは列を正とするが、両者を揃えておく）
-      payload: serializeForPayload(withVersion(account, nextVersion)),
+      // 版数は version 列だけを正とし、payload には持たせない（読みは列で上書きするため、
+      // payload.version を直接読む将来コードが古い値を掴む罠を作らない）。
+      payload: serializeWithoutVersion(account),
     }
     try {
       // INSERT ... ON CONFLICT DO UPDATE ... WHERE version = expectedVersion。
@@ -94,4 +95,21 @@ function reviveWithVersion(payload: unknown, version: number): Account {
 /** 集約の版数だけを差し替える（型判別を崩さないよう common だけ更新する） */
 function withVersion(account: Account, version: number): Account {
   return { ...account, common: { ...account.common, version } }
+}
+
+/**
+ * 集約を payload へ変換する。版数は version 列で管理するため payload には残さない
+ * （読み出しは列を正として上書きするので、payload に版数を残すと二重管理になる）。
+ * この項目を持たない既存行と同じ形（version 無し）で書き、読み出し時は Zod の
+ * `.default(0)` を通って列の値で上書きされる。
+ */
+function serializeWithoutVersion(account: Account): unknown {
+  const payload = serializeForPayload(account)
+  if (payload !== null && typeof payload === 'object' && 'common' in payload) {
+    const common = (payload as { common: unknown }).common
+    if (common !== null && typeof common === 'object') {
+      delete (common as Record<string, unknown>).version
+    }
+  }
+  return payload
 }

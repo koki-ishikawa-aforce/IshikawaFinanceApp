@@ -240,9 +240,16 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
       await deps.accountRepository.save(account)
     } catch (e) {
       // 版数照合の失敗（#459）は「読み出し後に別の更新が入った」一時的な競合で、
-      // やり直せば通る。サーバ側の障害ではないため error では残さず（409 を返す通常の
-      // フローで、error ログはアラートの誤発火につながる）、そのまま送出して 409 に翻訳する。
-      if (e instanceof ConcurrentUpdateError) throw e
+      // やり直せば通る。サーバ側の障害ではないため error では残さない（409 を返す通常の
+      // フローで、error ログはアラートの誤発火につながる）。ただし版数の写し間違い等で
+      // CAS が恒常的に失敗する回帰が入っても 409 だけでは無言になるため、warn で
+      // 発生の痕跡だけ残す（金額・PII は載せない。accountId と操作のみ）。
+      if (e instanceof ConcurrentUpdateError) {
+        console.warn(
+          `口座の保存が並行更新で見送られた（操作: ${operation}, accountId=${account.common.accountId}）。利用者は再実行で回復する`,
+        )
+        throw e
+      }
       console.error(
         `口座の保存に失敗した（操作: ${operation}, accountId=${account.common.accountId}）`,
         e,
