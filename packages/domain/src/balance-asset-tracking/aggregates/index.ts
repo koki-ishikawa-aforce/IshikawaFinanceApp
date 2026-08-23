@@ -1,4 +1,5 @@
 export * from './Account'
 export * from './MitsuiSumitomoUnpaid'
 export * from './BankDeposit'
+export * from './EmployerRemitterDirectory'
 export * from './BalanceHistoryEntry'

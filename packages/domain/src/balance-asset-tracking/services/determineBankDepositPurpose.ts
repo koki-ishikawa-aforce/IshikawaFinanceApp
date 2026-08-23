@@ -13,7 +13,16 @@
  */
 import { jstCalendarParts } from '../../shared/value-objects/JstCalendar'
 import type { Money } from '../../shared/value-objects/Money'
-import type { BankDepositPurposeRule } from '../value-objects/BankDepositPurposeRule'
+import {
+  BankDepositPurposeRuleSchema,
+  bankDepositPurposeRuleOptions,
+  type BankDepositPurposeRule,
+  type BankDepositPurposeRuleOptionsInput,
+} from '../value-objects/BankDepositPurposeRule'
+import {
+  employerRemitterNamesOf,
+  type EmployerRemitterDirectory,
+} from '../aggregates/EmployerRemitterDirectory'
 import { normalizeRemitterName } from '../value-objects/NormalizedRemitterName'
 import { DepositPurposeSchema, type DepositPurpose } from '../value-objects/DepositPurpose'
 import {
@@ -39,6 +48,30 @@ function depositDaySignal(occurredAt: Date, payoutDayWindow: number): PurposeSig
 /** 金額シグナル（OQ-21 ②）。閾値以上なら給与寄り、未満なら経費精算寄り */
 function depositAmountSignal(amount: Money, thresholdAmount: Money): PurposeSignal {
   return amount >= thresholdAmount ? 'salary' : 'expense_reimbursement'
+}
+
+/** 用途不明（暫定処理 = 手動確認待ち）。判別の落とし先が 3 か所あるため 1 か所で組み立てる */
+function awaitingManualConfirmation(): DepositPurpose {
+  return DepositPurposeSchema.parse({
+    kind: 'unknown',
+    provisionalHandling: 'awaiting_manual_confirmation',
+  })
+}
+
+/**
+ * 別銀行戻し判別ルール（08d §1）の照合。当たらなければ用途不明を返す
+ * （勤務先入金かどうかの判定は呼び出し側が続ける）。
+ *
+ * 勤務先を登録済みの利用者と未登録の利用者で判別の入口が分かれるため、
+ * 両方が同じ実装を通るようにここへ寄せる（片側だけ直る事故を防ぐ）。
+ */
+function otherSavingsReturnOrUnknown(
+  normalizedRemitterName: string,
+  otherSavingsCounterpartyNames: readonly string[],
+): DepositPurpose {
+  return otherSavingsCounterpartyNames.includes(normalizedRemitterName)
+    ? DepositPurposeSchema.parse({ kind: 'other_savings_return' })
+    : awaitingManualConfirmation()
 }
 
 export interface BankDepositPurposeInput {
@@ -70,26 +103,55 @@ export function determineBankDepositPurpose(
 ): DepositPurpose {
   const remitterName = normalizeRemitterName(input.remitterName)
 
-  if (rule.otherSavingsCounterpartyNames.includes(remitterName)) {
-    return DepositPurposeSchema.parse({ kind: 'other_savings_return' })
-  }
+  const otherSavingsOrUnknown = otherSavingsReturnOrUnknown(
+    remitterName,
+    rule.otherSavingsCounterpartyNames,
+  )
+  if (otherSavingsOrUnknown.kind === 'other_savings_return') return otherSavingsOrUnknown
 
   if (!rule.employerRemitterNames.includes(remitterName)) {
-    return DepositPurposeSchema.parse({
-      kind: 'unknown',
-      provisionalHandling: 'awaiting_manual_confirmation',
-    })
+    return otherSavingsOrUnknown
   }
 
   const daySignal = depositDaySignal(input.occurredAt, rule.salaryPayoutDayWindow)
   const amountSignal = depositAmountSignal(input.amount, rule.salaryThresholdAmount)
   if (daySignal !== amountSignal) {
-    return DepositPurposeSchema.parse({
-      kind: 'unknown',
-      provisionalHandling: 'awaiting_manual_confirmation',
-    })
+    return awaitingManualConfirmation()
   }
   return DepositPurposeSchema.parse({ kind: daySignal })
+}
+
+/**
+ * behavior 銀行入金の用途を判別する を、利用者の勤務先振込元名簿を入口にして実行する
+ * （08d §2、#448 / OQ-61）。
+ *
+ * 勤務先振込元名パターンは利用者ごとの名簿（`EmployerRemitterDirectory`）が正で、
+ * 判別ルールはここで組み立てる。呼び出し側（日次メール取込バッチ #414 / #35）に
+ * ルールの組み立てを持たせると、名簿を読まずに固定値で判別する経路が生まれる。
+ *
+ * 事後: 名簿が空（勤務先を一度も登録していない利用者）→ 別銀行戻しだけは判別し、
+ *       それ以外は用途不明（手動確認待ち）。最初の 1 件を確認窓口で確定するときに
+ *       名簿へ登録され、以後の同じ振込元は自動確定に乗る（OQ-61 ①）
+ */
+export function determineBankDepositPurposeForUser(
+  input: BankDepositPurposeInput,
+  directory: EmployerRemitterDirectory,
+  ruleOptions: BankDepositPurposeRuleOptionsInput = {},
+): DepositPurpose {
+  // 名簿の中身に関わらず世帯共通の条件を検証する（名簿が空のあいだだけ不正な条件が
+  // 素通りし、勤務先を 1 件登録した瞬間に落ちる、という挙動の割れを作らない）
+  const options = bankDepositPurposeRuleOptions(ruleOptions)
+  const employerRemitterNames = employerRemitterNamesOf(directory)
+  if (employerRemitterNames.length === 0) {
+    return otherSavingsReturnOrUnknown(
+      normalizeRemitterName(input.remitterName),
+      options.otherSavingsCounterpartyNames,
+    )
+  }
+  return determineBankDepositPurpose(
+    input,
+    BankDepositPurposeRuleSchema.parse({ ...options, employerRemitterNames }),
+  )
 }
 
 /**

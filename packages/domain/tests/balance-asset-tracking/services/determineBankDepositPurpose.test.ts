@@ -1,8 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import {
   determineBankDepositPurpose,
+  determineBankDepositPurposeForUser,
   determineWithdrawalPurpose,
 } from '../../../src/balance-asset-tracking/services/determineBankDepositPurpose'
+import {
+  emptyEmployerRemitterDirectory,
+  registerEmployerRemitterFromDeposit,
+  type EmployerRemitterDirectory,
+} from '../../../src/balance-asset-tracking/aggregates/EmployerRemitterDirectory'
+import {
+  recordBankDeposit,
+  type DeterminedBankDeposit,
+} from '../../../src/balance-asset-tracking/aggregates/BankDeposit'
 import {
   DEFAULT_SALARY_PAYOUT_DAY_WINDOW,
   DEFAULT_SALARY_THRESHOLD_AMOUNT,
@@ -266,5 +276,116 @@ describe('BankDepositPurposeRule のスキーマ制約', () => {
   it('パターンは登録時に正規化される（未正規化の値が入ると恒久的に照合できなくなる）', () => {
     const built = bankDepositPurposeRule({ employerRemitterNames: ['ワリマ−ル  ショウジ'] })
     expect(built.employerRemitterNames).toEqual(['ワリマール ショウジ'])
+  })
+})
+
+describe('determineBankDepositPurposeForUser（勤務先振込元名簿を入口にする、#448 / OQ-61）', () => {
+  const OWNER = 'user_honey' as never
+  const at = new Date('2026-07-21T03:00:00Z')
+
+  /** 名簿に勤務先を 1 件登録した状態を作る */
+  function directoryWithEmployer(): EmployerRemitterDirectory {
+    return registerEmployerRemitterFromDeposit(emptyEmployerRemitterDirectory(OWNER), {
+      deposit: recordBankDeposit({
+        common: {
+          bankDepositId: '01BDP000000000000000000001' as never,
+          accountId: '01ACC000000000000000000001' as never,
+          transactionId: '01TXN000000000000000000001' as never,
+          userId: OWNER,
+          amount: 300_000 as never,
+          occurredAt: at,
+          remitterName: EMPLOYER,
+          determinedAt: at,
+        },
+        purpose: { kind: 'salary' },
+        expenseReimbursementId: '01EXR000000000000000000001' as never,
+      }) as DeterminedBankDeposit,
+      operatorUserId: OWNER,
+      at,
+    })
+  }
+
+  it('登録済みの勤務先からの入金は 2 シグナルで自動確定する', () => {
+    expect(
+      determineBankDepositPurposeForUser(
+        { amount: money(300_000), occurredAt: jstNoon(2026, 7, 31), remitterName: EMPLOYER },
+        directoryWithEmployer(),
+      ),
+    ).toEqual({ kind: 'salary' })
+  })
+
+  it('名簿の表記ゆれを吸収して照合する（登録時と明細の表記が違っても効く）', () => {
+    expect(
+      determineBankDepositPurposeForUser(
+        {
+          amount: money(35_000),
+          occurredAt: jstNoon(2026, 7, 15),
+          remitterName: '振込サービス　カ)ワリマルショウジ',
+        },
+        directoryWithEmployer(),
+      ),
+    ).toEqual({ kind: 'expense_reimbursement' })
+  })
+
+  it('名簿が空なら勤務先からの入金でも用途不明（最初の 1 件は必ず手動確認を通る）', () => {
+    expect(
+      determineBankDepositPurposeForUser(
+        { amount: money(300_000), occurredAt: jstNoon(2026, 7, 31), remitterName: EMPLOYER },
+        emptyEmployerRemitterDirectory(OWNER),
+      ),
+    ).toEqual({ kind: 'unknown', provisionalHandling: 'awaiting_manual_confirmation' })
+  })
+
+  it('勤務先を登録済みでも別銀行貯蓄口座からの戻しは戻しとして判別する', () => {
+    expect(
+      determineBankDepositPurposeForUser(
+        { amount: money(100_000), occurredAt: jstNoon(2026, 7, 31), remitterName: SAVINGS_BANK },
+        directoryWithEmployer(),
+        { otherSavingsCounterpartyNames: [SAVINGS_BANK] },
+      ),
+    ).toEqual({ kind: 'other_savings_return' })
+  })
+
+  it.each([
+    ['給与判別閾値金額が 0 円', { salaryThresholdAmount: money(0) }],
+    ['月内基準日が 0 日', { salaryPayoutDayWindow: 0 }],
+  ])('名簿が空でも %s のような不正な判別条件は受け付けない', (_label, ruleOptions) => {
+    // 名簿の中身次第で通ったり落ちたりすると、勤務先を 1 件登録した瞬間に初めて壊れる
+    expect(() =>
+      determineBankDepositPurposeForUser(
+        { amount: money(300_000), occurredAt: jstNoon(2026, 7, 31), remitterName: EMPLOYER },
+        emptyEmployerRemitterDirectory(OWNER),
+        ruleOptions,
+      ),
+    ).toThrow()
+  })
+
+  it('名簿が空でも別銀行貯蓄口座からの戻しは判別できる（勤務先名に依存しないため）', () => {
+    expect(
+      determineBankDepositPurposeForUser(
+        { amount: money(100_000), occurredAt: jstNoon(2026, 7, 31), remitterName: SAVINGS_BANK },
+        emptyEmployerRemitterDirectory(OWNER),
+        { otherSavingsCounterpartyNames: [SAVINGS_BANK] },
+      ),
+    ).toEqual({ kind: 'other_savings_return' })
+  })
+
+  it('名簿に載っていない振込元は用途不明のまま（他人の勤務先を勝手に判別しない）', () => {
+    expect(
+      determineBankDepositPurposeForUser(
+        { amount: money(300_000), occurredAt: jstNoon(2026, 7, 31), remitterName: 'ﾄﾞｺｶﾉｶｲｼｬ' },
+        directoryWithEmployer(),
+      ),
+    ).toEqual({ kind: 'unknown', provisionalHandling: 'awaiting_manual_confirmation' })
+  })
+
+  it('世帯共通の判別条件（基準日・閾値）は呼び出し側の指定が効く', () => {
+    expect(
+      determineBankDepositPurposeForUser(
+        { amount: money(120_000), occurredAt: jstNoon(2026, 7, 15), remitterName: EMPLOYER },
+        directoryWithEmployer(),
+        { salaryPayoutDayWindow: 10, salaryThresholdAmount: money(100_000) },
+      ),
+    ).toEqual({ kind: 'salary' })
   })
 })

@@ -114,6 +114,28 @@ describe('accounts / mitsui_sumitomo_unpaids の制約', () => {
   })
 })
 
+describe('employer_remitter_names の制約（勤務先振込元名簿、#448）', () => {
+  function insertName(userId: string, normalizedName: string): Promise<unknown> {
+    return db.execute(
+      sql`INSERT INTO employer_remitter_names
+            (user_id, normalized_name, display_name, registered_at, source_transaction_id)
+          VALUES (${userId}, ${normalizedName}, ${'振込サービス ｶ)ﾜﾘﾏﾙｼｮｳｼﾞ'},
+                  ${'2026-07-21T03:00:00.000Z'}, ${newUlid()})`,
+    )
+  }
+
+  it('PK (user_id, normalized_name) の重複を拒否する（23505）', async () => {
+    // 重複すると同じ勤務先が二重に載り、判別ルールが重複した名前で組み立てられる
+    await insertName('U-x', '振込サービス カ)ワリマルショウジ')
+    expect(await pgErrorCode(insertName('U-x', '振込サービス カ)ワリマルショウジ'))).toBe('23505')
+  })
+
+  it('利用者が違えば同じ勤務先を登録できる（名簿は利用者ごと・OQ-61 ②）', async () => {
+    await insertName('U-x', '振込サービス カ)ワリマルショウジ')
+    expect(await pgErrorCode(insertName('U-y', '振込サービス カ)ワリマルショウジ'))).toBeUndefined()
+  })
+})
+
 describe('インデックス', () => {
   it('partial index idx_transactions_unclassified が存在する', async () => {
     // Db は ドライバ横断型のため execute の戻りは unknown 相当 — pg の QueryResult へ絞る
