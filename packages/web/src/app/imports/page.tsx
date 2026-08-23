@@ -30,6 +30,7 @@ import { ImportJobCard } from '@/components/imports/ImportJobCard'
 import { StatementGuide } from '@/components/imports/StatementGuide'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
+import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/SegmentedControl'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -37,6 +38,15 @@ const FILE_KIND_LABELS: Record<StatementFileKind, string> = {
   card_statement: 'カード利用明細',
   bank_statement: '銀行入出金明細',
 }
+
+/*
+ * 取得手順ガイドの並びと、種別の切り替えの選択肢の並び。
+ *
+ * spec §10.1 ③「アップロード対象カード（2 種）」。種別の列挙はドメインを単一ソースにし、
+ * 画面側で 2 度書かない(2 か所に散ると、片方だけ増減したときに並びがずれる)
+ */
+const FILE_KIND_OPTIONS: readonly SegmentedControlOption<StatementFileKind>[] =
+  StatementFileKindSchema.options.map(kind => ({ value: kind, label: FILE_KIND_LABELS[kind] }))
 
 interface CandidatesPanelProps {
   importJobId: string
@@ -332,8 +342,7 @@ function ImportsPageContent() {
           ))}
       </section>
 
-      {/* spec §10.1 ③「アップロード対象カード（2 種）」。ファイル種別の列挙はドメインを単一ソースにする */}
-      {StatementFileKindSchema.options.map(kind => (
+      {FILE_KIND_OPTIONS.map(({ value: kind }) => (
         <StatementGuide key={kind} fileKind={kind} month={month} />
       ))}
 
@@ -341,23 +350,12 @@ function ImportsPageContent() {
         <h2 id="import-upload-title" className={ui.sectionTitle}>
           明細ファイルのアップロード
         </h2>
-        <div className={ui.field}>
-          <label className={ui.fieldLabel} htmlFor="import-file-kind">
-            ファイル種別
-          </label>
-          <select
-            id="import-file-kind"
-            className={ui.select}
-            value={fileKind}
-            onChange={e => setFileKind(e.target.value as StatementFileKind)}
-          >
-            {Object.entries(FILE_KIND_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SegmentedControl
+          label="ファイル種別"
+          options={FILE_KIND_OPTIONS}
+          value={fileKind}
+          onChange={setFileKind}
+        />
         <input
           ref={fileInputRef}
           type="file"

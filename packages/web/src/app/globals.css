@@ -104,6 +104,15 @@ textarea {
   --deco-opacity: 0.2;
   --deco-highlight: rgba(255, 255, 255, 0.3);
 
+  /*
+   * 切り替え（SegmentedControl）の帯。選択中の白い面を浮かせる受け皿。
+   *
+   * 白の半透明ではカード（白 70%）の上で沈まないため、テーマ色を薄く敷く。
+   * ホバーは白を重ねて、選択中の白い面へ近づく途中の見え方にする。
+   */
+  --surface-track: rgba(255, 112, 149, 0.12);
+  --surface-track-hover: rgba(255, 255, 255, 0.55);
+
   /* Shadow composites */
   --shadow-sm: 0 2px 6px var(--shadow-color);
   --shadow-md: 0 2px 8px var(--shadow-color);
@@ -129,6 +138,7 @@ textarea {
   --shadow-color: #5090d820;
   --shadow-strong: #5090d850;
   --deco-opacity: 0.1;
+  --surface-track: rgba(80, 144, 216, 0.12);
 
   --cat-housing: #1a4080;
   --cat-food: #3878c8;
