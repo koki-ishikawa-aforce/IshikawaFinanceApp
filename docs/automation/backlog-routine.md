@@ -1,6 +1,6 @@
 # バックログ自動消化 Routine
 
-`ready-to-implement` ラベル付きの Issue を、Claude Code の Routine(定期実行・fire ごとに fresh session)で1件ずつ無人実装し、PR 作成まで進める仕組み。実装手順の本体は `.claude/skills/issue-work/SKILL.md` の「無人モード」節にあり、このドキュメントはその運用(ラベル・Routine 設定・スロットル)を定める。
+`ready-to-implement` ラベル付きの Issue を、Claude Code の Routine(定期実行・fire ごとに fresh session)で1件ずつ無人実装し、**マージまで**進める仕組み。実装手順の本体は `.claude/skills/issue-work/SKILL.md` の「無人モード」節にあり、このドキュメントはその運用(ラベル・Routine 設定・スロットル)を定める。
 
 ## 全体像
 
@@ -8,9 +8,11 @@
 人間: Issue に ready-to-implement を付与(着手承認。依存が open でも付与可)
   ↓
 Routine(毎時 fire・fresh session): 無人モードで /issue-work
+  ├─ preflight: main の最新 CI が赤 → 何もせず終了(赤い main の上に PR を積み増さない)
   ├─ preflight: ゴミロックを機械的に回収(open PR なし + 2時間以上経過の両方をコマンドで確定)
   │            + Routine 起点 open PR のコンフリクトを先に解消(main をマージ → /verify → push)
-  ├─ WIP 上限超過 or 候補なし → 何もせず終了(コンフリクト修復は WIP 超過でも先に実施)
+  │            + 回収マージ: 前の fire が残した PR をマージゲートで判定してマージ
+  ├─ WIP 上限超過 or 候補なし → 何もせず終了(コンフリクト修復と回収マージは WIP 超過でも先に実施)
   └─ 候補ループ(最大5件): 先頭から順に試行
       ├─ CAS ロック失敗(並行 fire が先行) → 次候補へ
       ├─ 重複 open PR 検知(並行 fire が実装中) → ロック解除 → 次候補へ
@@ -18,20 +20,22 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
       ├─ 判断が必要 → needs-decision を付けて撤退 → 次候補へ
       └─ 着手成功 → 実装 → /verify(統合テスト含む) → /ddd-review
           → push 前に重複 PR を再チェック(最終防衛線)
-          → PR + マージ判断 Issue(needs-decision → メール通知) → PR の CI が green になるまで確認
+          → PR 作成 → CI green を確認 → マージゲートで判定 → マージ → main の CI green を確認
   ↓
-人間: needs-decision の一覧から判断し、PR をレビューしてマージ(これが実質のスロットル。/decide で対話消化できる)
+人間: 事後にマージ結果を確認する(PR 作成時の assign でメールが届く)。
+      ゲートに落ちた PR だけが needs-decision で判断待ちに上がる(/decide で対話消化できる)
 ```
 
 設計原則:
 
-- **人間の判断タスクは needs-decision Issue に集約する** — 撤退時の確認・レビュー見送りの追認・マージ判断のすべてを `needs-decision` ラベル付き Issue にする。判断待ちの全量は [`is:issue is:open label:needs-decision`](https://github.com/koki-ishikawa-aforce/IshikawaFinanceApp/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision) で一覧でき、ラベル付与をトリガーに通知ワークフローがメールを発生させる(後述の「通知」節)。判断依頼の書き方は issue-work スキルのテンプレート(`.claude/skills/issue-work/templates/`)と執筆ルールに従う。消化する側の手順は `/decide` スキル(`.claude/skills/decide/SKILL.md`)に定める
+- **人間の判断タスクは needs-decision に集約する** — 撤退時の確認・レビュー見送りの追認・マージゲートで止まった PR のすべてを `needs-decision` ラベル(Issue または PR)に集約する。判断待ちの全量は [`is:issue is:open label:needs-decision`](https://github.com/koki-ishikawa-aforce/IshikawaFinanceApp/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision) で一覧でき、ラベル付与をトリガーに通知ワークフローがメールを発生させる(後述の「通知」節)。判断依頼の書き方は issue-work スキルのテンプレート(`.claude/skills/issue-work/templates/`)と執筆ルールに従う。消化する側の手順は `/decide` スキル(`.claude/skills/decide/SKILL.md`)に定める
 
 - **1 fire = 最大1 PR = 1 fresh session** — セッションの長時間化によるコンテキスト劣化を避ける。複数件の消化は fire の回数で稼ぐ(毎時 fire なら1日最大〜24件)。ただし撤退・スキップが発生した場合は候補ループで次の Issue へ進み、1件 PR 作成に到達するまで試行する(最大5候補)
-- **人間の承認は「着手前のラベル付け」に前倒し** — `ready-to-implement` を付ける行為が着手承認。無人モードは承認済みの Issue にしか触れない
-- **「完了」は PR の CI が green であること** — 1 fire は PR 作成では終わらない。作成した PR の CI(統合テストを含む)が green になるのを同一 fire 内で確認して初めて完了とする。`pnpm test` は adapters-postgres の統合テストを含まないため「ローカル `/verify` 全 green」＝「CI green」ではない。CI が赤なら同一 fire 内で修正 → 再 push し、直せなければ(同一エラーで3回失敗)マージ判断 Issue に状況を記録して撤退する(赤い PR を「完了」として放置しない)。詳細は `.claude/skills/issue-work/SKILL.md` 無人モード手順7
-- **PR 作成で止める(自動マージはしない)** — PR は通常(non-Draft)で作成するが、マージ判断は必ず人間が行う(`/decide` セッション内の明示承認を含む)。Routine 自身による自動マージはしない
-- **ready 化と実装は分離する** — 無人消化 Routine 自身は `/backlog-ready` を実行しない(候補が尽きても自分でラベルを付けて補充しない)。ready 化は人間が起点のセッション(`/issue-create` の手順4、または `/backlog-ready` の明示的な実行)でのみ行う。これを崩すと承認ゲートが消える。**例外: `/docs-drift`** — 無人・週次 Routine の `/docs-drift` は、docs とコードのどちらが正かが自明で修正が機械的な乖離に限り、起票した Issue へ自分で `ready-to-implement` を付ける(出典: `.claude/skills/docs-drift/SKILL.md` 手順5-3)。無人 Routine の起票 → 別 fire の `/issue-work` による実装まで人間が介在しないパスになるが、判断が必要な乖離には `needs-decision` を付けて承認ゲートに乗せるため、この例外に乗るのは自明・機械的な修正だけに限られる。かつマージ判断のゲート(`needs-decision` の追認)は残るため実害は小さい
+- **人間の承認は「着手前のラベル付け」1点に集約する** — `ready-to-implement` を付ける行為が着手承認であり、**無人運用における唯一の人間ゲート**。無人モードは承認済みの Issue にしか触れない。承認済みのものをマージまで進める判断は、機械的なマージゲートに委ねる
+- **「完了」は PR がマージされ `main` の CI が green であること** — 1 fire は PR 作成では終わらない。作成した PR の CI(統合テストを含む)が green になるのを同一 fire 内で確認し、マージゲートを満たしてマージし、`main` の CI も green になって初めて完了とする。`pnpm test` は adapters-postgres の統合テストを含まないため「ローカル `/verify` 全 green」＝「CI green」ではない。CI が赤なら同一 fire 内で修正 → 再 push し、直せなければ(同一エラーで3回失敗)元 Issue に状況を記録して `needs-decision` を付けて撤退する(赤い PR を「完了」として放置しない)。詳細は `.claude/skills/issue-work/SKILL.md` 無人モード手順7
+- **マージまで進める(マージゲートで機械判定)** — PR は通常(non-Draft)で作成し、CI green・コンフリクトなし・`needs-decision` なしなどの条件をすべてコマンド出力で確定させたときだけマージする。ゲートの定義は `.claude/skills/issue-work/SKILL.md`「マージゲート」の**1箇所のみ**で、`/pr-steward` はマージしない(判定を二重に持たない)。個別 PR のマージを止めたいときは、その PR に `needs-decision` を付ける
+- **連続マージは `main` に追従してから** — 同一 fire で2件目以降をマージするときは、`main` を取り込んで CI を再度 green にしてからマージする。別々のファイルを触っていても意味の上で衝突する変更(semantic conflict)を、マージ前に検出するため。マージ後に `main` が赤くなったら、その fire では以降のマージを行わない(巻き添えを止める)
+- **ready 化と実装は分離する** — 無人消化 Routine 自身は `/backlog-ready` を実行しない(候補が尽きても自分でラベルを付けて補充しない)。ready 化は人間が起点のセッション(`/issue-create` の手順4、または `/backlog-ready` の明示的な実行)でのみ行う。これを崩すと承認ゲートが消える。**例外: `/docs-drift`** — 無人・週次 Routine の `/docs-drift` は、docs とコードのどちらが正かが自明で修正が機械的な乖離に限り、起票した Issue へ自分で `ready-to-implement` を付ける(出典: `.claude/skills/docs-drift/SKILL.md` 手順5-3)。自動マージへの移行後、この例外は**起票から `main` への反映まで人間が一度も介在しない唯一の経路**になる。判断が必要な乖離には `needs-decision` を付けて承認ゲートに乗せるため、この経路に乗るのは自明・機械的な修正だけに限られるが、承認ゲートの外にあることは意識しておく
 
 ## ラベル運用
 
@@ -39,7 +43,7 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 | --- | --- | --- |
 | `ready-to-implement` | 人間 / `/backlog-ready` | 無人実装してよい(承認)。依存する先行 Issue が open でも付与でき、その間の着手は Routine の依存チェックが自動で遅延する |
 | `status:in-progress` | 無人モード | 着手中(fire 間の排他ロック)。対話モードの着手宣言と共通 |
-| `needs-decision` | 無人モード | 人間の判断待ち(撤退時の確認・見送り追認・マージ判断)。付与をトリガーに通知ワークフローがメール通知を発生させる。元 Issue に付いた場合は、人間が回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外。消化は `/decide` で行える |
+| `needs-decision` | 無人モード / 人間 | 人間の判断待ち(撤退時の確認・見送り追認)。付与をトリガーに通知ワークフローがメール通知を発生させる。元 Issue に付いた場合は、人間が回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外。**PR に付けるとマージゲートが止まる**(個別 PR の自動マージ停止スイッチ)。消化は `/decide` で行える |
 
 旧 `needs-clarification` ラベルは `needs-decision` に統合した。残存する旧ラベル付き Issue は `/decide` 手順1の取り込みスイープが自動で `needs-decision` へ付け替える(`.claude/skills/decide/SKILL.md` 手順1a)。
 
@@ -59,42 +63,54 @@ gh label create "needs-decision" --color D93F0B --description "人間の判断�
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する(Routine はクラウド側で動くため、手元のセッションや PC の状態に依存しない)。
 
 - **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。ネットワークポリシーは pnpm install と GitHub 操作が通る設定にする。`gh` CLI が無い環境でも動くよう、スキル側は GitHub MCP ツールへのフォールバックを定めている(issue-work スキルの「実行環境の注意」)
-- **Trigger**: Schedule、毎時(消化ペースを落としたい場合は間隔を広げる)。現在は同一プロンプトの Routine を3本登録しており、cron は UTC で `1 * * * *` / `18 * * * *` / `42 * * * *`(実効ペースは約20分に1 fire)。複数本を登録する場合は fire 時刻を均等に散らす — 数分差で走らせても CAS ロックが二重着手を弾くだけで、候補ループの空振りとコンフリクト修復の競合(`/pr-steward` 手順2c)が増える
+- **Trigger**: Schedule、毎時。cron は UTC で `1 * * * *`(1本のみ登録。実効ペースは毎時1 fire)。消化ペースを上げたい場合は cron を散らした Routine を追加登録する — 数分差で走らせても CAS ロックが二重着手を弾くだけだが、候補ループの空振りとコンフリクト修復の競合(`/pr-steward` 手順2c)が増えるため、fire 時刻は均等に散らす
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):
 
   ```
   無人モードで /issue-work を実行してください。
 
-  - ready-to-implement ラベル付きの open Issue から1件だけ選んで実装し、通常 PR（Draft にはしない）の作成、および作成した PR の CI が green になることの確認まで行ってください
-  - WIP 上限・排他ロック・曖昧なときの撤退・PR 作成・CI green の確認は .claude/skills/issue-work/SKILL.md の「無人モード」節に従ってください。PR は必ず通常 PR として作成し、Draft にはしないこと（このリポジトリの CI は draft PR では発火せず、CI green を確認できなくなるため）
-  - 人間の判断が必要になった場合(撤退・見送り追認・マージ判断)は、SKILL.md の指示どおり needs-decision ラベル付きの Issue に集約し、テンプレートと執筆ルールに従って書いてください
-  - 着手できる Issue がない場合(WIP 上限超過・候補なし)は、リポジトリに一切変更を加えず理由だけ報告して終了してください
+  - 手順は .claude/skills/issue-work/SKILL.md の「無人モード」節に従ってください(WIP 上限・排他ロック・撤退・回収マージ・PR 作成・CI green の確認・マージゲート・マージまで、すべてそこが正です)
   - 最終的な報告は日本語を使ってください。
   ```
 
-  プロンプトを変更した場合は、claude.ai 側の Routine に貼り直すまで反映されない(Routine のプロンプトはリポジトリからは変更できない)。
+### プロンプトは薄く保つ
 
-## 通知(判断待ちをメールで受け取る)
+上のプロンプトは意図的に短い。**手順は一切書かず、「どのスキルを・どのモードで・何語で報告するか」だけを指定する。** 手順の正はすべて `.claude/skills/` 配下の SKILL.md にあり、そこを直せば次の fire から反映される。
+
+理由は Routine の更新経路が限られているため:
+
+| やりたいこと | Claude(MCP `*_trigger` ツール)から | claude.ai の Routines 画面から |
+| --- | --- | --- |
+| 一覧・cron・プロンプト・モデルの**確認** | できる(`list_triggers`) | できる |
+| 画面で作った Routine の**更新・停止** | **できない** — エージェントが更新できるのは自分が `create_trigger` で作った Routine だけ(`created_via` による制約) | できる |
+| Routine の**新規作成** | 呼び出しは通るが、**リポジトリ(`sources`)も MCP コネクタも引き継がれない**ため fire が空振りする。`connectors` パラメータは組織設定で無効 | できる |
+
+つまり**この構成では Routine の作成・更新は画面からしか行えない**。プロンプトに手順を書き込むと、手順を変えるたびに画面での貼り直しが必要になり、「skills は直したのに Routine は古いまま」という乖離が生まれる(2026-08-23 の自動マージ移行で実際に発生した)。プロンプトを薄く保てば、貼り直しが必要になるのは**スキル名・モード・報告言語を変えるときだけ**になる。
+
+## 通知(判断待ちと自動マージをメールで受け取る)
 
 GitHub は**自分自身の操作を通知しない**。Routine はあなたのアカウントで Issue・PR を操作するため、Routine が作った PR や判断依頼は、Watch 設定をどう変えてもそのままではメールが届かない。そこで `.github/workflows/notify-needs-decision.yml` が github-actions bot(= 別のアクター)として以下を行い、Participating 通知(メール)を発生させる:
 
 | イベント | bot の動作 | メール通知 |
 | --- | --- | --- |
 | Issue に `needs-decision` が付いた | あなたを assignee に追加 + @メンションコメント(種別ごとの「あなたがすること」1行) | **あり**(人間の判断が必要) |
-| PR が作成された(Draft・通常を問わない) | あなたを assignee に追加 | **あり**(マージ判断 Issue が作られなかった場合の保険も兼ねる) |
-| PR がマージ/クローズされた | 対応するマージ判断 Issue(本文の `<!-- merge-judgment-pr: N -->` マーカーで特定)の assignee を外してクローズ(コメントなし) | **なし**(自動処理。クローズ理由と Issue タイムラインで追跡可能) |
+| PR が作成された(Draft・通常を問わない) | あなたを assignee に追加 | **あり**(自動マージされる PR を事後に把握する主要な導線) |
+| PR がマージ/クローズされた | 対応するマージ判断 Issue(本文の `<!-- merge-judgment-pr: N -->` マーカーで特定)の assignee を外してクローズ(コメントなし) | **なし**(自動処理。移行前に起票済みの Issue が対象) |
 | PR が**マージされずに**クローズされた | その PR が `Closes #N` で紐づけていた open Issue の `status:in-progress` を解除(コメントなし) | **なし**(自動処理。ラベル遷移は Issue タイムラインで追跡可能) |
+| `main` の CI が失敗した | `needs-decision` 付きの Issue を作成 + assign + @メンション(`ci.yml` の `notify-main-failure`) | **あり**(自動マージ後に `main` が壊れたことに気づくための最後の砦) |
+
+自動マージへ移行したことで、**PR 作成時の assign が「この変更が main に入る」ことを知る主要な通知**になった。マージ自体は自分のアカウントの操作として扱われるため通知は発生しない。
 
 通知の出し分けの原則(#290): **人間が操作するものだけ通知する**。bot が自動で片付けた結果(マージ判断 Issue の自動クローズ、着手中ロックの自動解除)はメール通知を発生させない。一度 assignee になるとそのスレッドのすべてのコメントが Participating 通知(メール)になるため、通知不要のアクションではコメントを投稿しないか、先に assignee を外す。
 
 前提条件: GitHub の [Settings → Notifications](https://github.com/settings/notifications) で「Participating, @mentions and custom」の Email が有効になっていること(既定で有効)。メールが届かない場合はまずここを確認する。
 
-ワークフロー発火の取りこぼし対策: PR のマージ/クローズ時に `close-merge-judgment` が発火しなかった場合(GitHub Actions の一時的な障害など)、マージ判断 Issue が open のまま取り残される。`/pr-steward` の手順 3-2(孤児マージ判断 Issue の回収)が定期巡回で回収するため、手動でのクローズは通常不要。
+ワークフロー発火の取りこぼし対策: PR のマージ/クローズ時に `close-merge-judgment` が発火しなかった場合(GitHub Actions の一時的な障害など)、マージ判断 Issue が open のまま取り残される。`/pr-steward` の手順 3-2(孤児マージ判断 Issue の回収)が定期巡回で回収するため、手動でのクローズは通常不要。マージ判断 Issue は自動マージへの移行で新規には起票されないため、この経路は過去分の後始末専用。
 
 ### 件名・文面の種別目印
 
-判断待ち Issue はタイトル**先頭**に種別の目印(`[マージ判断]` / `[判断待ち]` / `[乖離報告]` / `[改善案]`)を付ける規約になっている。これにより **メールの件名だけで種別が分かり**、`needs-decision` 付与時の @メンションコメントも目印から判別して「あなたがすること」の1行を出し分ける(目印が無い場合は共通文にフォールバック)。目印の一覧と用途・起票元スキルの対応は `.claude/skills/issue-work/templates/judgment-issue.md`「タイトルの種別目印」を正とする。
+判断待ち Issue はタイトル**先頭**に種別の目印(`[判断待ち]` / `[乖離報告]` / `[改善案]`)を付ける規約になっている。これにより **メールの件名だけで種別が分かり**、`needs-decision` 付与時の @メンションコメントも目印から判別して「あなたがすること」の1行を出し分ける(目印が無い場合は共通文にフォールバック)。目印の一覧と用途・起票元スキルの対応は `.claude/skills/issue-work/templates/judgment-issue.md`「タイトルの種別目印」を正とする。
 
 ## ゴミロックの自動回収
 
@@ -114,10 +130,20 @@ GitHub は**自分自身の操作を通知しない**。Routine はあなたの�
 
 これを防ぐため、毎時確実に動くバックログ Routine の preflight に「コンフリクトの先解消」を組み込む(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。各 fire は候補選定の前に、Routine 起点の open PR の mergeable 状態を機械的に確認し、コンフリクトがあれば `main` をマージ → `/verify` → push で先に解消してから新規着手へ進む。これにより:
 
-- コンフリクトの放置時間の上限が、最長でも fire 間隔（Routine の登録数とスケジュールに依存）に収まる
+- コンフリクトの放置時間の上限が、最長でも fire 間隔(現在は1時間)に収まる
 - 「壊れた PR を放置したまま新しい PR を積み増して衝突を広げる」事態を避けられる(WIP 上限超過で新規着手をスキップする fire でも、コンフリクト修復だけは先に実施する)
 
-mergeable は GitHub が照会して初めて計算するため直後は `unknown`(計算中)が返りうる。preflight・`/pr-steward` とも `unknown` の PR は数秒待って再照会し、確定しないものはコンフリクト判定を保留して報告に残す(誤って「問題なし」と扱わない)。解消時のコンフリクトにドメインロジックの競合など判断が必要なものが含まれる場合は、解消せず `needs-decision` で人間に委ねる。**マージ自体は preflight・`/pr-steward` とも行わない**(マージ判断は人間の原則を維持)。
+mergeable は GitHub が照会して初めて計算するため直後は `unknown`(計算中)が返りうる。preflight・`/pr-steward` とも `unknown` の PR は数秒待って再照会し、確定しないものはコンフリクト判定を保留して報告に残す(誤って「問題なし」と扱わない)。解消時のコンフリクトにドメインロジックの競合など判断が必要なものが含まれる場合は、解消せず `needs-decision` で人間に委ねる。**マージは `/pr-steward` では行わない**(マージゲートの定義を1箇所に保つため。解消して green になった PR は preflight の回収マージが拾う)。
+
+## 回収マージ(preflight)
+
+自分が作った PR は同一 fire 内でマージするが、次のケースでは PR が open のまま残る:
+
+- fire のセッション寿命が尽きて CI を待ち切れなかった
+- `/pr-steward` が後から CI 失敗を修復して green にした
+- `/pr-steward` がスクリーンショット残骸の削除 PR を作った
+
+これらを拾うため、コンフリクト先解消に続けて、Routine 起点の open PR を**マージゲート**で判定してマージする(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。WIP 上限チェックより前に置いてあるので、マージで枠が空けばその fire でそのまま新規着手へ進める。ゲートに落ちた PR は open のまま残り、落ちた条件が fire の報告に載る。
 
 ## 統合テストの実行(無人環境)
 
@@ -132,16 +158,18 @@ CI は `.github/workflows/ci.yml` の専用ステップで adapters-postgres の
 | --- | --- | --- |
 | WIP 上限(Routine 起点の open PR 数) | 5 | SKILL.md 無人モード 手順0 |
 | 候補ループ上限(1 fire あたりの最大試行数) | 5 | SKILL.md 無人モード 手順0 |
-| 消化ペース | 1 fire あたり最大1件 | Routine の登録数とスケジュールで実効ペースが決まる |
+| 消化ペース | 1 fire あたり最大1件・毎時1 fire | Routine の cron(現在は `1 * * * *` が1本)。上げるなら cron を散らした Routine を追加登録する |
 | ゴミロック回収の経過時間しきい値 | 約2時間 | SKILL.md 無人モード preflight(fire のセッション寿命より十分長く保つ) |
 
-WIP 上限はレビューが追いつく範囲に保つ。カウント対象は Routine 起点の open PR のみ(判別基準は `/pr-steward` 手順1と同一)。人間の手動 PR や `/decide` の docs PR はカウントしないため、長寿命の手動 Draft PR があっても無人消化の枠を消費しない。未マージの PR はすべて main 起点のため、溜まるほどマージのたびに他 PR がコンフリクトしやすくなる。
+自動マージへの移行後、通常は PR が同一 fire でマージされるため WIP 上限に達することは少ない。上限が効くのは「ゲートに落ちた PR・CI が赤い PR が溜まった状態」であり、**壊れた PR を放置したまま新しい PR を積み増さないためのブレーキ**として残している。カウント対象は Routine 起点の open PR のみ(判別基準は `.claude/skills/issue-work/SKILL.md`「マージゲート」条件1と同一)。人間の手動 PR や `/decide` の docs PR はカウントしないため、長寿命の手動 Draft PR があっても無人消化の枠を消費しない。未マージの PR はすべて main 起点のため、溜まるほどマージのたびに他 PR がコンフリクトしやすくなる。
 
 ## 止め方・トラブル時
 
 - **一時停止**: Routine を無効化する(claude.ai の Routines 画面)。実行中の fire には影響しない
+- **特定の PR だけ自動マージを止めたい**: その PR に `needs-decision` を付ける。マージゲートが止まり、`/decide` のアジェンダに載る。ラベルを外せば次の fire の回収マージが再開する
+- **自動マージで `main` が壊れた**: `ci.yml` の `notify-main-failure` が `needs-decision` 付きの Issue を立てる。無人モードは preflight で `main` の最新 CI を確認し、赤ければその fire は何もせず終了する(赤い `main` の上に PR を積み増さない)。したがってバックログは `main` の赤を直すまで止まる。修正は人間が PR を出すか、`/decide` で対応方針を決めて `ready-to-implement` の Issue にする
 - **着手したまま放置された Issue**(fire が異常終了した場合など): 下記「ゴミロックの自動回収」で自動的に解除されるため、通常は手動対応不要。急ぐ場合や自動回収の条件(ロックが2時間以上前)に満たない場合は、`status:in-progress` が付いているのに対応ブランチ/PR がないことを確認して手動でラベルを外せば、次の fire が再度拾う
 - **同じ Issue で撤退が繰り返される**: `needs-decision` の判断依頼コメントに回答し、`needs-decision` を外して `ready-to-implement` を付け直す。受け入れ条件そのものを `/issue-create` の基準(検証可能なチェックボックス)で書き直すのが根本対応
 - **却下した Issue が再実装され続ける**: PR をマージせずクローズすると `unlock-in-progress-on-pr-close` が元 Issue の `status:in-progress` を外し、`ready-to-implement` が残っていれば次の fire がその Issue を再実装して PR を作り直す。却下時は `/decide` 手順3c の「不採用」プレイブックに従い、元 Issue の後始末(実装をやめるなら `ready-to-implement` を外す/別アプローチでやり直すなら受け入れ条件を直して ready を維持)まで必ず行う
 - **同じ Issue に複数の PR が作られた**: 重複 PR ガード(CAS ロック + push 前の重複チェック)で防止されるが、万一発生した場合は PR 執事(`/pr-steward`)が検知して `needs-decision` で通知する。残す PR を判断してクローズする
-- **PR をマージしたのにマージ判断 Issue が残っている**: 通知ワークフローの自動クローズはマーカー `<!-- merge-judgment-pr: N -->` で対応 PR を特定する。マーカーが本文にない場合は手動でクローズする
+- **PR をマージしたのにマージ判断 Issue が残っている**(移行前に起票された分): 通知ワークフローの自動クローズはマーカー `<!-- merge-judgment-pr: N -->` で対応 PR を特定する。マーカーが本文にない場合は手動でクローズする

@@ -28,6 +28,7 @@ import {
   InactivationReasonSchema,
   InitialBalanceCorrectedSchema,
   InitialBalanceRegisteredSchema,
+  ManualEntryMemoSchema,
   MitsuiSumitomoUnpaidIdSchema,
   MoneySchema,
   NotFoundError,
@@ -37,6 +38,7 @@ import {
   asOtherSavingsAccount,
   changeBankName,
   changeBrokerageName,
+  ConcurrentUpdateError,
   correctInitialBalance,
   correctOtherSavingsBalance,
   inactivateAccount,
@@ -83,8 +85,12 @@ const RegisterBodySchema = z.discriminatedUnion('kind', [
 ])
 const BankNameBodySchema = z.object({ bankName: BankNameSchema })
 const BrokerageNameBodySchema = z.object({ brokerageName: BrokerageNameSchema })
-const AmountBodySchema = z.object({ amount: MoneySchema })
-const BalanceBodySchema = z.object({ balance: MoneySchema })
+// メモの長さ制約はドメイン側の単一ソース（口座 payload の操作記録に恒久的に載る）
+const AmountBodySchema = z.object({ amount: MoneySchema, memo: ManualEntryMemoSchema.optional() })
+const BalanceBodySchema = z.object({
+  balance: MoneySchema,
+  memo: ManualEntryMemoSchema.optional(),
+})
 const InitialBalanceBodySchema = z.object({ initialBalance: MoneySchema })
 // 理由の長さ制約はドメイン側の単一ソース（口座 payload・イベント payload に恒久的に載る）
 const InactivateBodySchema = z.object({ reason: InactivationReasonSchema })
@@ -361,6 +367,17 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
     try {
       await deps.accountRepository.save(account)
     } catch (e) {
+      // 版数照合の失敗（#459）は「読み出し後に別の更新が入った」一時的な競合で、
+      // やり直せば通る。サーバ側の障害ではないため error では残さない（409 を返す通常の
+      // フローで、error ログはアラートの誤発火につながる）。ただし版数の写し間違い等で
+      // CAS が恒常的に失敗する回帰が入っても 409 だけでは無言になるため、warn で
+      // 発生の痕跡だけ残す（金額・PII は載せない。accountId と操作のみ）。
+      if (e instanceof ConcurrentUpdateError) {
+        console.warn(
+          `口座の保存が並行更新で見送られた（操作: ${operation}, accountId=${account.common.accountId}）。利用者は再実行で回復する`,
+        )
+        throw e
+      }
       console.error(
         `口座の保存に失敗した（操作: ${operation}, accountId=${account.common.accountId}）`,
         e,
@@ -407,6 +424,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
       amount: body.amount,
       operatorUserId: viewerId,
       at: now,
+      ...(body.memo !== undefined ? { memo: body.memo } : {}),
     })
     await saveAccountOr500(updated, 'withdraw')
     await publishOtherSavingsUpdated({
@@ -429,6 +447,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
       correctedBalance: body.balance,
       operatorUserId: viewerId,
       at: now,
+      ...(body.memo !== undefined ? { memo: body.memo } : {}),
     })
     await saveAccountOr500(updated, 'manual_correction')
     await publishOtherSavingsUpdated({

@@ -4,6 +4,7 @@
  */
 import {
   concludesDelivery,
+  ConcurrentUpdateError,
   deliveryLogOccurredAt,
   InvariantViolationError,
   NOT_JOINED_SHARED_TALK_ROOM,
@@ -484,30 +485,49 @@ export function createMockExpenseReimbursementDepositRepository(): ExpenseReimbu
 }
 
 export function createMockAccountRepository(): AccountRepository {
-  const store = new Map<string, Account>()
+  // 版数（#459）は列で持つ PostgreSQL 実装に合わせ、payload とは別に保持して読み出し時に写す。
+  const store = new Map<string, { account: Account; version: number }>()
+  const withVersion = (account: Account, version: number): Account => ({
+    ...account,
+    common: { ...account.common, version },
+  })
   return {
     async findById(id: AccountId) {
-      return store.get(id) ?? null
+      const row = store.get(id)
+      return row === undefined ? null : withVersion(row.account, row.version)
     },
     async findByOwner(ownerId: UserId) {
       return [...store.values()]
-        .filter(a => a.common.ownerUserId === ownerId)
+        .filter(r => r.account.common.ownerUserId === ownerId)
+        .map(r => withVersion(r.account, r.version))
         .sort((a, b) => a.kind.localeCompare(b.kind))
     },
     async save(account: Account) {
       // PostgreSQL 実装の UNIQUE (owner_user_id, kind) と同じ失敗モードを再現する
       const conflict = [...store.values()].find(
-        a =>
-          a.common.ownerUserId === account.common.ownerUserId &&
-          a.kind === account.kind &&
-          a.common.accountId !== account.common.accountId,
+        r =>
+          r.account.common.ownerUserId === account.common.ownerUserId &&
+          r.account.kind === account.kind &&
+          r.account.common.accountId !== account.common.accountId,
       )
       if (conflict !== undefined) {
         throw new InvariantViolationError(
           `同一ユーザー × 口座種別は一意: (${account.common.ownerUserId}, ${account.kind}) は既に存在する`,
         )
       }
-      store.set(account.common.accountId, account)
+      // 版数照合（#459）: 既存行は読み出したときの版と一致するときだけ書き込む
+      const existing = store.get(account.common.accountId)
+      const expectedVersion = account.common.version
+      if (existing !== undefined && existing.version !== expectedVersion) {
+        throw new ConcurrentUpdateError(
+          `口座（${account.common.accountId}）は読み出し後に別の更新が入ったため保存できない（版数 ${expectedVersion} で照合）。もう一度お試しください。`,
+        )
+      }
+      const nextVersion = existing === undefined ? expectedVersion : expectedVersion + 1
+      store.set(account.common.accountId, {
+        account: withVersion(account, nextVersion),
+        version: nextVersion,
+      })
     },
   }
 }

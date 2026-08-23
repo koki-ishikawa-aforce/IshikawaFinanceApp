@@ -1,6 +1,6 @@
 # PR ごとのプレビュー配信。モック起動モード(#141)の Static Export を GitHub Pages の
-# サブパス(/<リポジトリ名>/pr-<番号>/)へ公開し、マージ判断者がコードを読まずに
-# 実際の画面を触って確認できるようにする。運用: docs/automation/pr-preview.md
+# サブパス(/<リポジトリ名>/pr-<番号>/)へ公開し、コードを読まずに実際の画面を
+# 触って確認できるようにする。運用: docs/automation/pr-preview.md
 #
 # サイトの実体は gh-pages ブランチに保持し、そこから Pages へデプロイする。
 # Pages の公式デプロイ(actions/deploy-pages)はサイト全体を毎回置き換えるため、
@@ -203,7 +203,7 @@ jobs:
     needs: publish
     if: needs.publish.outputs.pages_ready == 'true'
     runs-on: ubuntu-latest
-    # プレビューはマージ判断の補助であって検証の関門ではない。配信に失敗しても
+    # プレビューは画面確認の補助であって検証の関門ではない。配信に失敗しても
     # PR を赤くせず、失敗した事実は comment ジョブが PR 上に書く。
     continue-on-error: true
     permissions:
