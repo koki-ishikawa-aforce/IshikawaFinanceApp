@@ -21,6 +21,8 @@ import type {
   AppUserRepository,
   AmazonProductKeyLearningRule,
   AmazonProductKeyLearningRuleRepository,
+  BalanceHistoryEntry,
+  BalanceHistoryRepository,
   BankDeposit,
   BankDepositId,
   BankDepositRepository,
@@ -561,6 +563,37 @@ export function createMockBankDepositRepository(): BankDepositRepository {
         )
       }
       store.set(deposit.common.bankDepositId, deposit)
+    },
+  }
+}
+
+export function createMockBalanceHistoryRepository(): BalanceHistoryRepository {
+  const store = new Map<string, BalanceHistoryEntry>()
+  /** PostgreSQL 実装の UNIQUE (axis, source_event_id) と同じ冪等キー */
+  const dedupeKey = (entry: BalanceHistoryEntry): string => `${entry.axis} ${entry.sourceEventId}`
+  const sorted = (entries: BalanceHistoryEntry[]): BalanceHistoryEntry[] =>
+    [...entries].sort(
+      (a, b) =>
+        a.occurredAt.getTime() - b.occurredAt.getTime() || a.entryId.localeCompare(b.entryId),
+    )
+  return {
+    async append(entry: BalanceHistoryEntry) {
+      // 記録済みの変動（同一イベントの再配信）は何もしない
+      if (store.has(dedupeKey(entry))) return
+      store.set(dedupeKey(entry), entry)
+    },
+    async findByOccurredAtRange(from: Date, toExclusive: Date) {
+      return sorted(
+        [...store.values()].filter(e => e.occurredAt >= from && e.occurredAt < toExclusive),
+      )
+    },
+    async findLatestPerAccountBefore(atExclusive: Date) {
+      // PostgreSQL 実装の DISTINCT ON (axis, account_id) と同じく、(軸, 口座) ごとに 1 件
+      const latest = new Map<string, BalanceHistoryEntry>()
+      for (const e of sorted([...store.values()].filter(e => e.occurredAt < atExclusive))) {
+        latest.set(`${e.axis} ${e.accountId}`, e)
+      }
+      return [...latest.values()]
     },
   }
 }

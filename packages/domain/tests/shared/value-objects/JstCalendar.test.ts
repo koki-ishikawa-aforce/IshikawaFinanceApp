@@ -4,7 +4,10 @@ import {
   utcInstantOfJstDateTime,
   jstYearMonthOf,
   utcMidnightOfJstCalendarDate,
+  jstMonthStart,
+  jstNextMonthStart,
 } from '../../../src/shared/value-objects/JstCalendar'
+import { YearMonthSchema } from '../../../src/shared/value-objects/YearMonth'
 
 describe('jstCalendarParts', () => {
   it('UTC の 15:00 は JST では翌日の 0:00 として扱われる', () => {
@@ -88,5 +91,32 @@ describe('utcInstantOfJstDateTime', () => {
     // 数値にならなかった時刻を Invalid Date として返さない
     expect(utcInstantOfJstDateTime(2026, 7, 15, Number.NaN, 0)).toBeNull()
     expect(utcInstantOfJstDateTime(2026, 7, 15, 10.5, 0)).toBeNull()
+  })
+})
+
+describe('jstMonthStart / jstNextMonthStart', () => {
+  const ym = (value: string) => YearMonthSchema.parse(value)
+
+  it('月の開始は JST の 1 日 0:00（UTC では前日 15:00）', () => {
+    expect(jstMonthStart(ym('2026-05'))).toEqual(new Date('2026-04-30T15:00:00Z'))
+    expect(jstNextMonthStart(ym('2026-05'))).toEqual(new Date('2026-05-31T15:00:00Z'))
+  })
+
+  it('12 月の翌月は翌年 1 月', () => {
+    expect(jstNextMonthStart(ym('2026-12'))).toEqual(new Date('2026-12-31T15:00:00Z'))
+    expect(jstMonthStart(ym('2027-01'))).toEqual(new Date('2026-12-31T15:00:00Z'))
+  })
+
+  it('JST 深夜帯の瞬間は、その月の範囲に入りひとつ前の月からは外れる', () => {
+    // 2026-05-01 00:30 JST。UTC のまま月を読むと 4 月に落ちる時刻
+    const midnightJst = new Date('2026-04-30T15:30:00Z')
+    expect(jstYearMonthOf(midnightJst)).toBe('2026-05')
+    expect(midnightJst >= jstMonthStart(ym('2026-05'))).toBe(true)
+    expect(midnightJst < jstNextMonthStart(ym('2026-05'))).toBe(true)
+    expect(midnightJst < jstNextMonthStart(ym('2026-04'))).toBe(false)
+  })
+
+  it('連続する月の境界は隙間なく接する（点が二重に入らず、こぼれもしない）', () => {
+    expect(jstNextMonthStart(ym('2026-05'))).toEqual(jstMonthStart(ym('2026-06')))
   })
 })

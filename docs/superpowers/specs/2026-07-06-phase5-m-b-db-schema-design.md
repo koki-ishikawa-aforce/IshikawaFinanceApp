@@ -278,10 +278,44 @@ CREATE TABLE monthly_reports (
 ```
 
 - `findByMonth(month)` が単一を返す前提（世帯で月 1 レポート）を `UNIQUE` で保証
-- `BalanceTimeSeriesQuery.fetch(from, to)` は本テーブルの payload 内
-  `common.balanceTrend`（4 軸時系列）を月範囲で読み出して合成する。
-  専用の残高履歴テーブルは**設けない**（残高スナップショットの正は月次レポートに凍結済み、
-  という M-A までのモデルを踏襲）
+- payload 内 `common.balanceTrend`（4 軸時系列）と `nisaContributionAccumulated` は
+  **CSV 確定時点の値を残す凍結値**（#398 で改訂。LINE の月次サマリはこの値を読む）。CSV 取込確定のたびに下記
+  `balance_history_entries` から当該月ぶんを写し取る
+
+> **改訂（#398、2026-08）**: 当初は「`BalanceTimeSeriesQuery.fetch(from, to)` は本テーブルの
+> payload 内 `common.balanceTrend` を月範囲で読み出して合成する。専用の残高履歴テーブルは
+> **設けない**（残高スナップショットの正は月次レポートに凍結済み）」と決めていたが、書き込む先の
+> 月次レポートは翌月の CSV 取込ではじめて作られるため、月の途中に起きる残高変動には行き先が
+> 無く、`balanceTrend` を埋める処理がどこにも実装されないまま残っていた（資産の推移グラフに
+> 線が 1 本も出ず、LINE 月次サマリからも残高 3 行が消えていた）。専用テーブル
+> `balance_history_entries` を新設し（§4.2b）、グラフの正をそちらへ移す。
+
+### §4.2b balance_history_entries（集約 #10c 残高変動履歴エントリ、#398）
+
+```sql
+CREATE TABLE balance_history_entries (
+  entry_id         text PRIMARY KEY,
+  axis             text NOT NULL CHECK (axis IN ('smbc_balance', 'other_savings_balance', 'nisa_contribution', 'card_unpaid')),
+  account_id       text NOT NULL REFERENCES accounts(account_id),
+  balance          integer NOT NULL,
+  occurred_at      timestamptz NOT NULL,
+  source_event_id  text NOT NULL,
+  payload          jsonb NOT NULL,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (axis, source_event_id)
+);
+CREATE INDEX idx_balance_history_entries_axis_occurred_at ON balance_history_entries (axis, occurred_at);
+```
+
+- **append-only**（adapter は INSERT のみ実装、§2.5）。過去のグラフが後から変わらないようにする
+- `UNIQUE (axis, source_event_id)`: 同じ変動が二度届いてもグラフに点が重ならないことの最終保証。
+  イベント配信は at-least-once（#34）で、ハンドラー側の存在チェックだけでは並行実行を取りこぼす。
+  追記は `ON CONFLICT DO NOTHING`
+- `BalanceTimeSeriesQuery.fetch(viewerId, from, to)` は本テーブルを月範囲（JST 境界）で読み、
+  軸ごとに点を並べる。残高は世帯フルオープンのため `viewerId` で絞らない（絞らないことを
+  明示するために受け取る）
+- 書き込み口は API 層のイベントハンドラー 1 か所（`balance-history-record.ts`）。残高が動く経路が
+  最後に発行するドメインイベントを購読する形にして、経路ごとに記録処理が散らないようにする
 
 ### §4.3 accounts（集約 #9 口座）
 

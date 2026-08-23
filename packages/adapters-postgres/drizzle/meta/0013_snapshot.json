@@ -1,6 +1,6 @@
 {
-  "id": "978a5ba7-2888-419b-b43e-ab5c44f420de",
-  "prevId": "72005bc7-d7ce-4dce-ad26-47e8a93de370",
+  "id": "acf18429-2efd-44e7-b0e0-ce096e41988b",
+  "prevId": "978a5ba7-2888-419b-b43e-ab5c44f420de",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -241,6 +241,13 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "payload": {
           "name": "payload",

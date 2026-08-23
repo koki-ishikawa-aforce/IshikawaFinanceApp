@@ -11,7 +11,7 @@
  *
  * fetchAssetTotal(asOf) の asOf は View にエコーされるスナップショット時刻。
  * データモデル上、過去時点の残高復元（historical as-of）はサポートしない
- * （残高履歴の正は月次レポートに凍結済み — BalanceTimeSeriesQuery が担う）。
+ * （過去の推移は残高変動履歴を読む BalanceTimeSeriesQuery が担う — #398）。
  */
 import { and, eq, sum } from 'drizzle-orm'
 import type {

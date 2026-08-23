@@ -22,6 +22,8 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import { createTestApp } from '../helpers/test-app.js'
 import { domainEventBase } from '../../src/event-handlers/event-base.js'
+import { AccountIdSchema, BalanceHistoryEntryIdSchema, recordBalanceChange } from '@warimaru/domain'
+import type { BalanceAxis } from '@warimaru/domain'
 
 const HONEY_USER_ID = UserIdSchema.parse('user-honey-test')
 const DARLING_USER_ID = UserIdSchema.parse('user-darling-test')
@@ -226,5 +228,220 @@ describe('CSV取込完了 → 月次レポートCSV確定（イベントチェ�
     expect(report).not.toBeNull()
     const householdTotal = report!.common.householdCategoryTotals.find(c => c.categoryId === catId)
     expect(householdTotal?.total).toBe(10000)
+  })
+})
+
+describe('月次レポートの残高部分を残高変動履歴から凍結する（#398）', () => {
+  const ACCOUNT_ID = AccountIdSchema.parse(newUlid())
+
+  /** 対象月（2026-07 JST）の残高変動を 1 件仕込む */
+  async function givenBalanceChange(
+    t: ReturnType<typeof createTestApp>,
+    input: { axis: BalanceAxis; value: number; occurredAt: Date; accountId?: string },
+  ) {
+    await t.deps.balanceHistoryRepository.append(
+      recordBalanceChange({
+        entryId: BalanceHistoryEntryIdSchema.parse(newUlid()),
+        axis: input.axis,
+        accountId: AccountIdSchema.parse(input.accountId ?? ACCOUNT_ID),
+        value: money(input.value),
+        occurredAt: input.occurredAt,
+        sourceEventId: newUlid(),
+      }),
+    )
+  }
+
+  it('対象月の 4 軸の点と NISA 積立累計がレポートに入る（LINE の残高 3 行の材料）', async () => {
+    const t = createTestApp()
+    await seedUsers(t)
+    await givenBalanceChange(t, {
+      axis: 'smbc_balance',
+      value: 1500000,
+      occurredAt: new Date('2026-07-10T00:00:00Z'),
+    })
+    await givenBalanceChange(t, {
+      axis: 'other_savings_balance',
+      value: 800000,
+      occurredAt: new Date('2026-07-11T00:00:00Z'),
+    })
+    await givenBalanceChange(t, {
+      axis: 'card_unpaid',
+      value: 42000,
+      occurredAt: new Date('2026-07-12T00:00:00Z'),
+    })
+    await givenBalanceChange(t, {
+      axis: 'nisa_contribution',
+      value: 350000,
+      occurredAt: new Date('2026-07-13T00:00:00Z'),
+    })
+
+    await t.deps.eventBus.publish(makeCsvImportCompleted())
+
+    const report = await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH)
+    const trend = report!.common.balanceTrend
+    expect(trend.smbcBalanceTrend.map(p => p.balance)).toEqual([1500000])
+    expect(trend.otherSavingsBalanceTrend.map(p => p.balance)).toEqual([800000])
+    expect(trend.cardUnpaidTrend.map(p => p.unpaidTotal)).toEqual([42000])
+    expect(trend.nisaContributionTrend.map(p => p.accumulated)).toEqual([350000])
+    expect(report!.common.nisaContributionAccumulated).toBe(350000)
+  })
+
+  it('対象月の外で起きた変動は入らない（凍結するのはその月の値）', async () => {
+    const t = createTestApp()
+    await seedUsers(t)
+    await givenBalanceChange(t, {
+      axis: 'smbc_balance',
+      value: 111,
+      occurredAt: new Date('2026-06-30T14:00:00Z'), // 2026-06-30 23:00 JST
+    })
+    await givenBalanceChange(t, {
+      axis: 'smbc_balance',
+      value: 222,
+      occurredAt: new Date('2026-07-31T15:00:00Z'), // 2026-08-01 00:00 JST
+    })
+
+    await t.deps.eventBus.publish(makeCsvImportCompleted())
+
+    const report = await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH)
+    expect(report!.common.balanceTrend.smbcBalanceTrend).toEqual([])
+  })
+
+  it('当月に積立が無くても、積立累計は前月までの値を引き継ぐ（0 に落とさない）', async () => {
+    const t = createTestApp()
+    await seedUsers(t)
+    await givenBalanceChange(t, {
+      axis: 'nisa_contribution',
+      value: 300000,
+      occurredAt: new Date('2026-05-10T00:00:00Z'),
+    })
+
+    await t.deps.eventBus.publish(makeCsvImportCompleted())
+
+    const report = await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH)
+    // 当月の点は無いので線は飛ぶが、累計そのものは前月から引き継ぐ
+    expect(report!.common.balanceTrend.nisaContributionTrend).toEqual([])
+    expect(report!.common.nisaContributionAccumulated).toBe(300000)
+  })
+
+  it('履歴が 1 件も無ければ残高部分は空のまま（0 円の残高と取り違えない）', async () => {
+    const t = createTestApp()
+    await seedUsers(t)
+
+    await t.deps.eventBus.publish(makeCsvImportCompleted())
+
+    const report = await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH)
+    expect(report!.common.balanceTrend.smbcBalanceTrend).toEqual([])
+    expect(report!.common.nisaContributionAccumulated).toBe(0)
+  })
+
+  it('再集計では残高部分も履歴から入れ直す（取込のたびに最新の点まで載る）', async () => {
+    const t = createTestApp()
+    await seedUsers(t)
+    await givenBalanceChange(t, {
+      axis: 'smbc_balance',
+      value: 1500000,
+      occurredAt: new Date('2026-07-10T00:00:00Z'),
+    })
+    await t.deps.eventBus.publish(makeCsvImportCompleted())
+    expect(
+      (await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH))!.common.balanceTrend
+        .smbcBalanceTrend,
+    ).toHaveLength(1)
+
+    await givenBalanceChange(t, {
+      axis: 'smbc_balance',
+      value: 1400000,
+      occurredAt: new Date('2026-07-20T00:00:00Z'),
+    })
+    await t.deps.eventBus.publish(makeCsvImportCompleted())
+
+    const refreshed = await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH)
+    expect(refreshed!.common.balanceTrend.smbcBalanceTrend.map(p => p.balance)).toEqual([
+      1500000, 1400000,
+    ])
+  })
+
+  it('夫婦それぞれの貯蓄口座がある軸は世帯合算で凍結される', async () => {
+    const t = createTestApp()
+    await seedUsers(t)
+    const spouseAccountId = AccountIdSchema.parse(newUlid())
+    await givenBalanceChange(t, {
+      axis: 'other_savings_balance',
+      value: 800000,
+      occurredAt: new Date('2026-07-05T00:00:00Z'),
+    })
+    await givenBalanceChange(t, {
+      axis: 'other_savings_balance',
+      accountId: spouseAccountId,
+      value: 200000,
+      occurredAt: new Date('2026-07-06T00:00:00Z'),
+    })
+
+    await t.deps.eventBus.publish(makeCsvImportCompleted())
+
+    const report = await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH)
+    expect(report!.common.balanceTrend.otherSavingsBalanceTrend.map(p => p.balance)).toEqual([
+      800000, 1000000,
+    ])
+  })
+
+  it('月初ちょうど（JST 00:00）の変動は当月に含まれる', async () => {
+    const t = createTestApp()
+    await seedUsers(t)
+    // 2026-07-01 00:00 JST = 2026-06-30 15:00 UTC
+    await givenBalanceChange(t, {
+      axis: 'smbc_balance',
+      value: 1234,
+      occurredAt: new Date('2026-06-30T15:00:00Z'),
+    })
+
+    await t.deps.eventBus.publish(makeCsvImportCompleted())
+
+    const report = await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH)
+    expect(report!.common.balanceTrend.smbcBalanceTrend.map(p => p.balance)).toEqual([1234])
+  })
+
+  it('最終確定済みの月は残高の凍結値も書き換えない（配信済みの文面と食い違わせない）', async () => {
+    const t = createTestApp()
+    await seedUsers(t)
+    const finalizedReport = finalize(
+      confirmCsv(
+        {
+          monthlyReportId: MonthlyReportIdSchema.parse(newUlid()),
+          targetYearMonth: TARGET_MONTH,
+          householdCategoryTotals: [],
+          personalTotalHoney: money(1000),
+          personalTotalDarling: money(0),
+          businessExpenseTotalHoney: money(0),
+          businessExpenseTotalDarling: money(0),
+          nisaContributionAccumulated: money(0),
+          balanceTrend: {
+            smbcBalanceTrend: [],
+            otherSavingsBalanceTrend: [],
+            nisaContributionTrend: [],
+            cardUnpaidTrend: [],
+          },
+        },
+        [],
+        new Date('2026-08-01'),
+      ),
+      ExpenseReimbursementIdSchema.parse(newUlid()),
+      new Date('2026-08-10'),
+      [],
+      new Date('2026-08-10'),
+    )
+    await t.deps.monthlyReportRepository.save(finalizedReport)
+    // 配信後に残高が動いた状況
+    await givenBalanceChange(t, {
+      axis: 'smbc_balance',
+      value: 1500000,
+      occurredAt: new Date('2026-07-10T00:00:00Z'),
+    })
+
+    await t.deps.eventBus.publish(makeCsvImportCompleted())
+
+    const saved = await t.deps.monthlyReportRepository.findByMonth(TARGET_MONTH)
+    expect(saved!.kind).toBe('finalized')
+    expect(saved!.common.balanceTrend.smbcBalanceTrend).toEqual([])
   })
 })

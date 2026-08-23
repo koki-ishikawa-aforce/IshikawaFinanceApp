@@ -25,14 +25,17 @@ import {
   Phase2StartedSchema,
   RoleJudgedSchema,
   SectionBCompletedSchema,
+  SectionConfirmedSchema,
   SectionFCompletedSchema,
   SectionFSkippedSchema,
+  SectionIdentifierSchema,
   TalkRoomIdSchema,
   activateNotification,
   changeNickname,
   completePhase2,
   completeSectionB,
   completeSectionF,
+  confirmSection,
   friendshipCheckOutcomeOf,
   judgeRole,
   registerAppUser,
@@ -66,6 +69,7 @@ const RegisterBodySchema = z.object({ nickname: NicknameSchema.optional() })
 const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
 const TalkRoomBodySchema = z.object({ talkRoomId: TalkRoomIdSchema })
 const SectionBBodySchema = z.object({ initialBalanceRef: InitialBalanceRegistrationRefSchema })
+const SectionConfirmationBodySchema = z.object({ section: SectionIdentifierSchema })
 const SectionFBodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('completed'), importJobId: ImportJobIdSchema }),
   z.object({ kind: z.literal('skipped') }),
@@ -410,6 +414,35 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
         type: 'SectionBCompleted',
         userId: viewerId,
         completedAt: now,
+      }),
+    )
+    return c.json({ user: updated })
+  })
+
+  /**
+   * Phase2 SectionC/D/E（マスタの確認）の記録（08f §2。冪等）。
+   * SectionB 完了前は 409（論点8: 順序強制、集約側の不変条件）。
+   *
+   * C/D/E は確認のみで完了扱いの任意セクション（論点8）のため、未確認でも `phase2/complete` は
+   * 成功する。ここは進捗の記録だけを担い、Phase2 完了の可否には関与しない。
+   */
+  app.put('/phase2/section-confirmation', async c => {
+    const body = SectionConfirmationBodySchema.parse(await c.req.json())
+    const viewerId = c.get('viewerId')
+    const user = asPhase2InProgress(await getUserOr404(viewerId))
+    const now = new Date()
+    const updated = confirmSection(user, body.section, now)
+    // 確認済みセクションの再確認では何も起きない（確認日時の上書きも、確認イベントの
+    // 二重発行もしない）。押し直しても結果が変わらないよう、応答は現状をそのまま返す
+    if (updated === user) return c.json({ user })
+    await deps.appUserRepository.save(updated)
+    await deps.eventBus.publish(
+      SectionConfirmedSchema.parse({
+        ...domainEventBase(now),
+        type: 'SectionConfirmed',
+        userId: viewerId,
+        section: body.section,
+        confirmedAt: now,
       }),
     )
     return c.json({ user: updated })

@@ -1,4 +1,5 @@
 export * from './AccountKind'
+export * from './BalanceAxis'
 export * from './BankName'
 export * from './BrokerageName'
 export * from './OtherSavingsUpdateSource'
