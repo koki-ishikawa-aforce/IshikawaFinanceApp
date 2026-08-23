@@ -14,6 +14,10 @@
  *    各ドメイン関数が事前条件として検証する）。SMBC 残高には課さない — 通知由来の変動を
  *    そのまま反映する設計（applySmbcBalanceChange）で、引落が入金より先に届けば一時的に
  *    負になりうるため
+ *  - 手入力（取り崩し記録・残高補正）は 1 件ごとに操作記録として口座に積む（#459。08d §1
+ *    `List<シャドウ口座更新>` の手入力由来分）。記録は追記のみで書き換え・削除はしない
+ *  - 読み出してから保存するまでに他の処理が同じ口座を更新していたら書き込まない
+ *    （#459。版数 `common.version` を Repository.save が照合する）
  */
 import { z } from 'zod'
 import {
@@ -42,6 +46,11 @@ import {
 } from '../../shared/errors/DomainError'
 import { BankNameSchema, type BankName } from '../value-objects/BankName'
 import { BrokerageNameSchema, type BrokerageName } from '../value-objects/BrokerageName'
+import {
+  ManualEntryMemoSchema,
+  OtherSavingsManualEntrySchema,
+  type OtherSavingsManualEntry,
+} from '../value-objects/OtherSavingsManualEntry'
 
 export const ActivenessSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('active') }),
@@ -58,6 +67,16 @@ export const CommonAccountAttrsSchema = z.object({
   ownerUserId: UserIdSchema,
   registeredAt: z.date(),
   activeness: ActivenessSchema,
+  /**
+   * 版数（楽観ロックのトークン。#459）。読み出した口座が「いつの状態か」を表し、
+   * Repository.save はこの値が保存先の現在の版と一致するときだけ書き込む
+   * （不一致は `ConcurrentUpdateError`）。書き込みに成功した保存先の版は 1 進む。
+   *
+   * ドメイン関数はこの値を触らない。同じ版のまま新しい状態を返し、書き込み時に
+   * 「読んだときから変わっていないこと」を照合するのが役割だから。
+   * 既存データ（この項目を持たない payload・版数列が無かった頃の行）は 0 として読み出される。
+   */
+  version: z.number().int().nonnegative().default(0),
 })
 export type CommonAccountAttrs = z.infer<typeof CommonAccountAttrsSchema>
 
@@ -96,6 +115,15 @@ export const OtherSavingsBalanceSchema = z.object({
    * 二度目を拒否する。手入力（取り崩し記録・残高補正）は取引を持たないため対象外。
    */
   appliedMovementTransactionIds: z.array(TransactionIdSchema).default([]),
+  /**
+   * 手入力（取り崩し記録・残高補正）の操作記録（#459。08d §1 `List<シャドウ口座更新>` の
+   * 手入力由来分）。古い順に積む追記専用のリストで、既存データ（この項目を持たない payload）は
+   * 空配列として読み出される。
+   *
+   * 手入力は取引を持たないため、残さないと残高の数字以外に痕跡が無く、
+   * 「いつ誰がいくら動かしたか」も「二重に登録していないか」も後から確かめられない。
+   */
+  manualEntries: z.array(OtherSavingsManualEntrySchema).default([]),
 })
 export type OtherSavingsBalance = z.infer<typeof OtherSavingsBalanceSchema>
 
@@ -506,26 +534,56 @@ export function addOtherSavingsBySmbcTransfer(
 }
 
 /**
+ * 手入力の操作記録を口座へ 1 件積む（#459）。追記のみで、既存の記録は書き換えない。
+ * メモ未指定のときは項目ごと省く（`exactOptionalPropertyTypes` 下で undefined を持たせない）。
+ */
+function appendManualEntry(
+  account: OtherSavingsAccount,
+  entry: OtherSavingsManualEntry,
+): OtherSavingsAccount {
+  return AccountSchema.parse({
+    ...account,
+    balance: { ...account.balance, manualEntries: [...account.balance.manualEntries, entry] },
+  }) as OtherSavingsAccount
+}
+
+/** 手入力に添えるメモを検証する。未指定はそのまま未指定として扱う */
+function parseMemo(memo: string | undefined): { memo: string } | Record<string, never> {
+  return memo === undefined ? {} : { memo: ManualEntryMemoSchema.parse(memo) }
+}
+
+/**
  * behavior 別銀行貯蓄残高を取り崩しで減算する（08d §2）
  * 事前: 入力者ユーザーID = 口座所有者ユーザーID。
  *
  * 不変条件: 取り崩し後の残高は負にならない（口座にある額を超えて取り崩せない）。
  * 違反は InvariantViolationError（API 層で 409）。
+ *
+ * 事後: 取り崩し手入力（入力者・金額・入力日時・メモ）が操作記録に 1 件積まれる（#459）。
+ * 拒否された取り崩し（残高超過・非アクティブ・他人の口座）は記録に残らない — 残高が
+ * 動いていない以上、後から履歴を読む人にとって「起きなかったこと」だから。
  */
 export function withdrawOtherSavings(
   account: OtherSavingsAccount,
-  params: { amount: Money; operatorUserId: UserId; at: Date },
+  params: { amount: Money; operatorUserId: UserId; at: Date; memo?: string },
 ): OtherSavingsAccount {
   assertOperatedByOwner(account, params.operatorUserId, '取り崩しの記録')
   assertActive(account, '取り崩し')
   const amount = PositiveMoneySchema.parse(params.amount)
+  const memo = parseMemo(params.memo)
   const newBalance = subtractMoney(account.balance.currentBalance, amount)
   if (newBalance < 0) {
     throw new InvariantViolationError(
       `取り崩し額（${amount}）が現在残高（${account.balance.currentBalance}）を超えている`,
     )
   }
-  return replaceOtherSavingsBalance(account, newBalance, params.at)
+  return appendManualEntry(replaceOtherSavingsBalance(account, newBalance, params.at), {
+    kind: 'manual_withdrawal',
+    enteredByUserId: params.operatorUserId,
+    amount,
+    enteredAt: params.at,
+    ...memo,
+  })
 }
 
 /**
@@ -534,18 +592,30 @@ export function withdrawOtherSavings(
  * 補正は差分ではなく「実際の残高」への差し替え（通帳を見て入れ直す操作）。
  *
  * 不変条件: 補正後の残高は負にならない。
+ *
+ * 事後: 残高補正手入力（入力者・補正前残高・補正後残高・入力日時・メモ）が操作記録に
+ * 1 件積まれる（#459）。補正前と同じ額での補正も記録する — 通帳と突き合わせて
+ * 「合っていることを確かめた」操作自体が、残高鮮度の根拠として意味を持つため。
  */
 export function correctOtherSavingsBalance(
   account: OtherSavingsAccount,
-  params: { correctedBalance: Money; operatorUserId: UserId; at: Date },
+  params: { correctedBalance: Money; operatorUserId: UserId; at: Date; memo?: string },
 ): OtherSavingsAccount {
   assertOperatedByOwner(account, params.operatorUserId, '残高の補正')
   assertActive(account, '残高の補正')
   const correctedBalance = BalanceInputSchema.parse(params.correctedBalance)
+  const memo = parseMemo(params.memo)
   if (correctedBalance < 0) {
     throw new InvariantViolationError(`別銀行貯蓄残高は負にできない（${correctedBalance}）`)
   }
-  return replaceOtherSavingsBalance(account, correctedBalance, params.at)
+  return appendManualEntry(replaceOtherSavingsBalance(account, correctedBalance, params.at), {
+    kind: 'manual_correction',
+    enteredByUserId: params.operatorUserId,
+    balanceBefore: account.balance.currentBalance,
+    balanceAfter: correctedBalance,
+    enteredAt: params.at,
+    ...memo,
+  })
 }
 
 /**

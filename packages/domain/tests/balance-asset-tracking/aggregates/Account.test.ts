@@ -750,6 +750,74 @@ describe('withdrawOtherSavings()', () => {
       }),
     ).toThrow(InvariantViolationError)
   })
+
+  // --- #459: 手入力の操作記録 ---
+
+  it('取り崩し手入力（入力者・金額・入力日時・メモ）を操作記録に 1 件積む', () => {
+    const updated = withdrawOtherSavings(otherSavings(), {
+      amount: 120000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+      memo: '旅行の頭金',
+    })
+    expect(updated.balance.manualEntries).toEqual([
+      {
+        kind: 'manual_withdrawal',
+        enteredByUserId: OWNER,
+        amount: 120000,
+        enteredAt: AT,
+        memo: '旅行の頭金',
+      },
+    ])
+  })
+
+  it('メモ無しの取り崩しはメモ項目を持たない', () => {
+    const updated = withdrawOtherSavings(otherSavings(), {
+      amount: 1000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.balance.manualEntries).toHaveLength(1)
+    expect(updated.balance.manualEntries[0]).not.toHaveProperty('memo')
+  })
+
+  it('取り崩しを重ねると記録が古い順に積み上がる（追記のみ）', () => {
+    const first = withdrawOtherSavings(otherSavings({ currentBalance: 500000 }), {
+      amount: 100000 as never,
+      operatorUserId: OWNER,
+      at: new Date('2026-07-20T00:00:00Z'),
+    })
+    const second = withdrawOtherSavings(first, {
+      amount: 50000 as never,
+      operatorUserId: OWNER,
+      at: new Date('2026-07-21T00:00:00Z'),
+    })
+    expect(
+      second.balance.manualEntries.map(e => (e.kind === 'manual_withdrawal' ? e.amount : null)),
+    ).toEqual([100000, 50000])
+    expect(second.balance.currentBalance).toBe(350000)
+  })
+
+  it('拒否された取り崩し（残高超過）は記録に残らない', () => {
+    // 元口座に記録が無いことを確かめてから、拒否が記録を増やさないことを見る
+    const base = otherSavings({ currentBalance: 500000 })
+    expect(base.balance.manualEntries).toEqual([])
+    expect(() =>
+      withdrawOtherSavings(base, { amount: 500001 as never, operatorUserId: OWNER, at: AT }),
+    ).toThrow(InvariantViolationError)
+    expect(base.balance.manualEntries).toEqual([])
+  })
+
+  it('空文字メモは受け付けない（未記入と区別できないため）', () => {
+    expect(() =>
+      withdrawOtherSavings(otherSavings(), {
+        amount: 1000 as never,
+        operatorUserId: OWNER,
+        at: AT,
+        memo: '',
+      }),
+    ).toThrow(ZodError)
+  })
 })
 
 describe('correctOtherSavingsBalance()', () => {
@@ -811,6 +879,53 @@ describe('correctOtherSavingsBalance()', () => {
         at: AT,
       }),
     ).toThrow(InvariantViolationError)
+  })
+
+  // --- #459: 手入力の操作記録 ---
+
+  it('残高補正手入力（入力者・補正前後の金額・入力日時・メモ）を操作記録に 1 件積む', () => {
+    const updated = correctOtherSavingsBalance(otherSavings({ currentBalance: 500000 }), {
+      correctedBalance: 432100 as never,
+      operatorUserId: OWNER,
+      at: AT,
+      memo: '通帳と照合',
+    })
+    expect(updated.balance.manualEntries).toEqual([
+      {
+        kind: 'manual_correction',
+        enteredByUserId: OWNER,
+        balanceBefore: 500000,
+        balanceAfter: 432100,
+        enteredAt: AT,
+        memo: '通帳と照合',
+      },
+    ])
+  })
+
+  it('補正前と同じ額での補正も記録する（確認したこと自体が鮮度の根拠）', () => {
+    const updated = correctOtherSavingsBalance(otherSavings({ currentBalance: 500000 }), {
+      correctedBalance: 500000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.balance.manualEntries).toHaveLength(1)
+    expect(updated.balance.manualEntries[0]).toMatchObject({
+      kind: 'manual_correction',
+      balanceBefore: 500000,
+      balanceAfter: 500000,
+    })
+  })
+
+  it('拒否された補正（負残高）は記録に残らない', () => {
+    const base = otherSavings({ currentBalance: 500000 })
+    expect(() =>
+      correctOtherSavingsBalance(base, {
+        correctedBalance: -1 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+    expect(base.balance.manualEntries).toEqual([])
   })
 })
 

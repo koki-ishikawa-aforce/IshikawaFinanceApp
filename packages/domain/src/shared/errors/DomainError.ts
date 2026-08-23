@@ -40,6 +40,17 @@ export class UnpaidSettlementAlreadyAppliedError extends InvariantViolationError
  */
 export class OtherSavingsMovementAlreadyAppliedError extends InvariantViolationError {}
 
+/**
+ * 版数照合（楽観ロック）で書き込みを拒否した（#459）。
+ * 読み出してから保存するまでの間に別の処理が同じ集約を更新しており、そのまま書くと
+ * 相手の更新を上書きして消してしまう状態。呼び出し側は握りつぶさず、利用者に
+ * 「やり直せば通る」と分かる形で失敗を返すこと。
+ *
+ * 不変条件違反（InvariantViolationError）ではない — 集約の状態は正しく、
+ * タイミングだけが問題で、同じ操作をやり直せば成功しうる。型で判別できるよう専用型にする。
+ */
+export class ConcurrentUpdateError extends DomainError {}
+
 export class NotFoundError extends DomainError {
   constructor(resource: string, id: string) {
     super(`${resource} not found: ${id}`)

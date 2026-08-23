@@ -1,5 +1,6 @@
 import type { Context } from 'hono'
 import {
+  ConcurrentUpdateError,
   DomainError,
   InvariantViolationError,
   NotFoundError,
@@ -16,6 +17,12 @@ export function errorHandler(err: Error, c: Context): Response {
   }
   if (err instanceof PermissionDeniedError) {
     return c.json({ error: err.message }, 403)
+  }
+  // 版数照合の失敗（#459）。読み出し後に別の更新が入った一時的な競合で、やり直せば通る。
+  // InvariantViolationError より前に置く（サブクラスではないため順序は問わないが、
+  // 409 の意味を「不変条件違反」と「並行更新の競合」で取り違えないよう明示的に分ける）。
+  if (err instanceof ConcurrentUpdateError) {
+    return c.json({ error: err.message }, 409)
   }
   if (err instanceof InvariantViolationError) {
     return c.json({ error: err.message }, 409)
