@@ -202,7 +202,7 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 | **6-6 空状態** | 共通部品 `EmptyState`(`packages/web/src/components/ui/EmptyState.tsx`)。インラインのテキストで、イラスト・空状態専用カードは採用しない。置き場所はその空状態が説明するセクションの器(`ui.card` かモーダル)の内側。`*.module.css` に独自の空状態スタイルを定義しない |
 | **6-7 月の切り替え** | 画面上部の月ナビゲーション。日付ピッカーで月を選ばせない |
 | **6-8 補足情報・手順の格納** | カード内の開閉トグル(見出しが `aria-expanded` + `aria-controls` を持つボタンを包む)。主操作の前に読まなくてよい補足はこれで畳む。モーダル・別ページ・常時展開は採用しない |
-| **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は本部品より前からある独自実装で、タップ下限(§4-3)も満たしていない。#366 でそこを直すときに本部品へ寄せる |
+| **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。本部品より前からある未追随の箇所が 2 つある。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は独自実装でタップ下限(§4-3)も満たしておらず、#366 でそこを直すときに本部品へ寄せる。口座追加の証券会社(3 択、`components/accounts/AccountAddModal.tsx`)はセレクトのままで、次にその画面を触るときに本部品へ寄せる |
 
 ### 違反例
 

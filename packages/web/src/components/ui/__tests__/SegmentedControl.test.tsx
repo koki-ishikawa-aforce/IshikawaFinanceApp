@@ -39,6 +39,37 @@ describe('SegmentedControl', () => {
     expect(onChange).toHaveBeenCalledExactlyOnceWith('bank')
   })
 
+  it('渡された選択が変わると選択の表示も移る', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const { rerender } = render(
+      <SegmentedControl label="ファイル種別" options={OPTIONS} value="card" onChange={onChange} />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: '銀行入出金明細' }))
+    // 押した瞬間ではなく、呼び出し側が値を渡し直したときに選択が移る(制御された部品)
+    rerender(
+      <SegmentedControl label="ファイル種別" options={OPTIONS} value="bank" onChange={onChange} />,
+    )
+
+    expect(screen.getByRole('radio', { name: '銀行入出金明細' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'カード利用明細' })).not.toBeChecked()
+  })
+
+  it('どの選択肢とも一致しない値ではどれも選ばれていない', () => {
+    // 取得待ちなどで候補外の値が渡ったとき、勝手に先頭を選んだことにしない
+    render(
+      <SegmentedControl
+        label="ファイル種別"
+        options={OPTIONS}
+        value="unknown"
+        onChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryAllByRole('radio', { checked: true })).toHaveLength(0)
+  })
+
   it('選ばれている側を押しても切り替えを通知しない', async () => {
     const user = userEvent.setup()
     const onChange = renderControl('card')

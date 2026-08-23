@@ -39,7 +39,12 @@ const FILE_KIND_LABELS: Record<StatementFileKind, string> = {
   bank_statement: '銀行入出金明細',
 }
 
-/* 種別の列挙はドメインを単一ソースにする(spec §10.1 ③「アップロード対象カード（2 種）」) */
+/*
+ * 取得手順ガイドの並びと、種別の切り替えの選択肢の並び。
+ *
+ * spec §10.1 ③「アップロード対象カード（2 種）」。種別の列挙はドメインを単一ソースにし、
+ * 画面側で 2 度書かない(2 か所に散ると、片方だけ増減したときに並びがずれる)
+ */
 const FILE_KIND_OPTIONS: readonly SegmentedControlOption<StatementFileKind>[] =
   StatementFileKindSchema.options.map(kind => ({ value: kind, label: FILE_KIND_LABELS[kind] }))
 
@@ -337,8 +342,7 @@ function ImportsPageContent() {
           ))}
       </section>
 
-      {/* spec §10.1 ③「アップロード対象カード（2 種）」。ファイル種別の列挙はドメインを単一ソースにする */}
-      {StatementFileKindSchema.options.map(kind => (
+      {FILE_KIND_OPTIONS.map(({ value: kind }) => (
         <StatementGuide key={kind} fileKind={kind} month={month} />
       ))}
 

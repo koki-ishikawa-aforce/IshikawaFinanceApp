@@ -4,6 +4,7 @@
  * 「選んだ形式で実際に送り先が変わるか」までは担保できないため。
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ImportsPage from '../page'
@@ -91,6 +92,29 @@ describe('取込画面のアップロード', () => {
 
     await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
     expect(apiMutate.mock.calls[0]?.[0]).toBe('/api/imports/csv')
+  })
+
+  it('種別を選ばなければカード利用明細として送る', async () => {
+    renderPage()
+    selectFile('statement.csv', 'text/csv')
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
+    const body = apiMutate.mock.calls[0]?.[1]?.body as FormData
+    expect(body.get('fileKind')).toBe('card_statement')
+  })
+
+  it('種別を銀行入出金明細に切り替えるとその種別で送る', async () => {
+    // 送信側が既定値を持つため、切り替えが送信に載らなくてもエラーにはならず、
+    // 銀行の明細がカードの明細として取り込まれる。ここで結線を固定する
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('radio', { name: '銀行入出金明細' }))
+    selectFile('statement.csv', 'text/csv')
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
+    const body = apiMutate.mock.calls[0]?.[1]?.body as FormData
+    expect(body.get('fileKind')).toBe('bank_statement')
   })
 
   it('対応外のファイルは送らずにその場で断る', async () => {

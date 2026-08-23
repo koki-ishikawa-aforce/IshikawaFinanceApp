@@ -20,10 +20,19 @@ import { SRC_DIR, collectSources, isModuleCss, type Source } from './sources'
  * 3. 下限に相当する大きさを px の直値で書き起こしていない
  */
 
-/** 下限を宣言していなければならない共通の操作部品(`components/ui/common.module.css`) */
-const COMMON_CONTROLS = ['.button', '.buttonGhost', '.buttonDanger', '.select', '.input'] as const
-
 const COMMON_CSS = join('components', 'ui', 'common.module.css')
+
+/**
+ * 下限を宣言していなければならない共通の操作部品。
+ *
+ * ボタン・選択欄・入力欄(`common.module.css`)に加え、独自の受け皿を持つ共通部品も対象にする。
+ * 2 択の切り替え(`SegmentedControl`)は透明なラジオを `.optionLabel` の大きさに重ねる作りなので、
+ * 下限を宣言しているのは見た目を担う `.optionLabel` の側になる。
+ */
+const COMMON_CONTROLS: readonly { css: string; selectors: readonly string[] }[] = [
+  { css: COMMON_CSS, selectors: ['.button', '.buttonGhost', '.buttonDanger', '.select', '.input'] },
+  { css: join('components', 'ui', 'SegmentedControl.module.css'), selectors: ['.optionLabel'] },
+]
 
 const TAP_TARGET_MIN = 'var(--tap-target-min)'
 
@@ -87,7 +96,11 @@ describe('タップターゲットの下限', () => {
   const common = stylesheets.find(({ path }) => path === COMMON_CSS)?.content ?? ''
 
   it('共通の操作部品が下限をトークンで宣言している', () => {
-    expect(findControlsWithoutMin(common, COMMON_CONTROLS)).toEqual([])
+    const offenders = COMMON_CONTROLS.flatMap(({ css, selectors }) => {
+      const content = stylesheets.find(({ path }) => path === css)?.content ?? ''
+      return findControlsWithoutMin(content, selectors).map(selector => `${css}:${selector}`)
+    })
+    expect(offenders).toEqual([])
   })
 
   it('下限の値が globals.css の 1 か所に定義されている', () => {
