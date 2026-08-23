@@ -18,6 +18,7 @@ import {
   disableMerchantLearning,
   MerchantLearningDisabledSchema,
   MerchantLearningReenabledSchema,
+  recordBulkClassificationProgress,
   reenableMerchantLearning,
 } from '@warimaru/domain'
 import type {
@@ -54,7 +55,12 @@ const BulkSessionCreateBodySchema = z.object({
   trigger: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('csv_import'), importJobId: ImportJobIdSchema }),
     z.object({ kind: z.literal('single_correction'), transactionId: TransactionIdSchema }),
+    z.object({ kind: z.literal('transaction_list') }),
   ]),
+  transactionIds: z.array(TransactionIdSchema).min(1),
+})
+
+const BulkSessionProgressBodySchema = z.object({
   transactionIds: z.array(TransactionIdSchema).min(1),
 })
 
@@ -301,6 +307,26 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
     if (session === null) throw new NotFoundError('BulkClassificationSession', id)
     assertSessionOwnedByViewer(session, viewerId)
     return c.json(session)
+  })
+
+  /**
+   * 一括分類セッションの進捗記録（分類し終えた対象を残件数から差し引く）
+   *
+   * 08b: 進行中の残件数はセッションの状態なので、途中経過はサーバーに残す。
+   * 再送しても二重に減算されない（recordBulkClassificationProgress が冪等）ため、
+   * 通信の失敗で同じ要求が繰り返されても残件数は壊れない。
+   */
+  app.post('/bulk-sessions/:id/progress', async c => {
+    const id = BulkClassificationSessionIdSchema.parse(c.req.param('id'))
+    const body = BulkSessionProgressBodySchema.parse(await c.req.json())
+    const viewerId = c.get('viewerId')
+    const session = await deps.bulkClassificationSessionRepository.findById(id)
+    if (session === null) throw new NotFoundError('BulkClassificationSession', id)
+    assertSessionOwnedByViewer(session, viewerId)
+    assertInProgress(session)
+    const advanced = recordBulkClassificationProgress(session, body.transactionIds)
+    await deps.bulkClassificationSessionRepository.save(advanced)
+    return c.json(advanced)
   })
 
   /** 一括分類セッションの完了（processedCount は対象取引の実状態から算出する） */

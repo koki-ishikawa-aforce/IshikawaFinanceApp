@@ -66,7 +66,9 @@ export type BulkClassificationTargetWire = z.infer<typeof BulkClassificationTarg
 const BulkClassificationSessionCommonWire = z.object({
   bulkClassificationSessionId: z.string(),
   userId: z.string(),
-  trigger: z.object({ kind: z.enum(['csv_import', 'single_correction']) }).passthrough(),
+  trigger: z
+    .object({ kind: z.enum(['csv_import', 'single_correction', 'transaction_list']) })
+    .passthrough(),
   targets: z.array(BulkClassificationTargetWireSchema),
 })
 
@@ -76,6 +78,8 @@ export const BulkClassificationSessionWireSchema = z.discriminatedUnion('kind', 
     kind: z.literal('in_progress'),
     common: BulkClassificationSessionCommonWire,
     startedAt: IsoDate,
+    /** 分類済みとして記録済みの対象取引（再開時に残りだけを出すために使う） */
+    processedTransactionIds: z.array(z.string()).default([]),
     remainingCount: z.number().int(),
   }),
   z.object({

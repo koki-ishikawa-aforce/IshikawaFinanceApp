@@ -248,8 +248,7 @@ export function bulkClassificationSessionFixture(role: UserRole): unknown {
       bulkClassificationSessionId: 'BCS_MOCK_001',
       userId: role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK',
       trigger: {
-        kind: 'single_correction',
-        transactionId: own[0]?.transactionId ?? 'TXN_MOCK_004',
+        kind: 'transaction_list',
         startedAt: '2026-07-24T01:00:00.000Z',
       },
       targets: own.map(item => ({
@@ -261,6 +260,7 @@ export function bulkClassificationSessionFixture(role: UserRole): unknown {
       })),
     },
     startedAt: '2026-07-24T01:00:00.000Z',
+    processedTransactionIds: [],
     remainingCount: own.length,
   }
 }

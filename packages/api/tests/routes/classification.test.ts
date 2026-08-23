@@ -121,6 +121,122 @@ describe('POST /api/classification/bulk-sessions/:id/complete', () => {
   })
 })
 
+describe('POST /api/classification/bulk-sessions', () => {
+  it('取引一覧起因（起点の取引IDなし）でセッションを開始できる', async () => {
+    const t = createTestApp()
+    const tx1 = await seedUnclassified(t)
+
+    const res = await request(t.app, 'POST', '/api/classification/bulk-sessions', {
+      body: { trigger: { kind: 'transaction_list' }, transactionIds: [tx1] },
+    })
+    expect(res.status).toBe(201)
+    const created = (await res.json()) as {
+      kind: string
+      common: { trigger: { kind: string } }
+      processedTransactionIds: string[]
+      remainingCount: number
+    }
+    expect(created.kind).toBe('in_progress')
+    expect(created.common.trigger.kind).toBe('transaction_list')
+    expect(created.processedTransactionIds).toEqual([])
+    expect(created.remainingCount).toBe(1)
+  })
+})
+
+describe('POST /api/classification/bulk-sessions/:id/progress', () => {
+  /** 対象 2 件の進行中セッションを作り、セッション ID と対象取引 ID を返す */
+  async function seedSession(t: TestApp): Promise<{ sessionId: string; txIds: string[] }> {
+    const tx1 = await seedUnclassified(t, '進捗ストアA')
+    const tx2 = await seedUnclassified(t, '進捗ストアB')
+    const createRes = await request(t.app, 'POST', '/api/classification/bulk-sessions', {
+      body: { trigger: { kind: 'transaction_list' }, transactionIds: [tx1, tx2] },
+    })
+    expect(createRes.status).toBe(201)
+    const sessionId = (
+      (await createRes.json()) as { common: { bulkClassificationSessionId: string } }
+    ).common.bulkClassificationSessionId
+    return { sessionId, txIds: [tx1, tx2] }
+  }
+
+  it('分類し終えた対象を記録すると残件数が減り、中断してもその残件数が残る', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+
+    const res = await request(
+      t.app,
+      'POST',
+      `/api/classification/bulk-sessions/${sessionId}/progress`,
+      { body: { transactionIds: [txIds[0]] } },
+    )
+    expect(res.status).toBe(200)
+    const advanced = (await res.json()) as {
+      processedTransactionIds: string[]
+      remainingCount: number
+    }
+    expect(advanced.processedTransactionIds).toEqual([txIds[0]])
+    expect(advanced.remainingCount).toBe(1)
+
+    const abortRes = await request(
+      t.app,
+      'POST',
+      `/api/classification/bulk-sessions/${sessionId}/abort`,
+    )
+    expect(abortRes.status).toBe(200)
+    expect((await abortRes.json()) as { remainingCount: number }).toMatchObject({
+      remainingCount: 1,
+    })
+  })
+
+  it('同じ要求を再送しても残件数は二重に減らない', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+
+    for (let i = 0; i < 2; i++) {
+      const res = await request(
+        t.app,
+        'POST',
+        `/api/classification/bulk-sessions/${sessionId}/progress`,
+        { body: { transactionIds: [txIds[0]] } },
+      )
+      expect(res.status).toBe(200)
+      expect((await res.json()) as { remainingCount: number }).toMatchObject({ remainingCount: 1 })
+    }
+  })
+
+  it('配偶者のセッションの進捗は記録できない', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+
+    const res = await request(
+      t.app,
+      'POST',
+      `/api/classification/bulk-sessions/${sessionId}/progress`,
+      { body: { transactionIds: [txIds[0]] }, viewerId: SPOUSE_ID },
+    )
+    expect(res.status).toBe(403)
+
+    // 拒否された要求でセッションの残件数が動いていないこと
+    const getRes = await request(t.app, 'GET', `/api/classification/bulk-sessions/${sessionId}`)
+    expect((await getRes.json()) as { remainingCount: number }).toMatchObject({ remainingCount: 2 })
+  })
+
+  it('終端状態（中断済み）のセッションには進捗を記録できない', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+    expect(
+      (await request(t.app, 'POST', `/api/classification/bulk-sessions/${sessionId}/abort`)).status,
+    ).toBe(200)
+
+    const res = await request(
+      t.app,
+      'POST',
+      `/api/classification/bulk-sessions/${sessionId}/progress`,
+      { body: { transactionIds: [txIds[0]] } },
+    )
+    expect(res.status).toBeGreaterThanOrEqual(400)
+  })
+})
+
 describe('POST /api/classification/retroactive-candidates/apply', () => {
   it('遡及適用で取引が再分類されると RetroactiveReclassificationApplied を発火する（08b §3 J-3）', async () => {
     const merchantName = '遡及ストア'

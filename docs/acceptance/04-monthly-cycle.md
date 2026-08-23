@@ -56,7 +56,7 @@ CSV 取込 → 一括分類 → CSV 確定 → 経費按分 → 精算入金突�
 | 6 | 進行中のセッションで「まとめて分類をやめる」を押す | セッションが中断(abort)され、再開の導線が消えて新しい一括分類を始められる。分類済みの取引はそのまま残る | ☐ |
 
 - 事後処理: テストで登録した学習ルールのうち実運用に不要なものを無効化・整理
-- 備考: 依存 API `POST /api/classification/bulk-sessions`, `GET /api/classification/bulk-sessions/current`, `POST /api/classification/bulk-sessions/:id/complete`, `POST /api/classification/bulk-sessions/:id/abort`
+- 備考: 依存 API `POST /api/classification/bulk-sessions`, `GET /api/classification/bulk-sessions/current`, `POST /api/classification/bulk-sessions/:id/progress`, `POST /api/classification/bulk-sessions/:id/complete`, `POST /api/classification/bulk-sessions/:id/abort`
 
 ### 実施記録
 

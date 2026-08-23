@@ -141,6 +141,19 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
           UnknownResponseSchema,
         )
       }
+      // 分類し終えた取引をセッションの進捗として残す。中断して再開したときに
+      // 残りだけを出せるようにするためで、同じ取引を再送しても残件数は二重に減らない。
+      // ここが失敗しても分類そのものは確定済みなので、進捗の記録漏れとして扱い先へ進む
+      // （再開時は取引の状態からも分類済みを外すため、二重に提示されることはない）
+      try {
+        await apiMutate(
+          `/api/classification/bulk-sessions/${sessionId}/progress`,
+          { method: 'POST', body: { transactionIds: target.targets.map(i => i.transactionId) } },
+          UnknownResponseSchema,
+        )
+      } catch (e) {
+        console.warn('[bulk-classification] 進捗を記録できませんでした', e)
+      }
       return target
     },
     onSuccess: async classified => {

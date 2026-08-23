@@ -70,8 +70,7 @@ export function BulkClassificationEntry({
       const transactionIds = unclassified
         .filter(item => item.isUnclassified)
         .map(item => item.transactionId)
-      const originId = transactionIds[0]
-      if (originId === undefined) {
+      if (transactionIds.length === 0) {
         throw new Error('この月に未分類の取引はありません。月を切り替えてお試しください。')
       }
       return apiMutate(
@@ -79,13 +78,13 @@ export function BulkClassificationEntry({
         {
           method: 'POST',
           body: {
-            // 08b の取込起因は「CSV取込起因（CSV取込ID）」か「単発修正起因（取引ID）」。
-            // 取込完了から来たときは前者、取引一覧から始めたときは後者で、
-            // このセッションが最初に修正する取引（先頭の対象）を起点として記録する
+            // 08b の取込起因のうち、取込完了から来たときは「CSV取込起因」、
+            // 取引一覧から始めたときは「取引一覧起因」で記録する
+            // （後者は起点となる 1 件を持たない）
             trigger:
               importJobId !== null
                 ? { kind: 'csv_import', importJobId }
-                : { kind: 'single_correction', transactionId: originId },
+                : { kind: 'transaction_list' },
             transactionIds,
           },
         },
@@ -100,18 +99,19 @@ export function BulkClassificationEntry({
 
   const resume = useMutation({
     mutationFn: async (target: InProgressBulkClassificationSessionWire) => {
-      // セッションの対象は開始時点で固定され、サーバーに進捗は残らない。
-      // 再開時に「もう分類した取引」を外し、まだ未分類のものだけを提示する
-      // （一覧に無い取引＝別の月の対象はそのまま残す）
+      // 再開時は「もう分類した取引」を外し、まだ残っているものだけを提示する。
+      // サーバーが記録した進捗（表示中の月に限らない）に加えて、このセッションの外で
+      // 分類された取引も一覧の状態から外す
       const listed = await apiFetch(`/api/transactions?month=${month}`, TransactionListWireSchema)
-      const classifiedIds = new Set(
-        listed.filter(item => !item.isUnclassified).map(item => item.transactionId),
-      )
+      const doneIds = new Set<string>(target.processedTransactionIds)
+      for (const item of listed) {
+        if (!item.isUnclassified) doneIds.add(item.transactionId)
+      }
       return {
         ...target,
         common: {
           ...target.common,
-          targets: target.common.targets.filter(item => !classifiedIds.has(item.transactionId)),
+          targets: target.common.targets.filter(item => !doneIds.has(item.transactionId)),
         },
       }
     },

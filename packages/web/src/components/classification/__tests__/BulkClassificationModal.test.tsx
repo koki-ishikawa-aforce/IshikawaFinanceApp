@@ -29,8 +29,7 @@ function session(
       bulkClassificationSessionId: 'BCS_1',
       userId: 'U_DARLING',
       trigger: {
-        kind: 'single_correction',
-        transactionId: targets[0]?.transactionId,
+        kind: 'transaction_list',
         startedAt: '2026-07-24T00:00:00.000Z',
       },
       targets: targets.map(target => ({
@@ -42,6 +41,7 @@ function session(
       })),
     },
     startedAt: '2026-07-24T00:00:00.000Z',
+    processedTransactionIds: [],
     remainingCount: targets.length,
   })
   if (parsed.kind !== 'in_progress') throw new Error('in_progress を期待')
@@ -207,6 +207,73 @@ describe('BulkClassificationModal', () => {
       expect.anything(),
     )
     expect(screen.getByText('2 / 2 店舗（分類済み 2 件）')).toBeInTheDocument()
+  })
+
+  it('分類し終えた加盟店の取引をセッションの進捗として記録する', async () => {
+    const user = userEvent.setup()
+    renderWithClient(
+      <BulkClassificationModal
+        session={session([
+          { transactionId: 'TX1', merchantName: 'スーパーA' },
+          { transactionId: 'TX2', merchantName: 'スーパーA' },
+          { transactionId: 'TX3', merchantName: 'カフェB' },
+        ])}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await classifyCurrentGroup(user)
+
+    await waitFor(() =>
+      expect(apiMock.apiMutate).toHaveBeenCalledWith(
+        '/api/classification/bulk-sessions/BCS_1/progress',
+        { method: 'POST', body: { transactionIds: ['TX1', 'TX2'] } },
+        expect.anything(),
+      ),
+    )
+  })
+
+  it('とばした加盟店は進捗に記録しない', async () => {
+    const user = userEvent.setup()
+    renderWithClient(
+      <BulkClassificationModal
+        session={session([
+          { transactionId: 'TX1', merchantName: 'スーパーA' },
+          { transactionId: 'TX2', merchantName: 'カフェB' },
+        ])}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'この店舗はとばす' }))
+
+    expect(await screen.findByText('カフェB')).toBeInTheDocument()
+    expect(apiMock.apiMutate).not.toHaveBeenCalledWith(
+      '/api/classification/bulk-sessions/BCS_1/progress',
+      expect.anything(),
+      expect.anything(),
+    )
+  })
+
+  it('進捗の記録に失敗しても分類は確定済みとして次の加盟店へ進む', async () => {
+    const user = userEvent.setup()
+    apiMock.apiMutate.mockImplementation((path: string) =>
+      path.endsWith('/progress') ? Promise.reject(new Error('boom')) : Promise.resolve({}),
+    )
+    renderWithClient(
+      <BulkClassificationModal
+        session={session([
+          { transactionId: 'TX1', merchantName: 'スーパーA' },
+          { transactionId: 'TX2', merchantName: 'カフェB' },
+        ])}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await classifyCurrentGroup(user)
+
+    expect(await screen.findByText('カフェB')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('完了の件数は画面で数えた件数ではなくサーバーの処理件数を出す', async () => {

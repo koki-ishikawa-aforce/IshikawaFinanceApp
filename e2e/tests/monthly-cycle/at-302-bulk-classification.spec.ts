@@ -106,6 +106,27 @@ test.describe('AT-302: 取込サマリと一括分類セッション', () => {
     }
   })
 
+  test('AT-302-3b: 分類し終えた対象を進捗として記録すると残件数が減る', async ({ request }) => {
+    const res = await request.post(
+      `${API_URL}/api/classification/bulk-sessions/${bulkSessionId}/progress`,
+      { headers: HEADERS, data: { transactionIds: transactionIds.slice(0, 1) } },
+    )
+    expect(res.status()).toBe(200)
+
+    const body = await res.json()
+    expect(body.kind).toBe('in_progress')
+    expect(body.processedTransactionIds).toEqual(transactionIds.slice(0, 1))
+    expect(body.remainingCount).toBe(transactionIds.length - 1)
+
+    // 同じ要求を再送しても残件数は二重に減らない
+    const again = await request.post(
+      `${API_URL}/api/classification/bulk-sessions/${bulkSessionId}/progress`,
+      { headers: HEADERS, data: { transactionIds: transactionIds.slice(0, 1) } },
+    )
+    expect(again.status()).toBe(200)
+    expect((await again.json()).remainingCount).toBe(transactionIds.length - 1)
+  })
+
   test('AT-302-4: セッションを完了できる', async ({ request }) => {
     const res = await request.post(
       `${API_URL}/api/classification/bulk-sessions/${bulkSessionId}/complete`,
