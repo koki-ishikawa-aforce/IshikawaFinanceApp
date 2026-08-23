@@ -1,11 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import {
+  concludedDeliveryOf,
+  concludesDelivery,
   createLineDeliveryLog,
+  deliveryLogOccurredAt,
   LineDeliveryLogSchema,
 } from '../../../src/notification-delivery/aggregates/LineDeliveryLog'
+import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 import {
   CommonDeliveryMessageAttrsSchema,
   DeliveryMessageSchema,
+  DeliverySkipReasonSchema,
+  SendFailureReasonSchema,
   type FailedDeliveryMessage,
   type SentDeliveryMessage,
   type SkippedDeliveryMessage,
@@ -59,6 +65,103 @@ describe('LineDeliveryLog 集約', () => {
         },
       }),
     ).toThrow()
+  })
+})
+
+describe('concludesDelivery（冪等性キーの配信を確定させるか）', () => {
+  const logWith = (resultStatus: unknown) => LineDeliveryLogSchema.parse({ ...base, resultStatus })
+
+  it('送信成功は配信を確定させる（同一キーで再送信しない）', () => {
+    expect(
+      concludesDelivery(
+        logWith({ kind: 'success', lineMessageId: 'line_msg_001', sentAt: new Date() }),
+      ),
+    ).toBe(true)
+  })
+
+  it('送信スキップは理由によらず配信を確定させる（送らないと決めた事実が確定している）', () => {
+    // 列挙をベタ書きせず schema から回す（スキップ理由が増えたら自動で対象に入る）
+    for (const skipReason of DeliverySkipReasonSchema.options) {
+      expect(
+        concludesDelivery(logWith({ kind: 'skipped', skipReason, skippedAt: new Date() })),
+      ).toBe(true)
+    }
+  })
+
+  it('未達が確定した送信失敗だけが配信を確定させない（#441-A）', () => {
+    // 再送信してよいのは「LINE に届いていないと断定できる失敗」だけ。
+    // timeout は LINE 側が受理済みかもしれず、再送信すると金額入りの月次サマリが
+    // 2 通届きうるため確定扱い。invalid_target は何度送っても直らないため確定扱い。
+    const expected: Record<(typeof SendFailureReasonSchema.options)[number], boolean> = {
+      line_api_failure: false,
+      timeout: true,
+      invalid_target: true,
+    }
+    for (const failureReason of SendFailureReasonSchema.options) {
+      expect(
+        concludesDelivery(logWith({ kind: 'failure', failureReason, failedAt: new Date() })),
+      ).toBe(expected[failureReason])
+    }
+  })
+})
+
+describe('concludedDeliveryOf（確定ログの選択）', () => {
+  const logWith = (resultStatus: unknown, deliveryLogId = base.deliveryLogId) =>
+    LineDeliveryLogSchema.parse({ ...base, deliveryLogId, resultStatus })
+  const succeeded = (id: string) =>
+    logWith(
+      { kind: 'success', lineMessageId: 'line_msg_001', sentAt: new Date() },
+      id as typeof base.deliveryLogId,
+    )
+  const failed = logWith({
+    kind: 'failure',
+    failureReason: 'line_api_failure',
+    failedAt: new Date(),
+  })
+
+  it('ログが 1 件も無ければ null（初回配信）', () => {
+    expect(concludedDeliveryOf([])).toBeNull()
+  })
+
+  it('未達が確定した失敗だけなら null（再送信に進んでよい）', () => {
+    expect(concludedDeliveryOf([failed, failed])).toBeNull()
+  })
+
+  it('確定ログがあればそれを返す（失敗が先に積まれていても拾える）', () => {
+    const success = succeeded('01DG0000000000000000000002')
+    expect(concludedDeliveryOf([failed, success])).toBe(success)
+  })
+
+  it('確定ログが 2 件あれば InvariantViolationError（二重配信済みを見逃さない）', () => {
+    // DB の partial unique index をすり抜けた異常。黙って 1 件目を返すと、
+    // 既に 2 通届いている事実が呼出し側から見えなくなる
+    expect(() =>
+      concludedDeliveryOf([
+        succeeded('01DG0000000000000000000002'),
+        succeeded('01DG0000000000000000000003'),
+      ]),
+    ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('deliveryLogOccurredAt（発生日時）', () => {
+  const logWith = (resultStatus: unknown) => LineDeliveryLogSchema.parse({ ...base, resultStatus })
+  const at = new Date('2026-07-01T12:34:56Z')
+
+  it('3 つの終端それぞれの日時を取り出す（集約直下に送信日時を持たないため）', () => {
+    expect(
+      deliveryLogOccurredAt(
+        logWith({ kind: 'success', lineMessageId: 'line_msg_001', sentAt: at }),
+      ),
+    ).toEqual(at)
+    expect(
+      deliveryLogOccurredAt(logWith({ kind: 'failure', failureReason: 'timeout', failedAt: at })),
+    ).toEqual(at)
+    expect(
+      deliveryLogOccurredAt(
+        logWith({ kind: 'skipped', skipReason: 'notification_disabled', skippedAt: at }),
+      ),
+    ).toEqual(at)
   })
 })
 

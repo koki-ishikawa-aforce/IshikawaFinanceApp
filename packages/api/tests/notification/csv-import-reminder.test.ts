@@ -220,9 +220,11 @@ describe('CSV 取込リマインダー', () => {
 
     it('配信ログに送信 payload が凍結される（OQ-34）', async () => {
       await harness.runner.run({ targetMonth: month, at: day10 })
-      const log = await harness.logRepository.findByIdempotencyKey(
-        `csv_import_reminder:${TALK_ROOM_ID}:${month}:2026-07-10`,
-      )
+      const log = (
+        await harness.logRepository.findAllByIdempotencyKey(
+          `csv_import_reminder:${TALK_ROOM_ID}:${month}:2026-07-10`,
+        )
+      ).at(-1)
       expect(log?.resultStatus.kind).toBe('success')
       expect(log?.timingKind).toBe('reminder')
       expect(log?.sentPayloadJson).toContain('2026年7月')
@@ -275,9 +277,11 @@ describe('CSV 取込リマインダー', () => {
 
     it('停止はスキップとして配信ログに記録される', async () => {
       await harness.runner.run({ targetMonth: month, at: day10 })
-      const log = await harness.logRepository.findByIdempotencyKey(
-        `csv_import_reminder:stop:${TALK_ROOM_ID}:${month}:csv_import_completed`,
-      )
+      const log = (
+        await harness.logRepository.findAllByIdempotencyKey(
+          `csv_import_reminder:stop:${TALK_ROOM_ID}:${month}:csv_import_completed`,
+        )
+      ).at(-1)
       expect(log?.resultStatus).toMatchObject({
         kind: 'skipped',
         skipReason: 'reminder_stop_condition_met',
@@ -303,9 +307,11 @@ describe('CSV 取込リマインダー', () => {
         stopReason: 'notification_disabled',
       })
       // 停止理由 → スキップ理由の写像（08g §1 は両者を別語彙として持つ）
-      const log = await disabled.logRepository.findByIdempotencyKey(
-        `csv_import_reminder:stop:${TALK_ROOM_ID}:${month}:notification_disabled`,
-      )
+      const log = (
+        await disabled.logRepository.findAllByIdempotencyKey(
+          `csv_import_reminder:stop:${TALK_ROOM_ID}:${month}:notification_disabled`,
+        )
+      ).at(-1)
       expect(log?.resultStatus).toMatchObject({
         kind: 'skipped',
         skipReason: 'notification_disabled',
@@ -379,10 +385,30 @@ describe('CSV 取込リマインダー', () => {
       expect(outcome).toEqual({ kind: 'send_failed' })
       // 送信できていないので ReminderSent は発行しない
       expect(failing.events).toHaveLength(0)
-      const log = await failing.logRepository.findByIdempotencyKey(
+      const logs = await failing.logRepository.findAllByIdempotencyKey(
         `csv_import_reminder:${TALK_ROOM_ID}:${month}:2026-07-10`,
       )
-      expect(log?.resultStatus.kind).toBe('failure')
+      // 1 回の実行で積まれるログは 1 件（失敗ログが複数件許容になったぶん、
+      // 二重に積むバグを保存時の一意制約では検出できなくなっている）
+      expect(logs).toHaveLength(1)
+      expect(logs.at(-1)?.resultStatus.kind).toBe('failure')
+    })
+
+    it('送信に失敗した日は、同じ JST 暦日の再実行で改めて送信される（#441-A）', async () => {
+      // 差分前はこの経路も already_sent_today で短絡し、その日の催促は届かなかった
+      const failing = await buildHarness({ pushResult: pushFailure })
+      await failing.runner.run({ targetMonth: month, at: day10 })
+      const second = await failing.runner.run({
+        targetMonth: month,
+        at: new Date('2026-07-10T14:00:00Z'), // 同じ JST 暦日
+      })
+
+      expect(second).toEqual({ kind: 'send_failed' })
+      expect(failing.lineGateway.calls).toBe(2)
+      const logs = await failing.logRepository.findAllByIdempotencyKey(
+        `csv_import_reminder:${TALK_ROOM_ID}:${month}:2026-07-10`,
+      )
+      expect(logs.map(l => l.resultStatus.kind)).toEqual(['failure', 'failure'])
     })
   })
 })

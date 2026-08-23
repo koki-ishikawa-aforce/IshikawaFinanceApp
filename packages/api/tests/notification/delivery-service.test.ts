@@ -99,10 +99,32 @@ const failure: LinePushResult = {
   failureReason: 'line_api_failure',
   detail: 'stub failure',
 }
+/** 送達が不明な失敗（LINE 側が受理済みかもしれない） */
+const timeoutFailure: LinePushResult = {
+  kind: 'failure',
+  failureReason: 'timeout',
+  detail: 'stub timeout',
+}
+/** 時間が経っても直らない失敗 */
+const invalidTargetFailure: LinePushResult = {
+  kind: 'failure',
+  failureReason: 'invalid_target',
+  detail: 'stub invalid target',
+}
 
 describe('NotificationDeliveryService', () => {
   let deps: NotificationDeliveryServiceDeps
   let events: DomainEvent[]
+
+  /** 冪等性キーに紐づく配信ログを保存順に取り出す（失敗ログが積まれるため 0..N 件） */
+  async function logsOf(idempotencyKey: string) {
+    return deps.lineDeliveryLogRepository.findAllByIdempotencyKey(idempotencyKey)
+  }
+
+  /** 冪等性キーの最後の配信ログ */
+  async function lastLogOf(idempotencyKey: string) {
+    return (await logsOf(idempotencyKey)).at(-1) ?? null
+  }
 
   function build(
     lineGateway: LineMessagingGateway,
@@ -157,7 +179,7 @@ describe('NotificationDeliveryService', () => {
         outcome.message.common.deliveryMessageId,
       )
       expect(saved?.kind).toBe('skipped')
-      const log = await deps.lineDeliveryLogRepository.findByIdempotencyKey('skip-key-1')
+      const log = await lastLogOf('skip-key-1')
       expect(log?.resultStatus).toMatchObject({
         kind: 'skipped',
         skipReason: 'reminder_stop_condition_met',
@@ -217,7 +239,7 @@ describe('NotificationDeliveryService', () => {
       outcome.message.common.deliveryMessageId,
     )
     expect(saved?.kind).toBe('sent')
-    const log = await deps.lineDeliveryLogRepository.findByIdempotencyKey('key-1')
+    const log = await lastLogOf('key-1')
     expect(log?.resultStatus.kind).toBe('success')
     expect(log?.sentPayloadJson).toBe('{"stub":true}')
     expect(log?.timingKind).toBe('test_send')
@@ -258,6 +280,167 @@ describe('NotificationDeliveryService', () => {
     )
     expect(counter?.consecutiveFailureCount).toBe(1)
     expect(counter?.thresholdState.kind).toBe('not_reached')
+  })
+
+  describe('失敗した配信の再送信（#441-A）', () => {
+    it('前回が失敗なら同一キーでも送信し直す（月次サマリが 1 回の失敗で永久に届かなくならない）', async () => {
+      // 1 回目失敗 → 2 回目成功。月次レポートサマリは月に 1 通しか送る機会が無い
+      const gateway = stubLineGateway([failure, success])
+      const service = build(gateway)
+      const input = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'monthly_report_household_summary' as const,
+        idempotencyKey: 'key-retry-1',
+      }
+
+      const first = await service.deliver(input)
+      expect(first.kind).toBe('failed')
+      const second = await service.deliver(input)
+
+      expect(second.kind).toBe('sent')
+      expect(gateway.calls).toBe(2)
+      // 失敗の記録は監査記録として残り、成功が後ろに積まれる
+      expect((await logsOf('key-retry-1')).map(l => l.resultStatus.kind)).toEqual([
+        'failure',
+        'success',
+      ])
+      // 再送信の成功で連続失敗が断ち切られる（次の障害を 1 回目から数え直す）
+      const counter = await deps.consecutiveFailureCounterRepository.findByRef(
+        FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' }),
+      )
+      expect(counter?.consecutiveFailureCount).toBe(0)
+    })
+
+    it('再送信が成功したあとは already_delivered に戻る（3 回目は送らない）', async () => {
+      const gateway = stubLineGateway([failure, success])
+      const service = build(gateway)
+      const input = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'monthly_report_household_summary' as const,
+        idempotencyKey: 'key-retry-2',
+      }
+
+      await service.deliver(input)
+      await service.deliver(input)
+      const third = await service.deliver(input)
+
+      expect(third.kind).toBe('already_delivered')
+      // 呼出し側へ渡るのは確定した成功ログ（失敗ログを返すと「配信済み」の根拠がずれる）
+      if (third.kind !== 'already_delivered') return
+      expect(third.log.resultStatus.kind).toBe('success')
+      expect(gateway.calls).toBe(2)
+      expect(await logsOf('key-retry-2')).toHaveLength(2)
+    })
+
+    it('失敗が続く間は何度でも送信し直す（回復の機会を失わない）', async () => {
+      const gateway = stubLineGateway([failure])
+      const service = build(gateway)
+      const input = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'monthly_report_household_summary' as const,
+        idempotencyKey: 'key-retry-3',
+      }
+
+      await service.deliver(input)
+      await service.deliver(input)
+      const third = await service.deliver(input)
+
+      expect(third.kind).toBe('failed')
+      expect(gateway.calls).toBe(3)
+      expect(await logsOf('key-retry-3')).toHaveLength(3)
+
+      // 再送信の試行 1 回を連続失敗 1 回として数える（同一キーの再試行でもカウンタが進む）。
+      // 差分前は 2 回目以降が already_delivered で短絡し、カウンタに触れなかった
+      const counter = await deps.consecutiveFailureCounterRepository.findByRef(
+        FailureCounterRefSchema.parse({ kind: 'talk_room', talkRoomId: 'room_001' }),
+      )
+      expect(counter?.consecutiveFailureCount).toBe(3)
+      // 既定しきい値 3 に到達するので、障害としてフェイルセーフメールが全宛先へ 1 回だけ出る
+      expect(events.filter(e => e.type === 'FailureThresholdReached')).toHaveLength(1)
+      expect(events.filter(e => e.type === 'FailsafeEmailSent')).toHaveLength(2)
+    })
+
+    it('タイムアウトで終わったキーは再送信しない（LINE 側に届いているかもしれないため）', async () => {
+      // 再送信すると金額入りの月次サマリが 2 通届きうる。届かない側のリスクより
+      // 二重配信を避ける側を採る(#523 で見直しの判断を仰いでいる)
+      const gateway = stubLineGateway([timeoutFailure, success])
+      const service = build(gateway)
+      const input = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'monthly_report_household_summary' as const,
+        idempotencyKey: 'key-retry-timeout',
+      }
+
+      await service.deliver(input)
+      const second = await service.deliver(input)
+
+      expect(second.kind).toBe('already_delivered')
+      expect(gateway.calls).toBe(1)
+    })
+
+    it('宛先・payload が不正で終わったキーは再送信しない（何度送っても直らない）', async () => {
+      const gateway = stubLineGateway([invalidTargetFailure, success])
+      const service = build(gateway)
+      const input = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'monthly_report_household_summary' as const,
+        idempotencyKey: 'key-retry-invalid',
+      }
+
+      await service.deliver(input)
+      const second = await service.deliver(input)
+
+      expect(second.kind).toBe('already_delivered')
+      expect(gateway.calls).toBe(1)
+    })
+
+    it('スキップで確定したキーは再送信しない（送らないと決めた事実は確定している）', async () => {
+      const gateway = stubLineGateway([success])
+      const service = build(gateway)
+      const common = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'csv_import_reminder' as const,
+        idempotencyKey: 'key-retry-4',
+      }
+
+      await service.skip({ ...common, skipReason: 'reminder_stop_condition_met' })
+      const outcome = await service.deliver(common)
+
+      expect(outcome.kind).toBe('already_delivered')
+      if (outcome.kind !== 'already_delivered') return
+      expect(outcome.log.resultStatus.kind).toBe('skipped')
+      expect(gateway.calls).toBe(0)
+    })
+
+    it('失敗したキーへの skip は記録され、確定として扱われる', async () => {
+      const gateway = stubLineGateway([failure])
+      const service = build(gateway)
+      const common = {
+        target: talkRoomTarget,
+        content: textContent,
+        purpose: 'csv_import_reminder' as const,
+        idempotencyKey: 'key-retry-5',
+      }
+
+      await service.deliver(common)
+      const skipped = await service.skip({ ...common, skipReason: 'notification_disabled' })
+      const afterSkip = await service.deliver(common)
+
+      expect(skipped.kind).toBe('skipped')
+      expect(afterSkip.kind).toBe('already_delivered')
+      expect(gateway.calls).toBe(1)
+      // 失敗の履歴は消えず、スキップが後ろに積まれる
+      expect((await logsOf('key-retry-5')).map(l => l.resultStatus.kind)).toEqual([
+        'failure',
+        'skipped',
+      ])
+    })
   })
 
   it('しきい値到達: FailureThresholdReached とフェイルセーフメールを全宛先へ 1 回だけ発火する（OQ-14）', async () => {

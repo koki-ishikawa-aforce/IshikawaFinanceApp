@@ -13,6 +13,9 @@
  * 冪等性: 配信の冪等性キーは月次レポートID（+ 個人サマリは宛先ユーザーID）で、
  * 同一レポートへの再確定・イベント再配信では 2 通目を送らない。レポート値が後から
  * 遡及修正されても、配信済みの payload は LINE 配信ログに凍結されている（OQ-34）。
+ * ただし LINE に届かなかったことが確定している失敗（#441-A）は「配信済み」に
+ * ならないため、その宛先だけは次の再確定で改めて送られる。月次サマリは月に 1 通しか
+ * 送る機会が無く、回復の機会が対象月の CSV 再取込に限られるための緩和。
  *
  * プライバシー3段階ルール: 世帯サマリは世帯費用と資産のみ、個人サマリは宛先本人の
  * 個人費用・経費のみを載せる（本人分の抜き出しはドメインの `selfTotalsOf` が単一ソース）。
@@ -132,6 +135,15 @@ export function registerMonthlyReportDeliveryEventHandlers(
       purpose: 'monthly_report_household_summary',
       idempotencyKey,
     })
+    if (outcome.kind === 'failed') {
+      // 再送信の機会は対象月の CSV 再取込に限られ、利用者が押せる再送信の導線は無い。
+      // 最終確定後は再確定が起きないため、その月のサマリは届かないまま残る
+      console.warn(
+        '[notification] 月次レポート世帯サマリの配信に失敗した' +
+          `（${report.common.targetYearMonth} / report=${report.common.monthlyReportId}）。` +
+          '回復には対象月の CSV 再取込が要る（最終確定後は再送信されない）',
+      )
+    }
     if (outcome.kind !== 'sent') return
 
     await eventBus.publish(
