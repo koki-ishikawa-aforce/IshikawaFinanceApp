@@ -46,6 +46,7 @@ import {
   UnpaidSettlementAlreadyAppliedError,
 } from '../../shared/errors/DomainError'
 import { BankNameSchema, type BankName } from '../value-objects/BankName'
+import { InactivationReasonSchema } from '../value-objects/InactivationReason'
 import { BrokerageNameSchema, type BrokerageName } from '../value-objects/BrokerageName'
 import {
   ManualEntryMemoSchema,
@@ -58,6 +59,11 @@ export const ActivenessSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('inactive'),
     inactivatedAt: z.date(),
+    /**
+     * 書き込みは `InactivationReasonSchema`（1〜100 文字）で検証する。ここを同じ制約に
+     * しないのは、制約を満たさない既存 payload があっても口座を読み出せなくしないため
+     * （読めないと再アクティブ化での復旧すら塞がる）。
+     */
     reason: z.string(),
   }),
 ])
@@ -559,12 +565,6 @@ const BalanceInputSchema = MoneySchema.refine(v => v <= BALANCE_INPUT_LIMIT, {
 })
 
 /**
- * 非アクティブ理由。空文字は許さない（何のために閉じたかが残らないため）。
- * 上限は口座 payload・イベント payload に恒久的に載る自由入力のため BankName（50）に倣う。
- */
-export const InactivationReasonSchema = z.string().min(1).max(100)
-
-/**
  * 手入力の操作者が口座所有者本人であることを検証する（08d §2「入力者ユーザーID = 口座所有者ユーザーID」）。
  * 配偶者の口座残高を手入力で動かせないようにする不変条件。
  */
@@ -871,9 +871,9 @@ export function inactivateAccount(
  * 戻す操作を種別で拒むと、何らかの理由で非アクティブになった三井住友系の口座が閉じたまま
  * 取り残され、復旧手段が無くなるため。
  *
- * 解除前の非アクティブ理由を返す（`correctInitialBalance` が旧初期残高を返すのと同じ形）。
- * 口座側の「いつ・なぜ閉じたか」はアクティブに戻す時点で消えるため、呼び出し側が
- * 口座再アクティブ化イベントに載せて履歴として残せるようにする。
+ * 解除する非アクティブ記録（日時・理由）を同時に返す（`correctInitialBalance` が旧初期残高を
+ * 返すのと同じ形）。口座側の「いつ・なぜ閉じたか」はアクティブに戻す時点で消えるため、
+ * 呼び出し側が口座再アクティブ化イベントやログへ引き継げるようにする。
  *
  * 残高・最終更新日時・残高鮮度根拠は動かさない。閉じている間に残高は変わっておらず、
  * 戻した時点で「最近確認した」ことにすると鮮度の警告をすり抜けるため。
@@ -881,17 +881,17 @@ export function inactivateAccount(
 export function reactivateAccount(
   account: Account,
   params: { operatorUserId: UserId },
-): { account: Account; clearedInactivationReason: string } {
+): { account: Account; clearedInactivation: { inactivatedAt: Date; reason: string } } {
   assertOperatedByOwner(account, params.operatorUserId, '口座の再アクティブ化')
-  if (account.common.activeness.kind === 'active') {
+  const activeness = account.common.activeness
+  if (activeness.kind === 'active') {
     throw new InvariantViolationError(`口座（${account.common.accountId}）は既にアクティブである`)
   }
-  const clearedInactivationReason = account.common.activeness.reason
   return {
     account: AccountSchema.parse({
       ...account,
       common: { ...account.common, activeness: { kind: 'active' } },
     }),
-    clearedInactivationReason,
+    clearedInactivation: { inactivatedAt: activeness.inactivatedAt, reason: activeness.reason },
   }
 }

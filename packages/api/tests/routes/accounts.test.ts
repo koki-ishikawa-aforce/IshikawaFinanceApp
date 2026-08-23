@@ -758,7 +758,14 @@ describe('POST /api/accounts/:accountId/reactivate', () => {
     })
   })
 
-  it('戻した口座には残高操作ができる（非アクティブ化を取り消せている）', async () => {
+  it('空のリクエストボディでも通る（受け取る項目が無い）', async () => {
+    const t = createTestApp()
+    const id = await inactivated(t)
+    const res = await request(t.app, 'POST', `/api/accounts/${id}/reactivate`, { body: {} })
+    expect(res.status).toBe(200)
+  })
+
+  it('戻した口座には残高操作ができ、残高は閉じる前のまま引き継がれる', async () => {
     const t = createTestApp()
     const id = await inactivated(t)
     await request(t.app, 'POST', `/api/accounts/${id}/reactivate`)
@@ -766,13 +773,18 @@ describe('POST /api/accounts/:accountId/reactivate', () => {
       body: { amount: 1000 },
     })
     expect(res.status).toBe(200)
+    // 登録時の初期残高 500000 が往復で初期化されていないこと
+    const { account } = await json<{ account: AccountWire }>(res)
+    expect(account.balance?.currentBalance).toBe(499000)
   })
 
-  it('アクティブな口座への実行は 409', async () => {
+  it('アクティブな口座への実行は 409 で、イベントも発行しない', async () => {
     const t = createTestApp()
+    const log = subscribeManualEvents(t)
     const id = await accountId(await registerOtherSavings(t))
     const res = await request(t.app, 'POST', `/api/accounts/${id}/reactivate`)
     expect(res.status).toBe(409)
+    expect(log.reactivated).toHaveLength(0)
   })
 
   it('配偶者の口座は戻せない（403）', async () => {
@@ -784,8 +796,9 @@ describe('POST /api/accounts/:accountId/reactivate', () => {
     expect(res.status).toBe(403)
   })
 
-  it('配偶者が戻そうとしても口座はアクティブに戻らない（403 の後もそのまま）', async () => {
+  it('配偶者が戻そうとしても口座はアクティブに戻らず、イベントも発行しない', async () => {
     const t = createTestApp()
+    const log = subscribeManualEvents(t)
     const id = await inactivated(t)
     await request(t.app, 'POST', `/api/accounts/${id}/reactivate`, { viewerId: SPOUSE_ID })
     const { items } = await json<{ items: AccountWire[] }>(
@@ -793,6 +806,7 @@ describe('POST /api/accounts/:accountId/reactivate', () => {
     )
     const target = items.find(a => a.common.accountId === id)
     expect(target?.common.activeness.kind).toBe('inactive')
+    expect(log.reactivated).toHaveLength(0)
   })
 
   it('存在しない口座は 404', async () => {

@@ -206,9 +206,18 @@ describe('残高の手動操作の反映', () => {
 
     const list = await query.fetchBalanceList()
     expect(list.items).toContainEqual(
-      expect.objectContaining({ kind: 'other_savings', currentBalance: 800000 }),
+      expect.objectContaining({
+        accountId: savings.common.accountId,
+        kind: 'other_savings',
+        currentBalance: 800000,
+      }),
     )
     expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(800000)
+
+    // is_active 列だけでなく payload 側も戻っていること。ここがずれると一覧は正しく見えるのに
+    // 読み直した集約は非アクティブのままで、以降の残高操作が拒否され続ける
+    const reloaded = await accountRepo.findById(savings.common.accountId)
+    expect(reloaded?.common.activeness).toEqual({ kind: 'active' })
   })
 
   it('初期残高の後修正が残高一覧・資産合計に反映される', async () => {

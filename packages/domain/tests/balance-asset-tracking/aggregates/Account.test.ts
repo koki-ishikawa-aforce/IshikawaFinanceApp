@@ -1332,18 +1332,47 @@ describe('inactivateAccount()', () => {
 })
 
 describe('reactivateAccount()', () => {
-  it('アクティブに戻り、解除前の非アクティブ理由を返す', () => {
-    const { account, clearedInactivationReason } = reactivateAccount(
-      otherSavings({ inactive: true }),
-      { operatorUserId: OWNER },
-    )
+  /** 非アクティブな三井住友系の口座（inactivateAccount では作れないため直接組み立てる） */
+  function inactiveSmbcBank(): Account {
+    return AccountSchema.parse({
+      ...smbcBank(),
+      common: {
+        ...smbcBank().common,
+        activeness: { kind: 'inactive', inactivatedAt: new Date('2026-05-01'), reason: '解約済み' },
+      },
+    })
+  }
+
+  it('アクティブに戻り、解除する非アクティブ記録（日時・理由）を返す', () => {
+    const { account, clearedInactivation } = reactivateAccount(otherSavings({ inactive: true }), {
+      operatorUserId: OWNER,
+    })
     expect(account.common.activeness).toEqual({ kind: 'active' })
-    expect(clearedInactivationReason).toBe('解約済み')
+    expect(clearedInactivation).toEqual({
+      inactivatedAt: new Date('2026-05-01'),
+      reason: '解約済み',
+    })
   })
 
   it('NISA 口座も戻せる', () => {
     const { account } = reactivateAccount(nisa({ inactive: true }), { operatorUserId: OWNER })
     expect(account.common.activeness.kind).toBe('active')
+  })
+
+  it('三井住友系の口座も戻せる（口座種別で絞らない — 閉じた口座を取り残さないため）', () => {
+    // 非アクティブ化は別銀行貯蓄・NISA のみだが、戻す側を種別で拒むと、何らかの理由で
+    // 非アクティブになった三井住友系の口座に復旧手段が無くなる
+    const { account, clearedInactivation } = reactivateAccount(inactiveSmbcBank(), {
+      operatorUserId: OWNER,
+    })
+    expect(account.common.activeness).toEqual({ kind: 'active' })
+    expect(clearedInactivation.reason).toBe('解約済み')
+  })
+
+  it('戻した三井住友系の口座は残高変動を再び受け付ける', () => {
+    const { account } = reactivateAccount(inactiveSmbcBank(), { operatorUserId: OWNER })
+    if (account.kind !== 'smbc_bank') throw new Error('unreachable')
+    expect(applySmbcBalanceChange(account, 1000 as never, AT).balance.currentBalance).toBe(301000)
   })
 
   it('戻した口座は残高変動を再び受け付ける（非アクティブ化を取り消せる）', () => {
@@ -1388,10 +1417,8 @@ describe('reactivateAccount()', () => {
   })
 
   it('版数は動かない（保存時の照合に使う「読み出したときの版」のまま）', () => {
-    const inactive = AccountSchema.parse({
-      ...otherSavings({ inactive: true }),
-      common: { ...otherSavings({ inactive: true }).common, version: 7 },
-    })
+    const base = otherSavings({ inactive: true })
+    const inactive = AccountSchema.parse({ ...base, common: { ...base.common, version: 7 } })
     const { account } = reactivateAccount(inactive, { operatorUserId: OWNER })
     expect(account.common.version).toBe(7)
   })

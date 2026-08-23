@@ -523,17 +523,26 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
   app.post('/:accountId/reactivate', async c => {
     const { account, viewerId, accountId } = await loadOwnedAccount(c)
     const now = new Date()
-    const { account: updated, clearedInactivationReason } = reactivateAccount(account, {
+    const { account: updated, clearedInactivation } = reactivateAccount(account, {
       operatorUserId: viewerId,
     })
+    // イベントの組み立ては保存より前に行う。非アクティブ理由はイベント側だけが空文字を
+    // 弾く（口座 payload 側の Activeness は既存データを読めるよう下限を課していない）ため、
+    // 保存の後に組み立てると、理由が空の口座で「戻す保存は済んだがイベントだけ落ちる」
+    // 片側適用になる。
+    const event = AccountReactivatedSchema.parse({
+      ...domainEventBase(now),
+      type: 'AccountReactivated',
+      accountId,
+      clearedInactivationReason: clearedInactivation.reason,
+    })
     await saveAccountOr500(updated, 'reactivate')
-    await deps.eventBus.publish(
-      AccountReactivatedSchema.parse({
-        ...domainEventBase(now),
-        type: 'AccountReactivated',
-        accountId,
-        clearedInactivationReason,
-      }),
+    await deps.eventBus.publish(event)
+    // 世帯資産合計が増える操作なのに、口座側の「いつ閉じたか」はこの時点で消え、
+    // イベントも購読者が無く残らない。後から「なぜ合計が動いたか」を追えるよう痕跡を残す
+    // （非アクティブ理由は利用者の自由入力のため載せない）。
+    console.info(
+      `口座を再アクティブ化した（accountId=${accountId}, 解除した非アクティブ化日時=${clearedInactivation.inactivatedAt.toISOString()}）`,
     )
     return c.json({ account: updated })
   })
