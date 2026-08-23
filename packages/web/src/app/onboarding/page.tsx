@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { SectionIdentifier } from '@warimaru/domain'
 import { useViewerRole } from '@/hooks/useViewerRole'
 import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
 import {
@@ -15,6 +16,7 @@ import {
   SpouseCompletionResultWireSchema,
   type AppUserWire,
   type LineOperationSettingsWire,
+  type SectionConfirmationKind,
   type SharedTalkRoomWire,
 } from '@/lib/api-schemas'
 import { getTalkRoomContextId, openExternal } from '@/lib/liff'
@@ -68,6 +70,59 @@ const NOT_JOINED_TALK_ROOM: SharedTalkRoomWire = { kind: 'not_joined' }
 function lineSettingsOf(user: AppUserWire): LineOperationSettingsWire {
   if (user.kind === 'operation_started') return user.lineOperationSettings
   return user.common.lineOperationSettings ?? EMPTY_LINE_SETTINGS
+}
+
+/**
+ * 確認だけで完了扱いにできるセクション（C/D/E、論点8）。
+ * 中身の設定は設定画面が持つため、ここでは「何を見ればよいか」と行き先だけを示し、
+ * 見終わったことの記録をこの画面から送る。
+ */
+const CONFIRMATION_SECTIONS: {
+  section: SectionIdentifier
+  progressKey: 'sectionC' | 'sectionD' | 'sectionE'
+  badge: string
+  name: string
+  href: string
+  note: string
+}[] = [
+  {
+    section: 'section_c',
+    progressKey: 'sectionC',
+    badge: 'C',
+    name: 'カテゴリの確認',
+    href: '/settings?section=categories',
+    note: '支出の分け方（住居・光熱・通信／食費／娯楽／その他）は用意済みです。中身を見て、必要なら自分用のカテゴリを足せます。',
+  },
+  {
+    section: 'section_d',
+    progressKey: 'sectionD',
+    badge: 'D',
+    name: '経費種別の確認',
+    href: '/settings?section=expense-types',
+    note: '経費の分け方（ジム／新聞図書費／AI 利用費／交通費／その他経費）は用意済みです。中身を見て、必要なら自分用の種別を足せます。',
+  },
+  {
+    section: 'section_e',
+    progressKey: 'sectionE',
+    badge: 'E',
+    name: '月次上限の確認',
+    href: '/settings?section=limits',
+    note: '経費種別ごとの毎月の上限は、あなたの役割に合わせて設定済みです。金額を見て、必要なら変えられます。',
+  },
+]
+
+/** 確認セクションの状態表示。編集済み・変更済みは「目を通した」という意味で確認済みと同じ扱い */
+function confirmationLabel(kind: SectionConfirmationKind): string {
+  switch (kind) {
+    case 'confirmed':
+      return '確認済み'
+    case 'edited':
+      return '編集済み'
+    case 'changed':
+      return '変更済み'
+    case 'unconfirmed':
+      return '未確認'
+  }
 }
 
 type StepId =
@@ -225,6 +280,17 @@ export default function OnboardingPage() {
       apiMutate(
         '/api/onboarding/phase2/section-b',
         { method: 'PUT', body: { initialBalanceRef } },
+        OnboardingUserWireSchema,
+      ),
+    onSuccess: invalidate,
+  })
+
+  /** SectionC/D/E の確認記録（冪等。確認済みを押し直しても状態は変わらない） */
+  const confirmSection = useMutation({
+    mutationFn: (section: SectionIdentifier) =>
+      apiMutate(
+        '/api/onboarding/phase2/section-confirmation',
+        { method: 'PUT', body: { section } },
         OnboardingUserWireSchema,
       ),
     onSuccess: invalidate,
@@ -486,7 +552,7 @@ export default function OnboardingPage() {
           <span className={ui.sectionTitle}>Phase 2 をはじめる</span>
           <p className={styles.note}>
             データ連携と初期設定に進みます。Gmail 連携（A）→
-            初期残高の登録（B）の順で完了し、過去明細の取込（F）は任意です。
+            初期残高の登録（B）の順で完了し、カテゴリ・経費種別・月次上限の確認（C・D・E）と過去明細の取込（F）は任意です。
           </p>
           <button
             className={ui.button}
@@ -502,7 +568,10 @@ export default function OnboardingPage() {
       {step === 'phase2' && progress !== undefined && (
         <div className={ui.card}>
           <span className={ui.sectionTitle}>Phase 2 の進捗</span>
-          <p className={styles.note}>A → B の順で完了する必要があります。F はスキップできます。</p>
+          <p className={styles.note}>
+            A → B の順で完了する必要があります。C・D・E の確認と F
+            の取込は任意で、済ませていなくても設定は完了できます。
+          </p>
 
           <div className={styles.sectionRow}>
             <div className={styles.sectionHead}>
@@ -571,6 +640,48 @@ export default function OnboardingPage() {
               </>
             )}
           </div>
+
+          {CONFIRMATION_SECTIONS.map(({ section, progressKey, badge, name, href, note }) => {
+            const kind = progress[progressKey].kind
+            const pending = confirmSection.isPending && confirmSection.variables === section
+            return (
+              <div className={styles.sectionRow} key={section}>
+                <div className={styles.sectionHead}>
+                  <span className={styles.sectionBadge}>{badge}</span>
+                  <span className={styles.sectionName}>{name}</span>
+                  {kind === 'unconfirmed' ? (
+                    <span className={ui.badge}>未確認</span>
+                  ) : (
+                    <span className={ui.badgeAccent}>{confirmationLabel(kind)}</span>
+                  )}
+                </div>
+                {kind === 'unconfirmed' && (
+                  <>
+                    <p className={styles.note}>{note}</p>
+                    <div className={ui.row}>
+                      <Link href={href} className={ui.buttonGhost}>
+                        中身を見る
+                      </Link>
+                      <button
+                        className={ui.buttonGhost}
+                        disabled={progress.sectionB.kind !== 'completed' || pending}
+                        onClick={() => confirmSection.mutate(section)}
+                      >
+                        {progress.sectionB.kind !== 'completed'
+                          ? 'B の完了後に確認できます'
+                          : pending
+                            ? '記録中...'
+                            : '確認しました'}
+                      </button>
+                    </div>
+                    {confirmSection.variables === section && (
+                      <ErrorNote error={confirmSection.error} />
+                    )}
+                  </>
+                )}
+              </div>
+            )
+          })}
 
           <div className={styles.sectionRow}>
             <div className={styles.sectionHead}>

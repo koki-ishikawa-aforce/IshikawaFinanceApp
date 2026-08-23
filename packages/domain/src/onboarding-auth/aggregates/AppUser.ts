@@ -20,7 +20,12 @@ import { UserRoleSchema, type UserRole } from '../../shared/value-objects/UserRo
 import type { ParameterStorePath } from '../../shared/value-objects/ParameterStorePath'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
 import { NicknameSchema, type Nickname } from '../value-objects/Nickname'
-import { Phase2ProgressSchema, type Phase2Progress } from '../value-objects/Phase2Progress'
+import {
+  Phase2ProgressSchema,
+  sectionConfirmationOf,
+  type Phase2Progress,
+  type SectionIdentifier,
+} from '../value-objects/Phase2Progress'
 import {
   LineOperationSettingsSchema,
   type LineOperationSettings,
@@ -293,6 +298,37 @@ export function completeSectionB(
     ...user.progress,
     sectionB: { kind: 'completed', initialBalanceRef, completedAt: at },
   })
+}
+
+/**
+ * Phase2 SectionC/D/E を確認する（08f §2「Phase2 SectionC/D/E を確認する」）。
+ *
+ * 事前条件は SectionB 完了（論点8）。未完了での確認は superRefine でも弾かれるが、
+ * 呼び出し側が理由を読み取れるよう completeSectionB と同じくここで明示的に throw する。
+ *
+ * 冪等: 既に確認済み・編集済み（E は変更済み）なら**同一インスタンスをそのまま返す**。
+ * 確認日時を押すたびに上書きせず、編集件数も失わない。呼び出し側は返り値の同一性
+ * （`updated === user`）で「何も起きなかった」を判定し、保存とイベント発行を省ける。
+ */
+export function confirmSection(
+  user: Phase2InProgressUser,
+  section: SectionIdentifier,
+  at: Date,
+): Phase2InProgressUser {
+  if (user.progress.sectionB.kind !== 'completed') {
+    throw new InvariantViolationError(
+      'SectionB 完了後でなければ SectionC/D/E の確認はできない（論点8）',
+    )
+  }
+  if (sectionConfirmationOf(user.progress, section).kind !== 'unconfirmed') return user
+  const confirmed = { kind: 'confirmed', confirmedAt: at } as const
+  const progress: Phase2Progress =
+    section === 'section_c'
+      ? { ...user.progress, sectionC: confirmed }
+      : section === 'section_d'
+        ? { ...user.progress, sectionD: confirmed }
+        : { ...user.progress, sectionE: confirmed }
+  return updatePhase2Progress(user, progress)
 }
 
 /** Phase2 SectionF（過去明細取込）を完了する。スキップ後の実行（やり直し）は許容する */

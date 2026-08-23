@@ -20,6 +20,7 @@ import type {
   LineFriendshipStatus,
   NotificationActivated,
   OperationStarted,
+  SectionConfirmed,
   SharedTalkRoom,
   TestMessageSent,
   UserId,
@@ -34,6 +35,9 @@ interface UserResponse {
     progress?: {
       sectionA: { kind: string }
       sectionB: { kind: string }
+      sectionC: { kind: string; confirmedAt?: string }
+      sectionD: { kind: string }
+      sectionE: { kind: string }
       sectionF: { kind: string }
     }
   } | null
@@ -80,6 +84,27 @@ async function friendAddKindOf(t: TestApp, userId: UserId = VIEWER_ID): Promise<
   const user = await t.deps.appUserRepository.findById(userId)
   expect(user).not.toBeNull()
   return lineOperationSettingsOf(user!).friendAdd.kind
+}
+
+/** SectionC/D/E の確認が可能な状態（口座 seed → Phase2 開始 → SectionA/B 完了）まで進める */
+async function completeSectionBFor(t: TestApp, viewerId = VIEWER_ID): Promise<void> {
+  await seedInitialBalanceAccounts(t, viewerId)
+  await startPhase2(t, viewerId)
+  await completeSectionAViaOAuth(t, viewerId)
+  const sectionB = await request(t.app, 'PUT', '/api/onboarding/phase2/section-b', {
+    viewerId,
+    body: { initialBalanceRef: initialBalanceRefFor(viewerId) },
+  })
+  expect(sectionB.status).toBe(200)
+}
+
+function subscribeSectionConfirmed(t: TestApp): SectionConfirmed[] {
+  const log: SectionConfirmed[] = []
+  t.deps.eventBus.subscribe<SectionConfirmed>('SectionConfirmed', e => {
+    log.push(e)
+    return Promise.resolve()
+  })
+  return log
 }
 
 /** Phase1 完了 → Phase2 進行中まで進める */
@@ -869,6 +894,79 @@ describe('Phase2 進捗', () => {
     })
     expect(complete.status).toBe(200)
     expect((await json<UserResponse>(complete)).user?.progress?.sectionF.kind).toBe('completed')
+  })
+
+  it('SectionB 完了前の SectionC/D/E の確認は 409（論点8: 順序強制）', async () => {
+    const t = createTestApp()
+    await startPhase2(t)
+    await completeSectionAViaOAuth(t)
+    const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
+      body: { section: 'section_c' },
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('C / D / E の確認を記録し、SectionConfirmed を発行する', async () => {
+    const t = createTestApp()
+    const confirmed = subscribeSectionConfirmed(t)
+    await completeSectionBFor(t)
+
+    for (const section of ['section_c', 'section_d', 'section_e'] as const) {
+      const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
+        body: { section },
+      })
+      expect(res.status).toBe(200)
+    }
+
+    expect(confirmed.map(e => e.section)).toEqual(['section_c', 'section_d', 'section_e'])
+    const me = await request(t.app, 'GET', '/api/onboarding/me')
+    const progress = (await json<UserResponse>(me)).user?.progress
+    expect(progress?.sectionC.kind).toBe('confirmed')
+    expect(progress?.sectionD.kind).toBe('confirmed')
+    expect(progress?.sectionE.kind).toBe('confirmed')
+  })
+
+  it('確認済みセクションの再確認は冪等（確認日時を上書きせず、二重発行もしない）', async () => {
+    const t = createTestApp()
+    const confirmed = subscribeSectionConfirmed(t)
+    await completeSectionBFor(t)
+
+    const first = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
+      body: { section: 'section_c' },
+    })
+    const firstConfirmedAt = (await json<UserResponse>(first)).user?.progress?.sectionC.confirmedAt
+
+    const again = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
+      body: { section: 'section_c' },
+    })
+    expect(again.status).toBe(200)
+    expect((await json<UserResponse>(again)).user?.progress?.sectionC.confirmedAt).toBe(
+      firstConfirmedAt,
+    )
+    expect(confirmed).toHaveLength(1)
+  })
+
+  it('未知のセクション識別は 400（C/D/E 以外は確認できない）', async () => {
+    const t = createTestApp()
+    await completeSectionBFor(t)
+    const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
+      body: { section: 'section_a' },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('C / D / E が未確認でも Phase2 は完了できる（論点8: C/D/E は任意）', async () => {
+    const t = createTestApp()
+    await completeSectionBFor(t)
+    const me = await request(t.app, 'GET', '/api/onboarding/me')
+    const progress = (await json<UserResponse>(me)).user?.progress
+    expect(progress?.sectionC.kind).toBe('unconfirmed')
+    expect(progress?.sectionD.kind).toBe('unconfirmed')
+    expect(progress?.sectionE.kind).toBe('unconfirmed')
+
+    const complete = await request(t.app, 'POST', '/api/onboarding/phase2/complete')
+    expect(complete.status).toBe(201)
+    expect((await json<UserResponse>(complete)).user?.kind).toBe('phase2_completed')
   })
 
   it('A/B 未完了の phase2/complete は 409、完了後は phase2_completed になる', async () => {
