@@ -1,5 +1,6 @@
 import {
   AccountBalanceUpdatedSchema,
+  ConcurrentUpdateError,
   UnpaidAlreadyBookedError,
   InvariantViolationError,
   UnpaidSettlementAlreadyAppliedError,
@@ -170,7 +171,13 @@ export function registerUnpaidBalanceUpdateEventHandlers(
     try {
       await deps.accountRepository.save(updatedAccount)
     } catch (e) {
-      console.error(`引落消込の残高反映に失敗（再実行で回復する）: ${refs}`)
+      // 版数競合（#459。手入力が同じ口座を先に書いた等）は一時的失敗で、次の再実行が
+      // 最新版を読み直して自己修復する。真の save 障害（error）と混ざらないよう warn に落とす。
+      if (e instanceof ConcurrentUpdateError) {
+        console.warn(`引落消込の残高反映を並行更新で見送った（再実行で回復する）: ${refs}`)
+      } else {
+        console.error(`引落消込の残高反映に失敗（再実行で回復する）: ${refs}`)
+      }
       throw e
     }
 
