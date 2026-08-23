@@ -6,9 +6,15 @@ on:
   pull_request:
 
 # 同じ PR に push が続いたとき、追い越された run を捨てて実行枠の空費を防ぐ。
-# main への push はマージ後の履歴を検証する唯一の機会なのでキャンセルしない。
+#
+# main への push はマージ後の履歴を検証する唯一の機会なので、commit ごとに
+# 別グループへ分けて取りこぼさない。グループを ref で共有すると main への push が
+# 全て同じグループに入り、cancel-in-progress: false でも「待機中」の run は
+# 後から来た run に捨てられる(この設定が守るのは実行中の run だけ、という
+# GitHub の仕様)。実績として #494 / #500 / #503 のマージ後 CI が連続マージで
+# 全て cancelled になり、main が赤いことに約 11 時間気づけなかった。
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -200,3 +206,86 @@ jobs:
       # prettier は docs / skills の Markdown も対象なので必ず実行する。
       - name: Format check
         run: pnpm format:check
+
+  # main の CI が失敗したことを人に届ける。失敗時の既存の仕掛けはアーティファクト
+  # 収集だけで、赤くなっても通知は一切飛ばなかった(実績: #508 のマージ後 CI が
+  # failure のまま約 11 時間放置され、その間に出た PR 5 件が巻き添えで赤くなった)。
+  #
+  # notify-needs-decision.yml には任せられない。GITHUB_TOKEN による操作は他の
+  # ワークフローを起動しない GitHub の仕様があり、ここで作った Issue では
+  # issues: labeled が発火しないため。同じ狙い(assign + @メンションで
+  # Participating 通知=メールを起こす)をこの job の中で行う。
+  notify-main-failure:
+    needs: verify
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const MARKER = '<!-- main-ci-failure -->';
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const shortSha = context.sha.slice(0, 8);
+            const subject = (context.payload.head_commit?.message ?? '').split('\n')[0];
+            const detail = [
+              `- コミット: ${shortSha} ${subject}`.trimEnd(),
+              `- 失敗した run: ${runUrl}`,
+            ].join('\n');
+
+            // 赤が続く間に報告 Issue が増えないよう、open の報告があれば作り直さず
+            // 追記する。ラベルではなく本文の目印で引き当てる(close-merge-judgment と
+            // 同じやり方。ラベルを新設せずに済む)。
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = issues.find(
+              (i) => !i.pull_request && (i.body ?? '').includes(MARKER),
+            );
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body: `main がまだ赤いままです。\n\n${detail}`,
+              });
+              return;
+            }
+
+            const { data: created } = await github.rest.issues.create({
+              owner,
+              repo,
+              title: `[main 赤] マージ後の CI が失敗しています (${shortSha})`,
+              body: [
+                MARKER,
+                'main への push で CI が失敗しました。CI は「main と合体させた状態」を検証するため、',
+                '**この状態が続く限り以降の全ての PR が同じ失敗で赤くなります**。優先して直してください。',
+                '',
+                '## 失敗した run',
+                '',
+                detail,
+                '',
+                '## 進め方',
+                '',
+                '1. 上の run のログで失敗しているステップを特定する',
+                '2. 修正の PR を出す(main へ直接 push しない)',
+                '3. マージ後に main の CI が緑へ戻ったことを確認し、この Issue を閉じる',
+              ].join('\n'),
+            });
+            await github.rest.issues.addAssignees({
+              owner,
+              repo,
+              issue_number: created.number,
+              assignees: [owner],
+            });
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: created.number,
+              body: `@${owner} main の CI が失敗しています。放置すると以降の PR が全て赤くなるため、優先して確認してください。`,
+            });

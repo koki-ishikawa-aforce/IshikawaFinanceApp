@@ -35,6 +35,7 @@ import {
   isNotificationActivated,
   joinedTalkRoomIdOf,
   jstCalendarParts,
+  jstYearMonthOf,
   judgeReminderContinuation,
   judgeReminderWindow,
 } from '@warimaru/domain'
@@ -83,6 +84,17 @@ export interface CsvImportReminderDeps {
 
 export interface CsvImportReminderRunner {
   run(params: { targetMonth: YearMonth; at?: Date }): Promise<CsvImportReminderOutcome>
+}
+
+/**
+ * 対象月を指定しないで起動したときの既定（起動時刻から JST 暦の当月）。
+ *
+ * 「5 日以降かつ当月」の判定はこのモジュール（`judgeReminderWindow`）が持つため、既定の
+ * 導出もここに置く。呼出し元（#416 のスケジューラ）が独自に月を導出すると、月初・月末の
+ * 境界で判定側と食い違って毎回 `not_current_month` になる。
+ */
+export function defaultReminderTargetMonth(at: Date): YearMonth {
+  return jstYearMonthOf(at)
 }
 
 /**

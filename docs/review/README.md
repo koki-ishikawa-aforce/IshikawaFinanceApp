@@ -108,7 +108,9 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 | `pnpm audit --audit-level moderate` | 常時 | 依存パッケージの既知脆弱性 → [dependency-audit.md](./dependency-audit.md) |
 | `pnpm format:check` | 常時 | フォーマット(docs / skills の Markdown も対象) |
 
-`main` への push(マージ後の検証)は変更パスによらず全ステップを実行する。また、同じ PR に push が続いたときは追い越された run をキャンセルする(`concurrency`)。
+`main` への push(マージ後の検証)は変更パスによらず全ステップを実行する。同じ PR に push が続いたときは追い越された run をキャンセルするが、`main` への push は commit ごとに独立した `concurrency` グループへ入れて取りこぼさない。グループを ref で共有すると、連続マージのときに**待機中の run が後続の run に捨てられる**(`cancel-in-progress: false` が守るのは実行中の run だけ、という GitHub の仕様)。
+
+マージ後の検証が失敗したときは `notify-main-failure` ジョブが Issue を立て、オーナーを assign して @メンションする(メール通知)。CI は「`main` と合体させた状態」を検証するため、**`main` が赤いままだと以降の全ての PR が同じ失敗で赤くなる**。気づくのが遅れるほど巻き添えが増えるので、`main` の赤は最優先で直す。
 
 ## 5. 観点を追加するときの手順
 

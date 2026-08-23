@@ -23,9 +23,10 @@ describe('NotificationActivated イベントハンドラー', () => {
     const { deps } = createTestApp()
     await deps.eventBus.publish(activatedEvent())
 
-    const log = await deps.lineDeliveryLogRepository.findByIdempotencyKey(
+    const logs = await deps.lineDeliveryLogRepository.findAllByIdempotencyKey(
       `test_message:room_e2e_001:${activatedAt.toISOString()}`,
     )
+    const log = logs.at(-1) ?? null
     expect(log).not.toBeNull()
     expect(log?.resultStatus.kind).toBe('success')
     expect(log?.timingKind).toBe('test_send')
@@ -37,11 +38,13 @@ describe('NotificationActivated イベントハンドラー', () => {
     await deps.eventBus.publish(activatedEvent())
     await deps.eventBus.publish(activatedEvent())
 
-    const log = await deps.lineDeliveryLogRepository.findByIdempotencyKey(
+    const logs = await deps.lineDeliveryLogRepository.findAllByIdempotencyKey(
       `test_message:room_e2e_001:${activatedAt.toISOString()}`,
     )
+    // 配信ログは 1 件のみ（1 回目が成功して配信が確定するため、2 件目は already_delivered）
+    expect(logs).toHaveLength(1)
+    const log = logs.at(-1) ?? null
     expect(log).not.toBeNull()
-    // 配信メッセージは 1 件のみ（2 件目は already_delivered でスキップされる）
     const message = await deps.deliveryMessageRepository.findById(log?.deliveryMessageId as never)
     expect(message?.kind).toBe('sent')
   })

@@ -1,0 +1,3 @@
+ALTER TABLE "line_delivery_logs" DROP CONSTRAINT "line_delivery_logs_idempotency_key_unique";--> statement-breakpoint
+CREATE INDEX "idx_line_delivery_logs_idempotency_key" ON "line_delivery_logs" USING btree ("idempotency_key","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_line_delivery_logs_concluded_idempotency_key" ON "line_delivery_logs" USING btree ("idempotency_key") WHERE ("line_delivery_logs"."payload"->'resultStatus'->>'kind' = 'failure' AND "line_delivery_logs"."payload"->'resultStatus'->>'failureReason' = 'line_api_failure') IS NOT TRUE;
