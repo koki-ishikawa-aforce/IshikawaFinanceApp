@@ -32,15 +32,13 @@ export function formatDate(date: Date): string {
 }
 
 /**
- * 年を含む日付（`2026/07/12`）。月ナビゲーションで年月が確定していない一覧
- * （複数の月をまたいで並ぶ遡及候補など）で使う（usability 5-4）
+ * 年を含む日付（`2026/07/12`）。月ナビゲーションで年月が確定していない箇所
+ * （複数の月をまたいで並ぶ遡及候補、最終更新日時などの記録）で使う（usability 5-4）。
+ *
+ * 月・日はゼロ埋めする。桁数が揃わないと縦に並んだ日付の位置がずれて読みにくい
  */
 export function formatDateWithYear(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${date.getFullYear()}/${m}/${d}`
-}
-
-export function formatDateTime(date: Date): string {
-  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
 }

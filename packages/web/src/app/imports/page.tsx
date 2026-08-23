@@ -30,7 +30,7 @@ import {
 } from '@/lib/api-schemas'
 import { checkUploadFile, describeUploadError, uploadPath } from '@/lib/import-upload'
 import { formatMoney } from '@/lib/format'
-import { formatDate, formatDateTime, getCurrentMonth } from '@/lib/month'
+import { formatDate, formatDateWithYear, getCurrentMonth } from '@/lib/month'
 import { LuCircleCheck } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ImportJobCard } from '@/components/imports/ImportJobCard'
@@ -386,7 +386,7 @@ function ImportsPageContent() {
                 aria-hidden="true"
                 className={`${ui.iconSm} ${styles.statusDoneIcon}`}
               />
-              取込完了（{formatDateTime(completion.completedAt)}）
+              取込完了（{formatDateWithYear(completion.completedAt)}）
             </div>
           ) : (
             <EmptyState>

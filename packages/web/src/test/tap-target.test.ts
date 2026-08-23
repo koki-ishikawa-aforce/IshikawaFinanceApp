@@ -47,7 +47,11 @@ const CONTROLS: readonly {
   selectors: readonly string[]
   properties?: readonly string[]
 }[] = [
-  { css: COMMON_CSS, selectors: ['.button', '.buttonGhost', '.buttonDanger', '.select', '.input'] },
+  {
+    css: COMMON_CSS,
+    // `.textButton` は一覧の行に並べるリンク風のボタン(#462 で設定ページと学習タブから集約)
+    selectors: ['.button', '.buttonGhost', '.buttonDanger', '.select', '.input', '.textButton'],
+  },
   { css: join('components', 'ui', 'SegmentedControl.module.css'), selectors: ['.optionLabel'] },
   {
     css: join('components', 'dashboard', 'MonthNavigator.module.css'),

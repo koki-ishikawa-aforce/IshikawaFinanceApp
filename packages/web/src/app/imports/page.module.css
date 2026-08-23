@@ -46,7 +46,7 @@
   justify-content: space-between;
   align-items: center;
   gap: var(--space-1_5);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--divider);
   padding-bottom: var(--space-1_5);
 }
 

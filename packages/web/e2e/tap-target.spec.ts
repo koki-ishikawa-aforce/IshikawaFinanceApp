@@ -68,6 +68,17 @@ test('共通ボタンを使う他の画面でも下限の大きさを満たす',
     '設定の入力欄（ニックネーム）',
     min,
   )
+
+  // 一覧の行に並ぶ文字だけのボタン(`.textButton`)。2 文字ぶんの幅しか無く、行の
+  // レイアウト次第で実寸が縮むため、共通部品へ寄せた(#462)あとの大きさをここで測る
+  await page.goto('/settings?section=categories')
+  for (const label of [/を改名$/, /を削除$/]) {
+    await expectTapTargetSize(
+      page.getByRole('button', { name: label }).first(),
+      `カテゴリ行の${label.source}`,
+      min,
+    )
+  }
 })
 
 test('ボタンの見た目のリンクが下限の大きさを満たす', async ({ page }) => {

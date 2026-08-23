@@ -8,12 +8,6 @@
   min-height: 100dvh;
 }
 
-.note {
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
 .cycleActions {
   display: flex;
   flex-direction: column;
@@ -46,7 +40,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--divider);
   padding-bottom: var(--space-2);
 }
 

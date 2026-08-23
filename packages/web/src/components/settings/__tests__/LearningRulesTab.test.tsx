@@ -157,7 +157,7 @@ describe('LearningRulesTab', () => {
     expect(within(rowOf('ブックストア 恵比寿')).getByText('書籍代')).toBeInTheDocument()
     expect(screen.queryByText('ET_BOOKS')).not.toBeInTheDocument()
     // 最終更新日は lastUpdatedAt 由来（disabledAt と取り違えていない）
-    expect(within(rowOf('ライフ 中目黒店')).getByText('最終更新日: 2026/7/18')).toBeInTheDocument()
+    expect(within(rowOf('ライフ 中目黒店')).getByText('最終更新日: 2026/07/18')).toBeInTheDocument()
   })
 
   it('軸のラベルと値が対応して並ぶ（未学習の軸だけが「まだ覚えていません」になる）', async () => {
@@ -181,7 +181,7 @@ describe('LearningRulesTab', () => {
     await screen.findByText('セブンイレブン')
     const stopped = within(rowOf('セブンイレブン'))
     expect(stopped.getByText('学習を停止中')).toBeInTheDocument()
-    expect(stopped.getByText('停止した日: 2026/6/30')).toBeInTheDocument()
+    expect(stopped.getByText('停止した日: 2026/06/30')).toBeInTheDocument()
     expect(
       stopped.getByRole('button', { name: 'セブンイレブンの学習を再開する' }),
     ).toBeInTheDocument()

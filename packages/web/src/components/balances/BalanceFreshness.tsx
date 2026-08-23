@@ -10,7 +10,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch, describeRequestFailure } from '@/lib/api-client'
 import { BalanceFreshnessListWireSchema, type BalanceFreshnessItemWire } from '@/lib/api-schemas'
-import { formatDateTime } from '@/lib/month'
+import { formatDateWithYear } from '@/lib/month'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -71,7 +71,7 @@ export function BalanceFreshnessCard() {
                 <li key={item.accountId} className={ui.rowBetween}>
                   <span className={styles.name}>{item.displayName}</span>
                   <span className={styles.meta}>
-                    {formatDateTime(item.lastUpdatedAt)}時点
+                    {formatDateWithYear(item.lastUpdatedAt)}時点
                     <FreshnessBadge freshness={item} />
                   </span>
                 </li>

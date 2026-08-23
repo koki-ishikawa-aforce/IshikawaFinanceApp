@@ -14,6 +14,23 @@
   color: var(--text-primary);
 }
 
+/** 本文に添える補足文（操作の説明・保存結果など）。読まなくても操作できる情報に使う */
+.note {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/** 取り消せない操作・影響範囲を伴う操作の前に出す注意書き。`.note` より強く見せる */
+.warning {
+  font-size: var(--text-xs);
+  color: var(--error-text);
+  line-height: 1.6;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-2_5);
+}
+
 .pageTitle {
   font-size: var(--text-lg);
   font-weight: 800;
@@ -150,6 +167,36 @@
   justify-content: center;
   text-align: center;
   text-decoration: none;
+}
+
+/**
+ * 文字だけのボタン（一覧の行に並べる「改名」「削除」など）。見た目はリンクだが要素は
+ * `&lt;button&gt;`（`.buttonLink` はその逆で、ボタンの見た目のリンク）。
+ *
+ * 「改名」のような 2 文字は文字の幅だけでは 44×44 に届かないため、下限を縦横とも
+ * 明示する（usability 4-3）。幅は中身に合わせて広がる（`fit-content`）ので、
+ * 文字数が増えても下限に縛られない。`align-self` で寄せると横並びの行では上下方向の
+ * 意味に変わるため使わない
+ */
+.textButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-width: var(--tap-target-min);
+  min-height: var(--tap-target-min);
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  padding: var(--space-0_5);
+}
+
+/** `.textButton` と併用する色の修飾子。本文サイズのため `--error` ではなく文字用の `--error-text` を使う */
+.textButtonDanger {
+  color: var(--error-text);
 }
 
 /* 入力欄も指で触れて位置を合わせる操作の受け皿。同じフォームに並ぶ選択欄だけ背が高くなるのを避ける意味でも下限を揃える */

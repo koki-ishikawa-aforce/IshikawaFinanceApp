@@ -12,6 +12,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    // 画面の日付は JST で出す(usability 5-4)。日付整形はローカル時刻で日を決めるため、
+    // 実行環境のタイムゾーン次第で「UTC の日付が出ていても気づけない」テストになる。
+    // CI も手元も JST に固定して、JST の日付を期待値として書けるようにする
+    env: { TZ: 'Asia/Tokyo' },
     setupFiles: ['./src/test/setup.ts'],
     // ユニットテストは src 配下の *.test.* と、ビルド検査スクリプト(scripts/)の *.test.mjs のみ。
     // Playwright の e2e/*.spec.ts は対象外
