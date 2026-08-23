@@ -9,12 +9,14 @@ import {
   type ClassificationInput,
 } from '../ClassificationFields'
 import type { MastersState } from '../useMasters'
+import { NetworkError, NETWORK_ERROR_MESSAGE } from '@/lib/api-client'
 
 const loadedMasters: MastersState = {
   categories: [{ categoryId: 'CAT_FOOD', name: '食費' }],
   expenseTypes: [{ expenseTypeId: 'ET_GYM', name: 'ジム' }],
   isPending: false,
   isError: false,
+  error: null,
   refetch: () => {},
 }
 
@@ -58,6 +60,23 @@ describe('ClassificationFields', () => {
 
     expect(screen.queryByLabelText('カテゴリ')).not.toBeInTheDocument()
     expect(screen.getByText('分類の選択肢を読み込み中...')).toBeInTheDocument()
+  })
+
+  it('マスタ取得が通信で失敗したら、画面固有の文言ではなく共通の文言を出す', () => {
+    render(
+      <Harness
+        initial={{ categoryId: '', expenseClass: 'household' }}
+        masters={{
+          ...loadedMasters,
+          categories: [],
+          expenseTypes: [],
+          isError: true,
+          error: new NetworkError('unreachable'),
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent(NETWORK_ERROR_MESSAGE)
   })
 
   it('マスタ取得に失敗したら再試行手段を出す', async () => {

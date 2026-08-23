@@ -8,7 +8,7 @@
  * 画面ごとに違う重さで見えないようにする。
  */
 import { useQuery } from '@tanstack/react-query'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, describeRequestFailure } from '@/lib/api-client'
 import { BalanceFreshnessListWireSchema, type BalanceFreshnessItemWire } from '@/lib/api-schemas'
 import { formatDateTime } from '@/lib/month'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -53,7 +53,9 @@ export function BalanceFreshnessCard() {
         {freshnessQuery.isPending && <LoadingState announce={false} />}
         {freshnessQuery.isError && (
           <>
-            <ErrorState announce={false}>更新状況を取得できませんでした</ErrorState>
+            <ErrorState announce={false}>
+              {describeRequestFailure(freshnessQuery.error, '更新状況を取得できませんでした')}
+            </ErrorState>
             <button
               type="button"
               className={ui.buttonGhost}

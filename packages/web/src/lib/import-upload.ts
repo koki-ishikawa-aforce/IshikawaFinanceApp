@@ -112,7 +112,13 @@ export interface UploadErrorInput {
   /** 送信前に拒否した場合の文言（他のどのエラーより優先する） */
   selectionError: string | null
   /** アップロード要求の失敗。成功していれば null */
-  error: { status?: number; message: string; reason?: string } | null
+  error: {
+    status?: number
+    message: string
+    reason?: string
+    /** サーバーに届かなかった / 応答が返らなかった（`NetworkError`）か */
+    network?: boolean
+  } | null
   /** 失敗ジョブが返っている場合は取込ジョブカード側で理由を出すため、ここでは出さない */
   hasJob: boolean
 }
@@ -128,9 +134,14 @@ export function describeUploadError({
 }: UploadErrorInput): string | null {
   if (selectionError !== null) return selectionError
   if (error === null || hasJob) return null
+  // 通信が成立していない場合は全画面共通の文言をそのまま出す。
+  // アップロード固有の説明で包むと、同じ失敗が画面ごとに違う文言になる
+  if (error.network === true) return error.message
   if (error.reason === 'not_a_pdf') return NOT_A_PDF_MESSAGE
   if (error.status === 400) {
     return 'アップロードを受け付けられませんでした。ファイルを確認して、もう一度お試しください。'
   }
-  return `アップロードに失敗しました（${error.message}）。通信状況を確認して、もう一度お試しください。`
+  // ここに来るのはサーバーが応答を返したケースだけ（通信の失敗は上で分岐済み）。
+  // 通信の確認を促すと、直しようのない行動へ誘導することになる
+  return `アップロードに失敗しました（${error.message}）。しばらくおいてから、もう一度お試しください。`
 }

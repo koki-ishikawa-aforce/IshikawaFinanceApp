@@ -14,7 +14,7 @@ const apiMock = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/api-client', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/api-client')>()
-  return { ...apiMock, ApiError: actual.ApiError }
+  return { ...actual, ...apiMock }
 })
 
 vi.mock('next/navigation', () => ({

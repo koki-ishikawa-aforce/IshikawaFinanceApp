@@ -6,7 +6,7 @@ import type { YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { apiFetch, apiMutate } from '@/lib/api-client'
+import { apiFetch, apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   CurrentCycleResponseSchema,
   DepositListWireSchema,
@@ -149,7 +149,11 @@ function FinalizeModal({ cycle, onClose }: { cycle: CycleWire; onClose: () => vo
       </p>
       {depositsQuery.isLoading && <LoadingState />}
       {/* 取得失敗を空状態に落とすと、存在しない入金を記録しに行かせる誤った案内になる */}
-      {depositsQuery.error && <ErrorState>突合待ちの入金の取得に失敗しました</ErrorState>}
+      {depositsQuery.error && (
+        <ErrorState>
+          {describeRequestFailure(depositsQuery.error, '突合待ちの入金の取得に失敗しました')}
+        </ErrorState>
+      )}
       {deposits.length === 0 && !depositsQuery.isLoading && !depositsQuery.error && (
         <EmptyState>突合待ちの入金がありません。先に「精算入金を記録」してください。</EmptyState>
       )}
@@ -264,7 +268,11 @@ export default function ExpenseSettlementPage() {
           )}
         </div>
         {cycleQuery.isLoading && <LoadingState />}
-        {cycleQuery.error && <ErrorState>サイクルの取得に失敗しました</ErrorState>}
+        {cycleQuery.error && (
+          <ErrorState>
+            {describeRequestFailure(cycleQuery.error, 'サイクルの取得に失敗しました')}
+          </ErrorState>
+        )}
         {!cycleQuery.isLoading && !cycleQuery.error && cycle === null && (
           <>
             <EmptyState>この月のサイクルは未開始です</EmptyState>
@@ -329,7 +337,11 @@ export default function ExpenseSettlementPage() {
           </button>
         </div>
         {viewQuery.isLoading && <LoadingState />}
-        {viewQuery.error && <ErrorState>精算情報の取得に失敗しました</ErrorState>}
+        {viewQuery.error && (
+          <ErrorState>
+            {describeRequestFailure(viewQuery.error, '精算情報の取得に失敗しました')}
+          </ErrorState>
+        )}
         {view &&
           (view.currentAccumulations.length === 0 ? (
             <EmptyState>当月の経費累計はまだありません</EmptyState>
@@ -352,7 +364,11 @@ export default function ExpenseSettlementPage() {
         <span className={ui.sectionTitle}>按分子取引</span>
         {/* 直上の「費用区分別の累計」と同じ 3 状態を出す(同一画面で扱いを混在させない) */}
         {viewQuery.isLoading && <LoadingState />}
-        {viewQuery.error && <ErrorState>精算情報の取得に失敗しました</ErrorState>}
+        {viewQuery.error && (
+          <ErrorState>
+            {describeRequestFailure(viewQuery.error, '精算情報の取得に失敗しました')}
+          </ErrorState>
+        )}
         {view &&
           (view.currentChildTransactions.length === 0 ? (
             <EmptyState>当月の按分子取引はありません</EmptyState>

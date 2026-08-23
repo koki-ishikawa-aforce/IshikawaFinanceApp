@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { apiMutate } from '@/lib/api-client'
+import { apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   BulkClassificationSessionWireSchema,
   UnknownResponseSchema,
@@ -194,7 +194,10 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
         </p>
         {abort.error && (
           <ErrorState>
-            取りやめられませんでした。通信状態を確かめて、もう一度お試しください。
+            {describeRequestFailure(
+              abort.error,
+              '取りやめられませんでした。通信状態を確かめて、もう一度お試しください。',
+            )}
           </ErrorState>
         )}
         <button
@@ -224,7 +227,10 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
           </EmptyState>
           {complete.error && (
             <ErrorState>
-              おえられませんでした。通信状態を確かめて、もう一度お試しください。
+              {describeRequestFailure(
+                complete.error,
+                'おえられませんでした。通信状態を確かめて、もう一度お試しください。',
+              )}
             </ErrorState>
           )}
           <button
@@ -255,13 +261,18 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
 
           {classify.error && (
             <ErrorState>
-              分類の保存に失敗しました。通信状態を確かめて、もう一度「この店舗の{' '}
-              {group.targets.length} 件を分類」を押してください。
+              {describeRequestFailure(
+                classify.error,
+                `分類の保存に失敗しました。通信状態を確かめて、もう一度「この店舗の ${group.targets.length} 件を分類」を押してください。`,
+              )}
             </ErrorState>
           )}
           {complete.error && (
             <ErrorState>
-              おえられませんでした。通信状態を確かめて、「この店舗はとばす」でもう一度お試しください。
+              {describeRequestFailure(
+                complete.error,
+                'おえられませんでした。通信状態を確かめて、「この店舗はとばす」でもう一度お試しください。',
+              )}
             </ErrorState>
           )}
           {!classificationValid(input) && !masters.isPending && !masters.isError && (

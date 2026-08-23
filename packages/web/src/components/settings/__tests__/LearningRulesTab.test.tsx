@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LearningRulesTab } from '../LearningRulesTab'
 
 const apiMock = vi.hoisted(() => ({
@@ -9,7 +9,10 @@ const apiMock = vi.hoisted(() => ({
   apiMutate: vi.fn(),
 }))
 
-vi.mock('@/lib/api-client', () => apiMock)
+vi.mock('@/lib/api-client', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/api-client')>()
+  return { ...actual, ...apiMock }
+})
 
 /** サーバーの JSON 応答（Date は ISO 文字列）をそのまま模す。ワイヤースキーマの検証も通す */
 const ACTIVE_RULE = {
@@ -124,6 +127,21 @@ function rowOf(name: string): HTMLElement {
   expect(row).not.toBeNull()
   return row as HTMLElement
 }
+
+// 実 api-client を土台にモックしているため、モックし忘れた呼び出しは本物の fetch へ抜ける。
+// 抜けた瞬間に落として、「通信できませんでした」が出るだけの読み解けない失敗にしない
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => {
+      throw new Error('テストがモックしていない fetch を呼んだ')
+    }),
+  )
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 beforeEach(() => {
   apiMock.apiFetch.mockReset()

@@ -12,7 +12,10 @@ const apiMock = vi.hoisted(() => ({
   apiFetch: vi.fn(),
   apiMutate: vi.fn(),
 }))
-vi.mock('@/lib/api-client', () => apiMock)
+vi.mock('@/lib/api-client', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/api-client')>()
+  return { ...actual, ...apiMock }
+})
 
 const { BulkClassificationModal, groupTargetsByMerchant } =
   await import('../BulkClassificationModal')
@@ -51,6 +54,21 @@ function renderWithClient(element: ReactElement) {
   })
   return render(<QueryClientProvider client={client}>{element}</QueryClientProvider>)
 }
+
+// 実 api-client を土台にモックしているため、モックし忘れた呼び出しは本物の fetch へ抜ける。
+// 抜けた瞬間に落として、「通信できませんでした」が出るだけの読み解けない失敗にしない
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => {
+      throw new Error('テストがモックしていない fetch を呼んだ')
+    }),
+  )
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 beforeEach(() => {
   apiMock.apiFetch.mockImplementation((path: string) => {

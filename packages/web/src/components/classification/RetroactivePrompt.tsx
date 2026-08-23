@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, apiFetch, apiMutate } from '@/lib/api-client'
+import { ApiError, apiFetch, apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   RetroactiveApplyResultWireSchema,
   RetroactiveCandidatesWireSchema,
@@ -25,7 +25,10 @@ function applyErrorMessage(error: Error): string {
   if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
     return 'この店舗は自動分類の学習の対象外のため、まとめて変更できません。過去の取引は 1 件ずつ分類してください。'
   }
-  return 'まとめての変更に失敗しました。通信状態を確かめて、もう一度お試しください。'
+  return describeRequestFailure(
+    error,
+    'まとめての変更に失敗しました。通信状態を確かめて、もう一度お試しください。',
+  )
 }
 
 interface RetroactivePromptProps {
@@ -107,7 +110,10 @@ export function RetroactivePrompt({ merchantName, onDone }: RetroactivePromptPro
     return (
       <>
         <ErrorState>
-          過去の未分類取引を確認できませんでした。この取引の分類は保存済みです。
+          {describeRequestFailure(
+            candidatesQuery.error,
+            '過去の未分類取引を確認できませんでした。この取引の分類は保存済みです。',
+          )}
         </ErrorState>
         <button className={ui.buttonGhost} onClick={() => void candidatesQuery.refetch()}>
           もう一度確認する

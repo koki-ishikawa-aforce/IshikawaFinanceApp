@@ -21,7 +21,7 @@ import {
   type ClassificationInput,
 } from '@/components/classification/ClassificationFields'
 import { useMasters } from '@/components/classification/useMasters'
-import { apiFetch, apiMutate } from '@/lib/api-client'
+import { apiFetch, apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   TransactionListWireSchema,
   UnclassifiedSummaryWireSchema,
@@ -391,7 +391,9 @@ function TransactionsPageContent() {
 
       {summaryQuery.error && (
         <>
-          <ErrorState>未分類の件数を取得できませんでした</ErrorState>
+          <ErrorState>
+            {describeRequestFailure(summaryQuery.error, '未分類の件数を取得できませんでした')}
+          </ErrorState>
           <button className={ui.buttonGhost} onClick={() => void summaryQuery.refetch()}>
             再読み込み
           </button>
@@ -448,7 +450,11 @@ function TransactionsPageContent() {
       </div>
 
       {listQuery.isLoading && <LoadingState />}
-      {listQuery.error && <ErrorState>取引一覧の取得に失敗しました</ErrorState>}
+      {listQuery.error && (
+        <ErrorState>
+          {describeRequestFailure(listQuery.error, '取引一覧の取得に失敗しました')}
+        </ErrorState>
+      )}
 
       {!listQuery.isLoading && !listQuery.error && (
         <>

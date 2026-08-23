@@ -11,6 +11,8 @@ export interface MastersState {
   isPending: boolean
   /** どちらかが失敗。分類の 3 軸が選べないため、呼び出し側で再試行手段を出す */
   isError: boolean
+  /** 失敗したときの最初のエラー。通信の失敗を共通の文言で伝えるために呼び出し側へ渡す */
+  error: Error | null
   refetch: () => void
 }
 
@@ -34,6 +36,7 @@ export function useMasters(): MastersState {
     expenseTypes: expenseTypes.data?.items ?? [],
     isPending: categories.isPending || expenseTypes.isPending,
     isError: categories.isError || expenseTypes.isError,
+    error: categories.error ?? expenseTypes.error,
     refetch: () => {
       void categories.refetch()
       void expenseTypes.refetch()

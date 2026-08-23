@@ -12,7 +12,14 @@ import {
   type YearMonth,
 } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
-import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
+import {
+  apiFetch,
+  apiMutate,
+  ApiError,
+  NetworkError,
+  describeRequestFailure,
+  UPLOAD_TIMEOUT_MS,
+} from '@/lib/api-client'
 import {
   CandidatesResponseSchema,
   ConfirmResponseSchema,
@@ -47,6 +54,14 @@ const FILE_KIND_LABELS: Record<StatementFileKind, string> = {
  */
 const FILE_KIND_OPTIONS: readonly SegmentedControlOption<StatementFileKind>[] =
   StatementFileKindSchema.options.map(kind => ({ value: kind, label: FILE_KIND_LABELS[kind] }))
+
+/** 1 回のアップロードで送る内容。送り直しに備えて送信時の値のまま保持する */
+interface UploadRequest {
+  file: File
+  format: UploadFileFormat
+  targetMonth: YearMonth
+  kind: StatementFileKind
+}
 
 interface CandidatesPanelProps {
   importJobId: string
@@ -141,7 +156,9 @@ function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
       {candidatesQuery.isLoading && <LoadingState />}
       {candidatesQuery.error && (
         <>
-          <ErrorState>候補の取得に失敗しました</ErrorState>
+          <ErrorState>
+            {describeRequestFailure(candidatesQuery.error, '候補の取得に失敗しました')}
+          </ErrorState>
           <button className={ui.buttonGhost} onClick={() => void candidatesQuery.refetch()}>
             再読み込み
           </button>
@@ -188,7 +205,12 @@ function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
           </ul>
           {confirm.error && (
             <ErrorState>
-              確定できませんでした（{confirm.error.message}）。もう一度お試しください。
+              {/* 通信の失敗は共通文言そのものが次の行動を含むため包まない。
+                  包むと「…（電波の良い場所で…）。もう一度お試しください。」と案内が二重になる */}
+              {describeRequestFailure(
+                confirm.error,
+                `確定できませんでした（${confirm.error.message}）。もう一度お試しください。`,
+              )}
             </ErrorState>
           )}
           <button
@@ -236,6 +258,15 @@ function ImportsPageContent() {
   /** アップロードせずに拒否した選択（対応外の拡張子）の文言 */
   const [selectionError, setSelectionError] = useState<string | null>(null)
   const [uploadingFormat, setUploadingFormat] = useState<UploadFileFormat | null>(null)
+  /**
+   * 直前に送った内容。通信が失敗したときに選び直さず送り直せるようにするため保持する
+   * (`docs/design/usability.md` §1-3)。ファイル選択の input は送信後に空にしているため、
+   * ここで持っていないと再試行のたびに端末のファイル選択からやり直しになる。
+   *
+   * 対象月・ファイル種別も送った時点の値で持つ。画面の現在値を見て送り直すと、失敗後に
+   * 月を切り替えてから押したときに、選んだ覚えのない月へ取り込まれる
+   */
+  const [lastUpload, setLastUpload] = useState<UploadRequest | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const statusQuery = useQuery({
@@ -244,14 +275,15 @@ function ImportsPageContent() {
   })
 
   const upload = useMutation({
-    mutationFn: async ({ file, format }: { file: File; format: UploadFileFormat }) => {
+    mutationFn: async ({ file, format, targetMonth, kind }: UploadRequest) => {
       const formData = new FormData()
       formData.append('file', file)
-      formData.append('targetMonth', month)
-      formData.append('fileKind', fileKind)
+      formData.append('targetMonth', targetMonth)
+      formData.append('fileKind', kind)
       return apiMutate(
         uploadPath(format),
-        { method: 'POST', body: formData },
+        // PDF はサーバー側の変換を待ってから応答が返るため、既定より長い打ち切り時間を使う
+        { method: 'POST', body: formData, timeoutMs: UPLOAD_TIMEOUT_MS },
         ImportUploadResponseSchema,
       )
     },
@@ -280,9 +312,20 @@ function ImportsPageContent() {
       if (checked.ok) {
         setSelectionError(null)
         setUploadingFormat(checked.format)
-        upload.mutate({ file, format: checked.format })
+        const request: UploadRequest = {
+          file,
+          format: checked.format,
+          targetMonth: month,
+          kind: fileKind,
+        }
+        setLastUpload(request)
+        upload.mutate(request)
       } else {
         // 対応外・サイズ超過はアップロードせずにその場で伝える（無駄な待ち時間を作らない）
+        // 直前の送信の失敗は片付ける。残したままだと、選び直しを促す文言の隣に
+        // 「もう一度アップロード」が出て、押すと今選んだファイルではなく前のファイルが飛ぶ
+        upload.reset()
+        setLastUpload(null)
         setSelectionError(checked.message)
       }
     }
@@ -298,12 +341,25 @@ function ImportsPageContent() {
         ? null
         : {
             message: upload.error.message,
+            ...(upload.error instanceof NetworkError ? { network: true } : {}),
             ...(upload.error instanceof ApiError
               ? { status: upload.error.status, ...parseErrorReason(upload.error.body) }
               : {}),
           },
     hasJob: job !== null,
   })
+
+  /*
+   * 送り直しを出す条件。選択そのものを拒否した場合（対応外の拡張子・サイズ超過）は
+   * 同じファイルを送り直しても結果が変わらないため出さない（選び直しが正しい行動）。
+   *
+   * 送信中も出したままにする。押した瞬間に消すと、キーボード・支援技術の利用者は
+   * フォーカスの居場所を失い、押せたのかどうかも分からなくなる
+   */
+  const retryableUpload =
+    selectionError === null && job === null && (upload.error !== null || upload.isPending)
+      ? lastUpload
+      : null
 
   const completion = statusQuery.data?.completion ?? null
 
@@ -319,7 +375,9 @@ function ImportsPageContent() {
         {statusQuery.isLoading && <LoadingState />}
         {statusQuery.error && (
           <>
-            <ErrorState>取込状況の取得に失敗しました</ErrorState>
+            <ErrorState>
+              {describeRequestFailure(statusQuery.error, '取込状況の取得に失敗しました')}
+            </ErrorState>
             <button className={ui.buttonGhost} onClick={() => void statusQuery.refetch()}>
               再読み込み
             </button>
@@ -376,9 +434,22 @@ function ImportsPageContent() {
         </button>
         <p className={styles.note}>
           CSV(.csv)と明細 PDF(.pdf)を取り込めます。PDF
-          はアップロード後に明細を読み取るため、完了まで 1 分ほどかかることがあります。
+          はアップロード後に明細を読み取るため、完了まで数分かかることがあります。
         </p>
         {errorMessage !== null && <ErrorState>{errorMessage}</ErrorState>}
+        {retryableUpload !== null && (
+          <button
+            className={ui.buttonGhost}
+            disabled={upload.isPending}
+            onClick={() => {
+              setJob(null)
+              setUploadingFormat(retryableUpload.format)
+              upload.mutate(retryableUpload)
+            }}
+          >
+            {upload.isPending ? 'アップロード中...' : 'もう一度アップロード'}
+          </button>
+        )}
       </section>
 
       {/* 取込の進行・結果は操作後に差し替わる。ライブリージョンは常時マウントしておかないと
