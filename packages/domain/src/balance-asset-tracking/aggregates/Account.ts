@@ -49,8 +49,8 @@ import {
 import { BankNameSchema, type BankName } from '../value-objects/BankName'
 import { InactivationReasonSchema } from '../value-objects/InactivationReason'
 import { BrokerageNameSchema, type BrokerageName } from '../value-objects/BrokerageName'
+import { ManualEntryMemoSchema } from '../value-objects/ManualEntryMemo'
 import {
-  ManualEntryMemoSchema,
   OtherSavingsManualEntrySchema,
   type OtherSavingsManualEntry,
 } from '../value-objects/OtherSavingsManualEntry'
@@ -737,15 +737,14 @@ export function addNisaContributionBySmbcTransfer(
 }
 
 /**
- * NISA 口座の積立累計を差し替え、手入力の操作記録を 1 件積む（本ファイル内の共通処理）。
- * 別銀行貯蓄の `replaceOtherSavingsBalance` + `appendManualEntry` に相当するが、NISA は
- * 残高鮮度の根拠を供給しない（08d §1 の残高鮮度根拠は別銀行貯蓄口座のみが持つ）ため、
- * 進めるのは積立累計の最終更新日時だけ。
+ * NISA 口座の積立累計を差し替える（本ファイル内の共通処理）。
+ * 別銀行貯蓄の `replaceOtherSavingsBalance` に相当するが、NISA は残高鮮度の根拠を
+ * 供給しない（08d §1 の残高鮮度根拠は別銀行貯蓄口座のみが持つ）ため、進めるのは
+ * 積立累計の最終更新日時だけ。
  */
 function replaceNisaAccumulated(
   account: NisaAccount,
   newAccumulated: Money,
-  entry: NisaManualEntry,
   at: Date,
 ): NisaAccount {
   return AccountSchema.parse({
@@ -754,6 +753,19 @@ function replaceNisaAccumulated(
       ...account.contribution,
       currentAccumulated: newAccumulated,
       lastUpdatedAt: at,
+    },
+  }) as NisaAccount
+}
+
+/**
+ * NISA 口座の手入力の操作記録を 1 件積む（#458）。追記のみで、既存の記録は書き換えない。
+ * 別銀行貯蓄の `appendManualEntry` と対になる。
+ */
+function appendNisaManualEntry(account: NisaAccount, entry: NisaManualEntry): NisaAccount {
+  return AccountSchema.parse({
+    ...account,
+    contribution: {
+      ...account.contribution,
       manualEntries: [...account.contribution.manualEntries, entry],
     },
   }) as NisaAccount
@@ -776,6 +788,12 @@ function replaceNisaAccumulated(
  *
  * 初期累計・初期累計基準時刻は動かさない。そこは「始めた時点」の記録で、現在の累計を
  * 直す操作とは別（初期累計そのものの誤りは `correctInitialBalance` で直す）。
+ *
+ * その結果、補正後の積立累計が初期累計を下回る状態も作れる（通常の積み上げ〔現在累計 =
+ * 初期累計 + 以降の加算〕では生じない状態）。これは意図した挙動で、下回る補正を拒むと
+ * 「初期累計を誤って大きく入れた」ケースの復旧が塞がるため（そこを直す `correctInitialBalance`
+ * は差分で現在累計もずらすので、先に現在累計を実際の値へ寄せておけない）。
+ * 「実際にいくら積み立てたか」を正とし、初期累計との整合は利用者の入力に委ねる。
  */
 export function correctNisaContribution(
   account: NisaAccount,
@@ -785,9 +803,8 @@ export function correctNisaContribution(
   assertActive(account, '積立累計の補正')
   const correctedAccumulated = parseBalanceInput(params.correctedAccumulated, 'NISA積立累計')
   const memo = parseMemo(params.memo)
-  return replaceNisaAccumulated(
-    account,
-    correctedAccumulated,
+  return appendNisaManualEntry(
+    replaceNisaAccumulated(account, correctedAccumulated, params.at),
     NisaManualEntrySchema.parse({
       kind: 'manual_correction',
       enteredByUserId: params.operatorUserId,
@@ -796,7 +813,6 @@ export function correctNisaContribution(
       enteredAt: params.at,
       ...memo,
     }),
-    params.at,
   )
 }
 

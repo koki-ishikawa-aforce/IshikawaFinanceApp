@@ -625,6 +625,14 @@ describe('PUT /api/accounts/:accountId/contribution', () => {
       newAccumulated: 150000,
       correctedByUserId: VIEWER_ID,
     })
+
+    // 補正が保存されている（レスポンスだけ正しく、次に開くと元の値のまま、を防ぐ）
+    const listed = await json<{ items: AccountWire[] }>(
+      await request(t.app, 'GET', '/api/accounts'),
+    )
+    const stored = listed.items.find(a => a.common.accountId === id)
+    expect(stored?.contribution?.currentAccumulated).toBe(150000)
+    expect(stored?.contribution?.manualEntries).toHaveLength(1)
   })
 
   it('負の積立累計へは補正できない（409）', async () => {
@@ -636,6 +644,23 @@ describe('PUT /api/accounts/:accountId/contribution', () => {
     expect(res.status).toBe(409)
   })
 
+  it('上限を超える積立累計へは補正できない（400。負値の 409 と翻訳を使い分ける）', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerNisa(t))
+    const res = await request(t.app, 'PUT', `/api/accounts/${id}/contribution`, {
+      body: { accumulated: 1_000_000_001 },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('存在しない口座は 404', async () => {
+    const t = createTestApp()
+    const res = await request(t.app, 'PUT', `/api/accounts/${newUlid()}/contribution`, {
+      body: { accumulated: 150000 },
+    })
+    expect(res.status).toBe(404)
+  })
+
   it('別銀行貯蓄口座は積立累計補正の対象外（409）', async () => {
     const t = createTestApp()
     const id = await accountId(await registerOtherSavings(t))
@@ -645,7 +670,7 @@ describe('PUT /api/accounts/:accountId/contribution', () => {
     expect(res.status).toBe(409)
   })
 
-  it('配偶者は補正できない（403）', async () => {
+  it('配偶者は補正できない（403）。累計も動かない', async () => {
     const t = createTestApp()
     const id = await accountId(await registerNisa(t))
     const res = await request(t.app, 'PUT', `/api/accounts/${id}/contribution`, {
@@ -653,6 +678,12 @@ describe('PUT /api/accounts/:accountId/contribution', () => {
       body: { accumulated: 1000 },
     })
     expect(res.status).toBe(403)
+    const listed = await json<{ items: AccountWire[] }>(
+      await request(t.app, 'GET', '/api/accounts'),
+    )
+    expect(
+      listed.items.find(a => a.common.accountId === id)?.contribution?.currentAccumulated,
+    ).toBe(200000)
   })
 
   it('配偶者には口座種別を判別する前に 403 を返す（存在・種別を漏らさない）', async () => {

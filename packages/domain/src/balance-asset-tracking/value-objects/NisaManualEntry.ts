@@ -17,7 +17,7 @@
 import { z } from 'zod'
 import { UserIdSchema } from '../../shared/ids'
 import { MoneySchema } from '../../shared/value-objects/Money'
-import { ManualEntryMemoSchema } from './OtherSavingsManualEntry'
+import { ManualEntryMemoSchema } from './ManualEntryMemo'
 
 export const NisaManualEntrySchema = z.object({
   kind: z.literal('manual_correction'),

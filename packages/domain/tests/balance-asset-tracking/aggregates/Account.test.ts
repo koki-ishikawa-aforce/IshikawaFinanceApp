@@ -1123,13 +1123,23 @@ describe('correctNisaContribution()', () => {
     )
   })
 
-  it('0 円への補正はできる（積立を始めた記録ごと打ち消す、境界値）', () => {
+  it('0 円への補正はできる（境界値）', () => {
     const updated = correctNisaContribution(nisa(), {
       correctedAccumulated: 0 as never,
       operatorUserId: OWNER,
       at: AT,
     })
     expect(updated.contribution.currentAccumulated).toBe(0)
+  })
+
+  it('初期累計を下回る補正もできる（初期累計を大きく入れ過ぎたときの復旧経路を塞がない）', () => {
+    const updated = correctNisaContribution(nisa({ initialAccumulated: 100000 }), {
+      correctedAccumulated: 50000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.contribution.currentAccumulated).toBe(50000)
+    expect(updated.contribution.initialAccumulated).toBe(100000)
   })
 
   it('負の累計へは補正できない（InvariantViolationError）', () => {
@@ -1260,6 +1270,35 @@ describe('correctNisaContribution()', () => {
       at: AT,
     })
     expect(updated.contribution.manualEntries).toHaveLength(1)
+  })
+
+  it('補正後に振込由来の加算が入っても操作記録は消えない（記録は追記のみ）', () => {
+    const corrected = correctNisaContribution(nisa({ currentAccumulated: 400000 }), {
+      correctedAccumulated: 300000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    const added = addNisaContributionBySmbcTransfer(corrected, {
+      amount: 33333 as never,
+      at: new Date('2026-07-21T00:00:00Z'),
+    })
+    expect(added.contribution.currentAccumulated).toBe(333333)
+    expect(added.contribution.manualEntries).toHaveLength(1)
+  })
+
+  it('補正後に初期累計を修正しても操作記録は消えない（記録は追記のみ）', () => {
+    const corrected = correctNisaContribution(nisa({ currentAccumulated: 400000 }), {
+      correctedAccumulated: 300000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    const { account } = correctInitialBalance(corrected, {
+      initialBalance: 120000 as never,
+      operatorUserId: OWNER,
+      at: new Date('2026-07-21T00:00:00Z'),
+    })
+    if (account.kind !== 'nisa') throw new Error('unreachable')
+    expect(account.contribution.manualEntries).toHaveLength(1)
   })
 })
 
