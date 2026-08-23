@@ -197,6 +197,31 @@ describe('PostgresDashboardQuery.fetchCategoryBreakdown', () => {
     ])
   })
 
+  it('返金が支出を上回る月は totalAmount が負のまま返る（percentage はクランプ）', async () => {
+    // 食費 +2000、日用品 −5000 → 合計 −3000。素の割合は −66.7% / 166.7% になる。
+    // 画面はこの負の合計を見て円グラフと割合を隠す(#409)ため、集計側で 0 に丸めない
+    await txRepo.save(
+      classifiedTransaction({
+        amount: 2000,
+        categoryId: CATEGORY_FOOD,
+        occurredAt: new Date('2026-07-10T03:00:00.000Z'),
+      }),
+    )
+    await txRepo.save(
+      classifiedTransaction({
+        amount: -5000,
+        categoryId: CATEGORY_DAILY,
+        occurredAt: new Date('2026-07-11T03:00:00.000Z'),
+      }),
+    )
+    const view = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'household')
+    expect(view.totalAmount).toBe(-3000)
+    expect(view.items.map(i => ({ categoryId: i.categoryId, percentage: i.percentage }))).toEqual([
+      { categoryId: CATEGORY_FOOD, percentage: 0 },
+      { categoryId: CATEGORY_DAILY, percentage: 100 },
+    ])
+  })
+
   it('合計 0 円のときは全カテゴリの percentage が 0（ゼロ除算しない）', async () => {
     await txRepo.save(
       classifiedTransaction({
