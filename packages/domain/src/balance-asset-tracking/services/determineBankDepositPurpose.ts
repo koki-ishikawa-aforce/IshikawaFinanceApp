@@ -14,8 +14,10 @@
 import { jstCalendarParts } from '../../shared/value-objects/JstCalendar'
 import type { Money } from '../../shared/value-objects/Money'
 import {
-  bankDepositPurposeRule,
+  BankDepositPurposeRuleSchema,
+  bankDepositPurposeRuleOptions,
   type BankDepositPurposeRule,
+  type BankDepositPurposeRuleOptionsInput,
 } from '../value-objects/BankDepositPurposeRule'
 import {
   employerRemitterNamesOf,
@@ -56,6 +58,22 @@ function awaitingManualConfirmation(): DepositPurpose {
   })
 }
 
+/**
+ * 別銀行戻し判別ルール（08d §1）の照合。当たらなければ用途不明を返す
+ * （勤務先入金かどうかの判定は呼び出し側が続ける）。
+ *
+ * 勤務先を登録済みの利用者と未登録の利用者で判別の入口が分かれるため、
+ * 両方が同じ実装を通るようにここへ寄せる（片側だけ直る事故を防ぐ）。
+ */
+function otherSavingsReturnOrUnknown(
+  normalizedRemitterName: string,
+  otherSavingsCounterpartyNames: readonly string[],
+): DepositPurpose {
+  return otherSavingsCounterpartyNames.includes(normalizedRemitterName)
+    ? DepositPurposeSchema.parse({ kind: 'other_savings_return' })
+    : awaitingManualConfirmation()
+}
+
 export interface BankDepositPurposeInput {
   /** 入金額（正） */
   amount: Money
@@ -85,12 +103,14 @@ export function determineBankDepositPurpose(
 ): DepositPurpose {
   const remitterName = normalizeRemitterName(input.remitterName)
 
-  if (rule.otherSavingsCounterpartyNames.includes(remitterName)) {
-    return DepositPurposeSchema.parse({ kind: 'other_savings_return' })
-  }
+  const otherSavingsOrUnknown = otherSavingsReturnOrUnknown(
+    remitterName,
+    rule.otherSavingsCounterpartyNames,
+  )
+  if (otherSavingsOrUnknown.kind === 'other_savings_return') return otherSavingsOrUnknown
 
   if (!rule.employerRemitterNames.includes(remitterName)) {
-    return awaitingManualConfirmation()
+    return otherSavingsOrUnknown
   }
 
   const daySignal = depositDaySignal(input.occurredAt, rule.salaryPayoutDayWindow)
@@ -99,13 +119,6 @@ export function determineBankDepositPurpose(
     return awaitingManualConfirmation()
   }
   return DepositPurposeSchema.parse({ kind: daySignal })
-}
-
-/** 勤務先振込元名以外の判別ルール。世帯共通の口座ルールとして呼び出し側が与える */
-export interface BankDepositPurposeRuleOptions {
-  otherSavingsCounterpartyNames?: string[]
-  salaryPayoutDayWindow?: number
-  salaryThresholdAmount?: Money
 }
 
 /**
@@ -123,20 +136,21 @@ export interface BankDepositPurposeRuleOptions {
 export function determineBankDepositPurposeForUser(
   input: BankDepositPurposeInput,
   directory: EmployerRemitterDirectory,
-  ruleOptions: BankDepositPurposeRuleOptions = {},
+  ruleOptions: BankDepositPurposeRuleOptionsInput = {},
 ): DepositPurpose {
+  // 名簿の中身に関わらず世帯共通の条件を検証する（名簿が空のあいだだけ不正な条件が
+  // 素通りし、勤務先を 1 件登録した瞬間に落ちる、という挙動の割れを作らない）
+  const options = bankDepositPurposeRuleOptions(ruleOptions)
   const employerRemitterNames = employerRemitterNamesOf(directory)
   if (employerRemitterNames.length === 0) {
-    const counterparties = (ruleOptions.otherSavingsCounterpartyNames ?? []).map(
-      normalizeRemitterName,
+    return otherSavingsReturnOrUnknown(
+      normalizeRemitterName(input.remitterName),
+      options.otherSavingsCounterpartyNames,
     )
-    return counterparties.includes(normalizeRemitterName(input.remitterName))
-      ? DepositPurposeSchema.parse({ kind: 'other_savings_return' })
-      : awaitingManualConfirmation()
   }
   return determineBankDepositPurpose(
     input,
-    bankDepositPurposeRule({ ...ruleOptions, employerRemitterNames }),
+    BankDepositPurposeRuleSchema.parse({ ...options, employerRemitterNames }),
   )
 }
 

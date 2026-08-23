@@ -6,6 +6,8 @@ import {
   isRegisteredEmployerRemitter,
   registerEmployerRemitterFromDeposit,
   EmployerRemitterDirectorySchema,
+  EMPLOYER_REMITTER_ENTRY_MAX_COUNT,
+  EMPLOYER_REMITTER_NAME_MAX_LENGTH,
 } from '../../../src/balance-asset-tracking/aggregates/EmployerRemitterDirectory'
 import {
   recordBankDeposit,
@@ -81,7 +83,14 @@ describe('EmployerRemitterDirectory 集約（勤務先振込元名簿、#448 / O
         at,
       })
 
-      expect(employerRemitterNamesOf(directory)).toHaveLength(1)
+      expect(directory.entries).toEqual([
+        {
+          normalizedName: '振込サービス カ)ワリマルショウジ',
+          displayName: EMPLOYER_RAW,
+          registeredAt: at,
+          sourceTransactionId: '01TXN000000000000000000001',
+        },
+      ])
     })
 
     it('別の勤務先を追加すると 2 件になる（転職・副業で複数の振込元がありうる）', () => {
@@ -99,7 +108,10 @@ describe('EmployerRemitterDirectory 集約（勤務先振込元名簿、#448 / O
         at: new Date('2026-08-21T03:00:00Z'),
       })
 
-      expect(employerRemitterNamesOf(second)).toHaveLength(2)
+      expect(employerRemitterNamesOf(second)).toEqual([
+        '振込サービス カ)ワリマルショウジ',
+        'カ)ワリマルテクノロジーズ',
+      ])
     })
   })
 
@@ -187,6 +199,57 @@ describe('EmployerRemitterDirectory 集約（勤務先振込元名簿、#448 / O
       }
       expect(() =>
         EmployerRemitterDirectorySchema.parse({ userId: OWNER, entries: [entry, entry] }),
+      ).toThrow(/一意/)
+    })
+
+    it('未正規化の名前を持つ名簿は組み立てられない（照合が恒久的に外れるため）', () => {
+      expect(() =>
+        EmployerRemitterDirectorySchema.parse({
+          userId: OWNER,
+          entries: [
+            {
+              normalizedName: EMPLOYER_RAW,
+              displayName: EMPLOYER_RAW,
+              registeredAt: at,
+              sourceTransactionId: '01TXN000000000000000000001',
+            },
+          ],
+        }),
+      ).toThrow(/正規化済み/)
+    })
+
+    it('正規化すると空になる振込元名は登録できない（空の名前で照合しない）', () => {
+      expect(() =>
+        registerEmployerRemitterFromDeposit(emptyEmployerRemitterDirectory(OWNER), {
+          deposit: depositOf('salary', { remitterName: '　 ' }),
+          operatorUserId: OWNER,
+          at,
+        }),
+      ).toThrow()
+    })
+
+    it('勤務先の件数と名前の長さには上限がある', () => {
+      const entry = (i: number): Record<string, unknown> => ({
+        normalizedName: `カイシャ${i}`,
+        displayName: `カイシャ${i}`,
+        registeredAt: at,
+        sourceTransactionId: '01TXN000000000000000000001',
+      })
+      expect(() =>
+        EmployerRemitterDirectorySchema.parse({
+          userId: OWNER,
+          entries: Array.from({ length: EMPLOYER_REMITTER_ENTRY_MAX_COUNT + 1 }, (_v, i) =>
+            entry(i),
+          ),
+        }),
+      ).toThrow()
+      expect(() =>
+        EmployerRemitterDirectorySchema.parse({
+          userId: OWNER,
+          entries: [
+            { ...entry(0), normalizedName: 'ア'.repeat(EMPLOYER_REMITTER_NAME_MAX_LENGTH + 1) },
+          ],
+        }),
       ).toThrow()
     })
   })

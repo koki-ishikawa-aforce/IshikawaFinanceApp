@@ -336,6 +336,30 @@ describe('determineBankDepositPurposeForUser（勤務先振込元名簿を入口
     ).toEqual({ kind: 'unknown', provisionalHandling: 'awaiting_manual_confirmation' })
   })
 
+  it('勤務先を登録済みでも別銀行貯蓄口座からの戻しは戻しとして判別する', () => {
+    expect(
+      determineBankDepositPurposeForUser(
+        { amount: money(100_000), occurredAt: jstNoon(2026, 7, 31), remitterName: SAVINGS_BANK },
+        directoryWithEmployer(),
+        { otherSavingsCounterpartyNames: [SAVINGS_BANK] },
+      ),
+    ).toEqual({ kind: 'other_savings_return' })
+  })
+
+  it.each([
+    ['給与判別閾値金額が 0 円', { salaryThresholdAmount: money(0) }],
+    ['月内基準日が 0 日', { salaryPayoutDayWindow: 0 }],
+  ])('名簿が空でも %s のような不正な判別条件は受け付けない', (_label, ruleOptions) => {
+    // 名簿の中身次第で通ったり落ちたりすると、勤務先を 1 件登録した瞬間に初めて壊れる
+    expect(() =>
+      determineBankDepositPurposeForUser(
+        { amount: money(300_000), occurredAt: jstNoon(2026, 7, 31), remitterName: EMPLOYER },
+        emptyEmployerRemitterDirectory(OWNER),
+        ruleOptions,
+      ),
+    ).toThrow()
+  })
+
   it('名簿が空でも別銀行貯蓄口座からの戻しは判別できる（勤務先名に依存しないため）', () => {
     expect(
       determineBankDepositPurposeForUser(

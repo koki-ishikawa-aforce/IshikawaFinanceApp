@@ -15,7 +15,7 @@
  * per-user の学習ルール（08b）とは所有者軸が異なるため混ぜない。
  */
 import { z } from 'zod'
-import { MoneySchema, money, type Money } from '../../shared/value-objects/Money'
+import { MoneySchema, money } from '../../shared/value-objects/Money'
 import { normalizeRemitterName } from './NormalizedRemitterName'
 
 /**
@@ -29,12 +29,15 @@ export const DEFAULT_SALARY_PAYOUT_DAY_WINDOW = 21
 /** 給与判別閾値金額の既定値（25 万円、OQ-21 ②）。以上を給与シグナル、未満を経費精算シグナルとする */
 export const DEFAULT_SALARY_THRESHOLD_AMOUNT = money(250_000)
 
-export const BankDepositPurposeRuleSchema = z.object({
-  /**
-   * 勤務先振込元名パターン（正規化済み）。空配列だと勤務先入金を一件も認識できず
-   * 給与・経費精算入金がすべて用途不明に落ちるため、1 件以上を必須とする。
-   */
-  employerRemitterNames: z.array(z.string().min(1)).min(1),
+/**
+ * 勤務先振込元名パターン以外の判別条件。世帯共通の口座ルールで、勤務先振込元名だけが
+ * 利用者ごと（勤務先振込元名簿。#448 / OQ-61）に分かれる。
+ *
+ * 勤務先を 1 件も登録していない利用者の判別（`determineBankDepositPurposeForUser`）は
+ * 勤務先振込元名パターンを持てないため、この部分だけを単独で検証できる形にしておく。
+ * 分けておかないと、名簿が空のあいだは不正な条件が検証されずに素通りする。
+ */
+export const BankDepositPurposeRuleOptionsSchema = z.object({
   /** 別銀行貯蓄口座の相手方名パターン（正規化済み）。未登録の世帯があるため空を許す */
   otherSavingsCounterpartyNames: z.array(z.string().min(1)).default([]),
   /** 月内基準日。月末日に依らず全月で成立する 1〜28 日に限る */
@@ -45,6 +48,17 @@ export const BankDepositPurposeRuleSchema = z.object({
     '給与判別閾値金額は正である必要があります',
   ).default(DEFAULT_SALARY_THRESHOLD_AMOUNT),
 })
+export type BankDepositPurposeRuleOptions = z.infer<typeof BankDepositPurposeRuleOptionsSchema>
+/** 組み立て前の指定（既定値のある項目は省略できる） */
+export type BankDepositPurposeRuleOptionsInput = z.input<typeof BankDepositPurposeRuleOptionsSchema>
+
+export const BankDepositPurposeRuleSchema = BankDepositPurposeRuleOptionsSchema.extend({
+  /**
+   * 勤務先振込元名パターン（正規化済み）。空配列だと勤務先入金を一件も認識できず
+   * 給与・経費精算入金がすべて用途不明に落ちるため、1 件以上を必須とする。
+   */
+  employerRemitterNames: z.array(z.string().min(1)).min(1),
+})
 export type BankDepositPurposeRule = z.infer<typeof BankDepositPurposeRuleSchema>
 
 /**
@@ -52,18 +66,27 @@ export type BankDepositPurposeRule = z.infer<typeof BankDepositPurposeRuleSchema
  * 照合時の正規化だけに頼ると、ルール側に未正規化の文字列が入った瞬間に
  * 恒久的に一致しなくなる（無言で全件が用途不明に落ちる）。
  */
-export function bankDepositPurposeRule(params: {
-  employerRemitterNames: string[]
-  otherSavingsCounterpartyNames?: string[]
-  salaryPayoutDayWindow?: number
-  salaryThresholdAmount?: Money
-}): BankDepositPurposeRule {
+export function bankDepositPurposeRule(
+  params: BankDepositPurposeRuleOptionsInput & { employerRemitterNames: string[] },
+): BankDepositPurposeRule {
+  const { employerRemitterNames, ...options } = params
   return BankDepositPurposeRuleSchema.parse({
-    employerRemitterNames: params.employerRemitterNames.map(normalizeRemitterName),
+    ...bankDepositPurposeRuleOptions(options),
+    employerRemitterNames: employerRemitterNames.map(normalizeRemitterName),
+  })
+}
+
+/**
+ * 勤務先振込元名パターン以外の判別条件を組み立てる。名前パターンの正規化は
+ * `bankDepositPurposeRule` と同じ理由でここでも行う。
+ */
+export function bankDepositPurposeRuleOptions(
+  params: BankDepositPurposeRuleOptionsInput = {},
+): BankDepositPurposeRuleOptions {
+  return BankDepositPurposeRuleOptionsSchema.parse({
+    ...params,
     otherSavingsCounterpartyNames: (params.otherSavingsCounterpartyNames ?? []).map(
       normalizeRemitterName,
     ),
-    salaryPayoutDayWindow: params.salaryPayoutDayWindow,
-    salaryThresholdAmount: params.salaryThresholdAmount,
   })
 }

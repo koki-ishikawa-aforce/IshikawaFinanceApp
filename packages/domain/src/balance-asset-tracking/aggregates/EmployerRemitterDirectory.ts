@@ -30,14 +30,38 @@ import { InvariantViolationError, PermissionDeniedError } from '../../shared/err
 import { normalizeRemitterName } from '../value-objects/NormalizedRemitterName'
 import type { DeterminedBankDeposit } from './BankDeposit'
 
+/**
+ * 振込元名の長さ上限。値の出所は明細（SMBC 通知メール）の振込元名で、実物は数十文字に収まる。
+ * 上限が無いと長大な文字列がそのまま主キーに入り、索引の行サイズ超過で保存が落ちる。
+ */
+export const EMPLOYER_REMITTER_NAME_MAX_LENGTH = 100
+
+/**
+ * 1 人が持てる勤務先の上限。転職・副業を重ねても数件に収まる。上限が無いと、
+ * 覚え間違いを取り消す手段が無いまま名簿が伸び続け、判別のたびに全件を照合することになる。
+ */
+export const EMPLOYER_REMITTER_ENTRY_MAX_COUNT = 20
+
 export const EmployerRemitterEntrySchema = z.object({
-  /** 照合に使う正規化済みの名前（NFKC + 長音統一 + 空白圧縮、OQ-7） */
-  normalizedName: z.string().min(1),
+  /**
+   * 照合に使う正規化済みの名前（NFKC + 長音統一 + 空白圧縮、OQ-7）。
+   * 正規化済みであること自体を不変条件に置く。未正規化の値が 1 件でも入ると、
+   * 照合時の正規化だけでは一致しなくなり、その勤務先の入金が無言で全件用途不明に落ちる
+   * （`BankDepositPurposeRule` が同じ理由でパターンを登録時に正規化している）
+   */
+  normalizedName: z
+    .string()
+    .min(1)
+    .max(EMPLOYER_REMITTER_NAME_MAX_LENGTH)
+    .refine(
+      v => normalizeRemitterName(v) === v,
+      '勤務先振込元名は正規化済みである必要があります（照合できなくなるため）',
+    ),
   /**
    * 明細に載っていた生の表記。利用者が自分の明細と突き合わせられるよう、
    * 登録のもとになった入金の振込元名をそのまま残す
    */
-  displayName: z.string().min(1),
+  displayName: z.string().min(1).max(EMPLOYER_REMITTER_NAME_MAX_LENGTH),
   registeredAt: z.date(),
   /** 登録のもとになった入金の取引ID（あとから「どの入金で登録したか」を辿れるようにする） */
   sourceTransactionId: TransactionIdSchema,
@@ -46,15 +70,18 @@ export type EmployerRemitterEntry = z.infer<typeof EmployerRemitterEntrySchema>
 
 export const EmployerRemitterDirectorySchema = z.object({
   userId: UserIdSchema,
-  entries: z.array(EmployerRemitterEntrySchema).superRefine((entries, ctx) => {
-    const names = entries.map(e => e.normalizedName)
-    if (new Set(names).size !== names.length) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '勤務先振込元名は正規化済みの名前で一意である必要があります',
-      })
-    }
-  }),
+  entries: z
+    .array(EmployerRemitterEntrySchema)
+    .max(EMPLOYER_REMITTER_ENTRY_MAX_COUNT)
+    .superRefine((entries, ctx) => {
+      const names = entries.map(e => e.normalizedName)
+      if (new Set(names).size !== names.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '勤務先振込元名は正規化済みの名前で一意である必要があります',
+        })
+      }
+    }),
 })
 export type EmployerRemitterDirectory = z.infer<typeof EmployerRemitterDirectorySchema>
 

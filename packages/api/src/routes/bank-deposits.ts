@@ -6,7 +6,9 @@ import {
   ExpenseReimbursementIdSchema,
   NotFoundError,
   canViewBankDeposit,
+  canViewEmployerRemitterDirectory,
   confirmBankDepositPurpose,
+  emptyEmployerRemitterDirectory,
   isRegisteredEmployerRemitter,
   registerEmployerRemitterFromDeposit,
 } from '@warimaru/domain'
@@ -79,10 +81,16 @@ export function bankDepositsRoutes(deps: BankDepositsRoutesDeps): Hono<AppEnv> {
   /** 手動確認待ちの入金一覧（本人分のみ） */
   app.get('/awaiting', async c => {
     const viewerId = c.get('viewerId')
-    const deposits = await deps.bankDepositRepository.findAwaitingManualConfirmationByUser(viewerId)
-    const directory = await deps.employerRemitterDirectoryRepository.findByOwner(viewerId)
+    // 入金一覧と名簿は互いに独立なので同時に引く（サーバーレスの DB 往復を 1 回ぶん減らす）
+    const [deposits, stored] = await Promise.all([
+      deps.bankDepositRepository.findAwaitingManualConfirmationByUser(viewerId),
+      deps.employerRemitterDirectoryRepository.findByOwner(viewerId),
+    ])
     // Repository は本人分だけを引くが、絞り込み漏れがそのまま露出にならないよう
     // ドメイン側の可視判定でも通す（プライバシー3段階ルール）
+    const directory = canViewEmployerRemitterDirectory(stored, viewerId)
+      ? stored
+      : emptyEmployerRemitterDirectory(viewerId)
     return c.json({
       deposits: deposits
         .filter(d => canViewBankDeposit(d, viewerId))
@@ -112,22 +120,24 @@ export function bankDepositsRoutes(deps: BankDepositsRoutesDeps): Hono<AppEnv> {
       expenseReimbursementId: ExpenseReimbursementIdSchema.parse(newUlid()),
       at: now,
     })
+    // 登録の可否（勤務先からの入金として確定したか・本人か）は**何も書く前に**確かめる。
+    // 保存後に弾くと、用途は確定済みなのに続く反映（シャドウ残高の減算・イベント発行）へ
+    // 進めない状態が残り、同じ本文で再送しても毎回同じ地点で弾かれて前方回復できない
+    const registered = body.registerRemitterAsEmployer
+      ? registerEmployerRemitterFromDeposit(
+          await deps.employerRemitterDirectoryRepository.findByOwner(viewerId),
+          { deposit: confirmed, operatorUserId: viewerId, at: now },
+        )
+      : null
+
     await deps.bankDepositRepository.save(confirmed)
 
-    // 勤務先として覚えるのは確定を保存できたあと。確定しなかった入金の振込元を
-    // 覚えてしまうと、以後その振込元が本人の確認を経ずに給与・経費精算へ倒れる。
-    // 用途の確定と別集約への順次保存になるため、ここで失敗すると「確定済みだが未登録」が
-    // 残るが、同じ用途での確定し直し（反映の前方回復と同じ入口）が登録まで到達させる
-    // （登録は冪等）
-    if (body.registerRemitterAsEmployer) {
-      const directory = await deps.employerRemitterDirectoryRepository.findByOwner(viewerId)
-      await deps.employerRemitterDirectoryRepository.save(
-        registerEmployerRemitterFromDeposit(directory, {
-          deposit: confirmed,
-          operatorUserId: viewerId,
-          at: now,
-        }),
-      )
+    // 名簿へ書くのは確定を保存できたあと。確定しなかった入金の振込元を覚えてしまうと、
+    // 以後その振込元が本人の確認を経ずに給与・経費精算へ倒れる。別集約への順次保存のため
+    // ここで失敗すると「確定済みだが未登録」が残るが、同じ用途での確定し直し（反映の
+    // 前方回復と同じ入口）が登録まで到達させる（登録は冪等）
+    if (registered !== null) {
+      await deps.employerRemitterDirectoryRepository.save(registered)
     }
 
     await applyDeterminedBankDepositPurpose(deps, confirmed, now)
