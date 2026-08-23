@@ -21,7 +21,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### household-analysis（家計分析）
 
-- 集約: `Transaction`（`unclassified` / `classified` / `deleted`。未分類→分類 `classify` / 分類済み生成 `createClassifiedTransaction` / 削除 `deleteTransaction` を含む）, `MonthlyReport`（`csv_confirmed` / `finalized`。CSV確定昇格 `confirmCsv` / 再集計 `refreshCsvConfirmed` / 最終確定昇格 `finalize` / 取引集計 `aggregateMonthlyReportTotals`（`MonthlyReportTotals`）を含む）
+- 集約: `Transaction`（`unclassified` / `classified` / `deleted`。未分類→分類 `classify` / 分類済み生成 `createClassifiedTransaction` / 削除 `deleteTransaction` を含む）, `MonthlyReport`（`csv_confirmed` / `finalized`。CSV確定昇格 `confirmCsv` / 再集計 `refreshCsvConfirmed` / 最終確定昇格 `finalize` / 取引集計 `aggregateMonthlyReportTotals`（`MonthlyReportTotals`）/ 不完全月判定 `isIncompleteMonthReport` を含む）
 - Repository I/F: `TransactionRepository`, `MonthlyReportRepository`
 - 値オブジェクト: `BalanceFreshness`（残高鮮度評価。`BalanceFreshnessStatus` = `ok` / `alert`、閾値の単一ソース `BALANCE_FRESHNESS_THRESHOLD_DAYS` = 35（OQ-44）、評価関数 `evaluateBalanceFreshness`。根拠の最終更新日時は残高・資産推移管理から借用し、判定は本コンテキストが持つ — 08c / 08d L244）
 - Query I/F: `DashboardQuery`（KPI・カテゴリ内訳に加え、残高鮮度評価リスト `fetchBalanceFreshness` を提供。残高は世帯フルオープンのため viewerId を取らない）, `MonthlyReportQuery`, `TransactionListQuery`

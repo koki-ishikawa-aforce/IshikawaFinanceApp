@@ -34,14 +34,14 @@ const MAX_CATEGORY_LABEL_LENGTH = 24
 /**
  * 不完全月の注意書き（#442-A）。
  *
- * レポート画面と同じ「データが不完全な月です」を LINE のサマリにも出す。文言に理由を足すのは、
- * 画面と違って前後の文脈（ステータスや取込状況）が見えないためで、金額が「その月の確定値」として
- * 読まれたまま後から変わると、受け取った側が理由を辿れない。
+ * レポート画面と同じ「データが不完全な月です」を LINE のサマリにも出す。画面に無い一文を足すのは、
+ * LINE には前後の文脈（ステータスや運用開始の経緯）が見えず、月まるごとの金額として読まれるため。
+ * 不完全月フラグが付くのは運用開始月のレポートだけで、その月は運用開始日より前が集計に入らない
+ * （論点20 / P4-1「運用開始日：N/M〜月末 と明示」）。あとから埋まる欠落ではないので、
+ * 数字が変わる予告ではなく「集計した期間が月の一部である」ことを書く。
  */
 const INCOMPLETE_MONTH_NOTICE =
-  '⚠️ データが不完全な月です。取り込めていない期間があるため、金額があとから変わることがあります。'
-/** 注意書きの文字色。レポート画面の注意書きと同じ `--warning-muted`（Flex はトークンを参照できないため実値） */
-const NOTICE_COLOR = '#a05028'
+  '⚠️ データが不完全な月です。この月は運用開始日から月末までの期間だけを集計しています。'
 
 /** 金額表示（円・3 桁区切り） */
 function formatYen(amount: number): string {
@@ -85,7 +85,10 @@ function flexBubble(params: {
   const noticeRows: Record<string, unknown>[] =
     params.notice === undefined
       ? []
-      : [{ type: 'text', text: params.notice, size: 'xs', color: NOTICE_COLOR, wrap: true }]
+      : // 文字色は指定せず LINE 既定色に委ねる。警告色（画面の `--warning-muted` 相当）を
+        // 焼き込むと、LINE のダークモードで背景とのコントラストが落ちて注意書きだけが読みにくくなる。
+        // 注意であることは冒頭の記号と太字で示す
+        [{ type: 'text', text: params.notice, size: 'xs', weight: 'bold', wrap: true }]
   return {
     type: 'bubble',
     header: {
@@ -162,6 +165,15 @@ function latestOf<T>(series: readonly T[]): T | undefined {
 }
 
 /**
+ * そのレポートに添える注意書き（不完全月でなければ undefined）。
+ * 世帯サマリ・個人サマリの両方がこの 1 か所を通す。出し分けを呼び出し側に書くと、
+ * 同じ月について片方にだけ注意が付く食い違いが生まれる。
+ */
+function noticeOf(report: MonthlyReport): string | undefined {
+  return isIncompleteMonthReport(report.common) ? INCOMPLETE_MONTH_NOTICE : undefined
+}
+
+/**
  * 月次レポート世帯サマリの本文（08g §2「月次レポートサマリを共通トークルームに配信する」）。
  *
  * @param categoryNameOf カテゴリID → 表示名。未解決のカテゴリは ID をそのまま出さず
@@ -213,7 +225,7 @@ export function buildHouseholdSummaryContent(
       flexBubble({
         title: `${formatMonthLabel(targetYearMonth)}の家計レポート`,
         subtitle: '世帯の支出と資産のサマリ',
-        notice: isIncompleteMonthReport(report.common) ? INCOMPLETE_MONTH_NOTICE : undefined,
+        notice: noticeOf(report),
         rows,
         linkLabel: 'レポートを開く',
         linkUrl: links.monthlyReport(targetYearMonth),
@@ -244,9 +256,7 @@ export function buildPersonalSummaryContent(
       flexBubble({
         title: `${formatMonthLabel(targetYearMonth)}のあなたのサマリ`,
         subtitle: 'このメッセージはあなたにだけ届いています',
-        // 個人サマリも同じ月の金額を載せるため、世帯サマリと同じ条件で注意書きを出す
-        // （片方にだけ出すと、同じ月について注意の有無が食い違う）
-        notice: isIncompleteMonthReport(report.common) ? INCOMPLETE_MONTH_NOTICE : undefined,
+        notice: noticeOf(report),
         rows: [
           keyValueRow('個人費用 合計', formatYen(personalTotalSelf)),
           keyValueRow('経費(会社) 合計', formatYen(businessExpenseTotalSelf)),
