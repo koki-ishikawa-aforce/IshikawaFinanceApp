@@ -158,6 +158,19 @@ export async function runDailyMailImportJob(
     )
   }
 
+  if (failures.length > 0) {
+    // 片方が Gmail 未連携の世帯では、連携されるまで毎日必ず赤になる。常態（対象外）と
+    // 新しく起きた失敗（通信断など）の内訳を 1 行に出しておかないと、毎日同じ長さの
+    // アラートを読み比べないと差分が分からない
+    const notLaunched = failures.filter(line => line.includes('status=not_launched')).length
+    record(
+      job,
+      outcomes,
+      `内訳: not_launched=${notLaunched} failed=${failures.length - notLaunched}`,
+      true,
+    )
+  }
+
   return finish({ job, at: params.at.toISOString(), outcomes }, failures)
 }
 
