@@ -43,16 +43,7 @@ function LoadFailure({
   message: string
   onRetry: () => void
 }) {
-  return (
-    <>
-      <ErrorState>{describeRequestFailure(error, message)}</ErrorState>
-      <div className={styles.retryRow}>
-        <button className={ui.buttonGhost} onClick={onRetry}>
-          再読み込み
-        </button>
-      </div>
-    </>
-  )
+  return <ErrorState onRetry={onRetry}>{describeRequestFailure(error, message)}</ErrorState>
 }
 
 function LearnedAxes({ refs, masters }: { refs: LearningRefsWire; masters: MastersState }) {

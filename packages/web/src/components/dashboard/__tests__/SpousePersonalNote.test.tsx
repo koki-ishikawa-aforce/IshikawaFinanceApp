@@ -8,7 +8,7 @@ describe('SpousePersonalNote', () => {
 
     expect(container.querySelector('svg')).toBeInTheDocument()
     expect(screen.getByText(/Honeyの個人費/)).toBeInTheDocument()
-    expect(screen.getByText('¥45,000')).toBeInTheDocument()
+    expect(screen.getByText('45,000円')).toBeInTheDocument()
   })
 
   it('honey テーマではパートナー(Darling)のアイコン・ラベル・金額を表示する', () => {
@@ -16,14 +16,14 @@ describe('SpousePersonalNote', () => {
 
     expect(container.querySelector('svg')).toBeInTheDocument()
     expect(screen.getByText(/Darlingの個人費/)).toBeInTheDocument()
-    expect(screen.getByText('¥64,000')).toBeInTheDocument()
+    expect(screen.getByText('64,000円')).toBeInTheDocument()
   })
 
   it('role=note でアクセシブルな説明を提供する', () => {
     render(<SpousePersonalNote amount={12000} theme="darling" />)
 
     const note = screen.getByRole('note')
-    expect(note).toHaveAttribute('aria-label', 'Honeyの個人費 合計 ¥12,000')
+    expect(note).toHaveAttribute('aria-label', 'Honeyの個人費 合計 12,000円')
   })
 
   it('ロングタップ(contextmenu)でプライバシーヒントを表示する', () => {
@@ -51,6 +51,6 @@ describe('SpousePersonalNote', () => {
   it('金額 0 のときも正しく表示する', () => {
     render(<SpousePersonalNote amount={0} theme="darling" />)
 
-    expect(screen.getByText('¥0')).toBeInTheDocument()
+    expect(screen.getByText('0円')).toBeInTheDocument()
   })
 })

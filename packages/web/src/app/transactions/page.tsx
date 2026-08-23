@@ -390,14 +390,9 @@ function TransactionsPageContent() {
       <MonthNavigator month={month} onMonthChange={setMonth} />
 
       {summaryQuery.error && (
-        <>
-          <ErrorState>
-            {describeRequestFailure(summaryQuery.error, '未分類の件数を取得できませんでした')}
-          </ErrorState>
-          <button className={ui.buttonGhost} onClick={() => void summaryQuery.refetch()}>
-            再読み込み
-          </button>
-        </>
+        <ErrorState onRetry={() => void summaryQuery.refetch()}>
+          {describeRequestFailure(summaryQuery.error, '未分類の件数を取得できませんでした')}
+        </ErrorState>
       )}
 
       {summaryQuery.data && (

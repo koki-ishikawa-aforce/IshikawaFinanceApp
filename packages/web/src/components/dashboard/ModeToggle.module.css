@@ -8,6 +8,11 @@
 
 .segment {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 縦パディング 6px + 文字 12px では実効高が下限に届かない（usability §4-3。#366） */
+  min-height: var(--tap-target-min);
   padding: var(--space-1_5) 0;
   border: none;
   border-radius: var(--radius-md);

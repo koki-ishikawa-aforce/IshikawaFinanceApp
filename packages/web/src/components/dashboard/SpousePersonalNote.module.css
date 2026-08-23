@@ -38,7 +38,11 @@
   transform: translateX(-50%);
   white-space: nowrap;
   font-size: var(--text-xs);
-  color: var(--text-on-kpi);
+  /*
+   * 背景は両テーマとも濃い --text-primary なので白で固定する。金額カードの文字色
+   * （--text-on-kpi）はだーりんで濃い色に変わったため、ここで流用すると濃地に濃字になる
+   */
+  color: var(--white);
   background: var(--text-primary);
   padding: var(--space-1) var(--space-2_5);
   border-radius: var(--radius-sm);

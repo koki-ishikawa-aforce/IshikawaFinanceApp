@@ -98,7 +98,12 @@ textarea {
   --accent: #ff7095;
   --text-primary: #5a2840;
   --text-secondary: #a04068;
-  --text-on-kpi: #ffffff;
+  /*
+   * 金額カードの上に置く文字色（#366）。だーりんのカードは明るいピンクなので、
+   * 白文字だと 1.71:1 まで落ちる。カードのピンクは据え置いたまま文字を濃くして
+   * 4.5:1 を満たす（実測 4.98〜9.30:1）。比率は kpi-contrast.test.ts が見張る
+   */
+  --text-on-kpi: #3d1420;
   --shadow-color: #ff709520;
   --shadow-strong: #ff709550;
   --deco-opacity: 0.2;
@@ -129,7 +134,12 @@ textarea {
 
 [data-theme='honey'] {
   --bg-gradient: linear-gradient(180deg, #98c0e0 0%, #b8d0e8 30%, #d0e0f0 60%, #e8f0f8 100%);
-  --kpi-1: linear-gradient(135deg, #5888c0, #80a8d0);
+  /*
+   * はにーは暗い背景に白文字という定石どおりなので、方針は変えず青だけ暗くする（#366）。
+   * 元の #5888c0 → #80a8d0 は白文字で 3.69:1 / 2.49:1 しかなかった。hero
+   * （#2a5098 → #4878b8、7.78:1 / 4.51:1）は変更不要
+   */
+  --kpi-1: linear-gradient(135deg, #3a6ba6, #4377b3);
   --kpi-hero: linear-gradient(135deg, #2a5098, #4878b8);
   --accent: #5090d8;
   --text-primary: #1a3868;

@@ -19,11 +19,14 @@
   box-shadow: var(--shadow-hero);
 }
 
+/*
+ * hero カードの上の文字は半透明にしない。背景が透けたぶんだけコントラストが落ち、
+ * 4.5:1 を割るため（#366。ラベルと内訳は文字の大きさと太さで金額と差をつける）
+ */
 .heroLabel {
   font-size: var(--text-xs);
   font-weight: 700;
   color: var(--text-on-kpi);
-  opacity: 0.95;
 }
 
 .heroValue {
@@ -39,7 +42,6 @@
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-on-kpi);
-  opacity: 0.9;
 }
 
 .balanceList {

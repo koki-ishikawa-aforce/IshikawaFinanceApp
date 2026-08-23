@@ -15,7 +15,8 @@ import { SRC_DIR, collectSources, isModuleCss, type Source } from './sources'
  * そこで「操作部品の下限」に限ってここで縛る。
  *
  * 守らせるのは次の 3 つ:
- * 1. 共通の操作部品(ボタン・選択欄・入力欄)が下限をトークンで宣言している
+ * 1. 対象の操作部品(共通のボタン・選択欄・入力欄と、対応済みの画面固有の部品)が
+ *    下限をトークンで宣言している
  * 2. 下限の値が globals.css の 1 か所だけに定義されている
  * 3. 下限に相当する大きさを px の直値で書き起こしていない
  */
@@ -23,15 +24,24 @@ import { SRC_DIR, collectSources, isModuleCss, type Source } from './sources'
 const COMMON_CSS = join('components', 'ui', 'common.module.css')
 
 /**
- * 下限を宣言していなければならない共通の操作部品。
+ * 下限を宣言していなければならない操作部品。
  *
  * ボタン・選択欄・入力欄(`common.module.css`)に加え、独自の受け皿を持つ共通部品も対象にする。
  * 2 択の切り替え(`SegmentedControl`)は透明なラジオを `.optionLabel` の大きさに重ねる作りなので、
  * 下限を宣言しているのは見た目を担う `.optionLabel` の側になる。
+ *
+ * 共通部品を使わずに自前のスタイルを持つ操作部品も、対応したものからここに載せる
+ * (ダッシュボードの月送り・世帯/個人の切り替え・カテゴリ行は #366 で対応)。
  */
-const COMMON_CONTROLS: readonly { css: string; selectors: readonly string[] }[] = [
+const CONTROLS: readonly { css: string; selectors: readonly string[] }[] = [
   { css: COMMON_CSS, selectors: ['.button', '.buttonGhost', '.buttonDanger', '.select', '.input'] },
   { css: join('components', 'ui', 'SegmentedControl.module.css'), selectors: ['.optionLabel'] },
+  { css: join('components', 'dashboard', 'MonthNavigator.module.css'), selectors: ['.button'] },
+  { css: join('components', 'dashboard', 'ModeToggle.module.css'), selectors: ['.segment'] },
+  {
+    css: join('components', 'dashboard', 'CategoryBreakdown.module.css'),
+    selectors: ['.legendItem'],
+  },
 ]
 
 const TAP_TARGET_MIN = 'var(--tap-target-min)'
@@ -95,9 +105,11 @@ describe('タップターゲットの下限', () => {
   const stylesheets = collectSources(isModuleCss)
   const common = stylesheets.find(({ path }) => path === COMMON_CSS)?.content ?? ''
 
-  it('共通の操作部品が下限をトークンで宣言している', () => {
-    const offenders = COMMON_CONTROLS.flatMap(({ css, selectors }) => {
+  it('対象の操作部品が下限をトークンで宣言している', () => {
+    const offenders = CONTROLS.flatMap(({ css, selectors }) => {
       const content = stylesheets.find(({ path }) => path === css)?.content ?? ''
+      // 対象のファイルを取り違えると「宣言なし」ではなく「走査なし」で緑になる
+      expect(content, `${css} を読み取れている`).not.toBe('')
       return findControlsWithoutMin(content, selectors).map(selector => `${css}:${selector}`)
     })
     expect(offenders).toEqual([])

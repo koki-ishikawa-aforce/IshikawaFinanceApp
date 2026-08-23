@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 import { ErrorState } from '../ErrorState'
 import { definesClass, findDuplicateClassDefinitions, listStylesheets } from '@/test/stylesheets'
 
@@ -42,6 +43,37 @@ describe('ErrorState', () => {
 
     expect(container.querySelector('svg')).toBeNull()
     expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('onRetry を渡すと再読み込みの手段が出て、押すと呼ばれる', async () => {
+    const user = userEvent.setup()
+    const onRetry = vi.fn()
+    render(<ErrorState onRetry={onRetry}>取引一覧の取得に失敗しました</ErrorState>)
+
+    await user.click(screen.getByRole('button', { name: '再読み込み' }))
+
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('再読み込みの手段は読み上げ範囲(live region)の外に置く', () => {
+    // 中に入れると、失敗の文言に続けてボタンのラベルまで一息に読まれて要点が埋もれる
+    render(<ErrorState onRetry={() => {}}>取引一覧の取得に失敗しました</ErrorState>)
+
+    expect(within(screen.getByRole('alert')).queryByRole('button')).toBeNull()
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument()
+  })
+
+  it('onRetry を渡さなければ再読み込みの手段を出さない', () => {
+    // 保存・削除の失敗はやり直しの手段が元のボタン側にあり、二つ目を出すと迷わせる
+    render(<ErrorState>保存できませんでした</ErrorState>)
+
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('文言が空なら、onRetry があっても何も描画しない', () => {
+    const { container } = render(<ErrorState onRetry={() => {}}>{''}</ErrorState>)
+
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('announce={false} のときは live region にしない', () => {

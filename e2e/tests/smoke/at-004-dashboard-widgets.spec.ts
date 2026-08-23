@@ -5,7 +5,7 @@ test.describe('AT-004: ダッシュボードの KPI・カテゴリ内訳・未�
     await page.goto('/')
 
     await expect(page.getByText('今月支出')).toBeVisible()
-    await expect(page.getByText('総資産')).toBeVisible()
+    await expect(page.getByText('資産合計')).toBeVisible()
 
     const visibleText = await page.locator('body').innerText()
     expect(visibleText).not.toContain('NaN')

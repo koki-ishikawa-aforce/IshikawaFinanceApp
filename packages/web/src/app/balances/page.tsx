@@ -147,7 +147,7 @@ export default function BalancesPage() {
 
       {totalQuery.data && (
         <div className={styles.heroCard}>
-          <span className={styles.heroLabel}>総資産</span>
+          <span className={styles.heroLabel}>資産合計</span>
           <span className={styles.heroValue}>{formatMoney(totalQuery.data.total)}</span>
           <div className={styles.heroBreakdown}>
             <span>SMBC {formatMoney(totalQuery.data.smbcBalance)}</span>

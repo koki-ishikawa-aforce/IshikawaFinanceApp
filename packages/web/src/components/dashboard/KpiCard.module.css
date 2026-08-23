@@ -28,11 +28,14 @@
   pointer-events: none;
 }
 
+/*
+ * ラベルは金額より小さく細くすることで下げる。半透明にすると背景のピンク・青が
+ * 透けてコントラストが落ちる（0.95 でも 4.5:1 を割る）ため、opacity は使わない（#366）
+ */
 .label {
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-on-kpi);
-  opacity: 0.95;
 }
 
 .value {

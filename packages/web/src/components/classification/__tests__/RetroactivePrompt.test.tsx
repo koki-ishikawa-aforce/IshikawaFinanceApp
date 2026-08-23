@@ -73,9 +73,9 @@ describe('RetroactivePrompt', () => {
     const [first, second] = await candidateRows()
     // 月をまたいで並ぶため年まで出す（2026/06/18 と 2025/05/30 を取り違えない）
     expect(within(first as HTMLElement).getByText('2026/06/18')).toBeInTheDocument()
-    expect(within(first as HTMLElement).getByText('¥1,420')).toBeInTheDocument()
+    expect(within(first as HTMLElement).getByText('1,420円')).toBeInTheDocument()
     expect(within(second as HTMLElement).getByText('2025/05/30')).toBeInTheDocument()
-    expect(within(second as HTMLElement).getByText('¥980')).toBeInTheDocument()
+    expect(within(second as HTMLElement).getByText('980円')).toBeInTheDocument()
   })
 
   it('チェックを外した取引は適用対象から除かれる', async () => {
@@ -84,7 +84,7 @@ describe('RetroactivePrompt', () => {
 
     const [first] = await candidateRows()
     // 日付・金額のどこを押してもその行のチェックが切り替わる（ラベルが行全体）
-    await user.click(within(first as HTMLElement).getByText('¥1,420'))
+    await user.click(within(first as HTMLElement).getByText('1,420円'))
     await user.click(screen.getByRole('button', { name: '選んだ 1 件も同じ分類にする' }))
 
     await waitFor(() =>

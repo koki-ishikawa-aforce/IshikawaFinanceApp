@@ -52,18 +52,9 @@ export function BalanceFreshnessCard() {
       <div role="status">
         {freshnessQuery.isPending && <LoadingState announce={false} />}
         {freshnessQuery.isError && (
-          <>
-            <ErrorState announce={false}>
-              {describeRequestFailure(freshnessQuery.error, '更新状況を取得できませんでした')}
-            </ErrorState>
-            <button
-              type="button"
-              className={ui.buttonGhost}
-              onClick={() => void freshnessQuery.refetch()}
-            >
-              再読み込み
-            </button>
-          </>
+          <ErrorState announce={false} onRetry={() => void freshnessQuery.refetch()}>
+            {describeRequestFailure(freshnessQuery.error, '更新状況を取得できませんでした')}
+          </ErrorState>
         )}
         {freshnessQuery.data &&
           (freshnessQuery.data.items.length === 0 ? (

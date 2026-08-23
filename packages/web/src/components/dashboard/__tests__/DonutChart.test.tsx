@@ -12,7 +12,7 @@ describe('DonutChart', () => {
     render(<DonutChart segments={segments} totalAmount={80000} />)
 
     expect(screen.getByText('合計')).toBeInTheDocument()
-    expect(screen.getByText('¥80,000')).toBeInTheDocument()
+    expect(screen.getByText('80,000円')).toBeInTheDocument()
   })
 
   it('セグメントごとに circle を描画する', () => {
@@ -28,6 +28,6 @@ describe('DonutChart', () => {
     const { container } = render(<DonutChart segments={[]} totalAmount={0} />)
 
     expect(container.querySelectorAll('circle')).toHaveLength(0)
-    expect(screen.getByText('¥0')).toBeInTheDocument()
+    expect(screen.getByText('0円')).toBeInTheDocument()
   })
 })
