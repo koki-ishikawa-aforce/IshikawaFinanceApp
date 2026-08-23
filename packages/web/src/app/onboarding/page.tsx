@@ -3,7 +3,11 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { SectionIdentifier } from '@warimaru/domain'
+import {
+  DEFAULT_CATEGORY_NAMES,
+  DEFAULT_EXPENSE_TYPE_NAMES,
+  type SectionIdentifier,
+} from '@warimaru/domain'
 import { useViewerRole } from '@/hooks/useViewerRole'
 import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
 import {
@@ -32,6 +36,7 @@ import {
   LuTriangleAlert,
   LuHourglass,
 } from '@/components/ui/icons'
+import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
@@ -76,6 +81,10 @@ function lineSettingsOf(user: AppUserWire): LineOperationSettingsWire {
  * 確認だけで完了扱いにできるセクション（C/D/E、論点8）。
  * 中身の設定は設定画面が持つため、ここでは「何を見ればよいか」と行き先だけを示し、
  * 見終わったことの記録をこの画面から送る。
+ *
+ * 規定マスタの名前はドメインの定数から組み立てる（改名不可の固定値で、正は
+ * `DEFAULT_CATEGORY_NAMES` / `DEFAULT_EXPENSE_TYPE_NAMES`）。ここで転記すると、
+ * 「中身を見る」で開いた設定画面と 1 クリックの中で表記が食い違う。
  */
 const CONFIRMATION_SECTIONS: {
   section: SectionIdentifier
@@ -91,7 +100,7 @@ const CONFIRMATION_SECTIONS: {
     badge: 'C',
     name: 'カテゴリの確認',
     href: '/settings?section=categories',
-    note: '支出の分け方（住居・光熱・通信／食費／娯楽／その他）は用意済みです。中身を見て、必要なら自分用のカテゴリを足せます。',
+    note: `支出の分け方（${Object.values(DEFAULT_CATEGORY_NAMES).join('／')}）は用意済みです。中身を見て、必要なら自分用のカテゴリを足せます。`,
   },
   {
     section: 'section_d',
@@ -99,7 +108,7 @@ const CONFIRMATION_SECTIONS: {
     badge: 'D',
     name: '経費種別の確認',
     href: '/settings?section=expense-types',
-    note: '経費の分け方（ジム／新聞図書費／AI 利用費／交通費／その他経費）は用意済みです。中身を見て、必要なら自分用の種別を足せます。',
+    note: `経費の分け方（${Object.values(DEFAULT_EXPENSE_TYPE_NAMES).join('／')}）は用意済みです。中身を見て、必要なら自分用の種別を足せます。`,
   },
   {
     section: 'section_e',
@@ -645,7 +654,9 @@ export default function OnboardingPage() {
             const kind = progress[progressKey].kind
             const pending = confirmSection.isPending && confirmSection.variables === section
             return (
-              <div className={styles.sectionRow} key={section}>
+              /* 同名の操作（中身を見る / 確認しました）が 3 セット並ぶため、行に名前を与えて
+                 読み上げ時にどのセクションのものか分かるようにする */
+              <div className={styles.sectionRow} key={section} role="group" aria-label={name}>
                 <div className={styles.sectionHead}>
                   <span className={styles.sectionBadge}>{badge}</span>
                   <span className={styles.sectionName}>{name}</span>
@@ -659,7 +670,7 @@ export default function OnboardingPage() {
                   <>
                     <p className={styles.note}>{note}</p>
                     <div className={ui.row}>
-                      <Link href={href} className={ui.buttonGhost}>
+                      <Link href={href} className={`${ui.buttonGhost} ${ui.buttonLink}`}>
                         中身を見る
                       </Link>
                       <button
@@ -674,11 +685,23 @@ export default function OnboardingPage() {
                             : '確認しました'}
                       </button>
                     </div>
-                    {confirmSection.variables === section && (
-                      <ErrorNote error={confirmSection.error} />
+                    {/* 記録できなかった理由をそのまま見せず、次にとる行動で締める。押した行に出す */}
+                    {confirmSection.variables === section && confirmSection.isError && (
+                      <ErrorState>
+                        確認を記録できませんでした。通信状況を確かめて、もう一度お試しください。
+                      </ErrorState>
                     )}
                   </>
                 )}
+                {/* 記録できた回は行の操作が消えるため、結果を読み上げに載せる（使用性 8-4） */}
+                {kind !== 'unconfirmed' &&
+                  confirmSection.isSuccess &&
+                  confirmSection.variables === section && (
+                    <p className={styles.note} role="status">
+                      <LuCheck aria-hidden="true" className={ui.iconInline} /> {name}
+                      を記録しました。
+                    </p>
+                  )}
               </div>
             )
           })}
@@ -699,7 +722,7 @@ export default function OnboardingPage() {
                   過去のカード・銀行明細を取り込んで、これまでの家計も見えるようにします（任意）。
                 </p>
                 <div className={ui.row}>
-                  <Link href="/imports" className={ui.buttonGhost}>
+                  <Link href="/imports" className={`${ui.buttonGhost} ${ui.buttonLink}`}>
                     取込画面を開く
                   </Link>
                   {importCompletion !== null && (

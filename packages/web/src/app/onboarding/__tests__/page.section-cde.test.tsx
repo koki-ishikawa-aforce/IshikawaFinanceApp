@@ -5,7 +5,7 @@
  * 記録が進捗表示に現れること、未確認のままでも設定を完了できること、SectionB 完了前は
  * 確認できないことが値打ちのため、画面の結線として検証する。
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -105,7 +105,20 @@ beforeEach(() => {
   })
 })
 
-/** 確認ボタン（セクション見出しの直後に並ぶ 3 つ）を名前で引く */
+/**
+ * セクションの行を名前で引く。3 行は同じ操作名（中身を見る / 確認しました）を持つため、
+ * 行の名前で絞らないと「月次上限の行を押したのに C が飛ぶ」取り違えを見逃す。
+ */
+async function sectionRow(name: string): Promise<HTMLElement> {
+  return screen.findByRole('group', { name })
+}
+
+/** 指定セクションの確認ボタン */
+async function confirmButtonOf(name: string): Promise<HTMLElement> {
+  return within(await sectionRow(name)).getByRole('button', { name: '確認しました' })
+}
+
+/** 確認を促している（＝未確認の）セクションの数 */
 async function confirmButtons(): Promise<HTMLElement[]> {
   return screen.findAllByRole('button', { name: '確認しました' })
 }
@@ -119,8 +132,7 @@ describe('Section C / D / E の確認', () => {
     )
     renderPage()
 
-    const buttons = await confirmButtons()
-    await userEvent.click(buttons[0]!)
+    await userEvent.click(await confirmButtonOf('カテゴリの確認'))
 
     await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
     expect(apiMutate.mock.calls[0]?.[0]).toBe('/api/onboarding/phase2/section-confirmation')
@@ -134,12 +146,11 @@ describe('Section C / D / E の確認', () => {
     )
     renderPage()
 
-    const buttons = await confirmButtons()
-    await userEvent.click(buttons[1]!)
+    await userEvent.click(await confirmButtonOf('経費種別の確認'))
     await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
     expect(apiMutate.mock.calls[0]?.[1]?.body).toEqual({ section: 'section_d' })
 
-    await userEvent.click((await confirmButtons())[2]!)
+    await userEvent.click(await confirmButtonOf('月次上限の確認'))
     await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(2))
     expect(apiMutate.mock.calls[1]?.[1]?.body).toEqual({ section: 'section_e' })
   })
@@ -151,11 +162,13 @@ describe('Section C / D / E の確認', () => {
     })
     renderPage()
 
-    await userEvent.click((await confirmButtons())[0]!)
+    await userEvent.click(await confirmButtonOf('カテゴリの確認'))
 
-    expect(await screen.findByText('確認済み')).toBeInTheDocument()
+    const row = await sectionRow('カテゴリの確認')
+    await waitFor(() => expect(within(row).getByText('確認済み')).toBeInTheDocument())
+    expect(within(row).queryByRole('button', { name: '確認しました' })).toBeNull()
     // C だけが確認済みになり、D・E は未確認のまま残る
-    await waitFor(async () => expect(await confirmButtons()).toHaveLength(2))
+    expect(await confirmButtons()).toHaveLength(2)
   })
 
   it('マスタを編集済み・変更済みのセクションは、確認を促さない', async () => {
@@ -174,6 +187,8 @@ describe('Section C / D / E の確認', () => {
     const blocked = await screen.findAllByRole('button', { name: 'B の完了後に確認できます' })
     expect(blocked).toHaveLength(3)
     for (const button of blocked) expect(button).toBeDisabled()
+
+    await userEvent.click(blocked[0]!)
     expect(apiMutate).not.toHaveBeenCalled()
   })
 
@@ -186,15 +201,57 @@ describe('Section C / D / E の確認', () => {
     expect(complete).toBeEnabled()
   })
 
-  it('記録に失敗したときは、押したセクションの下にだけ理由が出る', async () => {
-    apiMutate.mockRejectedValue(new Error('通信に失敗しました'))
+  it('記録に失敗したときは、押したセクションの下にだけ次の行動を案内する', async () => {
+    // 通信断では fetch の英語メッセージがそのまま来る。それを見せずに行動で締める
+    apiMutate.mockRejectedValue(new TypeError('Failed to fetch'))
     renderPage()
 
-    await userEvent.click((await confirmButtons())[0]!)
+    await userEvent.click(await confirmButtonOf('カテゴリの確認'))
 
-    const notes = await screen.findAllByText(/通信に失敗しました/)
-    expect(notes).toHaveLength(1)
-    // 失敗しても他のセクションの確認は続けられる
+    const row = await sectionRow('カテゴリの確認')
+    const note = await within(row).findByText(/確認を記録できませんでした/)
+    expect(note.textContent).toContain('もう一度')
+    expect(screen.queryByText(/Failed to fetch/)).toBeNull()
+    // 失敗はその場で気づけないとやり直せない（使用性 8-4）
+    expect(note.closest('[role="alert"]')).not.toBeNull()
+    // 案内は押した行にだけ出し、失敗しても他のセクションの確認は続けられる
+    expect(screen.getAllByText(/確認を記録できませんでした/)).toHaveLength(1)
     expect(await confirmButtons()).toHaveLength(3)
+  })
+
+  it('記録できた回は、結果が読み上げに載る（押したボタンが消えるため）', async () => {
+    apiMutate.mockImplementation((_path, _options, schema: { parse: (i: unknown) => unknown }) => {
+      currentUser = appUser({ sectionB: 'completed', sectionC: 'confirmed' })
+      return Promise.resolve(schema.parse({ user: currentUser }))
+    })
+    renderPage()
+
+    await userEvent.click(await confirmButtonOf('カテゴリの確認'))
+
+    const note = await screen.findByText(/カテゴリの確認を記録しました/)
+    expect(note.closest('[role="status"]')).not.toBeNull()
+  })
+
+  it('セクションごとに行の名前が付き、同名の操作が並んでも区別できる', async () => {
+    renderPage()
+
+    for (const name of ['カテゴリの確認', '経費種別の確認', '月次上限の確認']) {
+      const row = await sectionRow(name)
+      expect(within(row).getByRole('button', { name: '確認しました' })).toBeInTheDocument()
+      expect(within(row).getByRole('link', { name: '中身を見る' })).toBeInTheDocument()
+    }
+  })
+
+  it('記録中は同じセクションを押し直せない（二重に記録しない）', async () => {
+    apiMutate.mockImplementation(() => new Promise(() => undefined))
+    renderPage()
+
+    await userEvent.click(await confirmButtonOf('カテゴリの確認'))
+
+    const row = await sectionRow('カテゴリの確認')
+    const pending = within(row).getByRole('button', { name: '記録中...' })
+    expect(pending).toBeDisabled()
+    await userEvent.click(pending)
+    expect(apiMutate).toHaveBeenCalledTimes(1)
   })
 })

@@ -22,6 +22,7 @@ import { InvariantViolationError } from '../../shared/errors/DomainError'
 import { NicknameSchema, type Nickname } from '../value-objects/Nickname'
 import {
   Phase2ProgressSchema,
+  isSectionConfirmed,
   sectionConfirmationOf,
   type Phase2Progress,
   type SectionIdentifier,
@@ -106,9 +107,9 @@ export const AppUserSchema = z
       })
     }
     const laterSections = [
-      ['sectionC', sectionC.kind !== 'unconfirmed'],
-      ['sectionD', sectionD.kind !== 'unconfirmed'],
-      ['sectionE', sectionE.kind !== 'unconfirmed'],
+      ['sectionC', isSectionConfirmed(sectionC)],
+      ['sectionD', isSectionConfirmed(sectionD)],
+      ['sectionE', isSectionConfirmed(sectionE)],
     ] as const
     for (const [name, touched] of laterSections) {
       if (touched && sectionB.kind !== 'completed') {
@@ -320,14 +321,22 @@ export function confirmSection(
       'SectionB 完了後でなければ SectionC/D/E の確認はできない（論点8）',
     )
   }
-  if (sectionConfirmationOf(user.progress, section).kind !== 'unconfirmed') return user
+  if (isSectionConfirmed(sectionConfirmationOf(user.progress, section))) return user
   const confirmed = { kind: 'confirmed', confirmedAt: at } as const
-  const progress: Phase2Progress =
-    section === 'section_c'
-      ? { ...user.progress, sectionC: confirmed }
-      : section === 'section_d'
-        ? { ...user.progress, sectionD: confirmed }
-        : { ...user.progress, sectionE: confirmed }
+  // 網羅 switch で書く（sectionConfirmationOf と同じ）。セクション識別が増えたときに
+  // 既定の分岐へ落ちて別セクションを更新するのではなく、コンパイルエラーで気づけるようにする
+  let progress: Phase2Progress
+  switch (section) {
+    case 'section_c':
+      progress = { ...user.progress, sectionC: confirmed }
+      break
+    case 'section_d':
+      progress = { ...user.progress, sectionD: confirmed }
+      break
+    case 'section_e':
+      progress = { ...user.progress, sectionE: confirmed }
+      break
+  }
   return updatePhase2Progress(user, progress)
 }
 

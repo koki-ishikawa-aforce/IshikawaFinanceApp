@@ -207,7 +207,7 @@ describe('アイコンの大きさ', () => {
     expect(detected.get(join('components', 'ui', 'RoleIcon.tsx'))).toBe(1)
     expect(detected.get(join('components', 'dashboard', 'MonthNavigator.tsx'))).toBe(2)
     expect(detected.get(join('app', 'balances', 'page.tsx'))).toBe(4)
-    expect(detected.get(join('app', 'onboarding', 'page.tsx'))).toBe(13)
+    expect(detected.get(join('app', 'onboarding', 'page.tsx'))).toBe(14)
 
     expect(stylesheets.map(({ path }) => path)).toEqual(
       expect.arrayContaining([

@@ -247,13 +247,23 @@ describe('Phase2 セクション遷移関数（#41）', () => {
     expect(() => confirmSection(sectionAOnly, 'section_c', at)).toThrow(InvariantViolationError)
   })
 
-  it('C / D / E はそれぞれ独立に確認され、他のセクションを確認済みにしない', () => {
-    const at = new Date('2026-08-01T00:00:00.000Z')
-    const confirmed = confirmSection(sectionBDone(at), 'section_d', at)
-    expect(confirmed.progress.sectionD).toEqual({ kind: 'confirmed', confirmedAt: at })
-    expect(confirmed.progress.sectionC.kind).toBe('unconfirmed')
-    expect(confirmed.progress.sectionE.kind).toBe('unconfirmed')
-  })
+  it.each([
+    ['section_c', 'sectionC'],
+    ['section_d', 'sectionD'],
+    ['section_e', 'sectionE'],
+  ] as const)(
+    '%s を確認すると %s だけが確認済みになる（識別子の取り違えを防ぐ）',
+    (section, key) => {
+      const at = new Date('2026-08-01T00:00:00.000Z')
+      const confirmed = confirmSection(sectionBDone(at), section, at)
+
+      expect(confirmed.progress[key]).toEqual({ kind: 'confirmed', confirmedAt: at })
+      const others = (['sectionC', 'sectionD', 'sectionE'] as const).filter(k => k !== key)
+      for (const other of others) {
+        expect(confirmed.progress[other].kind).toBe('unconfirmed')
+      }
+    },
+  )
 
   it('確認済みセクションの再確認は冪等（確認日時を上書きしない）', () => {
     const at = new Date('2026-08-01T00:00:00.000Z')

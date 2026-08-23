@@ -931,19 +931,43 @@ describe('Phase2 進捗', () => {
     const confirmed = subscribeSectionConfirmed(t)
     await completeSectionBFor(t)
 
-    const first = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
-      body: { section: 'section_c' },
-    })
-    const firstConfirmedAt = (await json<UserResponse>(first)).user?.progress?.sectionC.confirmedAt
+    // 2 回の要求を別の時刻に置く（同一ミリ秒だと上書きしていても気づけない）。
+    // 時計だけを止め、タイマーは本物のまま動かす
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-08-01T00:00:00.000Z'))
+      const first = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
+        body: { section: 'section_c' },
+      })
+      expect((await json<UserResponse>(first)).user?.progress?.sectionC.confirmedAt).toBe(
+        '2026-08-01T00:00:00.000Z',
+      )
 
-    const again = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
+      vi.setSystemTime(new Date('2026-08-02T09:00:00.000Z'))
+      const again = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
+        body: { section: 'section_c' },
+      })
+      expect(again.status).toBe(200)
+      expect((await json<UserResponse>(again)).user?.progress?.sectionC.confirmedAt).toBe(
+        '2026-08-01T00:00:00.000Z',
+      )
+      expect(confirmed).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('Phase2 完了後の確認要求は 409（開いたままの古い画面から進捗を触らせない）', async () => {
+    const t = createTestApp()
+    const confirmed = subscribeSectionConfirmed(t)
+    await completeSectionBFor(t)
+    expect((await request(t.app, 'POST', '/api/onboarding/phase2/complete')).status).toBe(201)
+
+    const res = await request(t.app, 'PUT', '/api/onboarding/phase2/section-confirmation', {
       body: { section: 'section_c' },
     })
-    expect(again.status).toBe(200)
-    expect((await json<UserResponse>(again)).user?.progress?.sectionC.confirmedAt).toBe(
-      firstConfirmedAt,
-    )
-    expect(confirmed).toHaveLength(1)
+    expect(res.status).toBe(409)
+    expect(confirmed).toHaveLength(0)
   })
 
   it('未知のセクション識別は 400（C/D/E 以外は確認できない）', async () => {
