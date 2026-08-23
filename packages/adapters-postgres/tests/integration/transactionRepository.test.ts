@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { ZodError } from 'zod'
-import { NeonTransactionRepository } from '../../src/household-analysis/NeonTransactionRepository'
+import { PostgresTransactionRepository } from '../../src/household-analysis/PostgresTransactionRepository'
 import { newUlid } from '../../src/newId'
 import { db } from './setup'
 import {
@@ -13,9 +13,9 @@ import {
   ym,
 } from '../helpers/fixtures'
 
-const repo = new NeonTransactionRepository(db)
+const repo = new PostgresTransactionRepository(db)
 
-describe('NeonTransactionRepository', () => {
+describe('PostgresTransactionRepository', () => {
   it('save → findById の往復で全 kind が同一に復元される（Date 実体含む）', async () => {
     const variants = [
       unclassifiedTransaction(),

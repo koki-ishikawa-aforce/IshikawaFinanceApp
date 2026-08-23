@@ -17,7 +17,7 @@ import { ExpenseTypeMasterSchema, CategoryMasterSchema, UserIdSchema } from '@wa
 import type { DefaultExpenseTypeKind } from '@warimaru/domain'
 import { db } from './setup'
 import * as schema from '../../src/schema'
-import { NeonExpenseTypeMasterRepository } from '../../src/master-data/NeonExpenseTypeMasterRepository'
+import { PostgresExpenseTypeMasterRepository } from '../../src/master-data/PostgresExpenseTypeMasterRepository'
 import { seedDefaultMasters } from '../../scripts/seed/masters'
 import { seedDevFixtures, HONEY_ID, DARLING_ID } from '../../scripts/seed/dev-fixtures'
 
@@ -115,7 +115,7 @@ describe('seed: 本番モード（規定マスタのみ）', () => {
   })
 
   it('規定経費種別 5 種がリポジトリから読み出せる（#321 のハンドラーが反復する入力）', async () => {
-    const repository = new NeonExpenseTypeMasterRepository(db)
+    const repository = new PostgresExpenseTypeMasterRepository(db)
     const expenseTypes = await repository.findAllVisibleToUser(UserIdSchema.parse(HONEY_ID))
 
     const kinds = expenseTypes

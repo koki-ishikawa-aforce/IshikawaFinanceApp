@@ -6,10 +6,10 @@
  *
  * `GmailMailFetchGateway` / `PdfToCsvConverter` と違い、これは外部システムへの driven port では
  * なく**純粋なドメイン処理の関数型**である（他コンテキストの `services/` にも純粋関数を置く先例が
- * ある: `onboarding-auth/services/decideOperationStart.ts`）。日次メール取込ワーカー（#414）が
- * 「取得 → パース → 候補生成」を組み立てる時点で、実パースルール（#415、実メールのフォーマット
- * 確定待ち）がまだ無いため、呼出し側が依存するのは本シグネチャだけにして、実装を差し替えられる
- * 形にしてある。#415 の実装もドメイン内（zod のみ・I/O 依存なし）に置く。
+ * ある: `onboarding-auth/services/decideOperationStart.ts`）。実装は同じドメイン内の
+ * `parseSmbcNotificationMail`（zod のみ・I/O 依存なし）。日次メール取込ワーカー（#414）が
+ * 依存するのは本シグネチャだけなので、テストではスタブを、本文構造が変わったときは別実装を
+ * 差し替えられる。
  *
  * 時刻とユーザーは引数で受け取る。パース結果は「誰の取引か」（`userId`）と、失敗したときの
  * 「いつ気づいたか」（`detectedAt`）を持つが、どちらも本文からは決まらないためである
@@ -35,6 +35,10 @@ export interface SmbcNotificationMailParseInput {
  * 事後条件（08a §2）: 返す加盟店名は NFKC 正規化・空白圧縮・長音統一を適用済みであること
  * （OQ-23）。呼出し側は正規化せずそのまま取引候補に載せるため、ここで揃えないと同じ店が
  * 表記違いで別の店として扱われ、自動分類の学習も重複判定も効かなくなる。
+ *
+ * 一方、振込入金の**振込元名は本文の表記のまま**返す（NFKC 正規化以外を掛けない）。照合に使うのは
+ * 残高・資産推移管理の入金用途判別で、そちら（08d）が `normalizeRemitterName` で正規化してから
+ * 突き合わせる。加盟店名と対称に見えるが、正規化の担当が違う。
  */
 export type SmbcNotificationMailParser = (
   input: SmbcNotificationMailParseInput,

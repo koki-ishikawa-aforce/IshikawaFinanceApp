@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest'
 import type { CategoryId, CustomCategory } from '@warimaru/domain'
 import { InvariantViolationError, renameCustomCategory } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonCategoryMasterRepository } from '../../src/master-data/NeonCategoryMasterRepository'
+import { PostgresCategoryMasterRepository } from '../../src/master-data/PostgresCategoryMasterRepository'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import { customCategory, defaultCategory } from '../helpers/masterDataFixtures'
 
-const repo = new NeonCategoryMasterRepository(db)
+const repo = new PostgresCategoryMasterRepository(db)
 
-describe('NeonCategoryMasterRepository', () => {
+describe('PostgresCategoryMasterRepository', () => {
   it('save → findById の往復同一性（default / custom 両変種）', async () => {
     const def = defaultCategory()
     const custom = customCategory()

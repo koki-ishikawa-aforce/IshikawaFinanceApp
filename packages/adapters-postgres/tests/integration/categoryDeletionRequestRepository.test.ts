@@ -9,10 +9,10 @@ import {
 import { eq } from 'drizzle-orm'
 import { db } from './setup'
 import { categoryDeletionRequests } from '../../src/schema'
-import { NeonCategoryDeletionRequestRepository } from '../../src/master-data/NeonCategoryDeletionRequestRepository'
+import { PostgresCategoryDeletionRequestRepository } from '../../src/master-data/PostgresCategoryDeletionRequestRepository'
 import { categoryDeletionRequest } from '../helpers/masterDataFixtures'
 
-const repo = new NeonCategoryDeletionRequestRepository(db)
+const repo = new PostgresCategoryDeletionRequestRepository(db)
 
 /** 昇格列 state_kind は findById の select に含まれないため、テーブルから直接読む */
 async function selectStateKind(id: CategoryDeletionRequestId): Promise<string | undefined> {
@@ -23,7 +23,7 @@ async function selectStateKind(id: CategoryDeletionRequestId): Promise<string | 
   return rows[0]?.stateKind
 }
 
-describe('NeonCategoryDeletionRequestRepository', () => {
+describe('PostgresCategoryDeletionRequestRepository', () => {
   it('save → findById の往復同一性（pending_remap）', async () => {
     const request = categoryDeletionRequest()
     await repo.save(request)

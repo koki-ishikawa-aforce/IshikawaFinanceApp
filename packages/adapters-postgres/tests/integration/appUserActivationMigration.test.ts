@@ -11,12 +11,12 @@ import { describe, it, expect } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { sql } from 'drizzle-orm'
 import { db } from './setup'
-import { NeonAppUserRepository } from '../../src/onboarding-auth/NeonAppUserRepository'
+import { PostgresAppUserRepository } from '../../src/onboarding-auth/PostgresAppUserRepository'
 import { appUsers } from '../../src/schema'
 import { operationStartedUser, phase2CompletedUser } from '../helpers/onboardingFixtures'
 import { HONEY_USER_ID } from '../helpers/fixtures'
 
-const repo = new NeonAppUserRepository(db)
+const repo = new PostgresAppUserRepository(db)
 
 const ACTIVATED_AT = '2026-06-17T00:00:00.000Z'
 const LEGACY_TALK_ROOM_ID = 'C0000000000000000000000000000009'

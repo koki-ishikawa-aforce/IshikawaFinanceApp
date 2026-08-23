@@ -107,7 +107,7 @@ export function createMockAllowlistQuery(allowlist: Allowlist): AllowlistQuery {
 
 /**
  * SpouseCompletionQuery のインメモリ実装。
- * 判定規約はドメイン関数 `detectSpouseCompletion`（Neon 実装と共通）に委譲する。
+ * 判定規約はドメイン関数 `detectSpouseCompletion`（PostgreSQL 実装と共通）に委譲する。
  */
 export function createMockSpouseCompletionQuery(
   appUserRepository: AppUserRepository,

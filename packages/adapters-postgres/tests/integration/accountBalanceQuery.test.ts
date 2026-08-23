@@ -10,9 +10,9 @@ import {
   money,
   withdrawOtherSavings,
 } from '@warimaru/domain'
-import { NeonAccountBalanceQuery } from '../../src/balance-asset-tracking/NeonAccountBalanceQuery'
-import { NeonAccountRepository } from '../../src/balance-asset-tracking/NeonAccountRepository'
-import { NeonMitsuiSumitomoUnpaidRepository } from '../../src/balance-asset-tracking/NeonMitsuiSumitomoUnpaidRepository'
+import { PostgresAccountBalanceQuery } from '../../src/balance-asset-tracking/PostgresAccountBalanceQuery'
+import { PostgresAccountRepository } from '../../src/balance-asset-tracking/PostgresAccountRepository'
+import { PostgresMitsuiSumitomoUnpaidRepository } from '../../src/balance-asset-tracking/PostgresMitsuiSumitomoUnpaidRepository'
 import { db } from './setup'
 import {
   HONEY_USER_ID,
@@ -24,15 +24,15 @@ import {
   unpaidAggregate,
 } from '../helpers/fixtures'
 
-const accountRepo = new NeonAccountRepository(db)
-const unpaidRepo = new NeonMitsuiSumitomoUnpaidRepository(db)
+const accountRepo = new PostgresAccountRepository(db)
+const unpaidRepo = new PostgresMitsuiSumitomoUnpaidRepository(db)
 
-const query = new NeonAccountBalanceQuery(db)
+const query = new PostgresAccountBalanceQuery(db)
 
 /** fetchAssetTotal(asOf) に渡すスナップショット時刻。テスト内の日付コメントの基準でもある */
 const FIXED_NOW = new Date('2026-07-06T00:00:00.000Z')
 
-describe('NeonAccountBalanceQuery.fetchBalanceList', () => {
+describe('PostgresAccountBalanceQuery.fetchBalanceList', () => {
   it('世帯共有: 両者の active 口座を kind 固定順で返す（inactive 除外）', async () => {
     const nisa = nisaAccount({ ownerUserId: DARLING_USER_ID })
     const smbc = smbcAccount({ ownerUserId: HONEY_USER_ID, currentBalance: 1500000 })
@@ -76,7 +76,7 @@ describe('NeonAccountBalanceQuery.fetchBalanceList', () => {
   })
 })
 
-describe('NeonAccountBalanceQuery.fetchAssetTotal', () => {
+describe('PostgresAccountBalanceQuery.fetchAssetTotal', () => {
   it('両者の active 口座横断で合算し、total = 貯蓄 + NISA − カード未払金', async () => {
     const card = cardAccount({ ownerUserId: HONEY_USER_ID })
     for (const account of [

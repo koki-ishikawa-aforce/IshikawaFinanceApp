@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { canViewExpenseSettlement, ExpenseSettlementManagementViewSchema } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonMonthlyExpenseCycleRepository } from '../../src/expense-settlement/NeonMonthlyExpenseCycleRepository'
-import { NeonProratedChildTransactionRepository } from '../../src/expense-settlement/NeonProratedChildTransactionRepository'
-import { NeonExpenseSettlementManagementQuery } from '../../src/expense-settlement/NeonExpenseSettlementManagementQuery'
+import { PostgresMonthlyExpenseCycleRepository } from '../../src/expense-settlement/PostgresMonthlyExpenseCycleRepository'
+import { PostgresProratedChildTransactionRepository } from '../../src/expense-settlement/PostgresProratedChildTransactionRepository'
+import { PostgresExpenseSettlementManagementQuery } from '../../src/expense-settlement/PostgresExpenseSettlementManagementQuery'
 import { newUlid } from '../../src/newId'
 import { DARLING_USER_ID, HONEY_USER_ID, ym } from '../helpers/fixtures'
 import {
@@ -13,13 +13,13 @@ import {
   proratedChild,
 } from '../helpers/expenseSettlementFixtures'
 
-const cycleRepo = new NeonMonthlyExpenseCycleRepository(db)
-const childRepo = new NeonProratedChildTransactionRepository(db)
+const cycleRepo = new PostgresMonthlyExpenseCycleRepository(db)
+const childRepo = new PostgresProratedChildTransactionRepository(db)
 // UTC 2026-07-07 00:00 = JST 2026-07-07 09:00 → 当月 = 2026-07
 const NOW = new Date('2026-07-07T00:00:00.000Z')
-const query = new NeonExpenseSettlementManagementQuery(db, { now: () => NOW })
+const query = new PostgresExpenseSettlementManagementQuery(db, { now: () => NOW })
 
-describe('NeonExpenseSettlementManagementQuery', () => {
+describe('PostgresExpenseSettlementManagementQuery', () => {
   it('当月サイクルの累計 + 按分子取引 + 直近最終確定サマリを合成する', async () => {
     const childId = newUlid()
     const child = proratedChild({ userId: HONEY_USER_ID, childTransactionId: childId })
@@ -129,7 +129,7 @@ describe('NeonExpenseSettlementManagementQuery', () => {
   })
 })
 
-describe('NeonExpenseSettlementManagementQuery プライバシー否定形テスト', () => {
+describe('PostgresExpenseSettlementManagementQuery プライバシー否定形テスト', () => {
   it('両ユーザーにデータがある場合、配偶者のサイクル・累計・按分子取引は混入しない', async () => {
     const honeyChildId = newUlid()
     const darlingChildId = newUlid()

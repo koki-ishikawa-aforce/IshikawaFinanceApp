@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { NeonBalanceTimeSeriesQuery } from '../../src/balance-asset-tracking/NeonBalanceTimeSeriesQuery'
-import { NeonMonthlyReportRepository } from '../../src/household-analysis/NeonMonthlyReportRepository'
+import { PostgresBalanceTimeSeriesQuery } from '../../src/balance-asset-tracking/PostgresBalanceTimeSeriesQuery'
+import { PostgresMonthlyReportRepository } from '../../src/household-analysis/PostgresMonthlyReportRepository'
 import { db } from './setup'
 import { csvConfirmedReport, ym } from '../helpers/fixtures'
 
-const repo = new NeonMonthlyReportRepository(db)
-const query = new NeonBalanceTimeSeriesQuery(db)
+const repo = new PostgresMonthlyReportRepository(db)
+const query = new PostgresBalanceTimeSeriesQuery(db)
 
-describe('NeonBalanceTimeSeriesQuery', () => {
+describe('PostgresBalanceTimeSeriesQuery', () => {
   it('月範囲の monthly_reports payload から 4 軸を date 昇順で合成する（欠損月は点なし）', async () => {
     // 2026-04, 2026-06 のみ存在（2026-05 は欠損月）
     await repo.save(csvConfirmedReport({ targetYearMonth: ym('2026-04') }))
