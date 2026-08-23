@@ -31,7 +31,7 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
   // 定義できないため、0 円なら弧の描けないドーナツと全項目 0.0%、負なら実態と食い違う
   // 割合の輪になる。どちらもグラフと割合だけを落とし、記録されている金額はそのまま
   // 見せる(#340 で 0 円、#409 で負の月を同じ扱いに揃えた)
-  const isPercentageUndefined = !isEmpty && data.totalAmount <= 0
+  const isPercentageMeaningless = !isEmpty && data.totalAmount <= 0
 
   const segments = data.items.map((item, i) => ({
     label: item.categoryName,
@@ -50,7 +50,7 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
       <div role="status">
         {isEmpty ? (
           <EmptyState announce={false}>{`この月の${spendingLabel}はありません`}</EmptyState>
-        ) : isPercentageUndefined ? (
+        ) : isPercentageMeaningless ? (
           <EmptyState announce={false}>
             {`この月は返金などで${spendingLabel}の割合を計算できないため、内訳グラフは表示せずカテゴリごとの金額のみ表示しています`}
           </EmptyState>
@@ -67,13 +67,18 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
                 href={`/transactions?month=${data.yearMonth}&categoryId=${item.categoryId}`}
                 className={styles.legendItem}
               >
+                {/*
+                  色ドットはグラフの弧との対応づけだけでなく、カテゴリそのものの目印として
+                  月をまたいで同じ色で出す。グラフを出さない月(割合が計算できない月)でも
+                  残すのはこのため
+                */}
                 <span
                   className={styles.dot}
                   style={{ backgroundColor: getColor(item.categoryName, i, categoryColors) }}
                 />
                 <span className={styles.name}>{item.categoryName}</span>
                 <span className={styles.amount}>{formatMoney(item.total)}</span>
-                {!isPercentageUndefined && (
+                {!isPercentageMeaningless && (
                   <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
                 )}
                 <LuChevronRight className={`${ui.iconSm} ${styles.chevron}`} aria-hidden="true" />

@@ -196,7 +196,7 @@ describe('CategoryBreakdown', () => {
     expect(screen.queryByText(/内訳グラフは表示せず/)).not.toBeInTheDocument()
   })
 
-  it('合計が0円でない月は割合表示が残る', () => {
+  it('合計がプラスの月は割合表示が残る', () => {
     render(<CategoryBreakdown data={data} categoryColors={categoryColors} />)
 
     expect(screen.getByText('60.0%')).toBeInTheDocument()
@@ -226,6 +226,9 @@ describe('CategoryBreakdown', () => {
     )
 
     expect(container.querySelector('circle')).toBeNull()
+    // ドーナツ中央の「合計 / -3,000円」も一緒に消える（合計は KPI 側に出る）
+    expect(screen.queryByText('合計')).not.toBeInTheDocument()
+    expect(screen.queryByText('-3,000円')).not.toBeInTheDocument()
     expect(screen.queryByText('100.0%')).not.toBeInTheDocument()
     expect(screen.queryAllByText(/%$/)).toHaveLength(0)
     expect(
@@ -238,6 +241,7 @@ describe('CategoryBreakdown', () => {
   it('合計が負の月もカテゴリ一覧（名前・金額・遷移先）は残る', () => {
     render(<CategoryBreakdown data={negativeTotalData} categoryColors={categoryColors} />)
 
+    expect(screen.getByRole('list')).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
     expect(screen.getByText('食費')).toBeInTheDocument()
     expect(screen.getByText('2,000円')).toBeInTheDocument()
@@ -304,6 +308,13 @@ describe('CategoryBreakdown', () => {
 
     rerender(<CategoryBreakdown data={zeroTotalData} categoryColors={categoryColors} />)
     expect(screen.getByRole('status')).toHaveTextContent('内訳グラフは表示せず')
+
+    rerender(<CategoryBreakdown data={negativeTotalData} categoryColors={categoryColors} />)
+    expect(screen.getByRole('status')).toHaveTextContent('内訳グラフは表示せず')
+
+    // 割合の出る月へ戻したら案内文が消え、ドーナツに戻る
+    rerender(<CategoryBreakdown data={data} categoryColors={categoryColors} />)
+    expect(screen.queryByText(/内訳グラフは表示せず/)).not.toBeInTheDocument()
 
     rerender(<CategoryBreakdown data={emptyData} categoryColors={categoryColors} />)
     expect(screen.getByRole('status')).toHaveTextContent('この月の世帯支出はありません')
