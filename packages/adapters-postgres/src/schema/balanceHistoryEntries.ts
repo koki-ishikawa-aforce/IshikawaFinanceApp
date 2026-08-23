@@ -9,8 +9,8 @@
  * 最終保証。イベント配信は at-least-once（#34）で、ハンドラー側のチェックだけでは
  * 並行実行を取りこぼす。
  *
- * balance は payload にも入るが列にも持つ。時系列の読み出しは範囲内の全行を舐めるため、
- * 1 行ずつ jsonb を parse せずに済ませる（他テーブルの集計列と同じ扱い）。
+ * value（変動後の値）は payload にも入るが列にも持つ。手書きのデータ移行 DML から
+ * 値を投入・確認しやすくするため（他テーブルの集計列と同じ扱い）。
  * FK は同一コンテキスト内（accounts）のみ許可（M-B spec §2.1）。
  */
 import { pgTable, text, integer, timestamp, jsonb, check, index, unique } from 'drizzle-orm/pg-core'
@@ -25,7 +25,7 @@ export const balanceHistoryEntries = pgTable(
     accountId: text('account_id')
       .notNull()
       .references(() => accounts.accountId),
-    balance: integer('balance').notNull(),
+    value: integer('value').notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'date' }).notNull(),
     sourceEventId: text('source_event_id').notNull(),
     payload: jsonb('payload').$type<unknown>().notNull(),
@@ -37,7 +37,15 @@ export const balanceHistoryEntries = pgTable(
       sql`${t.axis} IN ('smbc_balance', 'other_savings_balance', 'nisa_contribution', 'card_unpaid')`,
     ),
     unique('balance_history_entries_axis_source_event_id_unique').on(t.axis, t.sourceEventId),
-    // 軸ごとの期間読み出し（グラフの描画・月次レポートへの凍結）が唯一の検索パターン
-    index('idx_balance_history_entries_axis_occurred_at').on(t.axis, t.occurredAt),
+    // 期間読み出し（BalanceTimeSeriesQuery.fetch / findByOccurredAtRange）。
+    // 軸で絞らず発生日時だけで範囲を切るため、先頭列は occurred_at にする
+    index('idx_balance_history_entries_occurred_at').on(t.occurredAt),
+    // 期間の起点になる「(軸, 口座) ごとの直前値」（findLatestPerAccountBefore）の
+    // DISTINCT ON 用。並び順（axis, account_id, occurred_at DESC）に合わせる
+    index('idx_balance_history_entries_axis_account_occurred_at').on(
+      t.axis,
+      t.accountId,
+      t.occurredAt,
+    ),
   ],
 )

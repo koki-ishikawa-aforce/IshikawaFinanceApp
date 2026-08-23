@@ -17,13 +17,17 @@
  *
  * 冪等性: (残高軸, 由来イベントID) の一意制約に置く（Repository.append）。イベント配信は
  * at-least-once（#34）で、同じイベントが二度届いてもグラフに点は重ならない。
- * なお各経路の発行側は、ドメイン集約の二重適用ガードを通過したときだけイベントを発行する
- * （bookUnpaid / settleUnpaid / applyUnpaidSettlementToSmbcBalance / applyOtherSavingsMovement）。
- * したがって「同じ変動が別のイベントIDで再発行される」ことは無く、イベントIDを冪等キーに
- * できる。
+ * 自動反映の経路は、ドメイン集約の二重適用ガードを通過したときだけイベントを発行する
+ * （bookUnpaid / settleUnpaid / applyUnpaidSettlementToSmbcBalance / applyOtherSavingsMovement）
+ * ため、同じ変動が別のイベントIDで再発行されることは無い。手入力の経路（取り崩し・残高補正・
+ * 初期残高の修正）にはガードが無いが、そちらは再送信のたびに残高そのものも動くので、
+ * 新しいイベントIDで新しい点が積まれるのが正しい。
  *
- * 記録できなかった変動はグラフから欠ける。safeSubscribe が例外を吸収して主処理
- * （残高そのものの更新）を守る一方、失敗は握りつぶさずログへ残す。
+ * 回復について（重要）: 追記に失敗した点は**あとから自動では埋まらない**。上記のガードにより
+ * 同じ変動のイベントは二度と発行されないため、safeSubscribe が想定する「同一操作の再実行で
+ * 回復する」経路がこのハンドラーには無い（次に同じ軸が動けば絶対値が記録されるので線自体は
+ * 復帰するが、欠けた点は戻らない）。したがって失敗は握りつぶさず、どの点が欠けたかを
+ * 復元できる情報（軸・口座ID・発生日時・由来イベントID。金額は載せない）をログに残す。
  */
 import {
   BalanceHistoryEntryIdSchema,
@@ -63,16 +67,25 @@ export function registerBalanceHistoryRecordEventHandlers(
   async function append(params: {
     axis: BalanceAxis
     accountId: AccountId
-    balance: Money
+    value: Money
     occurredAt: Date
     sourceEventId: string
   }): Promise<void> {
-    await deps.balanceHistoryRepository.append(
-      recordBalanceChange({
-        entryId: BalanceHistoryEntryIdSchema.parse(newUlid()),
-        ...params,
-      }),
-    )
+    try {
+      await deps.balanceHistoryRepository.append(
+        recordBalanceChange({
+          entryId: BalanceHistoryEntryIdSchema.parse(newUlid()),
+          ...params,
+        }),
+      )
+    } catch (e) {
+      // 欠けた点を手で入れ直せるよう、値以外の識別情報を残してから投げ直す
+      console.error(
+        `残高変動履歴への追記に失敗した（axis=${params.axis} accountId=${params.accountId} ` +
+          `occurredAt=${params.occurredAt.toISOString()} sourceEventId=${params.sourceEventId}）`,
+      )
+      throw e
+    }
   }
 
   /**
@@ -80,9 +93,9 @@ export function registerBalanceHistoryRecordEventHandlers(
    * イベントが運ぶのは口座IDだけなので、軸の判定には口座の種別が要る。
    * カード口座は残高を持たない（未払金集約が正）ため対象外。
    */
-  async function resolveAccountAxisAndBalance(
+  async function resolveAccountAxisAndValue(
     accountId: AccountId,
-  ): Promise<{ axis: BalanceAxis; balance: Money }> {
+  ): Promise<{ axis: BalanceAxis; value: Money }> {
     const account = await deps.accountRepository.findById(accountId)
     if (account === null) {
       throw new InvariantViolationError(`口座が見つからない: ${accountId}`)
@@ -91,9 +104,9 @@ export function registerBalanceHistoryRecordEventHandlers(
     switch (account.kind) {
       case 'smbc_bank':
       case 'other_savings':
-        return { axis, balance: account.balance.currentBalance }
+        return { axis, value: account.balance.currentBalance }
       case 'nisa':
-        return { axis, balance: account.contribution.currentAccumulated }
+        return { axis, value: account.contribution.currentAccumulated }
       case 'mitsui_sumitomo_card':
         throw new InvariantViolationError(
           `カード口座（${accountId}）の未払い合計は未払金集約が正のため、口座からは記録できない`,
@@ -104,11 +117,11 @@ export function registerBalanceHistoryRecordEventHandlers(
   // 引落消込の残高反映（SMBC）／資金移動のシャドウ残高反映（別銀行貯蓄）。
   // 変動後の値はイベントが運ぶ newBalance をそのまま使い、軸だけ口座から決める
   safeSubscribe<AccountBalanceUpdated>(eventBus, 'AccountBalanceUpdated', async event => {
-    const { axis } = await resolveAccountAxisAndBalance(event.accountId)
+    const { axis } = await resolveAccountAxisAndValue(event.accountId)
     await append({
       axis,
       accountId: event.accountId,
-      balance: event.newBalance,
+      value: event.newBalance,
       occurredAt: event.occurredAt,
       sourceEventId: event.eventId,
     })
@@ -119,7 +132,7 @@ export function registerBalanceHistoryRecordEventHandlers(
     await append({
       axis: 'other_savings_balance',
       accountId: event.accountId,
-      balance: event.newBalance,
+      value: event.newBalance,
       occurredAt: event.occurredAt,
       sourceEventId: event.eventId,
     })
@@ -129,7 +142,7 @@ export function registerBalanceHistoryRecordEventHandlers(
     await append({
       axis: 'nisa_contribution',
       accountId: event.accountId,
-      balance: event.newAccumulated,
+      value: event.newAccumulated,
       occurredAt: event.occurredAt,
       sourceEventId: event.eventId,
     })
@@ -137,11 +150,11 @@ export function registerBalanceHistoryRecordEventHandlers(
 
   // 口座登録時の初期残高。グラフの起点になる 1 点目で、これが無いと最初の変動まで線が始まらない
   safeSubscribe<InitialBalanceRegistered>(eventBus, 'InitialBalanceRegistered', async event => {
-    const { axis } = await resolveAccountAxisAndBalance(event.accountId)
+    const { axis } = await resolveAccountAxisAndValue(event.accountId)
     await append({
       axis,
       accountId: event.accountId,
-      balance: event.initialBalance,
+      value: event.initialBalance,
       occurredAt: event.occurredAt,
       sourceEventId: event.eventId,
     })
@@ -150,11 +163,11 @@ export function registerBalanceHistoryRecordEventHandlers(
   // 初期残高の後修正。現在残高も同じ差分ずれるため、修正後の現在残高を口座から読み直す
   // （イベントが運ぶのは初期残高の旧新のみで、現在残高は載っていない）
   safeSubscribe<InitialBalanceCorrected>(eventBus, 'InitialBalanceCorrected', async event => {
-    const { axis, balance } = await resolveAccountAxisAndBalance(event.accountId)
+    const { axis, value } = await resolveAccountAxisAndValue(event.accountId)
     await append({
       axis,
       accountId: event.accountId,
-      balance,
+      value,
       occurredAt: event.occurredAt,
       sourceEventId: event.eventId,
     })
@@ -176,7 +189,7 @@ export function registerBalanceHistoryRecordEventHandlers(
     await append({
       axis: 'card_unpaid',
       accountId: unpaid.accountId,
-      balance: unpaid.currentMonthUnpaidTotal,
+      value: unpaid.currentMonthUnpaidTotal,
       occurredAt: params.occurredAt,
       sourceEventId: params.sourceEventId,
     })

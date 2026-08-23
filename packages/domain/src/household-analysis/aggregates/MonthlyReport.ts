@@ -29,9 +29,11 @@ import { type Transaction } from './Transaction'
 /**
  * 残高推移パート（残高・資産推移管理から借用する Read-only データ）
  *
- * #398 以降は **LINE 配信時点の値を残す凍結値**。資産の推移グラフが読む正は
- * 残高変動履歴（08d）に移り、ここは「配信したサマリに何と書いたか」の記録になった。
- * したがって後から書き換えない（配信済みの文面と食い違うため）。
+ * #398 以降は **CSV 確定時点の値を残す凍結値**（LINE の月次サマリはこの値を読む）。
+ * 資産の推移グラフが読む正は残高変動履歴（08d）に移り、ここは「サマリに何と書いたか」の
+ * 記録になった。CSV 取込のたびに履歴から入れ直すが、最終確定後は入れ直さない
+ * （`freezeBalanceSnapshot` が CSV確定レポートしか受け付けない）ため、配信済みの文面と
+ * 食い違わない。
  */
 export const BalanceTrendSchema = z.object({
   smbcBalanceTrend: z.array(z.object({ date: z.date(), balance: MoneySchema })),
@@ -181,24 +183,63 @@ export function refreshCsvConfirmed(
 }
 
 /**
+ * 残高・資産推移管理（08d）が供給する世帯合算の推移。4 軸それぞれの点の並びと、
+ * 月末時点の NISA 積立累計（履歴が 1 件も無ければ null）。
+ *
+ * 08d の型を直接 import せず構造で受ける（コンテキスト間の直接依存を作らない。
+ * 09-aggregates §2「外部参照は ID のみ」と同じ向き）。
+ */
+export interface HouseholdBalanceSnapshot {
+  smbc: readonly { occurredAt: Date; value: Money }[]
+  otherSavings: readonly { occurredAt: Date; value: Money }[]
+  nisaContribution: readonly { occurredAt: Date; value: Money }[]
+  cardUnpaid: readonly { occurredAt: Date; value: Money }[]
+  /** 月末時点の積立累計。null は「まだ一度も記録が無い」（0 円とは別物） */
+  nisaContributionAccumulated: Money | null
+}
+
+/**
  * behavior 月次レポートに残高の凍結値を入れる（08c §2、#398）
  *
  * 残高変動履歴（08d）から取り出した当月の 4 軸の点と NISA 積立累計を、レポートへ写し取る。
  * LINE の月次サマリはこの凍結値を読むため、ここが空だと残高 3 行がサマリから消える。
+ * 08d の「変動後の値」を 08c の語彙（残高 / 積立累計 / 未払い合計）へ翻訳するのは
+ * 残高推移パートを所有する本集約の責務。
  *
- * 再集計（refreshCsvConfirmed）は残高部分を触らないので、CSV 取込のたびに本関数で
- * 入れ直す。凍結の意味は「配信した時点の写し」であり、配信前の入れ直しは矛盾しない。
+ * 凍結の意味は「CSV 確定時点の写し」。CSV 取込のたびに履歴から入れ直す（履歴が正なので
+ * 何度写しても同じ値に収束する）。最終確定後のレポートには本関数を適用しない
+ * （型として `CsvConfirmedReport` しか受け付けない）ため、配信済みの文面と食い違わない。
+ *
+ * 積立累計が null（履歴なし）のときは既存の値を残す。0 で上書きすると、LINE の月次サマリが
+ * 「NISA 積立累計 0円」という実際とは違う金額を配信する（この行は残高 3 行と違い、
+ * 値が無くても省略されない）。
  */
 export function freezeBalanceSnapshot(
   report: CsvConfirmedReport,
-  snapshot: { balanceTrend: BalanceTrend; nisaContributionAccumulated: Money },
+  snapshot: HouseholdBalanceSnapshot,
 ): CsvConfirmedReport {
+  const balanceTrend: BalanceTrend = {
+    smbcBalanceTrend: snapshot.smbc.map(p => ({ date: p.occurredAt, balance: p.value })),
+    otherSavingsBalanceTrend: snapshot.otherSavings.map(p => ({
+      date: p.occurredAt,
+      balance: p.value,
+    })),
+    nisaContributionTrend: snapshot.nisaContribution.map(p => ({
+      date: p.occurredAt,
+      accumulated: p.value,
+    })),
+    cardUnpaidTrend: snapshot.cardUnpaid.map(p => ({
+      date: p.occurredAt,
+      unpaidTotal: p.value,
+    })),
+  }
   return MonthlyReportSchema.parse({
     ...report,
     common: {
       ...report.common,
-      balanceTrend: snapshot.balanceTrend,
-      nisaContributionAccumulated: snapshot.nisaContributionAccumulated,
+      balanceTrend,
+      nisaContributionAccumulated:
+        snapshot.nisaContributionAccumulated ?? report.common.nisaContributionAccumulated,
     },
   }) as CsvConfirmedReport
 }

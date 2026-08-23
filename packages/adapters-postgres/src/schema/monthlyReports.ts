@@ -3,7 +3,7 @@
  * @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §4.2
  *
  * 世帯で月 1 レポートの前提を target_year_month UNIQUE で保証。
- * payload 内 common.balanceTrend は LINE 配信時点の残高の凍結値（#398）。
+ * payload 内 common.balanceTrend は CSV 確定時点の残高の凍結値（#398）。
  * グラフが読む正は balance_history_entries に移り、BalanceTimeSeriesQuery は
  * そちらを読む（旧: 本テーブルの balanceTrend を月範囲で読む）。
  */

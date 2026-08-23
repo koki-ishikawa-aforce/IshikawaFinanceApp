@@ -5,7 +5,6 @@
  * 追記のみ。更新・削除の口を持たせない（過去のグラフが後から変わらないようにする）。
  */
 import type { BalanceHistoryEntry } from '../aggregates/BalanceHistoryEntry'
-import type { BalanceAxis } from '../value-objects/BalanceAxis'
 
 export interface BalanceHistoryRepository {
   /**
@@ -25,10 +24,11 @@ export interface BalanceHistoryRepository {
   findByOccurredAtRange(from: Date, toExclusive: Date): Promise<BalanceHistoryEntry[]>
 
   /**
-   * 指定軸で atExclusive より前に記録された最後のエントリ。1 件も無ければ null。
+   * atExclusive より前に記録された、(残高軸, 口座) ごとの最後のエントリ。
    *
-   * 「その時点の値」を知るための読み出し。範囲読み出しでは代用できない —
-   * 変動が無かった月は範囲に 1 件も入らないが、値そのものは前月から引き継がれている。
+   * 期間の始まりにおける「各口座の分かっている値」＝世帯合算の起点。範囲読み出しでは
+   * 代用できない — 期間中に動かなかった口座の残高も、世帯の合計には入っている。
+   * 軸ごと・口座ごとに 1 件ずつ返す（該当が無ければ空配列）。
    */
-  findLatestBefore(axis: BalanceAxis, atExclusive: Date): Promise<BalanceHistoryEntry | null>
+  findLatestPerAccountBefore(atExclusive: Date): Promise<BalanceHistoryEntry[]>
 }

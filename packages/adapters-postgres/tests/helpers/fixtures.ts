@@ -297,7 +297,7 @@ export function unpaidAggregate(input: {
 export function balanceHistoryEntry(input: {
   accountId: string
   axis?: BalanceAxis
-  balance?: number
+  value?: number
   occurredAt?: Date
   sourceEventId?: string
 }): BalanceHistoryEntry {
@@ -305,7 +305,7 @@ export function balanceHistoryEntry(input: {
     entryId: newUlid(),
     axis: input.axis ?? 'smbc_balance',
     accountId: input.accountId,
-    balance: input.balance ?? 1500000,
+    value: input.value ?? 1500000,
     occurredAt: input.occurredAt ?? new Date('2026-05-10T00:00:00.000Z'),
     sourceEventId: input.sourceEventId ?? newUlid(),
   })

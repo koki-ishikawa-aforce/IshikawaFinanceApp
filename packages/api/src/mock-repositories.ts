@@ -20,7 +20,6 @@ import type {
   AppUserRepository,
   AmazonProductKeyLearningRule,
   AmazonProductKeyLearningRuleRepository,
-  BalanceAxis,
   BalanceHistoryEntry,
   BalanceHistoryRepository,
   BankDeposit,
@@ -568,11 +567,13 @@ export function createMockBalanceHistoryRepository(): BalanceHistoryRepository {
         [...store.values()].filter(e => e.occurredAt >= from && e.occurredAt < toExclusive),
       )
     },
-    async findLatestBefore(axis: BalanceAxis, atExclusive: Date) {
-      const candidates = sorted(
-        [...store.values()].filter(e => e.axis === axis && e.occurredAt < atExclusive),
-      )
-      return candidates.at(-1) ?? null
+    async findLatestPerAccountBefore(atExclusive: Date) {
+      // PostgreSQL 実装の DISTINCT ON (axis, account_id) と同じく、(軸, 口座) ごとに 1 件
+      const latest = new Map<string, BalanceHistoryEntry>()
+      for (const e of sorted([...store.values()].filter(e => e.occurredAt < atExclusive))) {
+        latest.set(`${e.axis} ${e.accountId}`, e)
+      }
+      return [...latest.values()]
     },
   }
 }

@@ -74,8 +74,8 @@ export function registerEventHandlers(deps: AppDeps): void {
     monthlyExpenseCycleRepository: deps.monthlyExpenseCycleRepository,
   })
   // 残高の変動 → 残高変動履歴への記録 (#398)。資産の推移グラフが読む正を作る。
-  // 未払金計上・消込の購読より先に登録する（同一イベントの購読順は登録順で、
-  // 記録の失敗を後続の重い処理より前に見せたい）
+  // 購読するのは残高を動かした「結果」のイベント（AccountBalanceUpdated / UnpaidBookkept 等）で、
+  // 発行元が集約を保存した後に publish することだけに依存する（登録順への依存は無い）
   registerBalanceHistoryRecordEventHandlers(deps.eventBus, {
     accountRepository: deps.accountRepository,
     mitsuiSumitomoUnpaidRepository: deps.mitsuiSumitomoUnpaidRepository,

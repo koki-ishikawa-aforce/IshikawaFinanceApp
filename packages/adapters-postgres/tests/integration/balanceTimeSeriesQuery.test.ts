@@ -7,6 +7,7 @@ import {
   DARLING_USER_ID,
   HONEY_USER_ID,
   balanceHistoryEntry,
+  otherSavingsAccount,
   smbcAccount,
   ym,
 } from '../helpers/fixtures'
@@ -22,29 +23,35 @@ async function givenAccount(): Promise<string> {
   return account.common.accountId
 }
 
+async function givenSavingsAccount(ownerUserId: typeof HONEY_USER_ID): Promise<string> {
+  const account = otherSavingsAccount({ ownerUserId })
+  await accounts.save(account)
+  return account.common.accountId
+}
+
 describe('PostgresBalanceTimeSeriesQuery', () => {
   it('残高変動履歴から月範囲の 4 軸を date 昇順で合成する（点が無い月は飛ばす）', async () => {
     const accountId = await givenAccount()
-    // 2026-04 と 2026-06 にだけ点がある（2026-05 は変動なし）
+    // 挿入順を時系列と逆にして、並べ替えが SQL 側で効いていることを確かめる
     await history.append(
       balanceHistoryEntry({
         accountId,
-        balance: 1500000,
-        occurredAt: new Date('2026-04-10T00:00:00.000Z'),
-      }),
-    )
-    await history.append(
-      balanceHistoryEntry({
-        accountId,
-        balance: 1800000,
+        value: 1800000,
         occurredAt: new Date('2026-06-10T00:00:00.000Z'),
       }),
     )
     await history.append(
       balanceHistoryEntry({
         accountId,
+        value: 1500000,
+        occurredAt: new Date('2026-04-10T00:00:00.000Z'),
+      }),
+    )
+    await history.append(
+      balanceHistoryEntry({
+        accountId,
         axis: 'nisa_contribution',
-        balance: 300000,
+        value: 300000,
         occurredAt: new Date('2026-04-20T00:00:00.000Z'),
       }),
     )
@@ -52,14 +59,14 @@ describe('PostgresBalanceTimeSeriesQuery', () => {
     await history.append(
       balanceHistoryEntry({
         accountId,
-        balance: 100,
+        value: 100,
         occurredAt: new Date('2026-03-31T14:00:00.000Z'),
       }),
     )
     await history.append(
       balanceHistoryEntry({
         accountId,
-        balance: 200,
+        value: 200,
         occurredAt: new Date('2026-07-01T00:00:00.000Z'),
       }),
     )
@@ -72,13 +79,71 @@ describe('PostgresBalanceTimeSeriesQuery', () => {
     expect(view.cardUnpaid).toEqual([])
   })
 
+  it('夫婦それぞれの貯蓄口座がある軸は世帯合算になる（口座別の点が交互に並ばない）', async () => {
+    const mine = await givenSavingsAccount(HONEY_USER_ID)
+    const spouse = await givenSavingsAccount(DARLING_USER_ID)
+    await history.append(
+      balanceHistoryEntry({
+        accountId: mine,
+        axis: 'other_savings_balance',
+        value: 800000,
+        occurredAt: new Date('2026-05-01T00:00:00.000Z'),
+      }),
+    )
+    await history.append(
+      balanceHistoryEntry({
+        accountId: spouse,
+        axis: 'other_savings_balance',
+        value: 200000,
+        occurredAt: new Date('2026-05-10T00:00:00.000Z'),
+      }),
+    )
+    await history.append(
+      balanceHistoryEntry({
+        accountId: mine,
+        axis: 'other_savings_balance',
+        value: 750000,
+        occurredAt: new Date('2026-05-20T00:00:00.000Z'),
+      }),
+    )
+
+    const view = await query.fetch(HONEY_USER_ID, ym('2026-05'), ym('2026-05'))
+    expect(view.otherSavings.map(p => p.amount)).toEqual([800000, 1000000, 950000])
+  })
+
+  it('期間より前に最後に動いた口座の残高も合計に入る（起点を持ち越す）', async () => {
+    const mine = await givenSavingsAccount(HONEY_USER_ID)
+    const spouse = await givenSavingsAccount(DARLING_USER_ID)
+    await history.append(
+      balanceHistoryEntry({
+        accountId: spouse,
+        axis: 'other_savings_balance',
+        value: 200000,
+        occurredAt: new Date('2026-04-20T00:00:00.000Z'),
+      }),
+    )
+    await history.append(
+      balanceHistoryEntry({
+        accountId: mine,
+        axis: 'other_savings_balance',
+        value: 800000,
+        occurredAt: new Date('2026-05-01T00:00:00.000Z'),
+      }),
+    )
+
+    const view = await query.fetch(HONEY_USER_ID, ym('2026-05'), ym('2026-05'))
+    // 起点そのものは点にしない（期間外の日時に点を打たない）
+    expect(view.otherSavings).toHaveLength(1)
+    expect(view.otherSavings[0]?.amount).toBe(1000000)
+  })
+
   it('月の境界は JST で切る（JST 深夜帯の変動が隣の月へずれない）', async () => {
     const accountId = await givenAccount()
     // 2026-05-01 00:30 JST = 2026-04-30 15:30 UTC。UTC で月を切ると 4 月に落ちる
     await history.append(
       balanceHistoryEntry({
         accountId,
-        balance: 111,
+        value: 111,
         occurredAt: new Date('2026-04-30T15:30:00.000Z'),
       }),
     )
@@ -94,7 +159,7 @@ describe('PostgresBalanceTimeSeriesQuery', () => {
     await history.append(
       balanceHistoryEntry({
         accountId,
-        balance: 1500000,
+        value: 1500000,
         occurredAt: new Date('2026-05-10T00:00:00.000Z'),
       }),
     )

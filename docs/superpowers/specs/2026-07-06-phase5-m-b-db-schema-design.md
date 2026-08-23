@@ -279,7 +279,7 @@ CREATE TABLE monthly_reports (
 
 - `findByMonth(month)` が単一を返す前提（世帯で月 1 レポート）を `UNIQUE` で保証
 - payload 内 `common.balanceTrend`（4 軸時系列）と `nisaContributionAccumulated` は
-  **LINE 配信時点の値を残す凍結値**（#398 で改訂）。CSV 取込確定のたびに下記
+  **CSV 確定時点の値を残す凍結値**（#398 で改訂。LINE の月次サマリはこの値を読む）。CSV 取込確定のたびに下記
   `balance_history_entries` から当該月ぶんを写し取る
 
 > **改訂（#398、2026-08）**: 当初は「`BalanceTimeSeriesQuery.fetch(from, to)` は本テーブルの

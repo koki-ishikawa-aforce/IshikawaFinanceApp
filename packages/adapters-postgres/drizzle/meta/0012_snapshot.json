@@ -1,5 +1,5 @@
 {
-  "id": "105bb2c7-1cbf-42bf-a16f-495f4659019c",
+  "id": "978a5ba7-2888-419b-b43e-ab5c44f420de",
   "prevId": "72005bc7-d7ce-4dce-ad26-47e8a93de370",
   "version": "7",
   "dialect": "postgresql",
@@ -2050,8 +2050,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "balance": {
-          "name": "balance",
+        "value": {
+          "name": "value",
           "type": "integer",
           "primaryKey": false,
           "notNull": true
@@ -2083,11 +2083,32 @@
         }
       },
       "indexes": {
-        "idx_balance_history_entries_axis_occurred_at": {
-          "name": "idx_balance_history_entries_axis_occurred_at",
+        "idx_balance_history_entries_occurred_at": {
+          "name": "idx_balance_history_entries_occurred_at",
+          "columns": [
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_balance_history_entries_axis_account_occurred_at": {
+          "name": "idx_balance_history_entries_axis_account_occurred_at",
           "columns": [
             {
               "expression": "axis",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "account_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

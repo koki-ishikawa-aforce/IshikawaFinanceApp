@@ -145,7 +145,7 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
     expect(entries[0]).toMatchObject({
       axis: 'smbc_balance',
       accountId: account.common.accountId,
-      balance: 58000,
+      value: 58000,
     })
     expect(entries[0]?.occurredAt).toEqual(AT)
   })
@@ -169,7 +169,7 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
 
     const entries = await historyOf(t)
     expect(entries.map(e => e.axis)).toEqual(['other_savings_balance'])
-    expect(entries[0]?.balance).toBe(850000)
+    expect(entries[0]?.value).toBe(850000)
   })
 
   it('手入力（取り崩し・残高補正）は別銀行貯蓄の軸に残す', async () => {
@@ -190,7 +190,7 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
 
     const entries = await historyOf(t)
     expect(entries).toHaveLength(1)
-    expect(entries[0]).toMatchObject({ axis: 'other_savings_balance', balance: 770000 })
+    expect(entries[0]).toMatchObject({ axis: 'other_savings_balance', value: 770000 })
   })
 
   it('NISA 積立の加算は積立累計の軸に、加算後の累計で残す', async () => {
@@ -211,7 +211,7 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
 
     const entries = await historyOf(t)
     expect(entries).toHaveLength(1)
-    expect(entries[0]).toMatchObject({ axis: 'nisa_contribution', balance: 350000 })
+    expect(entries[0]).toMatchObject({ axis: 'nisa_contribution', value: 350000 })
   })
 
   it('口座登録時の初期残高がグラフの起点として残る', async () => {
@@ -231,7 +231,7 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
 
     const entries = await historyOf(t)
     expect(entries).toHaveLength(1)
-    expect(entries[0]).toMatchObject({ axis: 'other_savings_balance', balance: 800000 })
+    expect(entries[0]).toMatchObject({ axis: 'other_savings_balance', value: 800000 })
   })
 
   it('初期残高の後修正は、修正後の現在残高を残す（初期残高そのものではない）', async () => {
@@ -261,7 +261,7 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
 
     const entries = await historyOf(t)
     expect(entries).toHaveLength(1)
-    expect(entries[0]?.balance).toBe(950000)
+    expect(entries[0]?.value).toBe(950000)
   })
 
   it('カード利用の計上は未払い合計の軸に、集約が持つ合計で残す', async () => {
@@ -291,7 +291,7 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
     expect(entries[0]).toMatchObject({
       axis: 'card_unpaid',
       accountId: card.common.accountId,
-      balance: 42000,
+      value: 42000,
     })
   })
 
@@ -320,7 +320,7 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
 
     const entries = await historyOf(t)
     expect(entries.map(e => e.axis)).toEqual(['card_unpaid'])
-    expect(entries[0]?.balance).toBe(0)
+    expect(entries[0]?.value).toBe(0)
   })
 
   it('同一イベントの再配信では点が重ならない（冪等）', async () => {
@@ -360,6 +360,71 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
     await publish(new Date('2026-07-11T00:00:00Z'))
 
     expect(await historyOf(t)).toHaveLength(2)
+  })
+
+  it('カード口座の残高更新イベントは記録しない（未払い合計は未払金集約が正）', async () => {
+    const t = createTestApp()
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const card = cardAccount(MitsuiSumitomoUnpaidIdSchema.parse(newUlid()))
+    await t.deps.accountRepository.save(card)
+
+    await t.deps.eventBus.publish(
+      AccountBalanceUpdatedSchema.parse({
+        ...domainEventBase(AT),
+        type: 'AccountBalanceUpdated',
+        accountId: card.common.accountId,
+        delta: money(-1),
+        newBalance: money(1),
+      }),
+    )
+
+    expect(await historyOf(t)).toHaveLength(0)
+    expect(errorLog).toHaveBeenCalled()
+  })
+
+  it('未払金集約が見つからないとカード未払いの点は残らず、失敗をログに残す', async () => {
+    const t = createTestApp()
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await t.deps.eventBus.publish(
+      UnpaidBookkeptSchema.parse({
+        ...domainEventBase(AT),
+        type: 'UnpaidBookkept',
+        unpaidAggregateId: MitsuiSumitomoUnpaidIdSchema.parse(newUlid()),
+        entryId: UnpaidEntryIdSchema.parse(newUlid()),
+        transactionId: TransactionIdSchema.parse(newUlid()),
+        bookedAmount: money(42000),
+      }),
+    )
+
+    expect(await historyOf(t)).toHaveLength(0)
+    expect(errorLog).toHaveBeenCalled()
+  })
+
+  it('追記そのものが失敗したら、どの点が欠けたかを特定できる情報をログに残す', async () => {
+    // 追記に失敗した点はイベントの再発行では埋まらない（発行側の二重適用ガードにより
+    // 同じ変動は二度と発行されない）。ログが唯一の復旧材料になる
+    const t = createTestApp()
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const account = smbcAccount()
+    await t.deps.accountRepository.save(account)
+    t.deps.balanceHistoryRepository.append = () => Promise.reject(new Error('db down'))
+
+    const event = AccountBalanceUpdatedSchema.parse({
+      ...domainEventBase(AT),
+      type: 'AccountBalanceUpdated',
+      accountId: account.common.accountId,
+      delta: money(-987654),
+      newBalance: money(987654),
+    })
+    await t.deps.eventBus.publish(event)
+
+    const logged = errorLog.mock.calls.map(args => String(args[0])).join('\n')
+    expect(logged).toContain('smbc_balance')
+    expect(logged).toContain(account.common.accountId)
+    expect(logged).toContain(event.eventId)
+    // 金額はログに出さない
+    expect(logged).not.toContain('987654')
   })
 
   it('口座が見つからないと記録できず、失敗をログに残す（主処理は落とさない）', async () => {

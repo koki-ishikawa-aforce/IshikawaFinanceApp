@@ -80,7 +80,7 @@ test.describe('AT-303: CSV 確定とレポート状態昇格', () => {
       nisaContributionTrend: [],
       cardUnpaidTrend: [],
     })
-    expect(typeof body.common.nisaContributionAccumulated).toBe('number')
+    expect(body.common.nisaContributionAccumulated).toBe(0)
   })
 
   test('AT-303-4: 未分類取引が残っていてもサイクル確定は成立している', async ({ request }) => {
