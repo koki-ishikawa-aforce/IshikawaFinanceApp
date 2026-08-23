@@ -841,33 +841,3 @@ export function merchantLearningRuleListFixture(role: UserRole): unknown {
     ],
   }
 }
-
-/** GET /api/classification/amazon-rules（merchant-rules と同じくロール別。F-1） */
-export function amazonProductKeyLearningRuleListFixture(role: UserRole): unknown {
-  if (role === 'honey') {
-    return {
-      items: [
-        {
-          userId: 'U_HONEY_MOCK',
-          amazonProductKey: '日用品 / 詰め替え洗剤',
-          categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VW0' },
-          expenseClassRef: { kind: 'learned', expenseClass: 'household' },
-          expenseTypeRef: { kind: 'unlearned' },
-          lastUpdatedAt: '2026-07-14T01:30:00.000Z',
-        },
-      ],
-    }
-  }
-  return {
-    items: [
-      {
-        userId: 'U_DARLING_MOCK',
-        amazonProductKey: '技術書 / プログラミング',
-        categoryRef: { kind: 'learned', categoryId: '01HQ8ZKJ9M3N4P5Q6R7S8T9VW0' },
-        expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
-        expenseTypeRef: { kind: 'learned', expenseTypeId: 'ET_MOCK_002' },
-        lastUpdatedAt: '2026-07-12T09:00:00.000Z',
-      },
-    ],
-  }
-}

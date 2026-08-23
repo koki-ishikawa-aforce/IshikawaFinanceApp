@@ -10,7 +10,9 @@
  *  - F-1: ユーザーID + 加盟店名で一意（Repository 検索で保証、Phase 5 M-B）
  *  - T-2: カテゴリ・費用区分・経費種別を独立した参照として保持
  *  - 有効ルールと学習無効化が同時に存在しない（discriminated union で構造表現）
- *  - X-1: 加盟店名「AMAZON.CO.JP」は加盟店学習の対象外（Amazon商品キー学習を使用）
+ *  - 加盟店名「AMAZON.CO.JP」は加盟店学習の対象外。代わりの学習経路だった X-1 Amazon商品キー学習は
+ *    取り下げ済み（#572）のため、現状 Amazon の取引はどこにも学習されない。この扱いを続けるか
+ *    通常の加盟店学習に戻すかは判断待ち（OQ-18 改訂 / #391）
  *
  * 専用 ID は持たない（自然キー = userId + merchantName、09-aggregates.md #4）。
  */
@@ -57,7 +59,7 @@ export const MerchantLearningRuleSchema = z
     if (isAmazonMerchant(rule.common.merchantName)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'AMAZON.CO.JP は加盟店学習の対象外（X-1、Amazon商品キー学習を使用）',
+        message: 'AMAZON.CO.JP は加盟店学習の対象外（X-1 の商品キー学習は取り下げ済み、#572）',
         path: ['common', 'merchantName'],
       })
     }
@@ -80,7 +82,7 @@ export function disableMerchantLearning(
 }
 
 /**
- * X-1: 加盟店学習の対象外となる加盟店名（Amazon商品キー学習を使用）。
+ * 加盟店学習の対象外となる加盟店名（X-1 の名残。代わりの学習経路は #572 で取り下げ済み）。
  * 上流の正規化（NFKC + 空白圧縮、OQ-23）は大文字小文字を畳まないため、
  * 表記ゆれをすり抜けさせないよう防御的に正規化して比較する。
  */
@@ -115,7 +117,8 @@ export type ReflectManualClassificationResult =
  * - T-2: カテゴリ／費用区分／経費種別は軸独立。値が変わった軸のみ更新軸として報告する。
  *   費用区分が経費以外へ変わっても学習済み経費種別は保持する（軸独立のため触らない）
  * - F-1: 当該ユーザーのルールのみを入出力とする（検索は Repository 側で userId 必須）
- * - X-1: AMAZON.CO.JP は対象外（skipped: amazon_merchant）
+ * - AMAZON.CO.JP は対象外（skipped: amazon_merchant）。X-1 の商品キー学習取り下げ（#572）後も
+ *   この除外は残しているため、Amazon の取引は学習されない（OQ-18 改訂で見直し予定 / #391）
  * - M-1: 学習無効化中の加盟店は学習しない（skipped: learning_disabled）
  */
 export function reflectManualClassification(

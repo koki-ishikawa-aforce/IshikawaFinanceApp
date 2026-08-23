@@ -10,7 +10,6 @@ import { getMockRole } from './role'
 import { getMockScenario } from './scenario'
 import {
   accountBalanceListFixture,
-  amazonProductKeyLearningRuleListFixture,
   assetTotalFixture,
   balanceFreshnessFixture,
   balanceTimeSeriesFixture,
@@ -126,8 +125,6 @@ export function resolveMock(method: string, path: string): unknown {
         return importStatusFixture()
       case '/api/classification/merchant-rules':
         return merchantLearningRuleListFixture(getMockRole())
-      case '/api/classification/amazon-rules':
-        return amazonProductKeyLearningRuleListFixture(getMockRole())
     }
   }
 

@@ -93,8 +93,9 @@ data Amazon注文情報 = Amazon注文ID
    AND List<Amazon商品情報>
 
 data Amazon注文ID = 文字列  // Amazon 側の注文番号
-data Amazon商品情報 = 商品名 AND Amazon商品キー AND 商品金額
-data Amazon商品キー = 文字列  // 商品カテゴリ表記
+data Amazon商品情報 = 商品名 AND 商品金額
+// Amazon商品キー（商品カテゴリ表記）は X-1 取り下げ（2026-08-23 / #391・#572）で削除。
+// 注文確認メールに商品カテゴリが含まれないことが実メール調査で判明したため。
 data 商品名 = 文字列
 data 商品金額 = 整数
 
@@ -230,8 +231,8 @@ behavior SMBC通知メール本文をパースする = SMBC通知メール本文
 //       実メールが観測されていない 銀行出金 / カード返金 は語彙として残すがパースしない
 
 behavior Amazon注文確認メール本文をパースする = Amazon注文確認メール本文 -> Amazon注文情報 OR パース失敗
-// 事前: メール本文に商品名・カテゴリ・合計金額が含まれる構造
-// 事後: 商品カテゴリ表記を Amazon商品キー として抽出する
+// 事前: メール本文に注文番号・商品名・数量・単価・合計金額が含まれる構造
+// 事後: 商品名と商品金額を Amazon商品情報 として抽出する（商品カテゴリはメールに含まれない）
 
 // --- 重複検出（ACL の責務） ---
 
@@ -381,7 +382,7 @@ data メール取得イベント = バッチID AND 取得件数 AND 発生日時
 data 取引候補抽出済みイベント = 取引候補ID AND ユーザーID AND 取込ソース AND 発生日時
 data カード利用取引取込イベント = 三井住友カード未払金集約ID AND 口座ID AND 取引ID AND 利用金額 AND 発生日時  // 残高・資産推移管理へのトリガー（未払金計上）
 data 引落確定通知受信イベント = 三井住友カード未払金集約ID AND 口座ID AND 引落確定通知ID AND 発生日時  // 残高・資産推移管理へのトリガー（未払金消込）
-data Amazon商品情報抽出イベント = Amazon注文ID AND ユーザーID AND 商品キーリスト AND 発生日時
+data Amazon商品情報抽出イベント = Amazon注文ID AND ユーザーID AND 商品名リスト AND 発生日時
 data Amazon注文SMBC突合イベント = Amazon注文ID AND SMBC_Gmail_message_ID AND 発生日時
 data メールパース失敗イベント = Gmail_message_ID AND 失敗理由 AND 発生日時
 data 重複除外イベント = Gmail_message_ID OR 取引候補ID AND 検出根拠 AND 発生日時
