@@ -20,6 +20,7 @@ import type {
   AppUser,
   AppUserRepository,
   EventBus,
+  HouseholdNotificationActivationRepository,
   SharedTalkRoom,
   SharedTalkRoomRepository,
   TalkRoomId,
@@ -37,12 +38,14 @@ import { tryFireOperationStart } from './operation-start.js'
 export interface LineFriendAddedDeps {
   appUserRepository: AppUserRepository
   sharedTalkRoomRepository: SharedTalkRoomRepository
+  householdNotificationActivationRepository: HouseholdNotificationActivationRepository
   eventBus: EventBus
 }
 
 export interface SharedTalkRoomJoinedDeps {
   appUserRepository: AppUserRepository
   sharedTalkRoomRepository: SharedTalkRoomRepository
+  householdNotificationActivationRepository: HouseholdNotificationActivationRepository
   eventBus: EventBus
 }
 
@@ -93,7 +96,9 @@ export async function applySharedTalkRoomJoined(
       receivedAt: at,
     }),
   )
-  // 共通トークルーム参加は配信先そのもの。運用開始後の招待（し直し）はここが回復の起点になる
+  // 共通トークルーム参加は配信先そのもの。初回の参加が運用開始後に揃う場合はここが回復の起点になる
+  // （招待の「し直し」では回復しない — 世帯として依頼済みの記録が残っていれば再発行しないため。
+  //   記録に配信先を含めて作り直しを検知するかは #590 の判断待ち）
   await tryFireOperationStart(deps, { trigger: 'shared_talk_room_joined', at })
   return updated
 }

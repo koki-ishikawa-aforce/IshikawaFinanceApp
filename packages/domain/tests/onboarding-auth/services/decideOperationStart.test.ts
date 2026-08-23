@@ -19,11 +19,14 @@ import {
   NOT_JOINED_SHARED_TALK_ROOM,
   recordSharedTalkRoomJoined,
 } from '../../../src/onboarding-auth/aggregates/SharedTalkRoom'
+import {
+  NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
+  recordHouseholdNotificationActivated,
+} from '../../../src/onboarding-auth/aggregates/HouseholdNotificationActivation'
 import type { UserRole } from '../../../src/shared/value-objects/UserRole'
 import {
   decideHouseholdNotificationActivation,
   decideOperationStart,
-  isHouseholdNotificationActive,
 } from '../../../src/onboarding-auth/services/decideOperationStart'
 
 const AT = new Date('2026-03-01T09:00:00Z')
@@ -150,7 +153,12 @@ describe('運用開始発火の判定（08f §2「運用開始を発火する」
 
 describe('世帯の通知機能有効化の判定（08f §2「通知機能を有効化する」）', () => {
   it('両者運用開始済み・友達追加済み・共通トークルーム参加済みで有効化される', () => {
-    const decision = decideHouseholdNotificationActivation(startedMembers(), joinedTalkRoom, AT)
+    const decision = decideHouseholdNotificationActivation(
+      startedMembers(),
+      joinedTalkRoom,
+      NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
+      AT,
+    )
     expect(decision.kind).toBe('activate')
     if (decision.kind !== 'activate') return
     expect(decision.talkRoomId).toBe('room_001')
@@ -160,7 +168,12 @@ describe('世帯の通知機能有効化の判定（08f §2「通知機能を有
   })
 
   it('運用開始前は有効化しない（否定形）', () => {
-    const decision = decideHouseholdNotificationActivation(readyMembers(), joinedTalkRoom, AT)
+    const decision = decideHouseholdNotificationActivation(
+      readyMembers(),
+      joinedTalkRoom,
+      NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
+      AT,
+    )
     expect(decision).toEqual({ kind: 'not_ready', blocker: 'operation_not_started' })
   })
 
@@ -168,6 +181,7 @@ describe('世帯の通知機能有効化の判定（08f §2「通知機能を有
     const decision = decideHouseholdNotificationActivation(
       startedMembers(),
       NOT_JOINED_SHARED_TALK_ROOM,
+      NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
       AT,
     )
     expect(decision).toEqual({ kind: 'not_ready', blocker: 'talk_room_not_joined' })
@@ -182,7 +196,14 @@ describe('世帯の通知機能有効化の判定（08f §2「通知機能を有
       AT,
     )
     if (decision.kind !== 'start') throw new Error('前提: 運用開始が発火すること')
-    expect(decideHouseholdNotificationActivation(decision.household, joinedTalkRoom, AT)).toEqual({
+    expect(
+      decideHouseholdNotificationActivation(
+        decision.household,
+        joinedTalkRoom,
+        NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
+        AT,
+      ),
+    ).toEqual({
       kind: 'not_ready',
       blocker: 'friend_not_added',
     })
@@ -192,6 +213,7 @@ describe('世帯の通知機能有効化の判定（08f §2「通知機能を有
     const decision = decideHouseholdNotificationActivation(
       activatedMembers(),
       joinedTalkRoom,
+      NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
       new Date('2026-04-01T00:00:00Z'),
     )
     expect(decision.kind).toBe('activate')
@@ -204,6 +226,7 @@ describe('世帯の通知機能有効化の判定（08f §2「通知機能を有
     const decision = decideHouseholdNotificationActivation(
       activatedMembers(),
       joinedTalkRoom,
+      NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
       laterAt,
     )
     expect(decision.kind).toBe('activate')
@@ -212,11 +235,23 @@ describe('世帯の通知機能有効化の判定（08f §2「通知機能を有
     expect(decision.activatedAt).toEqual(AT)
   })
 
+  it('世帯として依頼済みなら、他の条件がすべて揃っていても有効化しない（否定形、#447）', () => {
+    // per-user が未有効化でも世帯の記録が優先する。二重発行を防ぐ根拠はこの記録だけ
+    const decision = decideHouseholdNotificationActivation(
+      startedMembers(),
+      joinedTalkRoom,
+      recordHouseholdNotificationActivated(NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION, AT),
+      AT,
+    )
+    expect(decision).toEqual({ kind: 'already_activated' })
+  })
+
   it('片方だけ事前に有効化済みなら、未有効化の 1 人だけが保存対象になる', () => {
     const started = startedMembers()
     const decision = decideHouseholdNotificationActivation(
       { honey: activateNotification(started.honey, joinedTalkRoom, AT), darling: started.darling },
       joinedTalkRoom,
+      NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
       AT,
     )
     expect(decision.kind).toBe('activate')
@@ -224,48 +259,5 @@ describe('世帯の通知機能有効化の判定（08f §2「通知機能を有
     expect(decision.changed).toHaveLength(1)
     expect(decision.changed[0]?.common.role).toBe('darling')
     expect(decision.changed.every(isNotificationActivated)).toBe(true)
-  })
-})
-
-describe('世帯の通知機能が有効化済みかの判定（イベント二重発行の防止に使う）', () => {
-  it('運用開始済み・参加済み・両者有効化済みなら true', () => {
-    expect(isHouseholdNotificationActive(activatedMembers(), joinedTalkRoom)).toBe(true)
-  })
-
-  it('片方が未有効化なら false（発行済みとみなさない）', () => {
-    const started = startedMembers()
-    expect(
-      isHouseholdNotificationActive(
-        {
-          honey: activateNotification(started.honey, joinedTalkRoom, AT),
-          darling: started.darling,
-        },
-        joinedTalkRoom,
-      ),
-    ).toBe(false)
-  })
-
-  it('運用開始前は、両者が事前蓄積で有効化済みでも false（発火はこれからのため）', () => {
-    // 事前蓄積（Phase1）で有効化済み・かつ運用開始前。運用開始済みの判定だけが false の理由になる
-    const preActivated = (role: 'honey' | 'darling'): AppUser =>
-      activateNotification(phase2Completed(role, { friendAdded: true }), joinedTalkRoom, AT)
-    const members = { honey: preActivated('honey'), darling: preActivated('darling') }
-    expect(members.honey.kind).toBe('phase2_completed')
-    expect(isNotificationActivated(members.honey)).toBe(true)
-    expect(isNotificationActivated(members.darling)).toBe(true)
-    expect(isHouseholdNotificationActive(members, joinedTalkRoom)).toBe(false)
-  })
-
-  it('共通トークルーム未参加なら false（他の条件がすべて揃っていても）', () => {
-    const members = activatedMembers()
-    expect(isHouseholdNotificationActive(members, joinedTalkRoom)).toBe(true)
-    expect(isHouseholdNotificationActive(members, NOT_JOINED_SHARED_TALK_ROOM)).toBe(false)
-  })
-
-  it('世帯のメンバーが未登録なら false', () => {
-    const members = activatedMembers()
-    expect(
-      isHouseholdNotificationActive({ honey: members.honey, darling: null }, joinedTalkRoom),
-    ).toBe(false)
   })
 })

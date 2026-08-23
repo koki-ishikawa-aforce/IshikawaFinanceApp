@@ -33,6 +33,7 @@ import type {
   MonthlyExpenseCycleRepository,
   MonthlyLimitRepository,
   MonthlyReportQuery,
+  HouseholdNotificationActivationRepository,
   MitsuiSumitomoUnpaidRepository,
   MonthlyReportRepository,
   PdfToCsvConverter,
@@ -73,6 +74,7 @@ import {
   PostgresMerchantLearningRuleRepository,
   PostgresMitsuiSumitomoUnpaidRepository,
   PostgresMonthlyExpenseCycleRepository,
+  PostgresHouseholdNotificationActivationRepository,
   PostgresMonthlyLimitRepository,
   PostgresMonthlyReportRepository,
   PostgresProratedChildTransactionRepository,
@@ -150,6 +152,7 @@ import {
   createMockDeliveryMessageRepository,
   createMockFailsafeEmailRepository,
   createMockLineDeliveryLogRepository,
+  createMockHouseholdNotificationActivationRepository,
   createMockMitsuiSumitomoUnpaidRepository,
   createMockMonthlyExpenseCycleRepository,
   createMockMonthlyLimitRepository,
@@ -210,6 +213,8 @@ export interface AppDeps {
   gmailOAuthTokenRepository: GmailOAuthTokenRepository
   /** 共通トークルーム参加は世帯にひとつの事実（OQ-55 ①）。per-user の集約とは別に保持する */
   sharedTalkRoomRepository: SharedTalkRoomRepository
+  /** 運用開始のテストメッセージを依頼済みかは世帯にひとつの事実（#447） */
+  householdNotificationActivationRepository: HouseholdNotificationActivationRepository
   spouseCompletionQuery: SpouseCompletionQuery
   allowlistQuery: AllowlistQuery
   gmailOAuthGateway: GmailOAuthGateway
@@ -449,6 +454,8 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     appUserRepository,
     gmailOAuthTokenRepository: createMockGmailOAuthTokenRepository(),
     sharedTalkRoomRepository: createMockSharedTalkRoomRepository(),
+    householdNotificationActivationRepository:
+      createMockHouseholdNotificationActivationRepository(),
     allowlistQuery: createMockAllowlistQuery(devAllowlist),
     spouseCompletionQuery: createMockSpouseCompletionQuery(appUserRepository, devAllowlist),
     gmailOAuthGateway: createMockGmailOAuthGateway(
@@ -616,6 +623,8 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     appUserRepository: new PostgresAppUserRepository(db),
     gmailOAuthTokenRepository: new PostgresGmailOAuthTokenRepository(db),
     sharedTalkRoomRepository: new PostgresSharedTalkRoomRepository(db),
+    householdNotificationActivationRepository:
+      new PostgresHouseholdNotificationActivationRepository(db),
     allowlistQuery,
     spouseCompletionQuery: new PostgresSpouseCompletionQuery(db, {
       fetchAllowlist: () => allowlistQuery.fetch(),

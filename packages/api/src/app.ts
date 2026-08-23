@@ -47,6 +47,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     onboardingRoutes({
       appUserRepository: deps.appUserRepository,
       sharedTalkRoomRepository: deps.sharedTalkRoomRepository,
+      householdNotificationActivationRepository: deps.householdNotificationActivationRepository,
       accountRepository: deps.accountRepository,
       spouseCompletionQuery: deps.spouseCompletionQuery,
       allowlistQuery: deps.allowlistQuery,
@@ -72,6 +73,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     lineWebhookRoutes({
       appUserRepository: deps.appUserRepository,
       sharedTalkRoomRepository: deps.sharedTalkRoomRepository,
+      householdNotificationActivationRepository: deps.householdNotificationActivationRepository,
       resolveLineChannelSecret: deps.resolveLineChannelSecret,
       lineTalkRoomMembershipGateway: deps.lineTalkRoomMembershipGateway,
       eventBus: deps.eventBus,
