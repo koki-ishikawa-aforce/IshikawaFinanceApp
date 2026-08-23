@@ -5,6 +5,7 @@ import {
   InvariantViolationError,
   SettlementNoticeIdSchema,
   applyUnpaidSettlementToSmbcBalance,
+  correctNisaContribution,
   correctOtherSavingsBalance,
   money,
   withdrawOtherSavings,
@@ -273,6 +274,67 @@ describe('PostgresAccountRepository', () => {
     const reloaded = (await repo.findById(AccountIdSchema.parse(accountId))) as OtherSavingsAccount
     expect(reloaded.balance.currentBalance).toBe(700000)
     expect(reloaded.balance.manualEntries).toHaveLength(1)
+    expect(reloaded.common.version).toBe(1)
+  })
+
+  // --- #458: NISA 積立累計の手入力操作記録（既存行との後方互換） ---
+
+  it('NISA も操作記録を持たない既存行を空の操作記録として読み出し、補正して保存し直せる', async () => {
+    // manualEntries を持たない既存 payload を直接 INSERT する（集約経由で作ると
+    // 新項目が必ず入ってしまい、既存行の読み出しを検証できない）
+    const accountId = newUlid()
+    const legacyPayload = {
+      kind: 'nisa',
+      common: {
+        accountId,
+        ownerUserId: HONEY_USER_ID,
+        registeredAt: '2026-01-04T00:00:00.000Z',
+        activeness: { kind: 'active' },
+      },
+      brokerageName: { kind: 'sbi' },
+      contribution: {
+        currentAccumulated: 400000,
+        initialAccumulated: 100000,
+        initialAccumulatedBaselineAt: '2026-01-04T00:00:00.000Z',
+        lastUpdatedAt: '2026-07-01T00:00:00.000Z',
+      },
+    }
+    await db.insert(accounts).values({
+      accountId,
+      ownerUserId: HONEY_USER_ID,
+      kind: 'nisa',
+      isActive: true,
+      payload: legacyPayload,
+    })
+
+    const found = await repo.findById(AccountIdSchema.parse(accountId))
+    if (found?.kind !== 'nisa') throw new Error('unreachable')
+    expect(found.contribution.manualEntries).toEqual([])
+    expect(found.common.version).toBe(0)
+
+    // 二重に加算していた分を実際の累計へ戻す（読み書きの両方が成立する）
+    const corrected = correctNisaContribution(found, {
+      correctedAccumulated: money(300000),
+      operatorUserId: HONEY_USER_ID,
+      at: new Date('2026-07-25T00:00:00.000Z'),
+      memo: '証券会社の画面と照合',
+    })
+    await repo.save(corrected)
+    const reloaded = await repo.findById(AccountIdSchema.parse(accountId))
+    if (reloaded?.kind !== 'nisa') throw new Error('unreachable')
+    expect(reloaded.contribution.currentAccumulated).toBe(300000)
+    // 初期累計は「始めた時点」の記録なので補正では動かない
+    expect(reloaded.contribution.initialAccumulated).toBe(100000)
+    expect(reloaded.contribution.manualEntries).toEqual([
+      {
+        kind: 'manual_correction',
+        enteredByUserId: HONEY_USER_ID,
+        accumulatedBefore: 400000,
+        accumulatedAfter: 300000,
+        enteredAt: new Date('2026-07-25T00:00:00.000Z'),
+        memo: '証券会社の画面と照合',
+      },
+    ])
     expect(reloaded.common.version).toBe(1)
   })
 })
