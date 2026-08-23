@@ -829,9 +829,7 @@ export function correctInitialBalance(
  * 既に非アクティブな口座の再実行は InvariantViolationError。非アクティブ化日時と理由は
  * 「いつ・なぜ閉じたか」の記録であり、上書きすると最初に閉じた事実が失われる。
  *
- * 注意（#397 時点）: 元に戻す振る舞い（再アクティブ化）は 08d §2 に定義が無く未実装で、
- * 「同一ユーザー × 口座種別は一意」の制約により同種別の登録し直しもできない。つまり
- * この操作は取り消せない。再アクティブ化の要否は判断待ちとして切り出している。
+ * 押し間違えたときは reactivateAccount で元に戻せる（#457）。
  */
 export function inactivateAccount(
   account: Account,
@@ -856,4 +854,44 @@ export function inactivateAccount(
       activeness: { kind: 'inactive', inactivatedAt: params.at, reason },
     },
   })
+}
+
+/**
+ * behavior 口座を再アクティブ化する（08d §2。#457）
+ * 事前: 操作者ユーザーID = 口座所有者ユーザーID（非アクティブ化と同じ。配偶者が
+ * 相手の口座を勝手に残高一覧・資産合計へ戻せないようにする）。
+ * 事前: 口座が非アクティブ（アクティブな口座への再実行は InvariantViolationError）。
+ * 事後: 口座が残高一覧・世帯資産合計に戻り、以降の残高変動が再び適用される（09-aggregates #9）。
+ *
+ * 非アクティブ化を押し間違えたときの復旧手段。これが無いと「同一ユーザー × 口座種別は一意」の
+ * 制約により同種別の登録し直しもできず、残高が資産合計から消えたままデータベースの直接操作で
+ * しか戻せなかった。
+ *
+ * 口座種別では絞らない（非アクティブ化は別銀行貯蓄・NISA のみだが、こちらは制限しない）。
+ * 戻す操作を種別で拒むと、何らかの理由で非アクティブになった三井住友系の口座が閉じたまま
+ * 取り残され、復旧手段が無くなるため。
+ *
+ * 解除前の非アクティブ理由を返す（`correctInitialBalance` が旧初期残高を返すのと同じ形）。
+ * 口座側の「いつ・なぜ閉じたか」はアクティブに戻す時点で消えるため、呼び出し側が
+ * 口座再アクティブ化イベントに載せて履歴として残せるようにする。
+ *
+ * 残高・最終更新日時・残高鮮度根拠は動かさない。閉じている間に残高は変わっておらず、
+ * 戻した時点で「最近確認した」ことにすると鮮度の警告をすり抜けるため。
+ */
+export function reactivateAccount(
+  account: Account,
+  params: { operatorUserId: UserId },
+): { account: Account; clearedInactivationReason: string } {
+  assertOperatedByOwner(account, params.operatorUserId, '口座の再アクティブ化')
+  if (account.common.activeness.kind === 'active') {
+    throw new InvariantViolationError(`口座（${account.common.accountId}）は既にアクティブである`)
+  }
+  const clearedInactivationReason = account.common.activeness.reason
+  return {
+    account: AccountSchema.parse({
+      ...account,
+      common: { ...account.common, activeness: { kind: 'active' } },
+    }),
+    clearedInactivationReason,
+  }
 }

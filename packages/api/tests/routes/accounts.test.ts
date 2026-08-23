@@ -3,6 +3,7 @@ import { AccountIdSchema, AccountSchema } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-postgres'
 import type {
   AccountInactivated,
+  AccountReactivated,
   AccountRegistered,
   BankNameChanged,
   BrokerageNameChanged,
@@ -423,6 +424,7 @@ interface ManualEventLog {
   otherSavingsUpdated: OtherSavingsBalanceUpdated[]
   initialBalanceCorrected: InitialBalanceCorrected[]
   inactivated: AccountInactivated[]
+  reactivated: AccountReactivated[]
 }
 
 function subscribeManualEvents(t: TestApp): ManualEventLog {
@@ -430,7 +432,11 @@ function subscribeManualEvents(t: TestApp): ManualEventLog {
     otherSavingsUpdated: [],
     initialBalanceCorrected: [],
     inactivated: [],
+    reactivated: [],
   }
+  t.deps.eventBus.subscribe<AccountReactivated>('AccountReactivated', e => {
+    log.reactivated.push(e)
+  })
   t.deps.eventBus.subscribe<OtherSavingsBalanceUpdated>('OtherSavingsBalanceUpdated', e => {
     log.otherSavingsUpdated.push(e)
   })
@@ -725,5 +731,73 @@ describe('POST /api/accounts/:accountId/inactivate', () => {
       body: { reason: '乗っ取り' },
     })
     expect(res.status).toBe(403)
+  })
+})
+
+// --- #457: 非アクティブ化の取り消し ---
+
+describe('POST /api/accounts/:accountId/reactivate', () => {
+  async function inactivated(t: TestApp, reason = '解約したため'): Promise<string> {
+    const id = await accountId(await registerOtherSavings(t))
+    await request(t.app, 'POST', `/api/accounts/${id}/inactivate`, { body: { reason } })
+    return id
+  }
+
+  it('アクティブに戻り、解除前の理由を載せた AccountReactivated を発行する', async () => {
+    const t = createTestApp()
+    const log = subscribeManualEvents(t)
+    const id = await inactivated(t)
+    const res = await request(t.app, 'POST', `/api/accounts/${id}/reactivate`)
+    expect(res.status).toBe(200)
+    const { account } = await json<{ account: AccountWire }>(res)
+    expect(account.common.activeness.kind).toBe('active')
+    expect(log.reactivated).toHaveLength(1)
+    expect(log.reactivated[0]).toMatchObject({
+      accountId: id,
+      clearedInactivationReason: '解約したため',
+    })
+  })
+
+  it('戻した口座には残高操作ができる（非アクティブ化を取り消せている）', async () => {
+    const t = createTestApp()
+    const id = await inactivated(t)
+    await request(t.app, 'POST', `/api/accounts/${id}/reactivate`)
+    const res = await request(t.app, 'POST', `/api/accounts/${id}/withdraw`, {
+      body: { amount: 1000 },
+    })
+    expect(res.status).toBe(200)
+  })
+
+  it('アクティブな口座への実行は 409', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerOtherSavings(t))
+    const res = await request(t.app, 'POST', `/api/accounts/${id}/reactivate`)
+    expect(res.status).toBe(409)
+  })
+
+  it('配偶者の口座は戻せない（403）', async () => {
+    const t = createTestApp()
+    const id = await inactivated(t)
+    const res = await request(t.app, 'POST', `/api/accounts/${id}/reactivate`, {
+      viewerId: SPOUSE_ID,
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('配偶者が戻そうとしても口座はアクティブに戻らない（403 の後もそのまま）', async () => {
+    const t = createTestApp()
+    const id = await inactivated(t)
+    await request(t.app, 'POST', `/api/accounts/${id}/reactivate`, { viewerId: SPOUSE_ID })
+    const { items } = await json<{ items: AccountWire[] }>(
+      await request(t.app, 'GET', '/api/accounts'),
+    )
+    const target = items.find(a => a.common.accountId === id)
+    expect(target?.common.activeness.kind).toBe('inactive')
+  })
+
+  it('存在しない口座は 404', async () => {
+    const t = createTestApp()
+    const res = await request(t.app, 'POST', `/api/accounts/${newUlid()}/reactivate`)
+    expect(res.status).toBe(404)
   })
 })

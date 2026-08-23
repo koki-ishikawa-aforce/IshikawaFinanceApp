@@ -16,6 +16,7 @@ import {
   correctInitialBalance,
   correctOtherSavingsBalance,
   inactivateAccount,
+  reactivateAccount,
   registerMitsuiSumitomoCardAccount,
   registerNisaAccount,
   registerOtherSavingsAccount,
@@ -1327,6 +1328,72 @@ describe('inactivateAccount()', () => {
         at: new Date('2026-08-01'),
       }),
     ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('reactivateAccount()', () => {
+  it('アクティブに戻り、解除前の非アクティブ理由を返す', () => {
+    const { account, clearedInactivationReason } = reactivateAccount(
+      otherSavings({ inactive: true }),
+      { operatorUserId: OWNER },
+    )
+    expect(account.common.activeness).toEqual({ kind: 'active' })
+    expect(clearedInactivationReason).toBe('解約済み')
+  })
+
+  it('NISA 口座も戻せる', () => {
+    const { account } = reactivateAccount(nisa({ inactive: true }), { operatorUserId: OWNER })
+    expect(account.common.activeness.kind).toBe('active')
+  })
+
+  it('戻した口座は残高変動を再び受け付ける（非アクティブ化を取り消せる）', () => {
+    const inactive = inactivateAccount(otherSavings({ currentBalance: 500000 }), {
+      reason: '解約したため',
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    const { account } = reactivateAccount(inactive, { operatorUserId: OWNER })
+    if (account.kind !== 'other_savings') throw new Error('unreachable')
+    const withdrawn = withdrawOtherSavings(account, {
+      amount: 100000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(withdrawn.balance.currentBalance).toBe(400000)
+  })
+
+  it('残高・最終更新日時・鮮度根拠は閉じる前のまま（戻した時点を「最近確認した」ことにしない）', () => {
+    const { account } = reactivateAccount(
+      otherSavings({ inactive: true, currentBalance: 500000 }),
+      {
+        operatorUserId: OWNER,
+      },
+    )
+    if (account.kind !== 'other_savings') throw new Error('unreachable')
+    expect(account.balance.currentBalance).toBe(500000)
+    expect(account.balance.lastUpdatedAt).toEqual(new Date('2026-04-01'))
+    expect(account.freshnessSource.lastUpdatedAt).toEqual(new Date('2026-04-01'))
+  })
+
+  it('配偶者は戻せない（PermissionDeniedError）', () => {
+    expect(() =>
+      reactivateAccount(otherSavings({ inactive: true }), { operatorUserId: SPOUSE }),
+    ).toThrow(PermissionDeniedError)
+  })
+
+  it('アクティブな口座への実行は InvariantViolationError', () => {
+    expect(() => reactivateAccount(otherSavings(), { operatorUserId: OWNER })).toThrow(
+      InvariantViolationError,
+    )
+  })
+
+  it('版数は動かない（保存時の照合に使う「読み出したときの版」のまま）', () => {
+    const inactive = AccountSchema.parse({
+      ...otherSavings({ inactive: true }),
+      common: { ...otherSavings({ inactive: true }).common, version: 7 },
+    })
+    const { account } = reactivateAccount(inactive, { operatorUserId: OWNER })
+    expect(account.common.version).toBe(7)
   })
 })
 

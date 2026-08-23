@@ -8,6 +8,7 @@ import {
   correctOtherSavingsBalance,
   inactivateAccount,
   money,
+  reactivateAccount,
   withdrawOtherSavings,
 } from '@warimaru/domain'
 import { PostgresAccountBalanceQuery } from '../../src/balance-asset-tracking/PostgresAccountBalanceQuery'
@@ -183,6 +184,31 @@ describe('残高の手動操作の反映', () => {
     const list = await query.fetchBalanceList()
     expect(list.items.some(i => i.kind === 'other_savings')).toBe(false)
     expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(0)
+  })
+
+  it('再アクティブ化した口座は残高一覧と資産合計に戻る（#457）', async () => {
+    const savings = otherSavingsAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 800000 })
+    await accountRepo.save(savings)
+    await accountRepo.save(
+      inactivateAccount(savings, {
+        reason: '解約したため',
+        operatorUserId: DARLING_USER_ID,
+        at: new Date('2026-07-05T00:00:00Z'),
+      }),
+    )
+    expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(0)
+
+    // 保存済みの版を読み直してから戻す（版数照合。#459）
+    const stored = await accountRepo.findById(savings.common.accountId)
+    if (stored === null) throw new Error('unreachable')
+    const { account } = reactivateAccount(stored, { operatorUserId: DARLING_USER_ID })
+    await accountRepo.save(account)
+
+    const list = await query.fetchBalanceList()
+    expect(list.items).toContainEqual(
+      expect.objectContaining({ kind: 'other_savings', currentBalance: 800000 }),
+    )
+    expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(800000)
   })
 
   it('初期残高の後修正が残高一覧・資産合計に反映される', async () => {

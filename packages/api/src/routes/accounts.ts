@@ -9,7 +9,8 @@
  * - 「同一ユーザー × 口座種別の一意性」は Repository.save の一意制約が最終保証（409 に翻訳）
  * - 銀行名・証券会社名の変更は所有者本人のみ（ドメイン関数 changeBankName /
  *   changeBrokerageName が操作者を検証し、error-handler が 403 に翻訳する）
- * - 残高の手動操作（#397。取り崩し・補正・初期残高の後修正・非アクティブ化）も所有者本人のみ。
+ * - 残高の手動操作（#397。取り崩し・補正・初期残高の後修正・非アクティブ化と、その取り消しの
+ *   再アクティブ化〔#457〕）も所有者本人のみ。
  *   金額と残高の不変条件（1 円以上・上限・負残高にしない・操作者 = 所有者）はドメイン関数が
  *   持ち、本ルートでは再実装しない（400 / 403 / 409 への翻訳は error-handler が行う）。
  *   ルート側の assertOwnedByViewer は、口座種別の絞り込みより前に所有権を確かめて
@@ -20,6 +21,7 @@ import { z } from 'zod'
 import {
   AccountIdSchema,
   AccountInactivatedSchema,
+  AccountReactivatedSchema,
   AccountRegisteredSchema,
   BankNameChangedSchema,
   BankNameSchema,
@@ -43,6 +45,7 @@ import {
   correctOtherSavingsBalance,
   inactivateAccount,
   openMitsuiSumitomoUnpaid,
+  reactivateAccount,
   registerMitsuiSumitomoCardAccount,
   registerNisaAccount,
   registerOtherSavingsAccount,
@@ -488,8 +491,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
    * 口座の非アクティブ化（以降この口座は残高一覧・資産合計から外れる）。
    * 対象は別銀行貯蓄・NISA のみ（三井住友系は 409。ドメイン関数の docstring 参照）。
    *
-   * ⚠ 元に戻す手段は現時点で無い。再アクティブ化の振る舞いが未定義で、
-   * 「同一ユーザー × 口座種別は一意」の制約により同種別の登録し直しもできない。
+   * 押し間違えたときは POST /:accountId/reactivate で元に戻せる（#457）。
    */
   app.post('/:accountId/inactivate', async c => {
     const body = InactivateBodySchema.parse(await c.req.json())
@@ -507,6 +509,30 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
         type: 'AccountInactivated',
         accountId,
         reason: body.reason,
+      }),
+    )
+    return c.json({ account: updated })
+  })
+
+  /**
+   * 口座の再アクティブ化（#457。非アクティブ化を取り消し、残高一覧・資産合計に戻す）。
+   * アクティブな口座への実行は 409（ドメイン関数の docstring 参照）。
+   *
+   * 受け取る項目が無いためリクエストボディは読まない（空ボディ・ボディなしのどちらでも通る）。
+   */
+  app.post('/:accountId/reactivate', async c => {
+    const { account, viewerId, accountId } = await loadOwnedAccount(c)
+    const now = new Date()
+    const { account: updated, clearedInactivationReason } = reactivateAccount(account, {
+      operatorUserId: viewerId,
+    })
+    await saveAccountOr500(updated, 'reactivate')
+    await deps.eventBus.publish(
+      AccountReactivatedSchema.parse({
+        ...domainEventBase(now),
+        type: 'AccountReactivated',
+        accountId,
+        clearedInactivationReason,
       }),
     )
     return c.json({ account: updated })

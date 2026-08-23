@@ -1,5 +1,6 @@
 export * from './AccountBalanceUpdated'
 export * from './AccountInactivated'
+export * from './AccountReactivated'
 export * from './AccountRegistered'
 export * from './BankNameChanged'
 export * from './BrokerageNameChanged'
