@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   MitsuiSumitomoUnpaidSchema,
   bookUnpaid,
+  openMitsuiSumitomoUnpaid,
   settleUnpaid,
   settledEntriesForNotice,
   settledTotalForNotice,
@@ -11,6 +12,34 @@ import {
   InvariantViolationError,
   UnpaidSettlementAlreadyAppliedError,
 } from '../../../src/shared/errors/DomainError'
+
+describe('openMitsuiSumitomoUnpaid()', () => {
+  const open = () =>
+    openMitsuiSumitomoUnpaid({
+      unpaidAggregateId: '01NP0000000000000000000001' as never,
+      accountId: '01ACC000000000000000000001' as never,
+    })
+
+  it('未払金なし・未消込の集約として開設される', () => {
+    const unpaid = open()
+    expect(unpaid.unpaidAggregateId).toBe('01NP0000000000000000000001')
+    expect(unpaid.accountId).toBe('01ACC000000000000000000001')
+    expect(unpaid.currentMonthUnpaidTotal).toBe(0)
+    expect(unpaid.entries).toEqual([])
+    expect(unpaid.lastSettledAt).toBeNull()
+  })
+
+  it('開設直後の集約にカード利用を計上できる（登録経路がそのまま取込につながる）', () => {
+    const booked = bookUnpaid(open(), {
+      entryId: '01ENT000000000000000000001' as never,
+      transactionId: '01TX0000000000000000000001' as never,
+      amount: 3000 as never,
+      bookedAt: new Date('2026-07-10'),
+    })
+    expect(booked.currentMonthUnpaidTotal).toBe(3000)
+    expect(booked.entries).toHaveLength(1)
+  })
+})
 
 describe('MitsuiSumitomoUnpaid 集約', () => {
   it('当月未払金合計 = Σ 計上中エントリ金額が一致すれば parse 成功', () => {

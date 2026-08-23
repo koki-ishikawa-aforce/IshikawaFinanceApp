@@ -113,9 +113,11 @@
   color: var(--text-secondary);
 }
 
+/* 未登録の口座種別ぶんボタンが並ぶ（最大 4 個）。縦画面では 1 行に収まらないので折り返す */
 .addRow {
   display: flex;
-  gap: var(--space-1_5);
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .addRow input {

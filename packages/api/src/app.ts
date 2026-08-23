@@ -101,6 +101,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     '/api/accounts',
     accountsRoutes({
       accountRepository: deps.accountRepository,
+      mitsuiSumitomoUnpaidRepository: deps.mitsuiSumitomoUnpaidRepository,
       eventBus: deps.eventBus,
     }),
   )
