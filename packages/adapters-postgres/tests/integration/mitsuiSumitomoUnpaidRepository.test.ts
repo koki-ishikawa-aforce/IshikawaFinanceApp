@@ -2,15 +2,15 @@ import { describe, it, expect } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { ZodError } from 'zod'
 import { InvariantViolationError } from '@warimaru/domain'
-import { NeonAccountRepository } from '../../src/balance-asset-tracking/NeonAccountRepository'
-import { NeonMitsuiSumitomoUnpaidRepository } from '../../src/balance-asset-tracking/NeonMitsuiSumitomoUnpaidRepository'
+import { PostgresAccountRepository } from '../../src/balance-asset-tracking/PostgresAccountRepository'
+import { PostgresMitsuiSumitomoUnpaidRepository } from '../../src/balance-asset-tracking/PostgresMitsuiSumitomoUnpaidRepository'
 import { db } from './setup'
 import { DARLING_USER_ID, cardAccount, unpaidAggregate } from '../helpers/fixtures'
 
-const accountRepo = new NeonAccountRepository(db)
-const repo = new NeonMitsuiSumitomoUnpaidRepository(db)
+const accountRepo = new PostgresAccountRepository(db)
+const repo = new PostgresMitsuiSumitomoUnpaidRepository(db)
 
-describe('NeonMitsuiSumitomoUnpaidRepository', () => {
+describe('PostgresMitsuiSumitomoUnpaidRepository', () => {
   it('save → findById / findByCardAccountId の往復で同一に復元される（settled エントリ含む）', async () => {
     const account = cardAccount()
     await accountRepo.save(account)

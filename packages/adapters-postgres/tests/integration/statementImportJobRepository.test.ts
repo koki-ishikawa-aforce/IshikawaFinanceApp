@@ -2,15 +2,15 @@ import { describe, it, expect } from 'vitest'
 import type { ImportJobId, PdfConversionJobId, UploadAcceptedJob } from '@warimaru/domain'
 import { startPdfConversion } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonStatementImportJobRepository } from '../../src/transaction-import/NeonStatementImportJobRepository'
-import { NeonCsvImportStatusQuery } from '../../src/transaction-import/NeonCsvImportStatusQuery'
+import { PostgresStatementImportJobRepository } from '../../src/transaction-import/PostgresStatementImportJobRepository'
+import { PostgresCsvImportStatusQuery } from '../../src/transaction-import/PostgresCsvImportStatusQuery'
 import { newUlid } from '../../src/newId'
 import { DARLING_USER_ID, HONEY_USER_ID, ym } from '../helpers/fixtures'
 import { completedJob, failedJob, uploadAcceptedJob } from '../helpers/transactionImportFixtures'
 
-const repo = new NeonStatementImportJobRepository(db)
+const repo = new PostgresStatementImportJobRepository(db)
 
-describe('NeonStatementImportJobRepository', () => {
+describe('PostgresStatementImportJobRepository', () => {
   it('save → findById の往復同一性（upload_accepted / pdf_converting / completed / failed）', async () => {
     const accepted = uploadAcceptedJob({ fileFormat: 'pdf' }) as UploadAcceptedJob
     await repo.save(accepted)
@@ -50,8 +50,8 @@ describe('NeonStatementImportJobRepository', () => {
   })
 })
 
-describe('NeonCsvImportStatusQuery', () => {
-  const query = new NeonCsvImportStatusQuery(db)
+describe('PostgresCsvImportStatusQuery', () => {
+  const query = new PostgresCsvImportStatusQuery(db)
 
   it('completed ジョブが複数あれば completedAt 最新の 1 件で View を組む', async () => {
     const older = completedJob({

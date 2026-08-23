@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { UserId } from '@warimaru/domain'
 import { InvariantViolationError, NotFoundError } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonAppUserRepository } from '../../src/onboarding-auth/NeonAppUserRepository'
+import { PostgresAppUserRepository } from '../../src/onboarding-auth/PostgresAppUserRepository'
 import { createDbResolveViewerRole } from '../../src/onboarding-auth/resolveViewerRole'
 import { DARLING_USER_ID, HONEY_USER_ID } from '../helpers/fixtures'
 import {
@@ -12,9 +12,9 @@ import {
   phase2InProgressUser,
 } from '../helpers/onboardingFixtures'
 
-const repo = new NeonAppUserRepository(db)
+const repo = new PostgresAppUserRepository(db)
 
-describe('NeonAppUserRepository', () => {
+describe('PostgresAppUserRepository', () => {
   it('save → findById の往復同一性（全 4 kind 変種）', async () => {
     const users = [
       phase1User({ userId: HONEY_USER_ID, role: 'honey' }),

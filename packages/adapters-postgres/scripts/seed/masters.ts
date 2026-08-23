@@ -19,8 +19,8 @@ import { CategoryIdSchema, ExpenseTypeIdSchema } from '@warimaru/domain'
 import type { DefaultCategoryKind, DefaultExpenseTypeKind } from '@warimaru/domain'
 import { seedDefaultCategory, seedDefaultExpenseType } from '@warimaru/domain'
 import type { Db } from '../../src/client'
-import { NeonCategoryMasterRepository } from '../../src/master-data/NeonCategoryMasterRepository'
-import { NeonExpenseTypeMasterRepository } from '../../src/master-data/NeonExpenseTypeMasterRepository'
+import { PostgresCategoryMasterRepository } from '../../src/master-data/PostgresCategoryMasterRepository'
+import { PostgresExpenseTypeMasterRepository } from '../../src/master-data/PostgresExpenseTypeMasterRepository'
 
 export const CAT_HOUSING = '01JAAAAAAAAAAAAAAAAAAAAAA1'
 export const CAT_FOOD = '01JAAAAAAAAAAAAAAAAAAAAAA2'
@@ -51,8 +51,8 @@ export const DEFAULT_EXPENSE_TYPE_SEEDS: { id: string; defaultKind: DefaultExpen
 ]
 
 export async function seedDefaultMasters(db: Db): Promise<void> {
-  const categoryRepository = new NeonCategoryMasterRepository(db)
-  const expenseTypeRepository = new NeonExpenseTypeMasterRepository(db)
+  const categoryRepository = new PostgresCategoryMasterRepository(db)
+  const expenseTypeRepository = new PostgresExpenseTypeMasterRepository(db)
 
   console.log('Seeding category_masters...')
   for (const c of DEFAULT_CATEGORY_SEEDS) {

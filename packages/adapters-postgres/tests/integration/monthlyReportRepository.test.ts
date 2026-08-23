@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { InvariantViolationError } from '@warimaru/domain'
-import { NeonMonthlyReportRepository } from '../../src/household-analysis/NeonMonthlyReportRepository'
+import { PostgresMonthlyReportRepository } from '../../src/household-analysis/PostgresMonthlyReportRepository'
 import { db } from './setup'
 import { csvConfirmedReport, finalizedReport, ym } from '../helpers/fixtures'
 
-const repo = new NeonMonthlyReportRepository(db)
+const repo = new PostgresMonthlyReportRepository(db)
 
-describe('NeonMonthlyReportRepository', () => {
+describe('PostgresMonthlyReportRepository', () => {
   it('save → findById の往復で csv_confirmed / finalized が同一に復元される', async () => {
     for (const report of [
       csvConfirmedReport({ targetYearMonth: ym('2026-05') }),

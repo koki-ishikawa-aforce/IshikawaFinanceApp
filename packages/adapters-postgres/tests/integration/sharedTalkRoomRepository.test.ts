@@ -2,15 +2,15 @@ import { describe, it, expect } from 'vitest'
 import type { TalkRoomId } from '@warimaru/domain'
 import { NOT_JOINED_SHARED_TALK_ROOM, recordSharedTalkRoomJoined } from '@warimaru/domain'
 import { db } from './setup'
-import { NeonSharedTalkRoomRepository } from '../../src/onboarding-auth/NeonSharedTalkRoomRepository'
+import { PostgresSharedTalkRoomRepository } from '../../src/onboarding-auth/PostgresSharedTalkRoomRepository'
 import { sharedTalkRooms } from '../../src/schema'
 
-const repo = new NeonSharedTalkRoomRepository(db)
+const repo = new PostgresSharedTalkRoomRepository(db)
 
 const ROOM_A = 'C0000000000000000000000000000001' as TalkRoomId
 const ROOM_B = 'C0000000000000000000000000000002' as TalkRoomId
 
-describe('NeonSharedTalkRoomRepository', () => {
+describe('PostgresSharedTalkRoomRepository', () => {
   it('記録が無ければ未参加を返す', async () => {
     expect(await repo.find()).toEqual(NOT_JOINED_SHARED_TALK_ROOM)
   })
