@@ -20,6 +20,9 @@ import {
 } from '@/lib/api-schemas'
 import { ACCOUNT_KIND_LABELS } from '@/lib/labels'
 import { AccountAddModal } from '@/components/accounts/AccountAddModal'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { ErrorState } from '@/components/ui/ErrorState'
+import { LoadingState } from '@/components/ui/LoadingState'
 import { getTalkRoomContextId, openExternal } from '@/lib/liff'
 import { getCurrentMonth } from '@/lib/month'
 import { RoleIcon } from '@/components/ui/RoleIcon'
@@ -432,9 +435,9 @@ export default function OnboardingPage() {
             </p>
           )}
           {friendCheckResult === 'unavailable' && (
-            <p className={ui.error} role="alert">
+            <ErrorState>
               LINE に問い合わせできませんでした。通信状況を確かめて、もう一度お試しください。
-            </p>
+            </ErrorState>
           )}
           {/* 自己申告（#298 で廃止予定）。確認が通らないあいだの暫定の逃げ道として残す */}
           <p className={styles.note}>確認がうまくいかないときは、こちらから先へ進めます。</p>
@@ -574,12 +577,12 @@ export default function OnboardingPage() {
                 <p className={styles.note}>
                   口座の現在残高を登録して資産管理を始めます。登録済みの口座（SMBC銀行口座・別銀行貯蓄口座・NISA口座）の残高を、初期残高として記録します。
                 </p>
-                {accountsQuery.isPending && <p className={styles.note}>口座を確認しています...</p>}
+                {accountsQuery.isPending && <LoadingState>口座を確認しています...</LoadingState>}
                 {accountsQuery.isError && (
                   <>
-                    <p className={ui.error} role="alert">
-                      口座の登録状況を確認できませんでした。
-                    </p>
+                    <ErrorState>
+                      口座の登録状況を確認できませんでした。通信状況を確かめて「もう一度確認する」を押してください。
+                    </ErrorState>
                     <button
                       className={ui.buttonGhost}
                       disabled={accountsQuery.isFetching}
@@ -605,12 +608,12 @@ export default function OnboardingPage() {
                       </button>
                     ) : (
                       <>
-                        <p className={styles.note}>
+                        <EmptyState>
                           次の口座がまだ登録されていません:{' '}
                           {missingRequiredKinds.map(kind => ACCOUNT_KIND_LABELS[kind]).join('・')}
                           。それぞれ登録すると、この手順を完了できます。
-                        </p>
-                        <div className={ui.row}>
+                        </EmptyState>
+                        <div className={styles.buttonRow}>
                           {missingRequiredKinds.map(kind => (
                             <button
                               key={kind}

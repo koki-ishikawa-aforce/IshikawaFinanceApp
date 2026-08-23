@@ -53,6 +53,7 @@ import type {
   AccountId,
   AccountRepository,
   EventBus,
+  MitsuiSumitomoUnpaid,
   MitsuiSumitomoUnpaidRepository,
   Money,
   OtherSavingsUpdateSource,
@@ -132,19 +133,26 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
    * ここにしかない（#395。開発用フィクスチャは本番に存在しない）。作られていないと
    * オンボーディング Section B が完走できず、カード利用・引落の取込先も無い。
    *
-   * カードは口座と未払金集約が対になるため、参照先の未払金集約を先に永続化してから口座を保存する。
-   * 逆順だと、間で失敗したときに「参照先の無いカード口座」が残り、以降のカード利用の計上が
-   * 毎回落ち続ける（未払金集約を後から作り直す経路が無い）。先に集約を保存した側で失敗した
-   * 場合に残るのは、どの口座からも参照されない未払金集約 1 件で、再実行は新しい集約を作って
-   * やり直せる。
+   * カードは口座と未払金集約が対になる。永続化は必ず「口座 → 未払金集約」の順で行う
+   * （未払金集約の口座IDは口座への外部キーで、口座行が無いうちは保存できない）。
+   * 対をひとつの取引にまとめられない（本番の接続方式では複数文をまたぐトランザクションを
+   * 張れない）ため、間で失敗すると未払金集約を持たないカード口座が残る。この状態は
+   * 同じ登録をやり直すと修復される（下の repairInterruptedCardRegistration）。
    */
   app.post('/', async c => {
     const body = RegisterBodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
     const now = new Date()
-    const accountId = AccountIdSchema.parse(newUlid())
 
-    async function registerAccount(): Promise<{ account: Account; initialBalance: Money | null }> {
+    if (body.kind === 'mitsui_sumitomo_card') {
+      const repaired = await repairInterruptedCardRegistration(viewerId)
+      if (repaired !== null) return c.json({ account: repaired }, 201)
+    }
+
+    const accountId = AccountIdSchema.parse(newUlid())
+    const unpaidAggregateId = MitsuiSumitomoUnpaidIdSchema.parse(newUlid())
+
+    function buildAccount(): { account: Account; initialBalance: Money | null } {
       switch (body.kind) {
         case 'smbc_bank':
           return {
@@ -156,11 +164,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
             }),
             initialBalance: body.initialBalance,
           }
-        case 'mitsui_sumitomo_card': {
-          const unpaidAggregateId = MitsuiSumitomoUnpaidIdSchema.parse(newUlid())
-          await deps.mitsuiSumitomoUnpaidRepository.save(
-            openMitsuiSumitomoUnpaid({ unpaidAggregateId, accountId }),
-          )
+        case 'mitsui_sumitomo_card':
           return {
             account: registerMitsuiSumitomoCardAccount({
               accountId,
@@ -171,7 +175,6 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
             // カードは初期残高を持たない（未払金集約が正）
             initialBalance: null,
           }
-        }
         case 'other_savings':
           return {
             account: registerOtherSavingsAccount({
@@ -197,8 +200,13 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
       }
     }
 
-    const { account, initialBalance } = await registerAccount()
+    const { account, initialBalance } = buildAccount()
+    // 重複登録（409）は利用者の操作で普通に起こるため、ここは saveAccountOr500 を通さない
+    // （error-handler が 409 に翻訳する。エラーログに残すのは想定外の失敗だけにする）
     await deps.accountRepository.save(account)
+    if (body.kind === 'mitsui_sumitomo_card') {
+      await saveUnpaidOr500(openMitsuiSumitomoUnpaid({ unpaidAggregateId, accountId }), accountId)
+    }
     await deps.eventBus.publish(
       AccountRegisteredSchema.parse({
         ...domainEventBase(now),
@@ -288,6 +296,61 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
     const account = await getAccountOr404(accountId)
     assertOwnedByViewer(account, viewerId)
     return { account, viewerId, accountId }
+  }
+
+  /**
+   * 未払金集約を保存する。失敗時に対（どのカード口座のどの集約）を特定できるログを残す。
+   * ここで落ちると未払金集約を持たないカード口座が残り、カード利用の計上が
+   * 「未払金集約が見つからない」で落ち続ける。復旧の起点になるログなので、
+   * error-handler のスタックだけに頼らず対象 ID を残す。
+   */
+  async function saveUnpaidOr500(
+    unpaid: MitsuiSumitomoUnpaid,
+    accountId: AccountId,
+  ): Promise<void> {
+    try {
+      await deps.mitsuiSumitomoUnpaidRepository.save(unpaid)
+    } catch (e) {
+      console.error(
+        `未払金集約の保存に失敗した（カード口座 accountId=${accountId}, unpaidAggregateId=${unpaid.unpaidAggregateId}）。` +
+          'カード口座は保存済みで未払金集約が欠けている。同じ登録をやり直すと修復される',
+        e,
+      )
+      throw e
+    }
+  }
+
+  /**
+   * 中断したカード口座の登録を修復する（#395）。
+   *
+   * 口座と未払金集約は別々に保存するため、間で失敗するとカード口座だけが残る。この状態は
+   * 「同一ユーザー × 口座種別は一意」の制約により登録し直せず（409）、放置するとカード利用が
+   * 一件も計上されないまま画面上は登録済みに見え続ける。そこで同じ登録要求を受けたときに、
+   * 既存口座が持つ参照 ID のまま未払金集約を開設し直して前へ進める（ID を採番し直さないため
+   * 何度実行しても同じ結果になる）。
+   *
+   * 戻り値は修復した口座。修復が不要（カード口座が無い / 対が揃っている）なら null を返し、
+   * 呼び出し側は通常の登録へ進む（対が揃っている場合の 409 は一意制約が返す）。
+   */
+  async function repairInterruptedCardRegistration(viewerId: UserId): Promise<Account | null> {
+    const owned = await deps.accountRepository.findByOwner(viewerId)
+    const card = owned.find(a => a.kind === 'mitsui_sumitomo_card')
+    if (card === undefined || card.kind !== 'mitsui_sumitomo_card') return null
+    const unpaid = await deps.mitsuiSumitomoUnpaidRepository.findByCardAccountId(
+      card.common.accountId,
+    )
+    if (unpaid !== null) return null
+    console.warn(
+      `カード口座（accountId=${card.common.accountId}）の未払金集約が欠けていたため開設し直す（unpaidAggregateId=${card.unpaidAggregateRef}）`,
+    )
+    await saveUnpaidOr500(
+      openMitsuiSumitomoUnpaid({
+        unpaidAggregateId: card.unpaidAggregateRef,
+        accountId: card.common.accountId,
+      }),
+      card.common.accountId,
+    )
+    return card
   }
 
   /**

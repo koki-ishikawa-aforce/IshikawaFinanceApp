@@ -169,10 +169,30 @@ describe('はじめての設定 Section B（初期残高の登録）', () => {
 
     await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
     expect(apiMutate.mock.calls[0]?.[0]).toBe('/api/accounts')
-    expect(apiMutate.mock.calls[0]?.[1]).toMatchObject({
+    expect(apiMutate.mock.calls[0]?.[1]).toEqual({
       method: 'POST',
       body: { kind: 'smbc_bank', initialBalance: 1500000 },
     })
+  })
+
+  it('この画面で登録すると口座一覧が取り直され、その場で確定へ進める', async () => {
+    ownAccountKinds = ['other_savings', 'nisa']
+    apiMutate.mockImplementation((_path, _options, schema: { parse: (i: unknown) => unknown }) => {
+      ownAccountKinds = ['smbc_bank', 'other_savings', 'nisa']
+      return Promise.resolve(schema.parse({}))
+    })
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'SMBC銀行口座を登録' }))
+    await userEvent.type(screen.getByLabelText('現在の残高（円、初期残高として登録）'), '1500000')
+    await userEvent.click(screen.getByRole('button', { name: '登録' }))
+
+    // モーダルが閉じ、足りない口座の案内が確定ボタンへ入れ替わる
+    await waitFor(() => expect(screen.queryByRole('button', { name: '登録' })).toBeNull())
+    expect(
+      await screen.findByRole('button', { name: '登録済みの口座で確定する' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/まだ登録されていません/)).toBeNull()
   })
 
   it('一部だけ足りないときは、足りない口座だけを挙げる', async () => {

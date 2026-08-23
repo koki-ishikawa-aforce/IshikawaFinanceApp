@@ -1,19 +1,5 @@
 'use client'
 
-import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Modal } from '@/components/ui/Modal'
-import { ErrorState } from '@/components/ui/ErrorState'
-import { apiMutate } from '@/lib/api-client'
-import {
-  UnknownResponseSchema,
-  type BrokerageNameWire,
-  type OwnAccountWire,
-} from '@/lib/api-schemas'
-import { ACCOUNT_KIND_LABELS } from '@/lib/labels'
-import ui from '@/components/ui/common.module.css'
-import styles from './AccountAddModal.module.css'
-
 /**
  * 口座の登録モーダル（口座種別 4 種、#395）。
  *
@@ -25,6 +11,20 @@ import styles from './AccountAddModal.module.css'
  * 金額の不変条件（0 円以上・上限）はドメインが持つ。ここで課すのは「送る前に気づける」
  * 最低限（未入力・整数でない・負）だけで、上限などの判定は再実装しない。
  */
+import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Modal } from '@/components/ui/Modal'
+import { ErrorState } from '@/components/ui/ErrorState'
+import { ApiError, apiMutate } from '@/lib/api-client'
+import {
+  UnknownResponseSchema,
+  type BrokerageNameWire,
+  type OwnAccountWire,
+} from '@/lib/api-schemas'
+import { ACCOUNT_KIND_LABELS } from '@/lib/labels'
+import ui from '@/components/ui/common.module.css'
+import styles from './AccountAddModal.module.css'
+
 export type AccountKindWire = OwnAccountWire['kind']
 
 /** 証券会社の選択欄（NISA 口座の登録と、設定画面での証券会社名の変更が共有する） */
@@ -85,6 +85,20 @@ export function normalizeBrokerageName(value: BrokerageNameWire): BrokerageNameW
 /** 金額欄の入力値が送れる形か（0 円以上の整数） */
 function isAmountInputValid(value: string): boolean {
   return value !== '' && Number.isInteger(Number(value)) && Number(value) >= 0
+}
+
+/**
+ * 登録が失敗した理由を、次にとる行動が分かる文言にする。
+ * API の応答本文（`{ error: ... }`）をそのまま出すと利用者には JSON が見えるだけで、
+ * やり直せばよいのか入力を直せばよいのか判断できない。
+ */
+function registrationErrorMessage(error: unknown): string {
+  const status = error instanceof ApiError ? error.status : null
+  if (status === 409) return 'この口座はすでに登録されています。画面を開き直して確認してください。'
+  if (status === 400) {
+    return '入力の内容を登録できませんでした。金額は 0 円以上 10 億円以下の整数で入力してください。'
+  }
+  return '登録できませんでした。通信状況を確かめて、もう一度お試しください。'
 }
 
 interface AccountAddModalProps {
@@ -164,6 +178,9 @@ export function AccountAddModal({ kind, onClose }: AccountAddModalProps) {
             onChange={e => setBankName(e.target.value)}
             placeholder="例: 楽天銀行"
           />
+          <p className={styles.note}>
+            通帳やアプリの表記で入力してください（登録後も変更できます）。
+          </p>
         </div>
       )}
 
@@ -176,18 +193,23 @@ export function AccountAddModal({ kind, onClose }: AccountAddModalProps) {
               ? '積立累計（円、初期累計として登録）'
               : '現在の残高（円、初期残高として登録）'}
           </label>
+          {/* 金額は type="number" を使わない（usability 4-1。スピナー・指数表記・小数を持ち込まない） */}
           <input
             id="account-initial-amount"
             className={ui.input}
-            type="number"
+            type="text"
+            inputMode="numeric"
             value={initialAmount}
             onChange={e => setInitialAmount(e.target.value)}
             placeholder={kind === 'nisa' ? '例: 200000' : '例: 500000'}
           />
+          <p className={styles.note}>
+            0 円以上の整数で入力してください（円マーク・カンマは不要）。
+          </p>
         </div>
       )}
 
-      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
+      {mutation.error && <ErrorState>{registrationErrorMessage(mutation.error)}</ErrorState>}
       <button
         className={ui.button}
         disabled={!valid || mutation.isPending}

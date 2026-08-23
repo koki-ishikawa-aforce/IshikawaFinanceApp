@@ -146,15 +146,16 @@ export type OtherSavingsAccount = Extract<Account, { kind: 'other_savings' }>
 export type NisaAccount = Extract<Account, { kind: 'nisa' }>
 
 /**
- * 登録時に手入力する初期残高・初期累計の入力制約。
- * 「0 円以上・上限以下」は `correctInitialBalance`（初期残高の後修正）が課すものと同じで、
- * 同じ値を最初に入れる操作にだけ制約が無いと、登録時に入れた誤った桁を修正時に直せない
- * （直そうとした値の方が弾かれる）状態になるため、登録側にも同じ制約を課す。
+ * 手入力の残高（登録時の初期残高・初期累計、補正後残高、修正後初期残高）の入力制約。
+ * 「上限以下」は入力形式なので ZodError（API 層で 400）、「負にしない」は口座の状態に対する
+ * 不変条件なので InvariantViolationError（同 409）と、翻訳先も含めて 1 か所に揃える。
  *
- * 上限違反は ZodError（API 層で 400）、負値は InvariantViolationError（同 409）と、
- * `correctInitialBalance` の翻訳先も揃える。
+ * 登録・補正・後修正のどれにも同じ制約を課す。登録にだけ制約が無いと、登録時に入れた誤った桁を
+ * 後から直せない（直そうとした値の方が弾かれる）状態になる。
+ *
+ * label は拒否された値が何かを利用者向けの言葉で示すためのもの（「初期残高」「初期累計」など）。
  */
-function parseInitialBalanceInput(value: Money, label: string): Money {
+function parseBalanceInput(value: Money, label: string): Money {
   const parsed = BalanceInputSchema.parse(value)
   if (parsed < 0) {
     throw new InvariantViolationError(`${label}は負にできない（${parsed}）`)
@@ -180,7 +181,7 @@ export function registerSmbcBankAccount(params: {
   initialBalance: Money
   at: Date
 }): SmbcBankAccount {
-  const initialBalance = parseInitialBalanceInput(params.initialBalance, '初期残高')
+  const initialBalance = parseBalanceInput(params.initialBalance, '初期残高')
   return AccountSchema.parse({
     kind: 'smbc_bank',
     common: {
@@ -201,10 +202,11 @@ export function registerSmbcBankAccount(params: {
 
 /**
  * behavior 口座をアプリに登録する（08d §2、三井住友カード口座）
- * カードは残高ではなく未払金集約が正（08d §1）のため初期残高を受け取らず、
- * 開設済みの未払金集約への参照を持つ。参照先の集約は呼び出し側が先に永続化する
- * （`openMitsuiSumitomoUnpaid`。参照先不在の口座を残すと、カード利用の計上が
- * 「未払金集約が見つからない」で落ち続ける）。
+ * カードは残高ではなく未払金集約が正（08d §1）のため初期残高を受け取らず、未払金集約への
+ * 参照を持つ。参照先の集約（`openMitsuiSumitomoUnpaid`）は口座と対で作り、永続化は
+ * 口座を先に行う（未払金集約の口座IDが口座への外部キーのため）。対の作成が中断して
+ * 未払金集約が欠けると、カード利用の計上が「未払金集約が見つからない」で落ち続けるため、
+ * 呼び出し側は再実行で対を揃え直せる形にする。
  *
  * 事前条件は registerOtherSavingsAccount と同じ（同種別未登録は Repository の一意制約が最終保証）。
  */
@@ -241,7 +243,7 @@ export function registerOtherSavingsAccount(params: {
   initialBalance: Money
   at: Date
 }): OtherSavingsAccount {
-  const initialBalance = parseInitialBalanceInput(params.initialBalance, '初期残高')
+  const initialBalance = parseBalanceInput(params.initialBalance, '初期残高')
   return AccountSchema.parse({
     kind: 'other_savings',
     common: {
@@ -273,7 +275,7 @@ export function registerNisaAccount(params: {
   initialAccumulated: Money
   at: Date
 }): NisaAccount {
-  const initialAccumulated = parseInitialBalanceInput(params.initialAccumulated, '初期累計')
+  const initialAccumulated = parseBalanceInput(params.initialAccumulated, '初期累計')
   return AccountSchema.parse({
     kind: 'nisa',
     common: {
@@ -625,10 +627,7 @@ export function correctOtherSavingsBalance(
 ): OtherSavingsAccount {
   assertOperatedByOwner(account, params.operatorUserId, '残高の補正')
   assertActive(account, '残高の補正')
-  const correctedBalance = BalanceInputSchema.parse(params.correctedBalance)
-  if (correctedBalance < 0) {
-    throw new InvariantViolationError(`別銀行貯蓄残高は負にできない（${correctedBalance}）`)
-  }
+  const correctedBalance = parseBalanceInput(params.correctedBalance, '別銀行貯蓄残高')
   return replaceOtherSavingsBalance(account, correctedBalance, params.at)
 }
 
@@ -677,10 +676,7 @@ export function correctInitialBalance(
 ): { account: Account; oldInitialBalance: Money } {
   assertOperatedByOwner(account, params.operatorUserId, '初期残高の修正')
   assertActive(account, '初期残高の修正')
-  const initialBalance = BalanceInputSchema.parse(params.initialBalance)
-  if (initialBalance < 0) {
-    throw new InvariantViolationError(`初期残高は負にできない（${initialBalance}）`)
-  }
+  const initialBalance = parseBalanceInput(params.initialBalance, '初期残高')
   switch (account.kind) {
     case 'mitsui_sumitomo_card':
       throw new InvariantViolationError(

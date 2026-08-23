@@ -81,7 +81,8 @@ export type SettledUnpaidEntry = Extract<UnpaidEntry, { kind: 'settled' }>
  * カード利用の計上（`bookUnpaid`）はこの集約が既にあることを前提にしており、
  * 口座だけを登録して集約を作らないと、以降のカード利用が毎回「未払金集約が見つからない」で
  * 落ち続ける。そのため口座の登録経路（`registerMitsuiSumitomoCardAccount`）は必ず
- * この開設と対で呼ぶ。
+ * この開設と対で呼ぶ。永続化の順は口座 → 未払金集約（未払金集約の口座IDが口座への
+ * 外部キーのため、口座行が無いうちは保存できない）。
  */
 export function openMitsuiSumitomoUnpaid(params: {
   unpaidAggregateId: MitsuiSumitomoUnpaidId
