@@ -57,7 +57,20 @@
   gap: var(--space-1);
 }
 
+/**
+ * 押す・触る操作の受け皿は最小 44×44px を確保する（docs/design/usability.md §4-3）。
+ *
+ * padding とフォントサイズの合計に頼ると、文字を小さくしただけで下限を割る。
+ * ここで保証するのは高さ（`min-height`）だけ。ボタン系は文字が横に伸びるため幅は
+ * 自然に足りる。文字を持たないアイコンだけのボタンは幅も足りなくなるので、その部品の
+ * 側で `min-width` も指定する（例: `Modal.module.css` の閉じるボタン）。
+ * 中身を上下中央に置くため、ボタン系のクラスは `inline-flex` で揃える。
+ */
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
   border: none;
   border-radius: var(--radius-md);
   background: var(--accent);
@@ -79,14 +92,11 @@
   cursor: not-allowed;
 }
 
-/** ボタンの見た目のリンク(`&lt;a&gt;`)。`.button` と組み合わせて使う */
-.buttonLink {
-  display: block;
-  text-align: center;
-  text-decoration: none;
-}
-
 .buttonGhost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
   border: 1.5px solid var(--accent);
   border-radius: var(--radius-md);
   background: transparent;
@@ -108,6 +118,10 @@
 }
 
 .buttonDanger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
   border: none;
   border-radius: var(--radius-md);
   background: var(--error);
@@ -123,8 +137,25 @@
   cursor: not-allowed;
 }
 
+/**
+ * ボタンの見た目のリンク(`&lt;a&gt;`)。ボタン種別のクラスと組み合わせて使う。
+ *
+ * ボタン種別 3 つ（`.button` / `.buttonGhost` / `.buttonDanger`）の `display` を
+ * 上書きするため、必ずそれらより後ろに置く（同じ詳細度では後勝ちのため）。
+ * リンクは行内に収まらない幅でも中身を中央に置きたいので `flex` を使う。
+ */
+.buttonLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+
+/* 入力欄も指で触れて位置を合わせる操作の受け皿。同じフォームに並ぶ選択欄だけ背が高くなるのを避ける意味でも下限を揃える */
 .input {
   width: 100%;
+  min-height: var(--tap-target-min);
   border: 1.5px solid rgba(255, 255, 255, 0.9);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.8);
@@ -140,6 +171,7 @@
 
 .select {
   width: 100%;
+  min-height: var(--tap-target-min);
   border: 1.5px solid rgba(255, 255, 255, 0.9);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.8);

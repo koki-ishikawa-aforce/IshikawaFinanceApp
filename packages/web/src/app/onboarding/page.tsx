@@ -917,7 +917,7 @@ export default function OnboardingPage() {
                   {nickname !== '' ? `${nickname}さん、` : ''}
                   おつかれさまでした。ダッシュボードから家計管理を始めましょう。
                 </p>
-                <Link href="/" className={ui.button} style={{ textAlign: 'center' }}>
+                <Link href="/" className={`${ui.button} ${ui.buttonLink}`}>
                   ダッシュボードへ
                 </Link>
               </>
@@ -961,7 +961,7 @@ export default function OnboardingPage() {
             {nickname !== '' ? `${nickname}さん、` : ''}
             設定はすべて完了しています。ダッシュボードから家計管理を続けましょう。
           </p>
-          <Link href="/" className={ui.button} style={{ textAlign: 'center' }}>
+          <Link href="/" className={`${ui.button} ${ui.buttonLink}`}>
             ダッシュボードへ
           </Link>
         </div>
