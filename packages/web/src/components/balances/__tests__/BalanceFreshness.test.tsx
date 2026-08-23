@@ -4,6 +4,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
 import { BalanceFreshnessCard, FreshnessBadge } from '../BalanceFreshness'
 import { BalanceFreshnessItemWireSchema } from '@/lib/api-schemas'
+import { NETWORK_ERROR_MESSAGE } from '@/lib/api-client'
 
 const okItem = BalanceFreshnessItemWireSchema.parse({
   accountId: 'ACC_OK',
@@ -86,6 +87,19 @@ describe('BalanceFreshnessCard', () => {
     render(<BalanceFreshnessCard />, { wrapper })
 
     expect(await screen.findByText('更新状況を取得できませんでした')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument()
+  })
+
+  it('通信で失敗したときは、画面固有の文言ではなく共通の文言を出す', async () => {
+    // サーバーに届かない状態（fetch が TypeError）を再現する。このスイートは実 api-client を通る
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+    )
+    render(<BalanceFreshnessCard />, { wrapper })
+
+    expect(await screen.findByText(NETWORK_ERROR_MESSAGE)).toBeInTheDocument()
+    expect(screen.queryByText('更新状況を取得できませんでした')).toBeNull()
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument()
   })
 

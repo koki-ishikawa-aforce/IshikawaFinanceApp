@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiFetch, apiMutate } from '@/lib/api-client'
+import { apiFetch, apiMutate, describeRequestFailure, NetworkError } from '@/lib/api-client'
 import {
   AmazonProductKeyLearningRuleListWireSchema,
   CategoryListWireSchema,
@@ -36,10 +36,18 @@ interface MastersState {
   expenseTypeNameOf: (expenseTypeId: string) => string | undefined
 }
 
-function LoadFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
+function LoadFailure({
+  error,
+  message,
+  onRetry,
+}: {
+  error: unknown
+  message: string
+  onRetry: () => void
+}) {
   return (
     <>
-      <ErrorState>{message}</ErrorState>
+      <ErrorState>{describeRequestFailure(error, message)}</ErrorState>
       <div className={styles.retryRow}>
         <button className={ui.buttonGhost} onClick={onRetry}>
           再読み込み
@@ -121,7 +129,11 @@ function MerchantActionModal({
       {mutation.error && (
         <ErrorState>
           {mutation.error.message}
-          <span className={styles.errorHint}>時間をおいて、もう一度お試しください。</span>
+          {/* 通信の失敗の文言はそれ自体が次の行動（電波の良い場所でやり直す）を含むため、
+              「時間をおいて」を重ねない。次の行動が 2 つ並ぶと、どちらをすべきか決められない */}
+          {!(mutation.error instanceof NetworkError) && (
+            <span className={styles.errorHint}>時間をおいて、もう一度お試しください。</span>
+          )}
         </ErrorState>
       )}
       <button
@@ -210,6 +222,7 @@ function MerchantRulesSection({ masters }: { masters: MastersState }) {
       {isPending && <LoadingState />}
       {!isPending && error !== null && (
         <LoadFailure
+          error={error}
           message="学習ルールの取得に失敗しました"
           onRetry={() => {
             void rulesQuery.refetch()
@@ -289,6 +302,7 @@ function AmazonRulesSection({ masters }: { masters: MastersState }) {
       {isPending && <LoadingState />}
       {!isPending && error !== null && (
         <LoadFailure
+          error={error}
           message="Amazon 商品の学習ルールの取得に失敗しました"
           onRetry={() => {
             void rulesQuery.refetch()

@@ -9,6 +9,7 @@ import { CategoryBreakdown } from '@/components/dashboard/CategoryBreakdown'
 import { SpousePersonalNote } from '@/components/dashboard/SpousePersonalNote'
 import { useDashboardKpis } from '@/hooks/useDashboardKpis'
 import { useCategoryBreakdown } from '@/hooks/useCategoryBreakdown'
+import { describeRequestFailure } from '@/lib/api-client'
 import { useTheme } from '@/theme/ThemeProvider'
 import { getCategoryColors } from '@/theme/tokens'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -41,7 +42,9 @@ export default function DashboardPage() {
       <ModeToggle mode={mode} onModeChange={setMode} />
 
       {kpis.isLoading && <LoadingState />}
-      {kpis.error && <ErrorState>KPI の取得に失敗しました</ErrorState>}
+      {kpis.error && (
+        <ErrorState>{describeRequestFailure(kpis.error, 'KPI の取得に失敗しました')}</ErrorState>
+      )}
       {kpis.data && <KpiGrid kpis={kpis.data} />}
 
       {/*
@@ -55,7 +58,11 @@ export default function DashboardPage() {
           {mode === 'household' ? '世帯支出（カテゴリ別）' : '個人支出（カテゴリ別）'}
         </span>
         {breakdown.isLoading && <LoadingState />}
-        {breakdown.error && <ErrorState>カテゴリ内訳の取得に失敗しました</ErrorState>}
+        {breakdown.error && (
+          <ErrorState>
+            {describeRequestFailure(breakdown.error, 'カテゴリ内訳の取得に失敗しました')}
+          </ErrorState>
+        )}
         {breakdown.data && (
           <CategoryBreakdown data={breakdown.data} categoryColors={categoryColors} />
         )}

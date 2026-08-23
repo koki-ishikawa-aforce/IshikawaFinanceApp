@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { isIncompleteMonthReport, YearMonthSchema, type YearMonth } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
-import { apiFetch, ApiError } from '@/lib/api-client'
+import { apiFetch, ApiError, describeRequestFailure } from '@/lib/api-client'
 import {
   CategoryListWireSchema,
   MonthlyReportViewWireSchema,
@@ -186,7 +186,11 @@ function ReportsPageContent() {
       <MonthNavigator month={month} onMonthChange={setMonth} />
 
       {reportQuery.isLoading && <LoadingState />}
-      {reportQuery.error && <ErrorState>レポートの取得に失敗しました</ErrorState>}
+      {reportQuery.error && (
+        <ErrorState>
+          {describeRequestFailure(reportQuery.error, 'レポートの取得に失敗しました')}
+        </ErrorState>
+      )}
       {reportQuery.data === null && (
         <div className={ui.card}>
           <EmptyState>

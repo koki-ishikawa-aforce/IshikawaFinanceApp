@@ -13,7 +13,7 @@ import {
   normalizeBrokerageName,
 } from '@/components/accounts/AccountAddModal'
 import { LearningRulesTab } from '@/components/settings/LearningRulesTab'
-import { apiFetch, apiMutate } from '@/lib/api-client'
+import { apiFetch, apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   CategoryListWireSchema,
   ExpenseTypeListWireSchema,
@@ -110,7 +110,11 @@ function ProfileTab() {
     <div className={ui.card}>
       <span className={ui.sectionTitle}>プロフィール</span>
       {profileQuery.isLoading && <LoadingState />}
-      {profileQuery.error && <ErrorState>プロフィールの取得に失敗しました</ErrorState>}
+      {profileQuery.error && (
+        <ErrorState>
+          {describeRequestFailure(profileQuery.error, 'プロフィールの取得に失敗しました')}
+        </ErrorState>
+      )}
       {profile && (
         <ProfileForm
           key={`${profile.userId}:${profile.nickname ?? ''}`}
@@ -258,7 +262,11 @@ function AccountsTab() {
         NISA 口座の証券会社名は登録後も編集できます（三井住友系の名称は固定です）。
       </p>
       {accountsQuery.isLoading && <LoadingState />}
-      {accountsQuery.error && <ErrorState>口座の取得に失敗しました</ErrorState>}
+      {accountsQuery.error && (
+        <ErrorState>
+          {describeRequestFailure(accountsQuery.error, '口座の取得に失敗しました')}
+        </ErrorState>
+      )}
       {!accountsQuery.isLoading && items.length === 0 && (
         <EmptyState>登録済みの口座はありません。</EmptyState>
       )}
@@ -461,7 +469,11 @@ function CategoriesTab() {
     <div className={ui.card}>
       <span className={ui.sectionTitle}>カテゴリ</span>
       {categoriesQuery.isLoading && <LoadingState />}
-      {categoriesQuery.error && <ErrorState>カテゴリの取得に失敗しました</ErrorState>}
+      {categoriesQuery.error && (
+        <ErrorState>
+          {describeRequestFailure(categoriesQuery.error, 'カテゴリの取得に失敗しました')}
+        </ErrorState>
+      )}
       <ul className={styles.masterList}>
         {items.map(category => (
           <li key={category.categoryId} className={styles.masterRow}>
@@ -643,7 +655,11 @@ function ExpenseTypesTab() {
     <div className={ui.card}>
       <span className={ui.sectionTitle}>経費種別</span>
       {expenseTypesQuery.isLoading && <LoadingState />}
-      {expenseTypesQuery.error && <ErrorState>経費種別の取得に失敗しました</ErrorState>}
+      {expenseTypesQuery.error && (
+        <ErrorState>
+          {describeRequestFailure(expenseTypesQuery.error, '経費種別の取得に失敗しました')}
+        </ErrorState>
+      )}
       <ul className={styles.masterList}>
         {items.map(expenseType => (
           <li key={expenseType.expenseTypeId} className={styles.masterRow}>
@@ -809,7 +825,12 @@ function LimitsTab() {
       </p>
       {(expenseTypesQuery.isLoading || limitsQuery.isLoading) && <LoadingState />}
       {(expenseTypesQuery.error ?? limitsQuery.error) && (
-        <ErrorState>月次上限の取得に失敗しました</ErrorState>
+        <ErrorState>
+          {describeRequestFailure(
+            expenseTypesQuery.error ?? limitsQuery.error,
+            '月次上限の取得に失敗しました',
+          )}
+        </ErrorState>
       )}
       <ul className={styles.masterList}>
         {expenseTypes.map(expenseType => {

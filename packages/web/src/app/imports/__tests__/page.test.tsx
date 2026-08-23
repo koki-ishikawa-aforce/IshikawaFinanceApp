@@ -3,12 +3,12 @@
  * 部品側（import-upload / ImportJobCard）の単体テストでは、
  * 「選んだ形式で実際に送り先が変わるか」までは担保できないため。
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ImportsPage from '../page'
-import { ApiError } from '@/lib/api-client'
+import { ApiError, NetworkError, NETWORK_ERROR_MESSAGE, UPLOAD_TIMEOUT_MS } from '@/lib/api-client'
 
 const apiFetch = vi.fn()
 const apiMutate = vi.fn()
@@ -25,7 +25,7 @@ vi.mock('@/lib/api-client', async () => {
       apiFetch(path, schema),
     apiMutate: (
       path: string,
-      options: { method: string; body?: unknown },
+      options: { method: string; body?: unknown; timeoutMs?: number },
       schema: { parse: (input: unknown) => unknown },
     ) => apiMutate(path, options, schema),
   }
@@ -188,5 +188,154 @@ describe('取込画面のアップロード', () => {
     selectFile('statement.pdf', 'application/pdf')
 
     expect(await screen.findByText('新規候補: 3 件')).toBeInTheDocument()
+  })
+})
+
+describe('通信できないときのアップロード', () => {
+  it('通信の失敗は全画面共通の文言で伝える', async () => {
+    apiMutate.mockRejectedValue(new NetworkError('unreachable'))
+    renderPage()
+    selectFile('statement.pdf', 'application/pdf')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(NETWORK_ERROR_MESSAGE)
+  })
+
+  it('通信の失敗はアップロード固有の説明で包まない（同じ失敗が画面ごとに違う文言にならないように）', async () => {
+    apiMutate.mockRejectedValue(new NetworkError('timeout'))
+    renderPage()
+    selectFile('statement.pdf', 'application/pdf')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).not.toHaveTextContent('アップロードに失敗しました')
+    expect(alert.textContent).toBe(NETWORK_ERROR_MESSAGE)
+  })
+
+  it('失敗したら選び直さずに送り直せる', async () => {
+    // 送信後にファイル選択の input は空にしているため、画面が直前のファイルを覚えていないと
+    // 再試行のたびに端末のファイル選択からやり直しになる
+    const user = userEvent.setup()
+    apiMutate.mockRejectedValueOnce(new NetworkError('unreachable'))
+    renderPage()
+    selectFile('statement.pdf', 'application/pdf')
+
+    await user.click(await screen.findByRole('button', { name: 'もう一度アップロード' }))
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(2))
+    expect(apiMutate.mock.calls[1]?.[0]).toBe('/api/imports/pdf')
+    const body = apiMutate.mock.calls[1]?.[1]?.body as FormData
+    expect((body.get('file') as File).name).toBe('statement.pdf')
+    expect(await screen.findByText('新規候補: 3 件')).toBeInTheDocument()
+  })
+
+  it('送り直しは送ったときの対象月・ファイル種別のまま送る', async () => {
+    // 現在値を見て送り直すと、失敗後に月を切り替えてから押したときに
+    // 選んだ覚えのない月へ取り込まれ、銀行明細がカード明細として入る
+    const user = userEvent.setup()
+    apiMutate.mockRejectedValueOnce(new NetworkError('unreachable'))
+    renderPage()
+
+    await user.click(screen.getByRole('radio', { name: '銀行入出金明細' }))
+    selectFile('statement.csv', 'text/csv')
+    await user.click(await screen.findByRole('button', { name: 'もう一度アップロード' }))
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(2))
+    const body = apiMutate.mock.calls[1]?.[1]?.body as FormData
+    expect(body.get('fileKind')).toBe('bank_statement')
+    expect(body.get('targetMonth')).toBe('2026-06')
+  })
+
+  it('送り直しの前に月を変えても、送ったときの月へ送る', async () => {
+    const user = userEvent.setup()
+    apiMutate.mockRejectedValueOnce(new NetworkError('unreachable'))
+    renderPage()
+    selectFile('statement.csv', 'text/csv')
+
+    await screen.findByRole('button', { name: 'もう一度アップロード' })
+    await user.click(screen.getByRole('button', { name: '前月' }))
+    await user.click(screen.getByRole('button', { name: 'もう一度アップロード' }))
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(2))
+    const body = apiMutate.mock.calls[1]?.[1]?.body as FormData
+    expect(body.get('targetMonth')).toBe('2026-06')
+  })
+
+  it('送信の失敗が残っているときに対応外ファイルを選んだら、送り直しは消える', async () => {
+    // 残したままだと「別のファイルを選び直してください」の隣に送り直しが並び、
+    // 押すと今選んだファイルではなく前回のファイルが飛ぶ
+    apiMutate.mockRejectedValueOnce(new NetworkError('unreachable'))
+    renderPage()
+    selectFile('statement.pdf', 'application/pdf')
+    await screen.findByRole('button', { name: 'もう一度アップロード' })
+
+    selectFile('photo.png', 'image/png')
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'もう一度アップロード' }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('取込できるのは CSV')
+  })
+
+  it('送信中も送り直しの導線を残す（押した瞬間に消してフォーカスを失わせない）', async () => {
+    const user = userEvent.setup()
+    apiMutate.mockRejectedValueOnce(new NetworkError('unreachable'))
+    let resolveUpload: ((value: unknown) => void) | undefined
+    apiMutate.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveUpload = resolve
+        }),
+    )
+    renderPage()
+    selectFile('statement.pdf', 'application/pdf')
+
+    await user.click(await screen.findByRole('button', { name: 'もう一度アップロード' }))
+
+    const retrying = await screen.findByRole('button', { name: 'アップロード中...' })
+    expect(retrying).toBeDisabled()
+    await act(async () => {
+      resolveUpload?.(completedJobResponse())
+    })
+  })
+
+  it('送り直しが成功したら送り直しの導線は消える', async () => {
+    const user = userEvent.setup()
+    apiMutate.mockRejectedValueOnce(new NetworkError('unreachable'))
+    renderPage()
+    selectFile('statement.pdf', 'application/pdf')
+
+    await user.click(await screen.findByRole('button', { name: 'もう一度アップロード' }))
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'もう一度アップロード' }),
+      ).not.toBeInTheDocument(),
+    )
+  })
+
+  it('送らずに断った選択には送り直しを出さない（同じファイルでは結果が変わらないため）', async () => {
+    renderPage()
+    selectFile('photo.png', 'image/png')
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'もう一度アップロード' })).not.toBeInTheDocument()
+  })
+
+  it('アップロードには既定より長い打ち切り時間を渡す（PDF の変換を待つため）', async () => {
+    renderPage()
+    selectFile('statement.pdf', 'application/pdf')
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
+    const timeoutMs = (apiMutate.mock.calls[0]?.[1] as { timeoutMs?: number }).timeoutMs
+    expect(timeoutMs).toBe(UPLOAD_TIMEOUT_MS)
+  })
+
+  it('取込状況の取得が通信で失敗した場合も共通の文言で伝える', async () => {
+    apiFetch.mockRejectedValue(new NetworkError('unreachable'))
+    renderPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(NETWORK_ERROR_MESSAGE)
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument()
   })
 })

@@ -2,6 +2,7 @@
 
 import { useId } from 'react'
 import { EXPENSE_CLASS_LABELS } from '@/lib/labels'
+import { describeRequestFailure } from '@/lib/api-client'
 import type { ExpenseClassWire } from '@/lib/api-schemas'
 import type { MastersState } from './useMasters'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -64,7 +65,10 @@ export function ClassificationFields({ value, onChange, masters }: Classificatio
     return (
       <>
         <ErrorState>
-          カテゴリ・経費種別を読み込めませんでした。分類にはこの選択肢が必要です。
+          {describeRequestFailure(
+            masters.error,
+            'カテゴリ・経費種別を読み込めませんでした。分類にはこの選択肢が必要です。',
+          )}
         </ErrorState>
         <button className={ui.buttonGhost} onClick={() => masters.refetch()}>
           選択肢を再読み込み

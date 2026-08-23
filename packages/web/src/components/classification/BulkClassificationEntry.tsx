@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { YearMonth } from '@warimaru/domain'
-import { ApiError, apiFetch, apiMutate } from '@/lib/api-client'
+import { ApiError, apiFetch, apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   BulkClassificationSessionWireSchema,
   CurrentBulkSessionWireSchema,
@@ -127,7 +127,12 @@ export function BulkClassificationEntry({
     // （1 ユーザー 1 セッション）ため、開始の導線は出さずに再試行を促す
     return (
       <div className={styles.section}>
-        <ErrorState>まとめて分類の状況を取得できませんでした。</ErrorState>
+        <ErrorState>
+          {describeRequestFailure(
+            currentSessionQuery.error,
+            'まとめて分類の状況を取得できませんでした。',
+          )}
+        </ErrorState>
         <button className={ui.buttonGhost} onClick={() => void currentSessionQuery.refetch()}>
           再読み込み
         </button>
@@ -152,7 +157,10 @@ export function BulkClassificationEntry({
           </p>
           {resume.error && (
             <ErrorState>
-              続きを開けませんでした。通信状態を確かめて、もう一度お試しください。
+              {describeRequestFailure(
+                resume.error,
+                '続きを開けませんでした。通信状態を確かめて、もう一度お試しください。',
+              )}
             </ErrorState>
           )}
           <button
@@ -198,6 +206,7 @@ function startErrorMessage(error: Error): string {
     }
     return 'まとめて分類を始められませんでした。通信状態を確かめて、もう一度お試しください。'
   }
-  // 対象が 0 件だったときなど、画面側で組み立てた案内はそのまま出す
+  // 通信の失敗（共通文言）と、対象が 0 件だったときなど画面側で組み立てた案内は
+  // どちらも message をそのまま出す
   return error.message
 }

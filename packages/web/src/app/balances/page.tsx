@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, describeRequestFailure } from '@/lib/api-client'
 import {
   AccountBalanceListWireSchema,
   AssetTotalWireSchema,
@@ -157,7 +157,11 @@ export default function BalancesPage() {
           </div>
         </div>
       )}
-      {totalQuery.error && <ErrorState>資産合計の取得に失敗しました</ErrorState>}
+      {totalQuery.error && (
+        <ErrorState>
+          {describeRequestFailure(totalQuery.error, '資産合計の取得に失敗しました')}
+        </ErrorState>
+      )}
 
       <div className={ui.card}>
         <span className={ui.sectionTitle}>口座残高</span>
@@ -170,12 +174,17 @@ export default function BalancesPage() {
             <LoadingState announce={false} />
           )}
           {listQuery.error && (
-            <ErrorState announce={false}>残高一覧の取得に失敗しました</ErrorState>
+            <ErrorState announce={false}>
+              {describeRequestFailure(listQuery.error, '残高一覧の取得に失敗しました')}
+            </ErrorState>
           )}
           {freshnessQuery.isError && (
             <>
               <ErrorState announce={false}>
-                残高の更新状況を取得できませんでした（未更新のお知らせは出ません）
+                {describeRequestFailure(
+                  freshnessQuery.error,
+                  '残高の更新状況を取得できませんでした（未更新のお知らせは出ません）',
+                )}
               </ErrorState>
               <button
                 type="button"
@@ -223,7 +232,11 @@ export default function BalancesPage() {
           </div>
         </div>
         {seriesQuery.isLoading && <LoadingState />}
-        {seriesQuery.error && <ErrorState>資産推移の取得に失敗しました</ErrorState>}
+        {seriesQuery.error && (
+          <ErrorState>
+            {describeRequestFailure(seriesQuery.error, '資産推移の取得に失敗しました')}
+          </ErrorState>
+        )}
         {seriesQuery.data && <TimeSeriesChart series={chartSeries} />}
       </div>
     </main>

@@ -80,6 +80,9 @@ export class AnthropicPdfToCsvConverter implements PdfToCsvConverter {
   constructor(options: AnthropicPdfToCsvConverterOptions = {}) {
     this.client = options.client
     this.model = options.model ?? 'claude-opus-4-8'
+    // 変換の上限。web の打ち切り時間（`packages/web/src/lib/api-client.ts` の
+    // `UPLOAD_TIMEOUT_MS`）と対で調整する。ここを伸ばして web を据え置くと、
+    // サーバーでは取込が成立しているのに画面だけ失敗になる
     this.timeoutMs = options.timeoutMs ?? 300_000
   }
 

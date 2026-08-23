@@ -9,7 +9,7 @@ import {
   type SectionIdentifier,
 } from '@warimaru/domain'
 import { useViewerRole } from '@/hooks/useViewerRole'
-import { apiFetch, apiMutate } from '@/lib/api-client'
+import { apiFetch, apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   GmailAuthorizeResponseSchema,
   ImportStatusResponseSchema,
@@ -389,7 +389,9 @@ export default function OnboardingPage() {
         <h1 className={ui.pageTitle}>はじめての設定</h1>
         <div className={ui.card}>
           <span className={ui.sectionTitle}>読み込みに失敗しました</span>
-          <ErrorState>設定の状況を取得できませんでした</ErrorState>
+          <ErrorState>
+            {describeRequestFailure(meQuery.error, '設定の状況を取得できませんでした')}
+          </ErrorState>
           <button className={ui.buttonGhost} onClick={() => void meQuery.refetch()}>
             再読み込み
           </button>
@@ -471,7 +473,10 @@ export default function OnboardingPage() {
           </button>
           {saveNickname.isError && (
             <ErrorState>
-              ニックネームを保存できませんでした。通信状況を確かめて、もう一度お試しください。
+              {describeRequestFailure(
+                saveNickname.error,
+                'ニックネームを保存できませんでした。通信状況を確かめて、もう一度お試しください。',
+              )}
             </ErrorState>
           )}
         </div>
@@ -525,7 +530,10 @@ export default function OnboardingPage() {
           </button>
           {recordLineFriend.isError && (
             <ErrorState>
-              友だち追加を記録できませんでした。通信状況を確かめて、もう一度お試しください。
+              {describeRequestFailure(
+                recordLineFriend.error,
+                '友だち追加を記録できませんでした。通信状況を確かめて、もう一度お試しください。',
+              )}
             </ErrorState>
           )}
         </div>
@@ -557,7 +565,10 @@ export default function OnboardingPage() {
           </button>
           {recordTalkRoom.isError && (
             <ErrorState>
-              共通トークルームへの参加を記録できませんでした。通信状況を確かめて、もう一度お試しください。
+              {describeRequestFailure(
+                recordTalkRoom.error,
+                '共通トークルームへの参加を記録できませんでした。通信状況を確かめて、もう一度お試しください。',
+              )}
             </ErrorState>
           )}
         </div>
@@ -585,7 +596,10 @@ export default function OnboardingPage() {
           </button>
           {activateNotification.isError && (
             <ErrorState>
-              通知の設定を記録できませんでした。通信状況を確かめて、もう一度お試しください。
+              {describeRequestFailure(
+                activateNotification.error,
+                '通知の設定を記録できませんでした。通信状況を確かめて、もう一度お試しください。',
+              )}
             </ErrorState>
           )}
         </div>
@@ -610,7 +624,10 @@ export default function OnboardingPage() {
           </button>
           {startPhase2.isError && (
             <ErrorState>
-              Phase 2 を開始できませんでした。通信状況を確かめて、もう一度お試しください。
+              {describeRequestFailure(
+                startPhase2.error,
+                'Phase 2 を開始できませんでした。通信状況を確かめて、もう一度お試しください。',
+              )}
             </ErrorState>
           )}
         </div>
@@ -653,7 +670,10 @@ export default function OnboardingPage() {
                 </div>
                 {gmailAuthorize.isError && (
                   <ErrorState>
-                    Gmail の連携を開始できませんでした。通信状況を確かめて、もう一度お試しください。
+                    {describeRequestFailure(
+                      gmailAuthorize.error,
+                      'Gmail の連携を開始できませんでした。通信状況を確かめて、もう一度お試しください。',
+                    )}
                   </ErrorState>
                 )}
               </>
@@ -679,7 +699,10 @@ export default function OnboardingPage() {
                 {accountsQuery.isError && (
                   <>
                     <ErrorState>
-                      口座の登録状況を確認できませんでした。通信状況を確かめて「もう一度確認する」を押してください。
+                      {describeRequestFailure(
+                        accountsQuery.error,
+                        '口座の登録状況を確認できませんでした。通信状況を確かめて「もう一度確認する」を押してください。',
+                      )}
                     </ErrorState>
                     <button
                       className={ui.buttonGhost}
@@ -749,7 +772,10 @@ export default function OnboardingPage() {
                 )}
                 {completeSectionB.isError && (
                   <ErrorState>
-                    初期残高の登録を完了できませんでした。通信状況を確かめて、もう一度お試しください。
+                    {describeRequestFailure(
+                      completeSectionB.error,
+                      '初期残高の登録を完了できませんでした。通信状況を確かめて、もう一度お試しください。',
+                    )}
                   </ErrorState>
                 )}
               </>
@@ -833,7 +859,12 @@ export default function OnboardingPage() {
                 )}
                 {importStatusQuery.isError && (
                   <>
-                    <ErrorState>今月の取込状況を取得できませんでした</ErrorState>
+                    <ErrorState>
+                      {describeRequestFailure(
+                        importStatusQuery.error,
+                        '今月の取込状況を取得できませんでした',
+                      )}
+                    </ErrorState>
                     <button
                       className={ui.buttonGhost}
                       onClick={() => void importStatusQuery.refetch()}
@@ -870,7 +901,10 @@ export default function OnboardingPage() {
                 </div>
                 {finishSectionF.isError && (
                   <ErrorState>
-                    過去明細の取込の状態を記録できませんでした。通信状況を確かめて、もう一度お試しください。
+                    {describeRequestFailure(
+                      finishSectionF.error,
+                      '過去明細の取込の状態を記録できませんでした。通信状況を確かめて、もう一度お試しください。',
+                    )}
                   </ErrorState>
                 )}
               </>
@@ -888,7 +922,10 @@ export default function OnboardingPage() {
               </button>
               {completePhase2.isError && (
                 <ErrorState>
-                  Phase 2 を完了できませんでした。通信状況を確かめて、もう一度お試しください。
+                  {describeRequestFailure(
+                    completePhase2.error,
+                    'Phase 2 を完了できませんでした。通信状況を確かめて、もう一度お試しください。',
+                  )}
                 </ErrorState>
               )}
             </div>
@@ -935,7 +972,10 @@ export default function OnboardingPage() {
             )}
             {spouseQuery.isError && (
               <ErrorState announce={false}>
-                配偶者の設定状況を取得できませんでした。通信状況を確かめて、もう一度お試しください。
+                {describeRequestFailure(
+                  spouseQuery.error,
+                  '配偶者の設定状況を取得できませんでした。通信状況を確かめて、もう一度お試しください。',
+                )}
               </ErrorState>
             )}
           </div>

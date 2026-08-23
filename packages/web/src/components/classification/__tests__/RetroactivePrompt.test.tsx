@@ -11,7 +11,7 @@ const apiMock = vi.hoisted(() => ({
 // ApiError は実物を使う（失敗の種類で文言を出し分けるため）
 vi.mock('@/lib/api-client', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/api-client')>()
-  return { ...apiMock, ApiError: actual.ApiError }
+  return { ...actual, ...apiMock }
 })
 
 const { RetroactivePrompt } = await import('../RetroactivePrompt')

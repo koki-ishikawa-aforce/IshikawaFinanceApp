@@ -8,6 +8,7 @@ import {
   detectUploadFormat,
   uploadPath,
 } from '../import-upload'
+import { NETWORK_ERROR_MESSAGE } from '@/lib/api-client'
 
 function file(name: string, type = '', size = 10): File {
   return new File(['x'.repeat(size)], name, { type })
@@ -207,14 +208,59 @@ describe('describeUploadError', () => {
     expect(describeUploadError({ selectionError: null, error: null, hasJob: false })).toBeNull()
   })
 
-  it('通信エラーは原因の文言を添えて再試行を促す', () => {
+  it('サーバーが返した失敗は、原因を添えて時間をおいた再試行を促す', () => {
+    // 届いている以上、通信の確認を促しても利用者にできることは無い
     const message = describeUploadError({
       selectionError: null,
-      error: { message: 'Failed to fetch' },
+      error: { status: 500, message: 'Internal server error' },
       hasJob: false,
     })
 
-    expect(message).toContain('Failed to fetch')
-    expect(message).toContain('通信状況')
+    expect(message).toContain('Internal server error')
+    expect(message).toContain('しばらくおいてから')
+    expect(message).not.toContain('通信状況')
+  })
+})
+
+describe('describeUploadError（通信できないとき）', () => {
+  it('通信の失敗は共通の文言をそのまま出す', () => {
+    const message = describeUploadError({
+      selectionError: null,
+      error: { message: NETWORK_ERROR_MESSAGE, network: true },
+      hasJob: false,
+    })
+
+    expect(message).toBe(NETWORK_ERROR_MESSAGE)
+  })
+
+  it('失敗ジョブが返っていれば、通信の失敗でもここでは出さない（ジョブカードに任せる）', () => {
+    const message = describeUploadError({
+      selectionError: null,
+      error: { message: NETWORK_ERROR_MESSAGE, network: true },
+      hasJob: true,
+    })
+
+    expect(message).toBeNull()
+  })
+
+  it('通信の失敗はステータス付きの分岐より優先する', () => {
+    // 届いていないのに「ファイルを確認して」と促すと、直しようのない行動へ誘導することになる
+    const message = describeUploadError({
+      selectionError: null,
+      error: { status: 400, message: NETWORK_ERROR_MESSAGE, network: true },
+      hasJob: false,
+    })
+
+    expect(message).toBe(NETWORK_ERROR_MESSAGE)
+  })
+
+  it('送信前に拒否した理由は通信の失敗より優先する', () => {
+    const message = describeUploadError({
+      selectionError: 'この形式は取り込めません',
+      error: { message: NETWORK_ERROR_MESSAGE, network: true },
+      hasJob: false,
+    })
+
+    expect(message).toBe('この形式は取り込めません')
   })
 })
