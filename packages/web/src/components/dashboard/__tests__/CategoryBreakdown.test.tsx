@@ -56,6 +56,29 @@ const zeroTotalData = CategoryBreakdownViewSchema.parse({
   ],
 })
 
+// 返金が支出を上回って合計が負になった月（割合は 0〜100 に丸められ実態と食い違う）
+const negativeTotalData = CategoryBreakdownViewSchema.parse({
+  mode: 'household',
+  yearMonth: '2026-04',
+  totalAmount: -3000,
+  items: [
+    {
+      categoryId: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      categoryName: '食費',
+      total: 2000,
+      count: 1,
+      percentage: 0,
+    },
+    {
+      categoryId: '01BX5ZZKBKACTAV9WEVGEMMVRZ',
+      categoryName: '娯楽',
+      total: -5000,
+      count: 1,
+      percentage: 100,
+    },
+  ],
+})
+
 const categoryColors = { 食費: '#ff6f90' }
 
 describe('CategoryBreakdown', () => {
@@ -139,7 +162,7 @@ describe('CategoryBreakdown', () => {
     expect(screen.queryByText('0円')).not.toBeInTheDocument()
     expect(
       screen.getByText(
-        'この月は返金などで世帯支出の合計が0円になったため、内訳グラフは表示していません',
+        'この月は返金などで世帯支出の割合を計算できないため、内訳グラフは表示せずカテゴリごとの金額のみ表示しています',
       ),
     ).toBeInTheDocument()
   })
@@ -170,14 +193,14 @@ describe('CategoryBreakdown', () => {
     render(<CategoryBreakdown data={emptyData} categoryColors={categoryColors} />)
 
     expect(screen.getByText('この月の世帯支出はありません')).toBeInTheDocument()
-    expect(screen.queryByText(/内訳グラフは表示していません/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/内訳グラフは表示せず/)).not.toBeInTheDocument()
   })
 
   it('合計が0円でない月は割合表示が残る', () => {
     render(<CategoryBreakdown data={data} categoryColors={categoryColors} />)
 
     expect(screen.getByText('60.0%')).toBeInTheDocument()
-    expect(screen.queryByText(/内訳グラフは表示していません/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/内訳グラフは表示せず/)).not.toBeInTheDocument()
   })
 
   it('個人モードで合計0円のときは個人支出の文言になる', () => {
@@ -190,43 +213,88 @@ describe('CategoryBreakdown', () => {
 
     expect(
       screen.getByText(
-        'この月は返金などで個人支出の合計が0円になったため、内訳グラフは表示していません',
+        'この月は返金などで個人支出の割合を計算できないため、内訳グラフは表示せずカテゴリごとの金額のみ表示しています',
       ),
     ).toBeInTheDocument()
   })
 
-  // 合計が負になる月（返金が支出を上回る）は #340 の決定「合計0円」の範囲外。
-  // 判定条件を誤って <= 0 に広げたことに気づけるよう、現行挙動を固定する
-  it('合計が負の月は現状ドーナツと割合を表示する（0円判定を負値へ広げていない）', () => {
-    const negativeTotalData = CategoryBreakdownViewSchema.parse({
+  // 返金が支出を上回って合計が負になる月。割合が意味を持たない点で合計0円の月と同じ状態
+  // なので、同じ扱い(グラフと割合を隠し、金額は残す)に揃える(#409)
+  it('合計が負の月もドーナツと割合を出さず、案内文に切り替わる', () => {
+    const { container } = render(
+      <CategoryBreakdown data={negativeTotalData} categoryColors={categoryColors} />,
+    )
+
+    expect(container.querySelector('circle')).toBeNull()
+    expect(screen.queryByText('100.0%')).not.toBeInTheDocument()
+    expect(screen.queryAllByText(/%$/)).toHaveLength(0)
+    expect(
+      screen.getByText(
+        'この月は返金などで世帯支出の割合を計算できないため、内訳グラフは表示せずカテゴリごとの金額のみ表示しています',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('合計が負の月もカテゴリ一覧（名前・金額・遷移先）は残る', () => {
+    render(<CategoryBreakdown data={negativeTotalData} categoryColors={categoryColors} />)
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByText('食費')).toBeInTheDocument()
+    expect(screen.getByText('2,000円')).toBeInTheDocument()
+    expect(screen.getByText('娯楽')).toBeInTheDocument()
+    expect(screen.getByText('-5,000円')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /娯楽/ })).toHaveAttribute(
+      'href',
+      '/transactions?month=2026-04&categoryId=01BX5ZZKBKACTAV9WEVGEMMVRZ',
+    )
+  })
+
+  it('個人モードで合計が負のときは個人支出の文言になる', () => {
+    const personalNegativeTotalData = CategoryBreakdownViewSchema.parse({
+      ...negativeTotalData,
+      mode: 'personal',
+    })
+
+    render(<CategoryBreakdown data={personalNegativeTotalData} categoryColors={categoryColors} />)
+
+    expect(
+      screen.getByText(
+        'この月は返金などで個人支出の割合を計算できないため、内訳グラフは表示せずカテゴリごとの金額のみ表示しています',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  // 境界: 1 円でもプラスなら割合は意味を持つ。非表示の判定を 0 より上へ広げていないこと
+  it('合計が1円の月はドーナツと割合を表示する', () => {
+    const oneYenTotalData = CategoryBreakdownViewSchema.parse({
       mode: 'household',
-      yearMonth: '2026-04',
-      totalAmount: -3000,
+      yearMonth: '2026-03',
+      totalAmount: 1,
       items: [
         {
           categoryId: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
           categoryName: '食費',
-          total: 2000,
-          count: 1,
-          percentage: 0,
+          total: 5001,
+          count: 2,
+          percentage: 100,
         },
         {
           categoryId: '01BX5ZZKBKACTAV9WEVGEMMVRZ',
           categoryName: '娯楽',
           total: -5000,
           count: 1,
-          percentage: 100,
+          percentage: 0,
         },
       ],
     })
 
     const { container } = render(
-      <CategoryBreakdown data={negativeTotalData} categoryColors={categoryColors} />,
+      <CategoryBreakdown data={oneYenTotalData} categoryColors={categoryColors} />,
     )
 
     expect(container.querySelector('circle')).not.toBeNull()
     expect(screen.getByText('100.0%')).toBeInTheDocument()
-    expect(screen.queryByText(/内訳グラフは表示していません/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/内訳グラフは表示せず/)).not.toBeInTheDocument()
   })
 
   it('グラフと案内文が入れ替わる領域は支援技術に通知される', () => {
@@ -235,7 +303,7 @@ describe('CategoryBreakdown', () => {
     expect(screen.getByRole('status')).toBeInTheDocument()
 
     rerender(<CategoryBreakdown data={zeroTotalData} categoryColors={categoryColors} />)
-    expect(screen.getByRole('status')).toHaveTextContent('内訳グラフは表示していません')
+    expect(screen.getByRole('status')).toHaveTextContent('内訳グラフは表示せず')
 
     rerender(<CategoryBreakdown data={emptyData} categoryColors={categoryColors} />)
     expect(screen.getByRole('status')).toHaveTextContent('この月の世帯支出はありません')
