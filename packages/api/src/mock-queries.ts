@@ -64,7 +64,7 @@ export function createMockAccountBalanceQuery(): AccountBalanceQuery {
 
 export function createMockBalanceTimeSeriesQuery(): BalanceTimeSeriesQuery {
   return {
-    async fetch(from: YearMonth, to: YearMonth) {
+    async fetch(_viewerId: UserId, from: YearMonth, to: YearMonth) {
       return BalanceTimeSeriesViewSchema.parse({
         yearMonthRange: { from, to },
         smbc: [],

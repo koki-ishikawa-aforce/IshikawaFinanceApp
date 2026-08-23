@@ -27,6 +27,27 @@ export function jstYearMonthOf(at: Date): YearMonth {
 }
 
 /**
+ * JST 暦月の開始時刻（その月の 1 日 00:00 JST）を指す `Date`。
+ *
+ * 発生日時で月を切り出す用途（残高変動履歴の月範囲読み出し、#398）に使う。
+ * `jstYearMonthOf` と同じ JST 基準で境界を引くので、「この瞬間が属する月」と
+ * 「この月の範囲」が食い違わない。
+ */
+export function jstMonthStart(ym: YearMonth): Date {
+  const [year, month] = ym.split('-').map(Number) as [number, number]
+  return new Date(Date.UTC(year, month - 1, 1) - JST_OFFSET_MS)
+}
+
+/**
+ * 翌 JST 暦月の開始時刻。月範囲の上端として「未満」で使う
+ * （月末の最終ミリ秒を意識せずに済み、境界の点が隣の月へ二重に入らない）。
+ */
+export function jstNextMonthStart(ym: YearMonth): Date {
+  const [year, month] = ym.split('-').map(Number) as [number, number]
+  return new Date(Date.UTC(year, month, 1) - JST_OFFSET_MS)
+}
+
+/**
  * JST 暦日（年・月・日）→ 取込側の発生日表現（UTC 深夜 0 時の `Date`）。
  *
  * 時刻を持たない取込元（CSV の計上日、振込入金のお知らせの入金日、引落予定日）は

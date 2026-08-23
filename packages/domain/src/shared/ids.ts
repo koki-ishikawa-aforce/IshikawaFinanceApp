@@ -50,6 +50,9 @@ export type MitsuiSumitomoUnpaidId = z.infer<typeof MitsuiSumitomoUnpaidIdSchema
 export const UnpaidEntryIdSchema = ulidSchema.brand<'UnpaidEntryId'>()
 export type UnpaidEntryId = z.infer<typeof UnpaidEntryIdSchema>
 
+export const BalanceHistoryEntryIdSchema = ulidSchema.brand<'BalanceHistoryEntryId'>()
+export type BalanceHistoryEntryId = z.infer<typeof BalanceHistoryEntryIdSchema>
+
 export const MonthlyReportIdSchema = ulidSchema.brand<'MonthlyReportId'>()
 export type MonthlyReportId = z.infer<typeof MonthlyReportIdSchema>
 

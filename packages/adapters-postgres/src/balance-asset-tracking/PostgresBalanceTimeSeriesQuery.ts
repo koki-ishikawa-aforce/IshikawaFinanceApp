@@ -1,65 +1,59 @@
 /**
  * BalanceTimeSeriesQuery の PostgreSQL 実装
- * @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §4.2
+ * @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §4.2b
  *
- * 専用の残高履歴テーブルは設けない。月次レポート payload 内の
- * common.balanceTrend（4 軸時系列）を月範囲で読み出して合成する
- * （残高スナップショットの正は月次レポートに凍結済み）。
- * レポートが存在しない月は点を寄与しない（欠損月として自然に抜ける）。
+ * 読み出し元は残高変動履歴テーブル（balance_history_entries、#398）。
+ * 月次レポートの balanceTrend は CSV 確定時点の凍結値に位置づけが変わったため、
+ * グラフはそちらではなく履歴を直接読む（#398 で OQ-53 ③ を改訂。月の途中に起きる
+ * 残高変動は、翌月の CSV 取込まで作られない月次レポートには置き場所が無かった）。
  *
- * target_year_month はゼロ埋め 'YYYY-MM' のため辞書順比較が時系列順と一致する。
+ * 履歴は口座ごとに残るため、軸ごとに世帯合算してから返す（`householdBalanceSeriesOfAxis`）。
+ * 期間より前に最後に動いた口座の残高を持ち越すため、期間の起点も併せて読む。
+ * 点が無い月は寄与しない（欠損月として自然に抜ける）挙動は従来どおり。
+ *
+ * 残高は世帯フルオープンのため viewerId で絞らない（絞らないことを明示するために受け取る）。
  */
-import { and, asc, gte, lte } from 'drizzle-orm'
 import type {
-  BalancePoint,
   BalanceTimeSeriesQuery,
   BalanceTimeSeriesView,
+  UserId,
   YearMonth,
 } from '@warimaru/domain'
-import { BalanceTimeSeriesViewSchema, MonthlyReportSchema } from '@warimaru/domain'
+import {
+  BalanceTimeSeriesViewSchema,
+  householdBalanceSeriesOfAxis,
+  jstMonthStart,
+  jstNextMonthStart,
+} from '@warimaru/domain'
 import type { Db } from '../client'
-import { monthlyReports } from '../schema'
-import { parsePayload } from '../serialize'
-
-function sortByDate(points: BalancePoint[]): BalancePoint[] {
-  return [...points].sort((a, b) => a.date.getTime() - b.date.getTime())
-}
+import { PostgresBalanceHistoryRepository } from './PostgresBalanceHistoryRepository'
 
 export class PostgresBalanceTimeSeriesQuery implements BalanceTimeSeriesQuery {
-  constructor(private readonly db: Db) {}
+  private readonly history: PostgresBalanceHistoryRepository
 
-  async fetch(from: YearMonth, to: YearMonth): Promise<BalanceTimeSeriesView> {
-    const rows = await this.db
-      .select({ payload: monthlyReports.payload })
-      .from(monthlyReports)
-      .where(
-        and(gte(monthlyReports.targetYearMonth, from), lte(monthlyReports.targetYearMonth, to)),
-      )
-      .orderBy(asc(monthlyReports.targetYearMonth))
+  constructor(db: Db) {
+    this.history = new PostgresBalanceHistoryRepository(db)
+  }
 
-    const smbc: BalancePoint[] = []
-    const otherSavings: BalancePoint[] = []
-    const nisaContribution: BalancePoint[] = []
-    const cardUnpaid: BalancePoint[] = []
-    for (const row of rows) {
-      const report = parsePayload(MonthlyReportSchema, row.payload)
-      const trend = report.common.balanceTrend
-      smbc.push(...trend.smbcBalanceTrend.map(p => ({ date: p.date, amount: p.balance })))
-      otherSavings.push(
-        ...trend.otherSavingsBalanceTrend.map(p => ({ date: p.date, amount: p.balance })),
-      )
-      nisaContribution.push(
-        ...trend.nisaContributionTrend.map(p => ({ date: p.date, amount: p.accumulated })),
-      )
-      cardUnpaid.push(...trend.cardUnpaidTrend.map(p => ({ date: p.date, amount: p.unpaidTotal })))
-    }
+  async fetch(_viewerId: UserId, from: YearMonth, to: YearMonth): Promise<BalanceTimeSeriesView> {
+    const windowStart = jstMonthStart(from)
+    const [entries, opening] = await Promise.all([
+      this.history.findByOccurredAtRange(windowStart, jstNextMonthStart(to)),
+      this.history.findLatestPerAccountBefore(windowStart),
+    ])
+
+    const seriesOf = (axis: Parameters<typeof householdBalanceSeriesOfAxis>[1]) =>
+      householdBalanceSeriesOfAxis(entries, axis, opening).map(p => ({
+        date: p.occurredAt,
+        amount: p.value,
+      }))
 
     return BalanceTimeSeriesViewSchema.parse({
       yearMonthRange: { from, to },
-      smbc: sortByDate(smbc),
-      otherSavings: sortByDate(otherSavings),
-      nisaContribution: sortByDate(nisaContribution),
-      cardUnpaid: sortByDate(cardUnpaid),
+      smbc: seriesOf('smbc_balance'),
+      otherSavings: seriesOf('other_savings_balance'),
+      nisaContribution: seriesOf('nisa_contribution'),
+      cardUnpaid: seriesOf('card_unpaid'),
     })
   }
 }

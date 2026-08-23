@@ -4,6 +4,7 @@ import {
   finalize,
   confirmCsv,
   refreshCsvConfirmed,
+  freezeBalanceSnapshot,
   aggregateMonthlyReportTotals,
   isIncompleteMonthReport,
   selfTotalsOf,
@@ -290,6 +291,102 @@ describe('confirmCsv() / refreshCsvConfirmed()', () => {
       new Date('2026-06-10'),
     )
     expect(isIncompleteMonthReport(finalized.common)).toBe(true)
+  })
+})
+
+describe('freezeBalanceSnapshot()（#398）', () => {
+  const snapshot = {
+    smbc: [{ occurredAt: new Date('2026-04-10'), value: 1500000 as never }],
+    otherSavings: [{ occurredAt: new Date('2026-04-11'), value: 800000 as never }],
+    nisaContribution: [
+      { occurredAt: new Date('2026-04-12'), value: 300000 as never },
+      { occurredAt: new Date('2026-04-20'), value: 350000 as never },
+    ],
+    cardUnpaid: [{ occurredAt: new Date('2026-04-13'), value: 42000 as never }],
+    nisaContributionAccumulated: 350000 as never,
+  }
+
+  const emptySnapshot = {
+    smbc: [],
+    otherSavings: [],
+    nisaContribution: [],
+    cardUnpaid: [],
+    nisaContributionAccumulated: null,
+  }
+
+  it('4 軸の点を 08c の語彙（残高 / 積立累計 / 未払い合計）へ翻訳して写し取る', () => {
+    const report = confirmCsv(baseCommon as never, [], new Date('2026-05-01'))
+    const frozen = freezeBalanceSnapshot(report, snapshot)
+
+    expect(frozen.common.balanceTrend.smbcBalanceTrend).toEqual([
+      { date: new Date('2026-04-10'), balance: 1500000 },
+    ])
+    expect(frozen.common.balanceTrend.otherSavingsBalanceTrend).toEqual([
+      { date: new Date('2026-04-11'), balance: 800000 },
+    ])
+    expect(frozen.common.balanceTrend.nisaContributionTrend.map(p => p.accumulated)).toEqual([
+      300000, 350000,
+    ])
+    expect(frozen.common.balanceTrend.cardUnpaidTrend).toEqual([
+      { date: new Date('2026-04-13'), unpaidTotal: 42000 },
+    ])
+    expect(frozen.common.nisaContributionAccumulated).toBe(350000)
+  })
+
+  it('集計値・起因取引ID・CSV確定日時は触らない', () => {
+    const report = confirmCsv(
+      { ...baseCommon, personalTotalHoney: 1200 } as never,
+      ['01TX0000000000000000000001' as never],
+      new Date('2026-05-01'),
+    )
+    const frozen = freezeBalanceSnapshot(report, snapshot)
+
+    expect(frozen.common.personalTotalHoney).toBe(1200)
+    expect(frozen.causingTransactionIds).toEqual(['01TX0000000000000000000001'])
+    expect(frozen.csvConfirmedAt).toEqual(new Date('2026-05-01'))
+    expect(frozen.common.monthlyReportId).toBe(baseCommon.monthlyReportId)
+  })
+
+  it('同じ写しを二度当てても結果は変わらない（履歴が正なので何度写しても収束する）', () => {
+    const report = confirmCsv(baseCommon as never, [], new Date('2026-05-01'))
+    const once = freezeBalanceSnapshot(report, snapshot)
+    expect(freezeBalanceSnapshot(once, snapshot)).toEqual(once)
+  })
+
+  it('積立累計が null（履歴なし）なら既存の値を残す — 0 で上書きしない', () => {
+    // LINE の月次サマリは「NISA 積立累計」行を値の有無に関わらず描くため、
+    // ここで 0 を入れると実際とは違う金額が配信される
+    const report = confirmCsv(
+      { ...baseCommon, nisaContributionAccumulated: 300000 } as never,
+      [],
+      new Date('2026-05-01'),
+    )
+    const frozen = freezeBalanceSnapshot(report, emptySnapshot)
+    expect(frozen.common.nisaContributionAccumulated).toBe(300000)
+    expect(frozen.common.balanceTrend.nisaContributionTrend).toEqual([])
+  })
+
+  it('点が 1 つも無い軸は空配列のまま（0 円の残高と取り違えない）', () => {
+    const report = confirmCsv(baseCommon as never, [], new Date('2026-05-01'))
+    const frozen = freezeBalanceSnapshot(report, { ...snapshot, smbc: [] })
+    expect(frozen.common.balanceTrend.smbcBalanceTrend).toEqual([])
+  })
+
+  it('元のレポートは書き換えない', () => {
+    const report = confirmCsv(baseCommon as never, [], new Date('2026-05-01'))
+    freezeBalanceSnapshot(report, snapshot)
+    expect(report.common.balanceTrend.smbcBalanceTrend).toEqual([])
+    expect(report.common.nisaContributionAccumulated).toBe(0)
+  })
+
+  it('壊れた写し（小数の金額）は throw する', () => {
+    const report = confirmCsv(baseCommon as never, [], new Date('2026-05-01'))
+    expect(() =>
+      freezeBalanceSnapshot(report, {
+        ...snapshot,
+        nisaContributionAccumulated: 1.5 as never,
+      }),
+    ).toThrow()
   })
 })
 
