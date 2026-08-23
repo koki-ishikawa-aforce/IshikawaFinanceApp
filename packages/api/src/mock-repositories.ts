@@ -7,6 +7,7 @@ import {
   ConcurrentUpdateError,
   deliveryLogOccurredAt,
   InvariantViolationError,
+  NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION,
   NOT_JOINED_SHARED_TALK_ROOM,
 } from '@warimaru/domain'
 import type {
@@ -60,6 +61,9 @@ import type {
   GmailMessageId,
   GmailOAuthToken,
   GmailOAuthTokenRepository,
+  ActivatedHouseholdNotification,
+  HouseholdNotificationActivation,
+  HouseholdNotificationActivationRepository,
   ImportBatchId,
   ImportJobId,
   MerchantLearningRule,
@@ -624,6 +628,19 @@ export function createMockSharedTalkRoomRepository(): SharedTalkRoomRepository {
     },
     async save(next: JoinedSharedTalkRoom) {
       room = next
+    },
+  }
+}
+
+/** 世帯通知有効化記録（世帯レベル・シングルトン、#447） */
+export function createMockHouseholdNotificationActivationRepository(): HouseholdNotificationActivationRepository {
+  let activation: HouseholdNotificationActivation = NOT_ACTIVATED_HOUSEHOLD_NOTIFICATION
+  return {
+    async find() {
+      return activation
+    },
+    async save(next: ActivatedHouseholdNotification) {
+      activation = next
     },
   }
 }

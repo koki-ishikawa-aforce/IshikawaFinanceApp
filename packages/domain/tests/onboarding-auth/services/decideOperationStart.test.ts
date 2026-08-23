@@ -23,7 +23,6 @@ import type { UserRole } from '../../../src/shared/value-objects/UserRole'
 import {
   decideHouseholdNotificationActivation,
   decideOperationStart,
-  isHouseholdNotificationActive,
 } from '../../../src/onboarding-auth/services/decideOperationStart'
 
 const AT = new Date('2026-03-01T09:00:00Z')
@@ -224,48 +223,5 @@ describe('世帯の通知機能有効化の判定（08f §2「通知機能を有
     expect(decision.changed).toHaveLength(1)
     expect(decision.changed[0]?.common.role).toBe('darling')
     expect(decision.changed.every(isNotificationActivated)).toBe(true)
-  })
-})
-
-describe('世帯の通知機能が有効化済みかの判定（イベント二重発行の防止に使う）', () => {
-  it('運用開始済み・参加済み・両者有効化済みなら true', () => {
-    expect(isHouseholdNotificationActive(activatedMembers(), joinedTalkRoom)).toBe(true)
-  })
-
-  it('片方が未有効化なら false（発行済みとみなさない）', () => {
-    const started = startedMembers()
-    expect(
-      isHouseholdNotificationActive(
-        {
-          honey: activateNotification(started.honey, joinedTalkRoom, AT),
-          darling: started.darling,
-        },
-        joinedTalkRoom,
-      ),
-    ).toBe(false)
-  })
-
-  it('運用開始前は、両者が事前蓄積で有効化済みでも false（発火はこれからのため）', () => {
-    // 事前蓄積（Phase1）で有効化済み・かつ運用開始前。運用開始済みの判定だけが false の理由になる
-    const preActivated = (role: 'honey' | 'darling'): AppUser =>
-      activateNotification(phase2Completed(role, { friendAdded: true }), joinedTalkRoom, AT)
-    const members = { honey: preActivated('honey'), darling: preActivated('darling') }
-    expect(members.honey.kind).toBe('phase2_completed')
-    expect(isNotificationActivated(members.honey)).toBe(true)
-    expect(isNotificationActivated(members.darling)).toBe(true)
-    expect(isHouseholdNotificationActive(members, joinedTalkRoom)).toBe(false)
-  })
-
-  it('共通トークルーム未参加なら false（他の条件がすべて揃っていても）', () => {
-    const members = activatedMembers()
-    expect(isHouseholdNotificationActive(members, joinedTalkRoom)).toBe(true)
-    expect(isHouseholdNotificationActive(members, NOT_JOINED_SHARED_TALK_ROOM)).toBe(false)
-  })
-
-  it('世帯のメンバーが未登録なら false', () => {
-    const members = activatedMembers()
-    expect(
-      isHouseholdNotificationActive({ honey: members.honey, darling: null }, joinedTalkRoom),
-    ).toBe(false)
   })
 })

@@ -56,6 +56,7 @@ import type {
   InitialBalanceRegistrationRef,
   LineFriendshipGateway,
   Phase2InProgressUser,
+  HouseholdNotificationActivationRepository,
   SharedTalkRoomRepository,
   SpouseCompletionQuery,
   UserId,
@@ -87,6 +88,8 @@ export interface OnboardingRoutesDeps {
   appUserRepository: AppUserRepository
   /** 共通トークルーム参加状態の「正」（世帯レベル、OQ-55 ①） */
   sharedTalkRoomRepository: SharedTalkRoomRepository
+  /** 世帯としてテストメッセージの送信を依頼済みかの「正」（世帯レベル、#447） */
+  householdNotificationActivationRepository: HouseholdNotificationActivationRepository
   /** SectionB の事前条件「初期残高が登録された」を残高・資産推移管理コンテキスト越しに照合する */
   accountRepository: AccountRepository
   spouseCompletionQuery: SpouseCompletionQuery

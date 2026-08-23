@@ -16,7 +16,6 @@
 import { InvariantViolationError } from '../../shared/errors/DomainError'
 import type { TalkRoomId } from '../../shared/ids'
 import {
-  isNotificationActivated,
   lineOperationSettingsOf,
   startOperation,
   type AppUser,
@@ -192,21 +191,4 @@ function activatedAtOf(user: AppUser): Date {
     throw new InvariantViolationError('有効化済みのユーザーには有効化日時が必要')
   }
   return activation.activatedAt
-}
-
-/**
- * 世帯の通知機能が既に有効化済みか（= 通知機能有効化イベントを発行済みとみなせる状態か）。
- *
- * 世帯レベルの有効化記録は持たない（per-user の有効化状態と `SharedTalkRoom` の合成で表す）ため、
- * application 層は「呼び出し前は無効・呼び出し後は有効」への変化を見てイベントの二重発行を防ぐ。
- */
-export function isHouseholdNotificationActive(
-  members: HouseholdMembers,
-  sharedTalkRoom: SharedTalkRoom,
-): boolean {
-  const { honey, darling } = members
-  if (honey === null || darling === null) return false
-  if (honey.kind !== 'operation_started' || darling.kind !== 'operation_started') return false
-  if (joinedTalkRoomIdOf(sharedTalkRoom) === undefined) return false
-  return [honey, darling].every(isNotificationActivated)
 }

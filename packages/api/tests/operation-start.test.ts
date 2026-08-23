@@ -195,6 +195,59 @@ describe('fireOperationStartIfReady', () => {
     }
   })
 
+  it('テスト送信の依頼が失敗した回は、次の発火でやり直す（#447）', async () => {
+    // per-user の有効化は保存されるが、世帯の有効化記録は発行が成功して初めて書く。
+    // 記録の有無ではなく per-user の状態から「もう送った」を推測していた頃は、
+    // この回のテストメッセージがその世帯へ二度と送られなかった
+    const t = createTestApp()
+    await seedUsers(t, [honeyReady(), darlingReady()])
+    await joinTalkRoom(t)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const publish = t.deps.eventBus.publish.bind(t.deps.eventBus)
+    t.deps.eventBus.publish = (event): Promise<void> =>
+      event.type === 'NotificationActivated'
+        ? Promise.reject(new Error('publish failed'))
+        : publish(event)
+    try {
+      await expect(
+        fireOperationStartIfReady(t.deps, { trigger: 'phase2_complete', at: AT }),
+      ).rejects.toThrow('publish failed')
+    } finally {
+      t.deps.eventBus.publish = publish
+      logged.mockRestore()
+    }
+
+    const log = subscribeEvents(t)
+    const outcome = await fireOperationStartIfReady(t.deps, {
+      trigger: 'spouse_completion_check',
+      at: new Date('2026-03-02T09:00:00Z'),
+    })
+    expect(outcome).toEqual({ operation: 'already_started', notification: 'activated' })
+    expect(log.notificationActivated).toHaveLength(1)
+    expect(log.testMessageSent).toHaveLength(1)
+    // 有効化日時は保存済みの per-user の値から導くため、やり直しでも変わらない
+    // （配信側の冪等性キーがずれて同じメッセージが二重に届くことを防ぐ）
+    expect(log.notificationActivated[0]?.activatedAt).toEqual(AT)
+  })
+
+  it('発行に成功した世帯は、per-user の状態に関わらず再発行しない（#447）', async () => {
+    const t = createTestApp()
+    await seedUsers(t, [honeyReady(), darlingReady()])
+    await joinTalkRoom(t)
+    await fireOperationStartIfReady(t.deps, { trigger: 'phase2_complete', at: AT })
+
+    const log = subscribeEvents(t)
+    // 世帯の記録が唯一の根拠であることを示すため、per-user の有効化を巻き戻した状態で再発火する
+    await seedUsers(t, [startOperation(honeyReady(), AT), startOperation(darlingReady(), AT)])
+    const outcome = await fireOperationStartIfReady(t.deps, {
+      trigger: 'line_friend_added',
+      at: new Date('2026-03-02T09:00:00Z'),
+    })
+    expect(outcome).toEqual({ operation: 'already_started', notification: 'already_active' })
+    expect(log.notificationActivated).toHaveLength(0)
+    expect(log.testMessageSent).toHaveLength(0)
+  })
+
   it('発行に失敗したら呼出し元へ伝播する（黙って落とさない）', async () => {
     const t = createTestApp()
     await seedUsers(t, [honeyReady(), darlingReady()])

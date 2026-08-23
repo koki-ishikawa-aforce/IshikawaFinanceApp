@@ -1,5 +1,6 @@
 export * from './PostgresAppUserRepository'
 export * from './PostgresGmailOAuthTokenRepository'
+export * from './PostgresHouseholdNotificationActivationRepository'
 export * from './PostgresSharedTalkRoomRepository'
 export * from './PostgresSpouseCompletionQuery'
 export * from './resolveViewerRole'

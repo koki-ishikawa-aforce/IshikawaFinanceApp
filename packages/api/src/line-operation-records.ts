@@ -20,6 +20,7 @@ import type {
   AppUser,
   AppUserRepository,
   EventBus,
+  HouseholdNotificationActivationRepository,
   SharedTalkRoom,
   SharedTalkRoomRepository,
   TalkRoomId,
@@ -37,12 +38,14 @@ import { tryFireOperationStart } from './operation-start.js'
 export interface LineFriendAddedDeps {
   appUserRepository: AppUserRepository
   sharedTalkRoomRepository: SharedTalkRoomRepository
+  householdNotificationActivationRepository: HouseholdNotificationActivationRepository
   eventBus: EventBus
 }
 
 export interface SharedTalkRoomJoinedDeps {
   appUserRepository: AppUserRepository
   sharedTalkRoomRepository: SharedTalkRoomRepository
+  householdNotificationActivationRepository: HouseholdNotificationActivationRepository
   eventBus: EventBus
 }
 

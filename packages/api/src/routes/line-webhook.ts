@@ -33,6 +33,7 @@ import type {
   LineTalkRoomMembershipGateway,
   LineTalkRoomMembershipStatus,
   SharedTalkRoomJoinSkipReason,
+  HouseholdNotificationActivationRepository,
   SharedTalkRoomRepository,
 } from '@warimaru/domain'
 import type { LineTalkRoomKind, TalkRoomId, UserId, UserRole } from '@warimaru/domain'
@@ -60,6 +61,8 @@ const MAX_JOIN_ATTEMPTS_PER_REQUEST = 3
 export interface LineWebhookRoutesDeps {
   appUserRepository: AppUserRepository
   sharedTalkRoomRepository: SharedTalkRoomRepository
+  /** 世帯としてテストメッセージの送信を依頼済みかの「正」（世帯レベル、#447） */
+  householdNotificationActivationRepository: HouseholdNotificationActivationRepository
   /** 署名検証鍵の解決（OQ-55 ④: 開発環境の環境変数、または Phase0Config の保管参照 → Parameter Store 復号） */
   resolveLineChannelSecret: () => Promise<string>
   /** 招待されたトークルームに世帯のユーザーが在籍しているかの照会（#371、OQ-55 ①） */
