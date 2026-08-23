@@ -13,7 +13,14 @@
  */
 import { jstCalendarParts } from '../../shared/value-objects/JstCalendar'
 import type { Money } from '../../shared/value-objects/Money'
-import type { BankDepositPurposeRule } from '../value-objects/BankDepositPurposeRule'
+import {
+  bankDepositPurposeRule,
+  type BankDepositPurposeRule,
+} from '../value-objects/BankDepositPurposeRule'
+import {
+  employerRemitterNamesOf,
+  type EmployerRemitterDirectory,
+} from '../aggregates/EmployerRemitterDirectory'
 import { normalizeRemitterName } from '../value-objects/NormalizedRemitterName'
 import { DepositPurposeSchema, type DepositPurpose } from '../value-objects/DepositPurpose'
 import {
@@ -39,6 +46,14 @@ function depositDaySignal(occurredAt: Date, payoutDayWindow: number): PurposeSig
 /** 金額シグナル（OQ-21 ②）。閾値以上なら給与寄り、未満なら経費精算寄り */
 function depositAmountSignal(amount: Money, thresholdAmount: Money): PurposeSignal {
   return amount >= thresholdAmount ? 'salary' : 'expense_reimbursement'
+}
+
+/** 用途不明（暫定処理 = 手動確認待ち）。判別の落とし先が 3 か所あるため 1 か所で組み立てる */
+function awaitingManualConfirmation(): DepositPurpose {
+  return DepositPurposeSchema.parse({
+    kind: 'unknown',
+    provisionalHandling: 'awaiting_manual_confirmation',
+  })
 }
 
 export interface BankDepositPurposeInput {
@@ -75,21 +90,54 @@ export function determineBankDepositPurpose(
   }
 
   if (!rule.employerRemitterNames.includes(remitterName)) {
-    return DepositPurposeSchema.parse({
-      kind: 'unknown',
-      provisionalHandling: 'awaiting_manual_confirmation',
-    })
+    return awaitingManualConfirmation()
   }
 
   const daySignal = depositDaySignal(input.occurredAt, rule.salaryPayoutDayWindow)
   const amountSignal = depositAmountSignal(input.amount, rule.salaryThresholdAmount)
   if (daySignal !== amountSignal) {
-    return DepositPurposeSchema.parse({
-      kind: 'unknown',
-      provisionalHandling: 'awaiting_manual_confirmation',
-    })
+    return awaitingManualConfirmation()
   }
   return DepositPurposeSchema.parse({ kind: daySignal })
+}
+
+/** 勤務先振込元名以外の判別ルール。世帯共通の口座ルールとして呼び出し側が与える */
+export interface BankDepositPurposeRuleOptions {
+  otherSavingsCounterpartyNames?: string[]
+  salaryPayoutDayWindow?: number
+  salaryThresholdAmount?: Money
+}
+
+/**
+ * behavior 銀行入金の用途を判別する を、利用者の勤務先振込元名簿を入口にして実行する
+ * （08d §2、#448 / OQ-61）。
+ *
+ * 勤務先振込元名パターンは利用者ごとの名簿（`EmployerRemitterDirectory`）が正で、
+ * 判別ルールはここで組み立てる。呼び出し側（日次メール取込バッチ #414 / #35）に
+ * ルールの組み立てを持たせると、名簿を読まずに固定値で判別する経路が生まれる。
+ *
+ * 事後: 名簿が空（勤務先を一度も登録していない利用者）→ 別銀行戻しだけは判別し、
+ *       それ以外は用途不明（手動確認待ち）。最初の 1 件を確認窓口で確定するときに
+ *       名簿へ登録され、以後の同じ振込元は自動確定に乗る（OQ-61 ①）
+ */
+export function determineBankDepositPurposeForUser(
+  input: BankDepositPurposeInput,
+  directory: EmployerRemitterDirectory,
+  ruleOptions: BankDepositPurposeRuleOptions = {},
+): DepositPurpose {
+  const employerRemitterNames = employerRemitterNamesOf(directory)
+  if (employerRemitterNames.length === 0) {
+    const counterparties = (ruleOptions.otherSavingsCounterpartyNames ?? []).map(
+      normalizeRemitterName,
+    )
+    return counterparties.includes(normalizeRemitterName(input.remitterName))
+      ? DepositPurposeSchema.parse({ kind: 'other_savings_return' })
+      : awaitingManualConfirmation()
+  }
+  return determineBankDepositPurpose(
+    input,
+    bankDepositPurposeRule({ ...ruleOptions, employerRemitterNames }),
+  )
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   TransactionIdSchema,
   UserIdSchema,
   determineBankDepositPurpose,
+  determineBankDepositPurposeForUser,
   bankDepositPurposeRule,
   money,
   recordBankDeposit,
@@ -78,7 +79,13 @@ async function seedDeposit(
 const AMBIGUOUS = { amount: 300_000, occurredAt: jstNoon(2026, 7, 10), remitterName: EMPLOYER }
 
 interface AwaitingWire {
-  deposits: { bankDepositId: string; amount: number; occurredAt: string; remitterName: string }[]
+  deposits: {
+    bankDepositId: string
+    amount: number
+    occurredAt: string
+    remitterName: string
+    employerRemitterRegistered: boolean
+  }[]
 }
 
 describe('GET /api/bank-deposits/awaiting', () => {
@@ -101,6 +108,8 @@ describe('GET /api/bank-deposits/awaiting', () => {
       // 入金日は用途を判断する主要な手がかりなので応答に必ず載る
       occurredAt: AMBIGUOUS.occurredAt.toISOString(),
       remitterName: EMPLOYER,
+      // まだ勤務先として覚えていないので「今後も勤務先として扱う」を出してよい（#448）
+      employerRemitterRegistered: false,
     })
   })
 
@@ -454,6 +463,135 @@ describe('POST /api/bank-deposits/:id/purpose', () => {
       const res = await t.app.request('/api/bank-deposits/awaiting')
       expect(res.status).toBe(401)
     })
+  })
+})
+
+describe('確定と同時に勤務先の振込元名を覚える（#448 / OQ-61）', () => {
+  let t: TestApp
+
+  beforeEach(() => {
+    t = createTestApp()
+  })
+
+  const path = (deposit: BankDeposit): string =>
+    `/api/bank-deposits/${deposit.common.bankDepositId}/purpose`
+
+  it('給与として確定しつつ登録すると、名簿にその振込元が載る', async () => {
+    const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+
+    const res = await request(t.app, 'POST', path(deposit), {
+      body: { purpose: 'salary', registerRemitterAsEmployer: true },
+    })
+    expect(res.status).toBe(200)
+    expect(await json<{ employerRemitterRegistered: boolean }>(res)).toMatchObject({
+      employerRemitterRegistered: true,
+    })
+
+    const directory = await t.deps.employerRemitterDirectoryRepository.findByOwner(VIEWER_ID)
+    expect(directory.entries).toHaveLength(1)
+    expect(directory.entries[0]?.displayName).toBe(EMPLOYER)
+  })
+
+  it('登録を選ばなければ名簿は空のまま（既定では覚えない）', async () => {
+    const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+
+    await request(t.app, 'POST', path(deposit), { body: { purpose: 'salary' } })
+
+    const directory = await t.deps.employerRemitterDirectoryRepository.findByOwner(VIEWER_ID)
+    expect(directory.entries).toHaveLength(0)
+  })
+
+  it('覚えたあとの同じ振込元の入金は登録済みとして一覧に出る', async () => {
+    const first = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+    await request(t.app, 'POST', path(first), {
+      body: { purpose: 'salary', registerRemitterAsEmployer: true },
+    })
+    await seedDeposit(t, {
+      userId: VIEWER_ID,
+      ...AMBIGUOUS,
+      occurredAt: jstNoon(2026, 8, 10),
+    })
+
+    const body = await json<AwaitingWire>(
+      await request(t.app, 'GET', '/api/bank-deposits/awaiting'),
+    )
+    expect(body.deposits).toHaveLength(1)
+    expect(body.deposits[0]?.employerRemitterRegistered).toBe(true)
+  })
+
+  it('覚えた振込元は次の入金から自動確定に乗る（手動確認に落ちなくなる）', async () => {
+    const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+    await request(t.app, 'POST', path(deposit), {
+      body: { purpose: 'salary', registerRemitterAsEmployer: true },
+    })
+
+    const directory = await t.deps.employerRemitterDirectoryRepository.findByOwner(VIEWER_ID)
+    // 実運用ではこの判別を日次メール取込バッチ（#414 / #35）が行う
+    const purpose = determineBankDepositPurposeForUser(
+      {
+        amount: money(300_000),
+        occurredAt: jstNoon(2026, 8, 31),
+        remitterName: EMPLOYER,
+      },
+      directory,
+    )
+    expect(purpose).toEqual({ kind: 'salary' })
+  })
+
+  it('同じ用途で確定し直しても登録は増えない（反映のやり直しで名簿が壊れない）', async () => {
+    const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
+    const body = { body: { purpose: 'salary', registerRemitterAsEmployer: true } }
+
+    await request(t.app, 'POST', path(deposit), body)
+    await request(t.app, 'POST', path(deposit), body)
+
+    const directory = await t.deps.employerRemitterDirectoryRepository.findByOwner(VIEWER_ID)
+    expect(directory.entries).toHaveLength(1)
+  })
+
+  it('否定形: 別銀行戻しの振込元は勤務先として覚えられない', async () => {
+    const deposit = await seedDeposit(t, {
+      userId: VIEWER_ID,
+      amount: 300_000,
+      occurredAt: jstNoon(2026, 7, 10),
+      remitterName: SAVINGS_BANK,
+    })
+
+    const res = await request(t.app, 'POST', path(deposit), {
+      body: { purpose: 'other_savings_return', registerRemitterAsEmployer: true },
+    })
+    expect(res.status).toBe(409)
+
+    const directory = await t.deps.employerRemitterDirectoryRepository.findByOwner(VIEWER_ID)
+    expect(directory.entries).toHaveLength(0)
+  })
+
+  it('否定形: 配偶者の入金からは自分の名簿に登録できない', async () => {
+    const deposit = await seedDeposit(t, { userId: SPOUSE_ID, ...AMBIGUOUS })
+
+    const res = await request(t.app, 'POST', path(deposit), {
+      body: { purpose: 'salary', registerRemitterAsEmployer: true },
+      viewerId: VIEWER_ID,
+    })
+    expect(res.status).toBe(403)
+
+    const directory = await t.deps.employerRemitterDirectoryRepository.findByOwner(VIEWER_ID)
+    expect(directory.entries).toHaveLength(0)
+  })
+
+  it('否定形: 配偶者が覚えた勤務先は自分の名簿には現れない（プライバシー3段階ルール）', async () => {
+    const spouseDeposit = await seedDeposit(t, { userId: SPOUSE_ID, ...AMBIGUOUS })
+    await request(t.app, 'POST', path(spouseDeposit), {
+      body: { purpose: 'salary', registerRemitterAsEmployer: true },
+      viewerId: SPOUSE_ID,
+    })
+
+    expect(
+      (await t.deps.employerRemitterDirectoryRepository.findByOwner(SPOUSE_ID)).entries,
+    ).toHaveLength(1)
+    expect(
+      (await t.deps.employerRemitterDirectoryRepository.findByOwner(VIEWER_ID)).entries,
+    ).toHaveLength(0)
   })
 })
 

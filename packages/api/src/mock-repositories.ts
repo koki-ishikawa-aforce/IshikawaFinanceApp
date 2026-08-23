@@ -4,6 +4,7 @@
  */
 import {
   concludesDelivery,
+  emptyEmployerRemitterDirectory,
   ConcurrentUpdateError,
   deliveryLogOccurredAt,
   InvariantViolationError,
@@ -25,6 +26,8 @@ import type {
   BankDeposit,
   BankDepositId,
   BankDepositRepository,
+  EmployerRemitterDirectory,
+  EmployerRemitterDirectoryRepository,
   BulkClassificationSession,
   BulkClassificationSessionId,
   BulkClassificationSessionRepository,
@@ -549,6 +552,34 @@ export function createMockBankDepositRepository(): BankDepositRepository {
         )
       }
       store.set(deposit.common.bankDepositId, deposit)
+    },
+  }
+}
+
+/**
+ * 勤務先振込元名簿（#448）。PostgreSQL 実装と同じく追記のみで、既に載っている
+ * 正規化済み振込元名は上書きしない（登録日時と表示用の名前を初回のまま据え置く）。
+ */
+export function createMockEmployerRemitterDirectoryRepository(): EmployerRemitterDirectoryRepository {
+  const store = new Map<string, EmployerRemitterDirectory>()
+  return {
+    async findByOwner(userId: UserId) {
+      return store.get(userId) ?? emptyEmployerRemitterDirectory(userId)
+    },
+    async save(directory: EmployerRemitterDirectory) {
+      const stored = store.get(directory.userId)
+      if (stored === undefined) {
+        store.set(directory.userId, directory)
+        return
+      }
+      const known = new Set(stored.entries.map(e => e.normalizedName))
+      store.set(directory.userId, {
+        userId: directory.userId,
+        entries: [
+          ...stored.entries,
+          ...directory.entries.filter(e => !known.has(e.normalizedName)),
+        ],
+      })
     },
   }
 }

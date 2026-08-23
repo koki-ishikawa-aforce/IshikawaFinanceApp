@@ -4,6 +4,7 @@ import type {
   AllowlistQuery,
   BalanceHistoryRepository,
   BankDepositRepository,
+  EmployerRemitterDirectoryRepository,
   AppUserRepository,
   BalanceTimeSeriesQuery,
   BulkClassificationSessionRepository,
@@ -54,6 +55,7 @@ import {
   PostgresAccountRepository,
   PostgresBalanceHistoryRepository,
   PostgresBankDepositRepository,
+  PostgresEmployerRemitterDirectoryRepository,
   PostgresAllowlistQuery,
   PostgresAppUserRepository,
   PostgresGmailOAuthTokenRepository,
@@ -137,6 +139,7 @@ import {
   createMockAccountRepository,
   createMockBalanceHistoryRepository,
   createMockBankDepositRepository,
+  createMockEmployerRemitterDirectoryRepository,
   createMockAppUserRepository,
   createMockGmailOAuthTokenRepository,
   createMockPdfToCsvConverter,
@@ -177,6 +180,8 @@ export interface AppDeps {
   accountRepository: AccountRepository
   // 入金用途判別 (#390): 手動確認待ちの入金の参照・確定
   bankDepositRepository: BankDepositRepository
+  // 勤務先振込元名簿 (#448): 確定窓口で覚えた振込元名。自動判別の入口になる
+  employerRemitterDirectoryRepository: EmployerRemitterDirectoryRepository
   // 残高変動履歴 (#398): 資産の推移グラフの正。残高が動くたびに追記される
   balanceHistoryRepository: BalanceHistoryRepository
   expenseSettlementManagementQuery: ExpenseSettlementManagementQuery
@@ -477,6 +482,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     balanceTimeSeriesQuery: createMockBalanceTimeSeriesQuery(),
     accountRepository: createMockAccountRepository(),
     bankDepositRepository: createMockBankDepositRepository(),
+    employerRemitterDirectoryRepository: createMockEmployerRemitterDirectoryRepository(),
     balanceHistoryRepository: createMockBalanceHistoryRepository(),
     expenseSettlementManagementQuery: createMockExpenseSettlementManagementQuery(),
     csvImportStatusQuery: createMockCsvImportStatusQuery(),
@@ -648,6 +654,7 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     balanceTimeSeriesQuery: new PostgresBalanceTimeSeriesQuery(db),
     accountRepository: new PostgresAccountRepository(db),
     bankDepositRepository: new PostgresBankDepositRepository(db),
+    employerRemitterDirectoryRepository: new PostgresEmployerRemitterDirectoryRepository(db),
     balanceHistoryRepository: new PostgresBalanceHistoryRepository(db),
     expenseSettlementManagementQuery: new PostgresExpenseSettlementManagementQuery(db, { now }),
     csvImportStatusQuery: new PostgresCsvImportStatusQuery(db),

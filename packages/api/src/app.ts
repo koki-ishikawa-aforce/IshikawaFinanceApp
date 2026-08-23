@@ -95,6 +95,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     '/api/bank-deposits',
     bankDepositsRoutes({
       bankDepositRepository: deps.bankDepositRepository,
+      employerRemitterDirectoryRepository: deps.employerRemitterDirectoryRepository,
       accountRepository: deps.accountRepository,
       eventBus: deps.eventBus,
     }),

@@ -7,8 +7,14 @@ import {
   NotFoundError,
   canViewBankDeposit,
   confirmBankDepositPurpose,
+  isRegisteredEmployerRemitter,
+  registerEmployerRemitterFromDeposit,
 } from '@warimaru/domain'
-import type { BankDeposit, BankDepositRepository } from '@warimaru/domain'
+import type {
+  BankDeposit,
+  BankDepositRepository,
+  EmployerRemitterDirectoryRepository,
+} from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import {
@@ -18,24 +24,37 @@ import {
 
 const ConfirmPurposeBodySchema = z.object({
   purpose: DeterminedDepositPurposeSchema,
+  /**
+   * この入金の振込元を、以後も勤務先からの入金として扱う（勤務先振込元名簿へ登録する）。
+   * 既定は登録しない。勤務先の登録経路はこの窓口 1 本に閉じる（#448 / OQ-61 ①）
+   */
+  registerRemitterAsEmployer: z.boolean().default(false),
 })
 
 export interface BankDepositsRoutesDeps extends BankDepositPurposeServiceDeps {
   bankDepositRepository: BankDepositRepository
+  employerRemitterDirectoryRepository: EmployerRemitterDirectoryRepository
 }
 
 /** 一覧・確定応答の表現。集約の内部形をそのまま返さず、画面が使う値だけを載せる */
-function toAwaitingView(deposit: BankDeposit): {
+function toAwaitingView(
+  deposit: BankDeposit,
+  employerRemitterRegistered: boolean,
+): {
   bankDepositId: string
   amount: number
   occurredAt: Date
   remitterName: string
+  employerRemitterRegistered: boolean
 } {
   return {
     bankDepositId: deposit.common.bankDepositId,
     amount: deposit.common.amount,
     occurredAt: deposit.common.occurredAt,
     remitterName: deposit.common.remitterName,
+    // 既に覚えている振込元に「今後も勤務先として扱う」を出しても意味がないため、
+    // 画面が出し分けられるよう登録済みかどうかを添える（#448）
+    employerRemitterRegistered,
   }
 }
 
@@ -48,6 +67,11 @@ function toAwaitingView(deposit: BankDeposit): {
  * プライバシー: 給与額・経費精算入金は個人に閉じる情報のため、参照も確定も本人のみ。
  * 一覧は viewer 自身の分だけを引き、確定時の所有者検証は集約
  * （`confirmBankDepositPurpose`）が行う（API 層で不変条件を再実装しない）。
+ *
+ * 確定と同時に、その振込元を「以後も勤務先からの入金として扱う」と覚えさせられる
+ * （#448 / OQ-61）。勤務先振込元名の登録経路はこの窓口 1 本に閉じており、設定画面での
+ * 手入力は作らない。覚えた名前は次の入金から自動判別の入口
+ * （`determineBankDepositPurposeForUser`）で使われ、同じ振込元は手動確認に落ちなくなる。
  */
 export function bankDepositsRoutes(deps: BankDepositsRoutesDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
@@ -56,10 +80,15 @@ export function bankDepositsRoutes(deps: BankDepositsRoutesDeps): Hono<AppEnv> {
   app.get('/awaiting', async c => {
     const viewerId = c.get('viewerId')
     const deposits = await deps.bankDepositRepository.findAwaitingManualConfirmationByUser(viewerId)
+    const directory = await deps.employerRemitterDirectoryRepository.findByOwner(viewerId)
     // Repository は本人分だけを引くが、絞り込み漏れがそのまま露出にならないよう
     // ドメイン側の可視判定でも通す（プライバシー3段階ルール）
     return c.json({
-      deposits: deposits.filter(d => canViewBankDeposit(d, viewerId)).map(toAwaitingView),
+      deposits: deposits
+        .filter(d => canViewBankDeposit(d, viewerId))
+        .map(d =>
+          toAwaitingView(d, isRegisteredEmployerRemitter(directory, d.common.remitterName)),
+        ),
     })
   })
 
@@ -84,9 +113,30 @@ export function bankDepositsRoutes(deps: BankDepositsRoutesDeps): Hono<AppEnv> {
       at: now,
     })
     await deps.bankDepositRepository.save(confirmed)
+
+    // 勤務先として覚えるのは確定を保存できたあと。確定しなかった入金の振込元を
+    // 覚えてしまうと、以後その振込元が本人の確認を経ずに給与・経費精算へ倒れる。
+    // 用途の確定と別集約への順次保存になるため、ここで失敗すると「確定済みだが未登録」が
+    // 残るが、同じ用途での確定し直し（反映の前方回復と同じ入口）が登録まで到達させる
+    // （登録は冪等）
+    if (body.registerRemitterAsEmployer) {
+      const directory = await deps.employerRemitterDirectoryRepository.findByOwner(viewerId)
+      await deps.employerRemitterDirectoryRepository.save(
+        registerEmployerRemitterFromDeposit(directory, {
+          deposit: confirmed,
+          operatorUserId: viewerId,
+          at: now,
+        }),
+      )
+    }
+
     await applyDeterminedBankDepositPurpose(deps, confirmed, now)
 
-    return c.json({ bankDepositId, purpose: confirmed.kind })
+    return c.json({
+      bankDepositId,
+      purpose: confirmed.kind,
+      employerRemitterRegistered: body.registerRemitterAsEmployer,
+    })
   })
 
   return app
