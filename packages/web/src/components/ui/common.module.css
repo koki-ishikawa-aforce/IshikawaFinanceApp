@@ -170,14 +170,20 @@
 }
 
 /**
- * リンクの見た目のボタン（一覧の行に並べる「編集」「削除」など）。
- * `.buttonLink`（ボタンの見た目のリンク）とは逆で、要素は `&lt;button&gt;`。
- * 行内に並べても指で押せるよう、高さの下限だけはボタンと揃える（usability 4-3）
+ * 文字だけのボタン（一覧の行に並べる「改名」「削除」など）。見た目はリンクだが要素は
+ * `&lt;button&gt;`（`.buttonLink` はその逆で、ボタンの見た目のリンク）。
+ *
+ * 「改名」のような 2 文字は文字の幅だけでは 44×44 に届かないため、下限を縦横とも
+ * 明示する（usability 4-3）。幅は中身に合わせて広がる（`fit-content`）ので、
+ * 文字数が増えても下限に縛られない。`align-self` で寄せると横並びの行では上下方向の
+ * 意味に変わるため使わない
  */
-.linkButton {
+.textButton {
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
+  justify-content: center;
+  width: fit-content;
+  min-width: var(--tap-target-min);
   min-height: var(--tap-target-min);
   border: none;
   background: none;
@@ -188,8 +194,8 @@
   padding: var(--space-0_5);
 }
 
-/** `.linkButton` と併用する色の修飾子。本文サイズのため `--error` ではなく文字用の `--error-text` を使う */
-.linkDanger {
+/** `.textButton` と併用する色の修飾子。本文サイズのため `--error` ではなく文字用の `--error-text` を使う */
+.textButtonDanger {
   color: var(--error-text);
 }
 

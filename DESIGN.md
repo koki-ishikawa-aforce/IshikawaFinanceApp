@@ -48,7 +48,7 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 - **フォントサイズ（`--text-*`）**: KPI ラベルの極小（`--text-xs`）から hero 値の最大（`--text-3xl`）まで 8 段階
 - **アイコンサイズ（`--icon-*`）**: 小 / 中 / 大の 3 段階。px ではなく隣接するテキストに対する相対値（`em`）で定義し、文字サイズを変えたときにアイコンだけ取り残されないようにする（§4 大きさ）
 - **書体（`--font-family`）**: 丸ゴシック（Zen Maru Gothic）。`html, body` に加えてフォーム要素（`button` / `input` / `select` / `textarea`）にも `globals.css` で継承させているため、**コンポーネント側で `font-family` を再指定しない**（UA スタイルシートの打ち消しはグローバル 1 か所に集約する）
-- **色**: テーマ色（`--accent` / `--bg-gradient` / `--kpi-*` 等）、ロール識別色（`--role-darling` / `--role-honey`、テーマ非依存）、カテゴリ色（`--cat-*`）、意味対応色（`--success` / `--warning` / `--error` 等）
+- **色**: テーマ色（`--accent` / `--bg-gradient` / `--kpi-*` 等）、ロール識別色（`--role-darling` / `--role-honey`、テーマ非依存）、カテゴリ色（`--cat-*`）、意味対応色（`--success` / `--warning` / `--error` 等）、構造色（区切り線の `--divider`、テーマ非依存）
 - **影（`--shadow-*`）**: 用途別の合成トークン（`--shadow-sm` 〜 `--shadow-modal`）。テーマ依存の `--shadow-color` / `--shadow-strong` を遅延解決する
 
 ### 使用ルール
@@ -130,5 +130,6 @@ JSX に絵文字（Unicode Emoji）を表示目的で埋め込まない。装飾
 - 空状態（「〜がありません」）を画面ごとに書き起こさない — 共通部品 `EmptyState`（`packages/web/src/components/ui/EmptyState.tsx`）を使い、`*.module.css` に独自の空状態スタイルを定義しない
 - ローディング（「読み込み中...」）・エラー（「〜の取得に失敗しました」）を画面ごとに書き起こさない — 共通部品 `LoadingState`（`packages/web/src/components/ui/LoadingState.tsx`）・`ErrorState`（同 `ErrorState.tsx`）を使い、`*.module.css` に独自の `.loading` / `.error` を定義しない
 - 取得失敗からの再読み込みを画面ごとに書き起こさない — `ErrorState` の `onRetry` に渡す（文言と置き場所が揃い、ボタンが読み上げ範囲の外に置かれる）
+- 補足文（`.note`）・注意書き（`.warning`）・一覧の行に並べるリンク風のボタン（`.textButton` / `.textButtonDanger`）を画面ごとに定義しない — `common.module.css` の共通クラスを使う
 - 金額カード（`--kpi-*` を背景に敷く面）の上の文字を `opacity` で薄くしない — 背景が透けたぶんコントラストが落ち、4.5:1 を割る
 - 金額カードの文字色 `--text-on-kpi` を他の面に流用しない — だーりんでは濃色のため、濃い面（`--text-primary` 等）の上では読めない

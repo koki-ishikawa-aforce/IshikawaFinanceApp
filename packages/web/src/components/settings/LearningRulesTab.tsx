@@ -168,7 +168,7 @@ function MerchantRuleRow({
             最終更新日: {formatDateWithYear(rule.lastUpdatedAt)}
           </span>
           <button
-            className={`${ui.linkButton} ${ui.linkDanger}`}
+            className={`${ui.textButton} ${ui.textButtonDanger}`}
             onClick={() => onAction('disable')}
             aria-label={`${rule.common.merchantName}の学習を止める`}
           >
@@ -179,7 +179,7 @@ function MerchantRuleRow({
         <>
           <span className={styles.ruleMeta}>停止した日: {formatDateWithYear(rule.disabledAt)}</span>
           <button
-            className={ui.linkButton}
+            className={ui.textButton}
             onClick={() => onAction('reenable')}
             aria-label={`${rule.common.merchantName}の学習を再開する`}
           >

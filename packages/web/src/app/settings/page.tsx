@@ -88,7 +88,12 @@ function ProfileForm({
       </div>
       <p className={ui.note}>空欄で保存するとニックネームを解除し、ロール名の表示に戻ります。</p>
       {save.error && <ErrorState>{save.error.message}</ErrorState>}
-      {save.isSuccess && <p className={ui.note}>保存しました</p>}
+      {/* 失敗は ErrorState が読み上げる。成功も同じように伝える(usability 8-4) */}
+      {save.isSuccess && (
+        <p className={ui.note} role="status">
+          保存しました
+        </p>
+      )}
       <button className={ui.button} disabled={save.isPending} onClick={() => save.mutate()}>
         {save.isPending ? '保存中...' : '保存'}
       </button>
@@ -222,7 +227,11 @@ function AccountRow({ account, onEdit }: { account: OwnAccountWire; onEdit: (() 
       <span className={styles.rowActions}>
         {detail !== null && <span className={styles.limitValue}>{detail}</span>}
         {onEdit !== null ? (
-          <button className={ui.linkButton} onClick={onEdit}>
+          <button
+            className={ui.textButton}
+            aria-label={`${ACCOUNT_KIND_LABELS[account.kind]}を編集`}
+            onClick={onEdit}
+          >
             編集
           </button>
         ) : (
@@ -481,7 +490,8 @@ function CategoriesTab() {
             ) : (
               <span className={styles.rowActions}>
                 <button
-                  className={ui.linkButton}
+                  className={ui.textButton}
+                  aria-label={`${category.name}を改名`}
                   onClick={() => {
                     setRenaming(category)
                     setRenameValue(category.name)
@@ -490,7 +500,8 @@ function CategoriesTab() {
                   改名
                 </button>
                 <button
-                  className={`${ui.linkButton} ${ui.linkDanger}`}
+                  className={`${ui.textButton} ${ui.textButtonDanger}`}
+                  aria-label={`${category.name}を削除`}
                   onClick={() => setDeleting(category)}
                 >
                   削除
@@ -667,7 +678,8 @@ function ExpenseTypesTab() {
             ) : (
               <span className={styles.rowActions}>
                 <button
-                  className={ui.linkButton}
+                  className={ui.textButton}
+                  aria-label={`${expenseType.name}を改名`}
                   onClick={() => {
                     setRenaming(expenseType)
                     setRenameValue(expenseType.name)
@@ -676,7 +688,8 @@ function ExpenseTypesTab() {
                   改名
                 </button>
                 <button
-                  className={`${ui.linkButton} ${ui.linkDanger}`}
+                  className={`${ui.textButton} ${ui.textButtonDanger}`}
+                  aria-label={`${expenseType.name}を削除`}
                   onClick={() => setDeleting(expenseType)}
                 >
                   削除
@@ -844,7 +857,11 @@ function LimitsTab() {
                       ? '上限なし'
                       : formatMoney(limit.capAmount)}
                 </span>
-                <button className={ui.linkButton} onClick={() => setEditing(expenseType)}>
+                <button
+                  className={ui.textButton}
+                  aria-label={`${expenseType.name}の月次上限を変更`}
+                  onClick={() => setEditing(expenseType)}
+                >
                   変更
                 </button>
               </span>

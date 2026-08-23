@@ -155,12 +155,12 @@ export function AccountAddModal({ kind, onClose }: AccountAddModalProps) {
   return (
     <Modal title={`${ACCOUNT_KIND_LABELS[kind]}を追加`} onClose={onClose}>
       {kind === 'smbc_bank' && (
-        <p className={styles.note}>
+        <p className={ui.note}>
           三井住友銀行の普通預金口座です。登録すると、以降の入出金は通知メールの取込で自動的に反映されます。
         </p>
       )}
       {kind === 'mitsui_sumitomo_card' && (
-        <p className={styles.note}>
+        <p className={ui.note}>
           カード利用の通知メールから未払金を積み上げる先の口座です。未払金は取込で自動的に記録されるので、入力する項目はありません。
         </p>
       )}
@@ -178,9 +178,7 @@ export function AccountAddModal({ kind, onClose }: AccountAddModalProps) {
             onChange={e => setBankName(e.target.value)}
             placeholder="例: 楽天銀行"
           />
-          <p className={styles.note}>
-            通帳やアプリの表記で入力してください（登録後も変更できます）。
-          </p>
+          <p className={ui.note}>通帳やアプリの表記で入力してください（登録後も変更できます）。</p>
         </div>
       )}
 
@@ -203,9 +201,7 @@ export function AccountAddModal({ kind, onClose }: AccountAddModalProps) {
             onChange={e => setInitialAmount(e.target.value)}
             placeholder={kind === 'nisa' ? '例: 200000' : '例: 500000'}
           />
-          <p className={styles.note}>
-            0 円以上の整数で入力してください（円マーク・カンマは不要）。
-          </p>
+          <p className={ui.note}>0 円以上の整数で入力してください（円マーク・カンマは不要）。</p>
         </div>
       )}
 

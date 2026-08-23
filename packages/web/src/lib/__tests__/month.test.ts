@@ -63,6 +63,10 @@ describe('formatDate / formatDateWithYear', () => {
     expect(formatDate(new Date(2026, 6, 22))).toBe('7/22')
   })
 
+  it('月内の日付はゼロ埋めしない(年つきの表記と使い分ける)', () => {
+    expect(formatDate(new Date(2026, 0, 5))).toBe('1/5')
+  })
+
   it('YYYY/MM/DD 形式で整形する(usability 5-4)', () => {
     expect(formatDateWithYear(new Date(2026, 6, 22))).toBe('2026/07/22')
   })
@@ -73,5 +77,15 @@ describe('formatDate / formatDateWithYear', () => {
 
   it('2 桁の月・日はそのまま並べる', () => {
     expect(formatDateWithYear(new Date(2026, 11, 31))).toBe('2026/12/31')
+  })
+
+  // 記録の時刻(取込完了・確定・最終更新)は UTC で届く。表示は JST の暦日で決める(usability 5-4)
+  it('UTC の時刻を JST の暦日として整形する', () => {
+    expect(formatDateWithYear(new Date('2026-07-18T14:59:00.000Z'))).toBe('2026/07/18')
+    expect(formatDateWithYear(new Date('2026-07-18T15:00:00.000Z'))).toBe('2026/07/19')
+  })
+
+  it('JST で年をまたぐ時刻は翌年の日付になる', () => {
+    expect(formatDateWithYear(new Date('2025-12-31T15:00:00.000Z'))).toBe('2026/01/01')
   })
 })

@@ -83,7 +83,7 @@ export function StatementGuide({ fileKind, month }: StatementGuideProps) {
       </h2>
       <div id={bodyId} hidden={!expanded} className={styles.body}>
         {/* 月送りでページ遷移なしに差し替わる。読み上げにも変化を届ける（usability §8-4） */}
-        <p className={styles.note} role="status">
+        <p className={ui.note} role="status">
           {guide.note(month)}
         </p>
         <ol className={styles.steps}>
@@ -101,7 +101,7 @@ export function StatementGuide({ fileKind, month }: StatementGuideProps) {
           {guide.linkLabel}
           <LuExternalLink aria-hidden="true" className={`${ui.iconSm} ${styles.linkIcon}`} />
         </button>
-        <p className={styles.note}>
+        <p className={ui.note}>
           ブラウザで CSV を保存したあと、この画面に戻ってアップロードしてください。
         </p>
       </div>

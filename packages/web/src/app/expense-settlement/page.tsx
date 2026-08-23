@@ -143,7 +143,7 @@ function FinalizeModal({ cycle, onClose }: { cycle: CycleWire; onClose: () => vo
 
   return (
     <Modal title="サイクルを最終確定" onClose={onClose}>
-      <p className={styles.note}>
+      <p className={ui.note}>
         {formatMonthLabel(cycle.common.targetYearMonth)}
         のサイクルを、突合する精算入金を選んで確定します。
       </p>
