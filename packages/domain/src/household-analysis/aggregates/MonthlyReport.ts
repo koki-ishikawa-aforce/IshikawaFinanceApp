@@ -196,6 +196,20 @@ export function finalize(
 // finalized → csv_confirmed への逆遷移関数は型として存在しない（不変条件で禁止）
 
 /**
+ * 不完全月（対象月の全期間ぶんのデータが揃っていないレポート）か。
+ *
+ * 不完全月フラグは運用開始月のレポートにのみ付く（論点20）。付かない月では属性そのものが
+ * 欠落するため、「未設定 = 揃っている」という読み方をここに一本化する
+ * （レポート画面の注意書きも LINE サマリの注意書きも同じ判定を通す）。
+ * 呼び出し側で真偽を判定すると、片方だけが未設定を不完全と読むずれが生まれる。
+ */
+export function isIncompleteMonthReport(
+  common: Pick<CommonMonthlyReportAttrs, 'isIncompleteMonth'>,
+): boolean {
+  return common.isIncompleteMonth === true
+}
+
+/**
  * 閲覧者本人にだけ見える月次合計（プライバシー3段階ルールの最終段）。
  *
  * 個人費用は「相手には合計のみ可視」だが、経費(会社)は本人のみ可視のため、

@@ -5,6 +5,7 @@ import {
   confirmCsv,
   refreshCsvConfirmed,
   aggregateMonthlyReportTotals,
+  isIncompleteMonthReport,
   selfTotalsOf,
   CommonMonthlyReportAttrsSchema,
   type CsvConfirmedReport,
@@ -263,6 +264,33 @@ describe('confirmCsv() / refreshCsvConfirmed()', () => {
     expect(refreshed.causingTransactionIds).toHaveLength(2)
     expect(refreshed.csvConfirmedAt).toEqual(new Date('2026-05-01'))
   })
+
+  it('不完全月フラグは再集計・最終確定を通しても残る', () => {
+    // 運用開始月のレポートは翌月の通常サイクルで CSV を取り込み直してから配信される（論点20）。
+    // 途中でフラグが落ちると、実際に届くサマリから注意書きだけが静かに消える
+    const report = confirmCsv({ ...baseCommon, isIncompleteMonth: true } as never, [], new Date())
+    const refreshed = refreshCsvConfirmed(
+      report,
+      {
+        householdCategoryTotals: [],
+        personalTotalHoney: 1200 as never,
+        personalTotalDarling: 0 as never,
+        businessExpenseTotalHoney: 0 as never,
+        businessExpenseTotalDarling: 0 as never,
+      },
+      [],
+    )
+    expect(isIncompleteMonthReport(refreshed.common)).toBe(true)
+
+    const finalized = finalize(
+      refreshed,
+      '01ERD000000000000000000001' as never,
+      new Date('2026-06-10'),
+      [],
+      new Date('2026-06-10'),
+    )
+    expect(isIncompleteMonthReport(finalized.common)).toBe(true)
+  })
 })
 
 describe('selfTotalsOf', () => {
@@ -291,5 +319,26 @@ describe('selfTotalsOf', () => {
   it('配偶者側のキー（Honey / Darling 別の項目）を返り値に含めない', () => {
     const totals = selfTotalsOf(CommonMonthlyReportAttrsSchema.parse(common), 'honey')
     expect(Object.keys(totals).sort()).toEqual(['businessExpenseTotalSelf', 'personalTotalSelf'])
+  })
+})
+
+describe('isIncompleteMonthReport', () => {
+  const parsed = (isIncompleteMonth?: boolean) =>
+    CommonMonthlyReportAttrsSchema.parse(
+      isIncompleteMonth === undefined ? baseCommon : { ...baseCommon, isIncompleteMonth },
+    )
+
+  it('不完全月フラグが付いた月は不完全と判定する', () => {
+    expect(isIncompleteMonthReport(parsed(true))).toBe(true)
+  })
+
+  it('フラグが未設定の月（通常の月）は不完全としない', () => {
+    const common = parsed()
+    expect(common.isIncompleteMonth).toBeUndefined()
+    expect(isIncompleteMonthReport(common)).toBe(false)
+  })
+
+  it('フラグが明示的に false の月も不完全としない', () => {
+    expect(isIncompleteMonthReport(parsed(false))).toBe(false)
   })
 })

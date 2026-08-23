@@ -6,6 +6,9 @@
  *  - 月次レポート世帯サマリ: Flex Message で 世帯費用カテゴリ別 + NISA 積立累計 + 残高推移（OQ-12）
  *  - 月次レポート個人サマリ: Flex Message で 個人費用合計 + 経費(会社) 合計（プライバシー）
  *
+ * 不完全月のレポートは、どちらのサマリにも金額の上に注意書きを添える（#442-A）。
+ * レポート画面だけに注意が出て LINE に出ないと、同じ月について画面と LINE で食い違う。
+ *
  * Flex Message の構造は LINE Messaging API 固有の表現であり、ドメインに持ち込まず
  * ACL 側（api 層）で組み立てる（08g §4: LINE Messaging API とは Conformist）。
  * ドメインが決めるのは「何を載せるか」（月次レポート集約の値）で、
@@ -16,7 +19,7 @@
  * 世帯サマリは共通トークルーム宛で、世帯費用と資産のみを載せる（個人・経費は載せない）。
  */
 import type { DeliveryContent, MonthlyReport, UserRole, YearMonth } from '@warimaru/domain'
-import { DeliveryContentSchema, selfTotalsOf } from '@warimaru/domain'
+import { DeliveryContentSchema, isIncompleteMonthReport, selfTotalsOf } from '@warimaru/domain'
 import type { DeepLinkBuilder } from './deep-links.js'
 
 /**
@@ -27,6 +30,18 @@ import type { DeepLinkBuilder } from './deep-links.js'
 const MAX_CATEGORY_ROWS = 12
 /** カテゴリ名の表示上限（超過分は末尾を省略記号に置き換える） */
 const MAX_CATEGORY_LABEL_LENGTH = 24
+
+/**
+ * 不完全月の注意書き（#442-A）。
+ *
+ * レポート画面と同じ「データが不完全な月です」を LINE のサマリにも出す。画面に無い一文を足すのは、
+ * LINE には前後の文脈（ステータスや運用開始の経緯）が見えず、月まるごとの金額として読まれるため。
+ * 不完全月フラグが付くのは運用開始月のレポートだけで、その月は運用開始日より前が集計に入らない
+ * （論点20 / P4-1「運用開始日：N/M〜月末 と明示」）。あとから埋まる欠落ではないので、
+ * 数字が変わる予告ではなく「集計した期間が月の一部である」ことを書く。
+ */
+const INCOMPLETE_MONTH_NOTICE =
+  '⚠️ データが不完全な月です。この月は運用開始日から月末までの期間だけを集計しています。'
 
 /** 金額表示（円・3 桁区切り） */
 function formatYen(amount: number): string {
@@ -61,10 +76,19 @@ function keyValueRow(label: string, value: string): Record<string, unknown> {
 function flexBubble(params: {
   title: string
   subtitle: string
+  /** 金額の上に出す注意書き（undefined なら行ごと出さない） */
+  notice?: string | undefined
   rows: Record<string, unknown>[]
   linkLabel: string
   linkUrl: string
 }): Record<string, unknown> {
+  const noticeRows: Record<string, unknown>[] =
+    params.notice === undefined
+      ? []
+      : // 文字色は指定せず LINE 既定色に委ねる。警告色（画面の `--warning-muted` 相当）を
+        // 焼き込むと、LINE のダークモードで背景とのコントラストが落ちて注意書きだけが読みにくくなる。
+        // 注意であることは冒頭の記号と太字で示す
+        [{ type: 'text', text: params.notice, size: 'xs', weight: 'bold', wrap: true }]
   return {
     type: 'bubble',
     header: {
@@ -79,7 +103,7 @@ function flexBubble(params: {
       type: 'box',
       layout: 'vertical',
       spacing: 'md',
-      contents: params.rows,
+      contents: [...noticeRows, ...params.rows],
     },
     footer: {
       type: 'box',
@@ -141,6 +165,15 @@ function latestOf<T>(series: readonly T[]): T | undefined {
 }
 
 /**
+ * そのレポートに添える注意書き（不完全月でなければ undefined）。
+ * 世帯サマリ・個人サマリの両方がこの 1 か所を通す。出し分けを呼び出し側に書くと、
+ * 同じ月について片方にだけ注意が付く食い違いが生まれる。
+ */
+function noticeOf(report: MonthlyReport): string | undefined {
+  return isIncompleteMonthReport(report.common) ? INCOMPLETE_MONTH_NOTICE : undefined
+}
+
+/**
  * 月次レポート世帯サマリの本文（08g §2「月次レポートサマリを共通トークルームに配信する」）。
  *
  * @param categoryNameOf カテゴリID → 表示名。未解決のカテゴリは ID をそのまま出さず
@@ -192,6 +225,7 @@ export function buildHouseholdSummaryContent(
       flexBubble({
         title: `${formatMonthLabel(targetYearMonth)}の家計レポート`,
         subtitle: '世帯の支出と資産のサマリ',
+        notice: noticeOf(report),
         rows,
         linkLabel: 'レポートを開く',
         linkUrl: links.monthlyReport(targetYearMonth),
@@ -222,6 +256,7 @@ export function buildPersonalSummaryContent(
       flexBubble({
         title: `${formatMonthLabel(targetYearMonth)}のあなたのサマリ`,
         subtitle: 'このメッセージはあなたにだけ届いています',
+        notice: noticeOf(report),
         rows: [
           keyValueRow('個人費用 合計', formatYen(personalTotalSelf)),
           keyValueRow('経費(会社) 合計', formatYen(businessExpenseTotalSelf)),

@@ -54,6 +54,17 @@ const categoryNames: Record<string, string> = {
 }
 const nameOf = (id: string): string | undefined => categoryNames[id]
 
+const INCOMPLETE_NOTICE =
+  '⚠️ データが不完全な月です。この月は運用開始日から月末までの期間だけを集計しています。'
+
+/** Flex の本文（body）の先頭行のテキスト。注意書きが「金額より前」に出ることの検証に使う */
+function firstBodyText(flexPayloadJson: string): string | undefined {
+  const body = (JSON.parse(flexPayloadJson) as Record<string, unknown>)['body'] as
+    | { contents?: { text?: string }[] }
+    | undefined
+  return body?.contents?.[0]?.text
+}
+
 /**
  * Flex payload 内のすべての text 値を集める。
  * 金額の検査を JSON 文字列の部分一致で行うと "812,000円" が "12,000円" を含むように
@@ -223,6 +234,24 @@ describe('buildHouseholdSummaryContent', () => {
     expect(unresolved.flexPayloadJson).not.toContain(CATEGORY_FOOD)
     expect(flexTexts(unresolved.flexPayloadJson)).toContain('・その他')
   })
+
+  it('不完全月は本文の先頭に注意書きを出す（#442-A。レポート画面と同じ注意）', () => {
+    const incomplete = buildHouseholdSummaryContent(
+      report({ isIncompleteMonth: true }),
+      nameOf,
+      links,
+    )
+    if (incomplete.kind !== 'flex_message') throw new Error('unreachable')
+    // 金額を読む前に目に入る位置に置く（読んだ後に気づいても、月まるごとの金額としての誤読は防げない）
+    expect(firstBodyText(incomplete.flexPayloadJson)).toBe(INCOMPLETE_NOTICE)
+    expect(flexTexts(incomplete.flexPayloadJson)).toContain('世帯費用 合計')
+  })
+
+  it('通常の月には注意書きを出さない', () => {
+    // フラグの無い月にも出すと、注意書きが常時表示になって意味を失う
+    expect(texts.some(t => t.includes('データが不完全な月です'))).toBe(false)
+    expect(texts).toContain('世帯費用 合計')
+  })
 })
 
 describe('buildPersonalSummaryContent', () => {
@@ -257,5 +286,20 @@ describe('buildPersonalSummaryContent', () => {
     const content = buildPersonalSummaryContent(report(), 'honey', links)
     if (content.kind !== 'flex_message') throw new Error('unreachable')
     expect(content.linkUrl).toBe('https://liff.example/app/reports?month=2026-07')
+  })
+
+  it('不完全月は個人サマリにも本文の先頭に注意書きを出す（世帯サマリと同じ条件・同じ文言）', () => {
+    const content = buildPersonalSummaryContent(report({ isIncompleteMonth: true }), 'honey', links)
+    if (content.kind !== 'flex_message') throw new Error('unreachable')
+    expect(firstBodyText(content.flexPayloadJson)).toBe(INCOMPLETE_NOTICE)
+    expect(flexTexts(content.flexPayloadJson)).toContain('個人費用 合計')
+  })
+
+  it('通常の月には個人サマリにも注意書きを出さない', () => {
+    const content = buildPersonalSummaryContent(report(), 'honey', links)
+    if (content.kind !== 'flex_message') throw new Error('unreachable')
+    expect(flexTexts(content.flexPayloadJson).some(t => t.includes('データが不完全な月です'))).toBe(
+      false,
+    )
   })
 })
