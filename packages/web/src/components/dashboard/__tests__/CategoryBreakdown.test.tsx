@@ -63,10 +63,10 @@ describe('CategoryBreakdown', () => {
     render(<CategoryBreakdown data={data} categoryColors={categoryColors} />)
 
     expect(screen.getByText('食費')).toBeInTheDocument()
-    expect(screen.getByText('¥60,000')).toBeInTheDocument()
+    expect(screen.getByText('60,000円')).toBeInTheDocument()
     expect(screen.getByText('60.0%')).toBeInTheDocument()
     expect(screen.getByText('娯楽')).toBeInTheDocument()
-    expect(screen.getByText('¥40,000')).toBeInTheDocument()
+    expect(screen.getByText('40,000円')).toBeInTheDocument()
     expect(screen.getByText('40.0%')).toBeInTheDocument()
   })
 
@@ -134,9 +134,9 @@ describe('CategoryBreakdown', () => {
 
     // 凡例の送り記号もアイコン(SVG)になったため、ドーナツの有無は svg ではなく弧の circle で見る
     expect(container.querySelector('circle')).toBeNull()
-    // ドーナツ中央の「合計 / ¥0」も一緒に消える（合計は KPI 側に出る）
+    // ドーナツ中央の「合計 / 0円」も一緒に消える（合計は KPI 側に出る）
     expect(screen.queryByText('合計')).not.toBeInTheDocument()
-    expect(screen.queryByText('¥0')).not.toBeInTheDocument()
+    expect(screen.queryByText('0円')).not.toBeInTheDocument()
     expect(
       screen.getByText(
         'この月は返金などで世帯支出の合計が0円になったため、内訳グラフは表示していません',
@@ -150,9 +150,9 @@ describe('CategoryBreakdown', () => {
     expect(screen.getByRole('list')).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
     expect(screen.getByText('食費')).toBeInTheDocument()
-    expect(screen.getByText('¥5,000')).toBeInTheDocument()
+    expect(screen.getByText('5,000円')).toBeInTheDocument()
     expect(screen.getByText('娯楽')).toBeInTheDocument()
-    expect(screen.getByText('¥-5,000')).toBeInTheDocument()
+    expect(screen.getByText('-5,000円')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /食費/ })).toHaveAttribute(
       'href',
       '/transactions?month=2026-05&categoryId=01ARZ3NDEKTSV4RRFFQ69G5FAV',

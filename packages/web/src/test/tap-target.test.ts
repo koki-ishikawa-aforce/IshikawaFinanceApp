@@ -15,7 +15,8 @@ import { SRC_DIR, collectSources, isModuleCss, type Source } from './sources'
  * そこで「操作部品の下限」に限ってここで縛る。
  *
  * 守らせるのは次の 3 つ:
- * 1. 共通の操作部品(ボタン・選択欄・入力欄)が下限をトークンで宣言している
+ * 1. 対象の操作部品(共通のボタン・選択欄・入力欄と、対応済みの画面固有の部品)が
+ *    下限をトークンで宣言している
  * 2. 下限の値が globals.css の 1 か所だけに定義されている
  * 3. 下限に相当する大きさを px の直値で書き起こしていない
  */
@@ -23,37 +24,75 @@ import { SRC_DIR, collectSources, isModuleCss, type Source } from './sources'
 const COMMON_CSS = join('components', 'ui', 'common.module.css')
 
 /**
- * 下限を宣言していなければならない共通の操作部品。
+ * 宣言を求めるプロパティ。既定は `min-height` だけ。
+ *
+ * 中身がアイコンだけの部品は文字で幅が稼げないため、`min-width` も無いと 44×44 を満たせない
+ */
+const HEIGHT_ONLY = ['min-height'] as const
+const HEIGHT_AND_WIDTH = ['min-height', 'min-width'] as const
+
+/**
+ * 下限を宣言していなければならない操作部品。
  *
  * ボタン・選択欄・入力欄(`common.module.css`)に加え、独自の受け皿を持つ共通部品も対象にする。
  * 2 択の切り替え(`SegmentedControl`)は透明なラジオを `.optionLabel` の大きさに重ねる作りなので、
- * 下限を宣言しているのは見た目を担う `.optionLabel` の側になる。
+ * 下限を宣言しているのは見た目を担う `.optionLabel` の側になる。ダッシュボードの世帯/個人の
+ * 切り替えも #366 でこの共通部品へ寄せたため、独自の宣言は持たない。
+ *
+ * 共通部品を使わずに自前のスタイルを持つ操作部品も、対応したものからここに載せる
+ * (ダッシュボードの月送り・カテゴリ行は #366 で対応)。
  */
-const COMMON_CONTROLS: readonly { css: string; selectors: readonly string[] }[] = [
+const CONTROLS: readonly {
+  css: string
+  selectors: readonly string[]
+  properties?: readonly string[]
+}[] = [
   { css: COMMON_CSS, selectors: ['.button', '.buttonGhost', '.buttonDanger', '.select', '.input'] },
   { css: join('components', 'ui', 'SegmentedControl.module.css'), selectors: ['.optionLabel'] },
+  {
+    css: join('components', 'dashboard', 'MonthNavigator.module.css'),
+    selectors: ['.button'],
+    // 中身は月送りのアイコンだけで、文字では幅が稼げない
+    properties: HEIGHT_AND_WIDTH,
+  },
+  {
+    css: join('components', 'dashboard', 'CategoryBreakdown.module.css'),
+    selectors: ['.legendItem'],
+  },
 ]
 
 const TAP_TARGET_MIN = 'var(--tap-target-min)'
 
-/** `min-height` の宣言。同じセレクタに複数あるときは後の宣言が実際に効く */
-const MIN_HEIGHT_DECLARATION = /(?:^|[;{\s])min-height\s*:\s*([^;}]+)/g
+/** 下限の宣言。同じセレクタに複数あるときは後の宣言が実際に効く */
+function minDeclaration(property: string): RegExp {
+  return new RegExp(String.raw`(?:^|[;{\s])${property}\s*:\s*([^;}]+)`, 'g')
+}
 
 /**
- * 下限が効いていない共通の操作部品を返す。
+ * 下限が効いていない操作部品を返す(`セレクタ:プロパティ` 形式)。
  *
  * 同じセレクタは 1 つとは限らない。後ろに `.button { min-height: 0 }` を足せば実効高は
  * 潰せるので、最初の宣言ではなく**最後に効く宣言**がトークン参照かどうかで判定する。
  */
-function findControlsWithoutMin(common: string, controls: readonly string[]): string[] {
-  const rules = cssRules(common)
-  return controls.filter(selector => {
-    const declarations = rules
-      .filter(rule => rule.selector === selector)
-      .flatMap(rule => [...rule.body.matchAll(MIN_HEIGHT_DECLARATION)].map(match => match[1] ?? ''))
-    const effective = declarations.at(-1)
-    return effective === undefined || !effective.includes(TAP_TARGET_MIN)
-  })
+function findControlsWithoutMin(
+  css: string,
+  controls: readonly string[],
+  properties: readonly string[] = HEIGHT_ONLY,
+): string[] {
+  const rules = cssRules(css)
+  return controls.flatMap(selector =>
+    properties
+      .filter(property => {
+        const declarations = rules
+          .filter(rule => rule.selector === selector)
+          .flatMap(rule =>
+            [...rule.body.matchAll(minDeclaration(property))].map(match => match[1] ?? ''),
+          )
+        const effective = declarations.at(-1)
+        return effective === undefined || !effective.includes(TAP_TARGET_MIN)
+      })
+      .map(property => `${selector}:${property}`),
+  )
 }
 
 /** 大きさの px 直値。`min-` の有無で扱いを変えるため、接頭辞も取り出す */
@@ -95,10 +134,14 @@ describe('タップターゲットの下限', () => {
   const stylesheets = collectSources(isModuleCss)
   const common = stylesheets.find(({ path }) => path === COMMON_CSS)?.content ?? ''
 
-  it('共通の操作部品が下限をトークンで宣言している', () => {
-    const offenders = COMMON_CONTROLS.flatMap(({ css, selectors }) => {
+  it('対象の操作部品が下限をトークンで宣言している', () => {
+    const offenders = CONTROLS.flatMap(({ css, selectors, properties }) => {
       const content = stylesheets.find(({ path }) => path === css)?.content ?? ''
-      return findControlsWithoutMin(content, selectors).map(selector => `${css}:${selector}`)
+      // 対象のファイルを取り違えると「宣言なし」ではなく「走査なし」で緑になる
+      expect(content, `${css} を読み取れている`).not.toBe('')
+      return findControlsWithoutMin(content, selectors, properties).map(
+        offender => `${css}:${offender}`,
+      )
     })
     expect(offenders).toEqual([])
   })
@@ -186,8 +229,14 @@ describe('タップターゲットの下限', () => {
       '.buttonGhost {\n  padding: var(--space-2) var(--space-3);\n}',
     ].join('\n')
     expect(findControlsWithoutMin(missing, ['.button', '.buttonGhost', '.select'])).toEqual([
-      '.buttonGhost',
-      '.select',
+      '.buttonGhost:min-height',
+      '.select:min-height',
+    ])
+
+    // 中身がアイコンだけの部品は、高さだけ宣言しても幅が足りない
+    const heightOnly = '.iconButton {\n  min-height: var(--tap-target-min);\n}'
+    expect(findControlsWithoutMin(heightOnly, ['.iconButton'], HEIGHT_AND_WIDTH)).toEqual([
+      '.iconButton:min-width',
     ])
 
     // 後ろのルールで下限を打ち消す書き方も見逃さない(最後に効く宣言で判定する)
@@ -196,6 +245,6 @@ describe('タップターゲットの下限', () => {
       '.button:disabled {\n  opacity: 0.4;\n}',
       '.button {\n  min-height: 0;\n}',
     ].join('\n')
-    expect(findControlsWithoutMin(overridden, ['.button'])).toEqual(['.button'])
+    expect(findControlsWithoutMin(overridden, ['.button'])).toEqual(['.button:min-height'])
   })
 })

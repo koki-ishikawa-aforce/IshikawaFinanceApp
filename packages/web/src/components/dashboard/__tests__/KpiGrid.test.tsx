@@ -19,15 +19,15 @@ describe('KpiGrid', () => {
     expect(screen.getByText('今月支出')).toBeInTheDocument()
     expect(screen.getByText('貯蓄残高')).toBeInTheDocument()
     expect(screen.getByText('NISA積立累計')).toBeInTheDocument()
-    expect(screen.getByText('総資産')).toBeInTheDocument()
+    expect(screen.getByText('資産合計')).toBeInTheDocument()
   })
 
   it('各タイルに対応する金額を表示する', () => {
     render(<KpiGrid kpis={kpis} />)
 
-    expect(screen.getByText('¥123,456')).toBeInTheDocument()
-    expect(screen.getByText('¥2,000,000')).toBeInTheDocument()
-    expect(screen.getByText('¥500,000')).toBeInTheDocument()
-    expect(screen.getByText('¥2,450,000')).toBeInTheDocument()
+    expect(screen.getByText('123,456円')).toBeInTheDocument()
+    expect(screen.getByText('2,000,000円')).toBeInTheDocument()
+    expect(screen.getByText('500,000円')).toBeInTheDocument()
+    expect(screen.getByText('2,450,000円')).toBeInTheDocument()
   })
 })

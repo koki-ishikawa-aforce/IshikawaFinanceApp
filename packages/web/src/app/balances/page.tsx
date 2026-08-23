@@ -147,7 +147,7 @@ export default function BalancesPage() {
 
       {totalQuery.data && (
         <div className={styles.heroCard}>
-          <span className={styles.heroLabel}>総資産</span>
+          <span className={styles.heroLabel}>資産合計</span>
           <span className={styles.heroValue}>{formatMoney(totalQuery.data.total)}</span>
           <div className={styles.heroBreakdown}>
             <span>SMBC {formatMoney(totalQuery.data.smbcBalance)}</span>
@@ -179,21 +179,16 @@ export default function BalancesPage() {
             </ErrorState>
           )}
           {freshnessQuery.isError && (
-            <>
-              <ErrorState announce={false}>
-                {describeRequestFailure(
-                  freshnessQuery.error,
-                  '残高の更新状況を取得できませんでした（未更新のお知らせは出ません）',
-                )}
-              </ErrorState>
-              <button
-                type="button"
-                className={ui.buttonGhost}
-                onClick={() => void freshnessQuery.refetch()}
-              >
-                再読み込み
-              </button>
-            </>
+            <ErrorState
+              announce={false}
+              onRetry={() => void freshnessQuery.refetch()}
+              isRetrying={freshnessQuery.isFetching}
+            >
+              {describeRequestFailure(
+                freshnessQuery.error,
+                '残高の更新状況を取得できませんでした（未更新のお知らせは出ません）',
+              )}
+            </ErrorState>
           )}
           {balanceListReady &&
             (listQuery.data.items.length === 0 ? (

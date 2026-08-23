@@ -46,14 +46,22 @@
 // 違反(1-3): 再試行できない
 {query.error && <ErrorState>取引一覧の取得に失敗しました</ErrorState>}
 
-// 適合(再試行手段は ErrorState の外に置く)
+// 違反(1-3): 手段はあるが、文言も置き場所も画面ごとにばらつく
 {query.error && (
   <>
     <ErrorState>取引一覧の取得に失敗しました</ErrorState>
     <button className={ui.buttonGhost} onClick={() => void query.refetch()}>再読み込み</button>
   </>
 )}
+
+// 適合(再試行手段は ErrorState に渡す。ボタンは読み上げ範囲の外に置かれる)
+{query.error && (
+  <ErrorState onRetry={() => void query.refetch()}>取引一覧の取得に失敗しました</ErrorState>
+)}
 ```
+
+> 保存・削除の失敗には `onRetry` を渡さない。やり直しの手段は元のボタン(「保存」「削除を実行」)の
+> 側にあり、二つ目の手段を並べるとどちらを押すべきか決められなくなる。
 
 ---
 
@@ -202,7 +210,7 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 | **6-6 空状態** | 共通部品 `EmptyState`(`packages/web/src/components/ui/EmptyState.tsx`)。インラインのテキストで、イラスト・空状態専用カードは採用しない。置き場所はその空状態が説明するセクションの器(`ui.card` かモーダル)の内側。`*.module.css` に独自の空状態スタイルを定義しない |
 | **6-7 月の切り替え** | 画面上部の月ナビゲーション。日付ピッカーで月を選ばせない |
 | **6-8 補足情報・手順の格納** | カード内の開閉トグル(見出しが `aria-expanded` + `aria-controls` を持つボタンを包む)。主操作の前に読まなくてよい補足はこれで畳む。モーダル・別ページ・常時展開は採用しない |
-| **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。本部品より前からある未追随の箇所が 2 つある。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は独自実装でタップ下限(§4-3)も満たしておらず、#366 でそこを直すときに本部品へ寄せる。口座追加の証券会社(3 択、`components/accounts/AccountAddModal.tsx`)はセレクトのままで、次にその画面を触るときに本部品へ寄せる |
+| **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は #366 で本部品へ寄せた。未追随は口座追加の証券会社(3 択、`components/accounts/AccountAddModal.tsx`)だけで、セレクトのまま。次にその画面を触るときに本部品へ寄せる |
 
 ### 違反例
 
@@ -322,13 +330,13 @@ return <span>{formatMoney(query.data.total)}</span>
 | 1 | 8-3 | `<label>` が `htmlFor` でもラップでも入力に関連付けられていない(`ui.fieldLabel` を使う全箇所が `.field` 内の兄弟要素) | `packages/web/src/app/transactions/page.tsx`、`settings/page.tsx`、`expense-settlement/page.tsx` ほか |
 | 2 | 8-5 | セクション見出しが `<span className={ui.sectionTitle}>` で、`<h2>` が存在しない(見出し階層が `<h1>` のみ) | `expense-settlement/page.tsx:255,317,343,369`、`settings/page.tsx:96,403,610,792,954` ほか |
 | 3 | 8-1 | フォーカスの可視スタイルが `.input:focus` にしか無い。`.button` / `.buttonGhost` / `.buttonDanger` / `.select` は `:hover` のみ | `packages/web/src/components/ui/common.module.css` |
-| 4 | 4-3 | 共通の操作部品(`.button` / `.buttonGhost` / `.buttonDanger` / `.select` / `.input`)とモーダルの閉じるボタンは #568 で対応済み(`--tap-target-min` トークンも #463 で定義済み)。残るのは共通部品を使わない画面固有の操作部品 | 設定のタブ・残高の期間ボタン・精算の小ボタン・取込の「閉じる」・月送り(`MonthNavigator`)・下部ナビ(`AppNav`)・チェック行。追跡は #467 |
+| 4 | 4-3 | 共通の操作部品(`.button` / `.buttonGhost` / `.buttonDanger` / `.select` / `.input`)とモーダルの閉じるボタンは #568 で対応済み(`--tap-target-min` トークンも #463 で定義済み)。ダッシュボードの月送り(`MonthNavigator`)・世帯/個人の切り替え(`ModeToggle`)・カテゴリ内訳の凡例行は #366 で対応済み。残るのは共通部品を使わない他の画面固有の操作部品 | 設定のタブ・残高の期間ボタン・精算の小ボタン・取込の「閉じる」・下部ナビ(`AppNav`)・チェック行。追跡は #467 |
 | 5 | 6-1 / 3-2 | 破壊的操作の確認が `window.confirm`(取引削除)で、`Modal` 採用パターンと不統一。文言に影響(学習ルールの扱い)が書かれていない | `packages/web/src/app/transactions/page.tsx:378` |
 | 6 | 4-1 | 金額入力が `type="number"` のみで、規範の `type="text"` + `inputMode="numeric"` になっていない | `transactions/page.tsx:207,335`、`expense-settlement/page.tsx:97`、`settings/page.tsx:207,263,916` |
-| 7 | 1-3 | データ取得失敗時の再試行手段が画面ごとに不統一。onboarding は「再読み込み」ボタンあり、transactions / expense-settlement は文言のみ | `transactions/page.tsx:494`、`expense-settlement/page.tsx:263,323` ほか |
+| 7 | 1-3 | 再試行手段は #366 で `ErrorState` の `onRetry` に集約し、自前のボタンを並べていた箇所も寄せ切った(同じ文言・同じ位置で出る)。残るのは、まだ `onRetry` を渡していない画面で取得失敗が文言だけになること | `expense-settlement/page.tsx`、`reports/page.tsx`、`settings/page.tsx` の各取得クエリほか |
 | 8 | 1-2 | 空状態が次の行動を示していないものがある(`この条件の取引はありません`、`当月の按分子取引はありません` 等)。示しているもの(`突合待ちの入金がありません。先に…`)と混在 | `transactions/page.tsx`、`expense-settlement/page.tsx` ほか。共通部品化は #341 で完了済みで、残るのは文言の見直し |
 | 9 | 1-4 | 部分失敗の扱いが定義されていない。複数クエリを並べる画面で一部だけ失敗した場合の表示方針が実装ごとに異なる | `app/page.tsx`(ダッシュボード)、`reports/page.tsx`、`balances/page.tsx` |
 | 10 | 8-7 | `Modal` に `role="dialog"` / `aria-modal` / `aria-labelledby`・フォーカストラップ・Esc 閉じが無い | `packages/web/src/components/ui/Modal.tsx` |
-| 11 | 8-6 | コントラスト比が両テーマで検証されていない(半透明カード `rgba(255,255,255,0.7)` 上の `--text-secondary` 等) | `common.module.css`、`globals.css` |
+| 11 | 8-6 | 金額カード(`--kpi-1` / `--kpi-hero` 上の `--text-on-kpi`)は #366 で両テーマ 4.5:1 を満たし、比率を `src/test/kpi-contrast.test.ts` が見張るようになった。残るのは他の配色の未検証(半透明カード `rgba(255,255,255,0.7)` 上の `--text-secondary` 等) | `common.module.css`、`globals.css` |
 
 関連する既存 Issue: #310(ボタンが設計フォントを継承していない)、#341(空状態の共通部品化 — 対応済み)、#421(ローディング・エラーの共通部品化と通知 — 対応済み。ただし独自実装だった `onboarding/page.tsx` はこの時点で対象外だった)、#497(その `onboarding/page.tsx` の共通部品化 — 対応済み。これで取得・保存の失敗表示は全画面が共通部品を通る。確認結果の否定・前提条件の警告(`onboarding/page.tsx` の友だち未追加・トークルーム未特定)は「失敗」と別扱いのため独自表示のまま残る)、#90(`packages/web` の既存コードレビュー)。

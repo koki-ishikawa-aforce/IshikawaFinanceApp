@@ -6,3 +6,10 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* 再読み込みの受け皿。文言の直下に中央で 1 つだけ置く（画面ごとに位置を変えない） */
+.retryRow {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-2);
+}

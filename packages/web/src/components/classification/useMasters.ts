@@ -13,6 +13,8 @@ export interface MastersState {
   isError: boolean
   /** 失敗したときの最初のエラー。通信の失敗を共通の文言で伝えるために呼び出し側へ渡す */
   error: Error | null
+  /** どちらかが取得中(再取得を含む)。再読み込みの進行中を呼び出し側で示すために使う */
+  isFetching: boolean
   refetch: () => void
 }
 
@@ -37,6 +39,7 @@ export function useMasters(): MastersState {
     isPending: categories.isPending || expenseTypes.isPending,
     isError: categories.isError || expenseTypes.isError,
     error: categories.error ?? expenseTypes.error,
+    isFetching: categories.isFetching || expenseTypes.isFetching,
     refetch: () => {
       void categories.refetch()
       void expenseTypes.refetch()

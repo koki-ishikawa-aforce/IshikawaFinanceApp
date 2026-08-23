@@ -11,8 +11,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
  *
  * 対象は共通の操作部品(`components/ui/common.module.css` の 5 クラスと、それを
  * 使うボタン風リンク)と、共通部品であるモーダルの閉じるボタン・2 択の切り替え
- * (`components/ui/SegmentedControl.tsx`)。画面ごとに独自の
- * スタイルを持つボタン(設定のタブ・月送り・下部ナビなど)は #467 の対象。
+ * (`components/ui/SegmentedControl.tsx`)。これに加えて、画面固有のスタイルを持つ
+ * 部品のうち対応済みのもの(ダッシュボードの月送り・世帯/個人の切り替え・カテゴリ行。
+ * #366)も測る。未対応の画面固有のボタン(設定のタブ・下部ナビなど)は #467 の対象。
  */
 
 /** 下限の値は `globals.css` の `--tap-target-min` が正。ここに数値を書き写さない */
@@ -96,4 +97,48 @@ test('モーダルの操作部品が下限の大きさを満たす', async ({ pa
   )
   // 中身がアイコンだけのボタン。文字が無いぶん幅が足りなくなりやすい(§4-3)
   await expectTapTargetSize(dialog.getByRole('button', { name: '閉じる' }), '閉じるボタン', min)
+})
+
+test('ダッシュボードの月送り・切り替え・カテゴリ行が下限の大きさを満たす', async ({ page }) => {
+  // 共通部品を使わない画面固有の操作部品。CSS の宣言は src/test/tap-target.test.ts が
+  // 押さえているが、月送りは中身がアイコンだけ・カテゴリ行は 1 行ぶんの文字しか無く、
+  // 親のレイアウト次第で実寸が縮みうるためここで測る(#366)
+  await page.goto('/')
+  const min = await tapTargetMin(page)
+
+  for (const name of ['前月', '次月']) {
+    await expectTapTargetSize(page.getByRole('button', { name }), `月送り（${name}）`, min)
+  }
+  // 世帯/個人の切り替えは共通部品（SegmentedControl）に寄せたので、押せる受け皿はラジオ
+  const mode = page.getByRole('radiogroup', { name: '集計の範囲' })
+  for (const name of ['世帯', '個人']) {
+    await expectTapTargetSize(
+      mode.getByRole('radio', { name, exact: true }),
+      `世帯/個人の切り替え（${name}）`,
+      min,
+    )
+  }
+  // 凡例は取引一覧へのドリルダウンを兼ねるリンク。押せる範囲が行と一致していることを測る
+  await expectTapTargetSize(
+    page.getByRole('link', { name: /食費/ }).first(),
+    'カテゴリ内訳の凡例（食費）',
+    min,
+  )
+
+  // 並んだ的の間隔(§4-4)。行を 44px に広げたぶん、負のマージンや gap の詰めで
+  // 隣の行と密着すると誤タップにつながる。行の実寸の隙間として測る
+  const first = await page
+    .getByRole('link', { name: /住居費/ })
+    .first()
+    .boundingBox()
+  const second = await page.getByRole('link', { name: /食費/ }).first().boundingBox()
+  expect(first, '凡例の 1 行目の大きさを取得できる').not.toBeNull()
+  expect(second, '凡例の 2 行目の大きさを取得できる').not.toBeNull()
+  const gap = (second?.y ?? 0) - ((first?.y ?? 0) + (first?.height ?? 0))
+  // 下限は --space-2(8px)。トークンの値をここに書き写さないよう、CSS から読む
+  const minGap = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-2')),
+  )
+  expect(minGap, '--space-2 が px で定義されている').toBeGreaterThan(0)
+  expect(gap, '凡例の行どうしの隙間').toBeGreaterThanOrEqual(minGap)
 })

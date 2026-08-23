@@ -17,6 +17,7 @@ const loadedMasters: MastersState = {
   isPending: false,
   isError: false,
   error: null,
+  isFetching: false,
   refetch: () => {},
 }
 
@@ -92,7 +93,7 @@ describe('ClassificationFields', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('カテゴリ・経費種別を読み込めませんでした')
     expect(screen.queryByLabelText('カテゴリ')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '選択肢を再読み込み' }))
+    await user.click(screen.getByRole('button', { name: '再読み込み' }))
 
     expect(refetch).toHaveBeenCalled()
   })

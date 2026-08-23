@@ -10,18 +10,26 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1_5);
+  /* 行が押せる受け皿になったので、隣り合うタップターゲットの間隔を規定まで空ける（§4-4） */
+  gap: var(--space-2);
 }
 
 .legendItem {
   display: flex;
   align-items: center;
+  /* 取引一覧へのドリルダウンを兼ねる行。1 行ぶんの高さでは下限を割る（usability §4-3。#366） */
+  min-height: var(--tap-target-min);
   gap: var(--space-2);
   font-size: var(--text-sm);
   text-decoration: none;
   border-radius: var(--radius-sm);
   padding: var(--space-1) var(--space-1_5);
-  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-1_5));
+  /*
+   * 左右だけ負のマージンで戻し、行の文字を器の端に揃える。上下は戻さない。
+   * 上下も戻すと、押せる範囲が上下で伸びたぶん `.legend` の間隔（--space-2）を食い潰し、
+   * 44px の的が隙間なく縦に連結して §4-4 の狙い（誤タップ防止）が消えるため（#366）
+   */
+  margin: 0 calc(-1 * var(--space-1_5));
 }
 
 .legendItem:active {

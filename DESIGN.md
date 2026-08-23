@@ -83,6 +83,8 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 
 スケールの逸脱は `packages/web/src/test/icon-size-scale.test.ts` が機械的に検出する（width / height はレイアウト用途と区別できず stylelint で縛れないため、アイコンに限ってテストで縛っている）。
 
+同じ理由で、金額カードの文字色（`--text-on-kpi`）と背景（`--kpi-*`）のコントラストは `packages/web/src/test/kpi-contrast.test.ts` が両テーマぶん機械的に検出する。トークンの色を動かしただけで 4.5:1 を割ったかどうかは、見た目の差分では判定できないため。
+
 ### UI への絵文字使用は禁止
 
 JSX に絵文字（Unicode Emoji）を表示目的で埋め込まない。装飾も情報伝達もすべて react-icons のラインアイコンまたは CSS で表現する。
@@ -127,3 +129,6 @@ JSX に絵文字（Unicode Emoji）を表示目的で埋め込まない。装飾
 - 2〜3 択の切り替えを画面ごとに書き起こさない — 共通部品 `SegmentedControl`（`packages/web/src/components/ui/SegmentedControl.tsx`）を使う（見た目は「選択中を白い面 + アクセントの枠で浮かせる」に統一する）
 - 空状態（「〜がありません」）を画面ごとに書き起こさない — 共通部品 `EmptyState`（`packages/web/src/components/ui/EmptyState.tsx`）を使い、`*.module.css` に独自の空状態スタイルを定義しない
 - ローディング（「読み込み中...」）・エラー（「〜の取得に失敗しました」）を画面ごとに書き起こさない — 共通部品 `LoadingState`（`packages/web/src/components/ui/LoadingState.tsx`）・`ErrorState`（同 `ErrorState.tsx`）を使い、`*.module.css` に独自の `.loading` / `.error` を定義しない
+- 取得失敗からの再読み込みを画面ごとに書き起こさない — `ErrorState` の `onRetry` に渡す（文言と置き場所が揃い、ボタンが読み上げ範囲の外に置かれる）
+- 金額カード（`--kpi-*` を背景に敷く面）の上の文字を `opacity` で薄くしない — 背景が透けたぶんコントラストが落ち、4.5:1 を割る
+- 金額カードの文字色 `--text-on-kpi` を他の面に流用しない — だーりんでは濃色のため、濃い面（`--text-primary` 等）の上では読めない

@@ -63,17 +63,12 @@ export function ClassificationFields({ value, onChange, masters }: Classificatio
 
   if (masters.isError) {
     return (
-      <>
-        <ErrorState>
-          {describeRequestFailure(
-            masters.error,
-            'カテゴリ・経費種別を読み込めませんでした。分類にはこの選択肢が必要です。',
-          )}
-        </ErrorState>
-        <button className={ui.buttonGhost} onClick={() => masters.refetch()}>
-          選択肢を再読み込み
-        </button>
-      </>
+      <ErrorState onRetry={() => void masters.refetch()} isRetrying={masters.isFetching}>
+        {describeRequestFailure(
+          masters.error,
+          'カテゴリ・経費種別を読み込めませんでした。分類にはこの選択肢が必要です。',
+        )}
+      </ErrorState>
     )
   }
 

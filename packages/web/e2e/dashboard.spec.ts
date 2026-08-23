@@ -9,7 +9,7 @@ test('ダッシュボードが描画され、ナビが表示される', async ({
 
   // KPI（モック fixture 由来）が描画される
   await expect(page.getByText('今月支出')).toBeVisible()
-  await expect(page.getByText('総資産')).toBeVisible()
+  await expect(page.getByText('資産合計')).toBeVisible()
 
   // カテゴリ内訳はカードと見出しの内側にある（見出しの有無は VRT のベースライン更新では守れない）
   await expect(page.getByText('世帯支出（カテゴリ別）')).toBeVisible()

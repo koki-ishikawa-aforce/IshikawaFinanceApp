@@ -18,6 +18,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* 中身がアイコンだけで、padding では下限に届かない（usability §4-3。#366） */
+  min-height: var(--tap-target-min);
+  min-width: var(--tap-target-min);
   background: none;
   border: none;
   /* 中身はアイコンのみ。アイコンの大きさ（--icon-lg）はこの font-size を基準に解決される */
