@@ -30,7 +30,7 @@ Routine(週次 fire・fresh session): /docs-drift を実行
 
 | Routine | 役割 | 作るもの | 対象データ |
 | --- | --- | --- | --- |
-| バックログ Routine(`/issue-work` 無人モード) | Issue → 実装 → PR 作成 → CI green 確認 | PR + マージ判断 Issue | ready-to-implement な Issue |
+| バックログ Routine(`/issue-work` 無人モード) | Issue → 実装 → PR 作成 → CI green 確認 → マージ | PR + マージ | ready-to-implement な Issue |
 | 振り返り Routine(`/retro`) | 無人運用の失敗を振り返り、自己改善案を導出 | 改善案 Issue(needs-decision) | 直近期間の PR・撤退記録・CI 落ち |
 | 乖離検知 Routine(`/docs-drift`) | docs とコードの乖離を定期検知 | 乖離報告 Issue(ready-to-implement または needs-decision) | docs/domain と packages/domain/src |
 

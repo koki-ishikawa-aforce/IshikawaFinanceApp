@@ -30,7 +30,7 @@ Routine(週次 fire・fresh session): /retro を実行
 
 | Routine | 役割 | 作るもの | 対象データ |
 | --- | --- | --- | --- |
-| バックログ Routine(`/issue-work` 無人モード) | Issue → 実装 → PR 作成 → CI green 確認 | PR + マージ判断 Issue | ready-to-implement な Issue |
+| バックログ Routine(`/issue-work` 無人モード) | Issue → 実装 → PR 作成 → CI green 確認 → マージ | PR + マージ | ready-to-implement な Issue |
 | PR 執事 Routine(`/pr-steward`) | 既存 PR の保守(CI 修復・コンフリクト解消) | 修正 commit | open な Routine 起点 PR |
 | 振り返り Routine(`/retro`) | 上記2つの運用の失敗を振り返り、自己改善案を導出 | 改善案 Issue(needs-decision) | 直近期間の PR・needs-decision Issue・撤退記録・CI 落ち |
 
@@ -41,7 +41,8 @@ Routine(週次 fire・fresh session): /retro を実行
 `/retro` は直近期間(既定 1 週間)について以下を収集する(詳細は `.claude/skills/retro/SKILL.md` 手順2):
 
 - **マージ済み / クローズされた PR**(Routine 起点): 期間内に作成された PR に加え、起点より前に作られて期間内にマージ / クローズされた PR(長く滞留した PR ほど失敗データとして重要)も対象にする。マージまでの往復回数、却下理由、本文の異常(リテラル `\n`・`Closes #` の番号欠落)
-- **`needs-decision` Issue**(open + 直近クローズ): 種別(マージ判断 / 見送り追認 / 撤退時の確認)ごとの偏り、特に撤退理由の集中
+- **`needs-decision` Issue / PR**(open + 直近クローズ): 種別(`main` 赤 / マージ保留 PR / 見送り追認 / 撤退時の確認)ごとの偏り、特に撤退理由の集中
+- **自動マージの失敗**: マージゲートのどの条件で PR が止まったかの偏り、`[main 赤]` の発生件数と原因(ローカル `/verify` と CI の乖離 / semantic conflict)
 - **撤退記録**: 元 Issue のコメントに残る撤退理由。同じ Issue での撤退の反復
 - **CI 落ちの類型**: どのジョブ(build / typecheck / test / lint / format:check / 統合テスト)が繰り返し落ちているか
 - **レビュー指摘の再発**: 同種の `/ddd-review` must-fix / suggestion が複数 PR に出続けていないか

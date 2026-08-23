@@ -65,11 +65,13 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 ブランチ名は `feat/issue-<番号>-<slug>`、PR 本文に `Closes #<番号>` を含める。
 着手中の Issue には `status:in-progress` ラベルを付与する(`/issue-work` が自動で行う)。
 
-バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ PR 化する(運用・セットアップ: `docs/automation/backlog-routine.md`)。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える(設計判断が残存する Issue には `needs-decision` を付けて `/decide` に接続する)。依存する先行 Issue が open でも ready は付与でき、着手は Routine の依存チェックが遅延する(マージすると次の fire が自動で後続に着手)。無人モードはユーザー確認の代わりに撤退を選び、マージ判断は必ず人間が行う(`/decide` セッション内の明示承認を含む)。溜まった `needs-decision` は `/decide` でまとめて消化する。
+バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ実装 → PR → CI green → **マージ**まで進める(運用・セットアップ: `docs/automation/backlog-routine.md`)。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える(設計判断が残存する Issue には `needs-decision` を付けて `/decide` に接続する)。依存する先行 Issue が open でも ready は付与でき、着手は Routine の依存チェックが遅延する(マージすると次の fire が自動で後続に着手)。無人モードはユーザー確認の代わりに撤退を選ぶ。溜まった `needs-decision` は `/decide` でまとめて消化する。
 
-PR の保守(CI 修復・コンフリクト解消・重複検知): `/pr-steward` が Routine 起点の open PR を巡回し、人間の仕事をマージ判断だけに絞る(運用: `docs/automation/pr-steward-routine.md`)。
+**人間の承認ゲートは `ready-to-implement` の付与(着手承認)1点**。マージ可否は機械的な**マージゲート**(CI green・コンフリクトなし・`needs-decision` なし等をコマンド出力で確定)で判定し、満たせば無人モードがマージする。ゲートの定義は `.claude/skills/issue-work/SKILL.md`「マージゲート」の1箇所のみ。個別 PR の自動マージを止めたいときは、その PR に `needs-decision` を付ける。
 
-マージ判断の材料: `packages/web` に変更がある PR は、モック起動モードの画面が GitHub Pages に自動配信され、配信 URL が PR にコメントされる(運用・セットアップ: `docs/automation/pr-preview.md`)。
+PR の保守(CI 修復・コンフリクト解消・重複検知): `/pr-steward` が Routine 起点の open PR を巡回して green に戻す(マージはしない。green にした PR は次のバックログ fire の回収マージが拾う。運用: `docs/automation/pr-steward-routine.md`)。
+
+画面の確認材料: `packages/web` に変更がある PR は、モック起動モードの画面が GitHub Pages に自動配信され、配信 URL が PR にコメントされる(運用・セットアップ: `docs/automation/pr-preview.md`)。
 
 無人運用の自己改善: `/retro` が無人モードの失敗データ(撤退・CI リトライ・レビュー指摘)を週次で振り返り、繰り返す失敗パターンから改善案を `needs-decision` Issue として起票する(読み取り専用。運用: `docs/automation/retro-routine.md`)。
 
