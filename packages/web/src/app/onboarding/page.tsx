@@ -9,7 +9,7 @@ import {
   type SectionIdentifier,
 } from '@warimaru/domain'
 import { useViewerRole } from '@/hooks/useViewerRole'
-import { apiFetch, apiMutate, ApiError } from '@/lib/api-client'
+import { apiFetch, apiMutate } from '@/lib/api-client'
 import {
   GmailAuthorizeResponseSchema,
   ImportStatusResponseSchema,
@@ -185,22 +185,6 @@ function currentStep(
     return 'notifications'
   }
   return 'phase2'
-}
-
-function errorNote(error: unknown): string | null {
-  if (error === null || error === undefined) return null
-  if (error instanceof ApiError) return error.message
-  return error instanceof Error ? error.message : '通信に失敗しました'
-}
-
-function ErrorNote({ error }: { error: unknown }) {
-  const message = errorNote(error)
-  if (message === null) return null
-  return (
-    <p className={styles.note}>
-      <LuTriangleAlert aria-hidden="true" className={ui.iconInline} /> {message}
-    </p>
-  )
 }
 
 export default function OnboardingPage() {
@@ -385,14 +369,27 @@ export default function OnboardingPage() {
     enabled: user?.kind === 'phase2_completed',
   })
 
-  if (meQuery.isPending) return null
+  // 取得中も画面の器（見出し）は出したままにする。真っ白のまま待たせると、
+  // 通信が遅いときに「開けていない」と読めるため（他画面と同じ共通部品で揃える）。
+  // announce={false} は画面全体のフォールバックでの既定の扱い（transactions / reports などと同じ）。
+  // マウントと同時に現れる live region は通知が起きず、器の読み上げに重なるだけになる
+  if (meQuery.isPending) {
+    return (
+      <main className={styles.main}>
+        <h1 className={ui.pageTitle}>はじめての設定</h1>
+        <div className={ui.card}>
+          <LoadingState announce={false} />
+        </div>
+      </main>
+    )
+  }
   if (meQuery.isError) {
     return (
       <main className={styles.main}>
         <h1 className={ui.pageTitle}>はじめての設定</h1>
         <div className={ui.card}>
           <span className={ui.sectionTitle}>読み込みに失敗しました</span>
-          <ErrorNote error={meQuery.error} />
+          <ErrorState>設定の状況を取得できませんでした</ErrorState>
           <button className={ui.buttonGhost} onClick={() => void meQuery.refetch()}>
             再読み込み
           </button>
@@ -472,7 +469,11 @@ export default function OnboardingPage() {
           >
             決定して次へ
           </button>
-          <ErrorNote error={saveNickname.error} />
+          {saveNickname.isError && (
+            <ErrorState>
+              ニックネームを保存できませんでした。通信状況を確かめて、もう一度お試しください。
+            </ErrorState>
+          )}
         </div>
       )}
 
@@ -522,7 +523,11 @@ export default function OnboardingPage() {
           >
             友だち追加しました
           </button>
-          <ErrorNote error={recordLineFriend.error} />
+          {recordLineFriend.isError && (
+            <ErrorState>
+              友だち追加を記録できませんでした。通信状況を確かめて、もう一度お試しください。
+            </ErrorState>
+          )}
         </div>
       )}
 
@@ -550,7 +555,11 @@ export default function OnboardingPage() {
           >
             参加しました
           </button>
-          <ErrorNote error={recordTalkRoom.error} />
+          {recordTalkRoom.isError && (
+            <ErrorState>
+              共通トークルームへの参加を記録できませんでした。通信状況を確かめて、もう一度お試しください。
+            </ErrorState>
+          )}
         </div>
       )}
 
@@ -574,7 +583,11 @@ export default function OnboardingPage() {
           <button className={ui.buttonGhost} onClick={() => setNotificationsDeferred(true)}>
             あとで設定する
           </button>
-          <ErrorNote error={activateNotification.error} />
+          {activateNotification.isError && (
+            <ErrorState>
+              通知の設定を記録できませんでした。通信状況を確かめて、もう一度お試しください。
+            </ErrorState>
+          )}
         </div>
       )}
 
@@ -595,7 +608,11 @@ export default function OnboardingPage() {
           >
             Phase 2 を開始する
           </button>
-          <ErrorNote error={startPhase2.error} />
+          {startPhase2.isError && (
+            <ErrorState>
+              Phase 2 を開始できませんでした。通信状況を確かめて、もう一度お試しください。
+            </ErrorState>
+          )}
         </div>
       )}
 
@@ -634,7 +651,11 @@ export default function OnboardingPage() {
                     連携状態を更新
                   </button>
                 </div>
-                <ErrorNote error={gmailAuthorize.error} />
+                {gmailAuthorize.isError && (
+                  <ErrorState>
+                    Gmail の連携を開始できませんでした。通信状況を確かめて、もう一度お試しください。
+                  </ErrorState>
+                )}
               </>
             )}
           </div>
@@ -726,7 +747,11 @@ export default function OnboardingPage() {
                     )}
                   </>
                 )}
-                <ErrorNote error={completeSectionB.error} />
+                {completeSectionB.isError && (
+                  <ErrorState>
+                    初期残高の登録を完了できませんでした。通信状況を確かめて、もう一度お試しください。
+                  </ErrorState>
+                )}
               </>
             )}
           </div>
@@ -802,6 +827,21 @@ export default function OnboardingPage() {
                 <p className={styles.note}>
                   過去のカード・銀行明細を取り込んで、これまでの家計も見えるようにします（任意）。
                 </p>
+                {/* 取込状況が取れないと「完了にする」が黙って消えるため、Section B と同じ形で状態を出す */}
+                {importStatusQuery.isPending && (
+                  <LoadingState>今月の取込状況を確認しています...</LoadingState>
+                )}
+                {importStatusQuery.isError && (
+                  <>
+                    <ErrorState>今月の取込状況を取得できませんでした</ErrorState>
+                    <button
+                      className={ui.buttonGhost}
+                      onClick={() => void importStatusQuery.refetch()}
+                    >
+                      もう一度確認する
+                    </button>
+                  </>
+                )}
                 <div className={ui.row}>
                   <Link href="/imports" className={`${ui.buttonGhost} ${ui.buttonLink}`}>
                     取込画面を開く
@@ -828,7 +868,11 @@ export default function OnboardingPage() {
                     スキップ
                   </button>
                 </div>
-                <ErrorNote error={finishSectionF.error} />
+                {finishSectionF.isError && (
+                  <ErrorState>
+                    過去明細の取込の状態を記録できませんでした。通信状況を確かめて、もう一度お試しください。
+                  </ErrorState>
+                )}
               </>
             )}
           </div>
@@ -842,7 +886,11 @@ export default function OnboardingPage() {
               >
                 Phase 2 を完了する
               </button>
-              <ErrorNote error={completePhase2.error} />
+              {completePhase2.isError && (
+                <ErrorState>
+                  Phase 2 を完了できませんでした。通信状況を確かめて、もう一度お試しください。
+                </ErrorState>
+              )}
             </div>
           )}
         </div>
@@ -850,39 +898,55 @@ export default function OnboardingPage() {
 
       {step === 'spouse_wait' && (
         <div className={ui.card}>
-          {spouse?.kind === 'both_completed' ? (
-            <>
-              <div className={styles.stepAvatar}>
-                <LuPartyPopper aria-hidden="true" className={ui.iconLg} />
-              </div>
-              <span className={ui.sectionTitle}>ふたりの設定が完了しました！</span>
-              <p className={styles.note}>
-                {nickname !== '' ? `${nickname}さん、` : ''}
-                おつかれさまでした。ダッシュボードから家計管理を始めましょう。
-              </p>
-              <Link href="/" className={ui.button} style={{ textAlign: 'center' }}>
-                ダッシュボードへ
-              </Link>
-            </>
-          ) : (
-            <>
-              <div className={styles.stepAvatar}>
-                <LuHourglass aria-hidden="true" className={ui.iconLg} />
-              </div>
-              <span className={ui.sectionTitle}>配偶者の設定完了を待っています</span>
-              <p className={styles.note}>
-                あなたの設定は完了しています。ふたりとも Phase 2
-                まで完了すると運用が始まります。画面を開き直すと最新の状態を確認します。
-              </p>
-              <button
-                className={ui.buttonGhost}
-                disabled={spouseQuery.isFetching}
-                onClick={() => void spouseQuery.refetch()}
-              >
-                最新の状態を確認
-              </button>
-              <ErrorNote error={spouseQuery.error} />
-            </>
+          {/*
+            「最新の状態を確認」を押すとカードの中身が丸ごと差し替わるが、画面遷移は起きない。
+            常時マウントの読み上げ領域に入れて差し替わりを支援技術へ伝える（内側の共通部品は
+            二重読み上げを避けて announce={false}）。再試行ボタンは読み上げ領域の外に置く
+          */}
+          <div role="status">
+            {spouseQuery.isPending ? (
+              // 取得前に「待っています」と断定せず、確認中であることを出す
+              <LoadingState announce={false}>配偶者の状況を確認しています...</LoadingState>
+            ) : spouse?.kind === 'both_completed' ? (
+              <>
+                <div className={styles.stepAvatar}>
+                  <LuPartyPopper aria-hidden="true" className={ui.iconLg} />
+                </div>
+                <span className={ui.sectionTitle}>ふたりの設定が完了しました！</span>
+                <p className={styles.note}>
+                  {nickname !== '' ? `${nickname}さん、` : ''}
+                  おつかれさまでした。ダッシュボードから家計管理を始めましょう。
+                </p>
+                <Link href="/" className={ui.button} style={{ textAlign: 'center' }}>
+                  ダッシュボードへ
+                </Link>
+              </>
+            ) : (
+              <>
+                <div className={styles.stepAvatar}>
+                  <LuHourglass aria-hidden="true" className={ui.iconLg} />
+                </div>
+                <span className={ui.sectionTitle}>配偶者の設定完了を待っています</span>
+                <p className={styles.note}>
+                  あなたの設定は完了しています。ふたりとも Phase 2
+                  まで完了すると運用が始まります。画面を開き直すと最新の状態を確認します。
+                </p>
+              </>
+            )}
+            {spouseQuery.isError && (
+              <ErrorState announce={false}>
+                配偶者の設定状況を取得できませんでした。通信状況を確かめて、もう一度お試しください。
+              </ErrorState>
+            )}
+          </div>
+          {spouse?.kind !== 'both_completed' && (
+            <button
+              className={ui.buttonGhost}
+              disabled={spouseQuery.isFetching}
+              onClick={() => void spouseQuery.refetch()}
+            >
+              最新の状態を確認
+            </button>
           )}
         </div>
       )}
