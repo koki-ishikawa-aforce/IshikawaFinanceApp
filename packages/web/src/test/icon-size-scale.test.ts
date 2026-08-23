@@ -207,9 +207,9 @@ describe('アイコンの大きさ', () => {
     expect(detected.get(join('components', 'ui', 'RoleIcon.tsx'))).toBe(1)
     expect(detected.get(join('components', 'dashboard', 'MonthNavigator.tsx'))).toBe(2)
     expect(detected.get(join('app', 'balances', 'page.tsx'))).toBe(4)
-    // 12 は #497 でエラー表示を共通部品 ErrorState に寄せ、警告アイコン(LuTriangleAlert)付きの
+    // #497 でエラー表示を共通部品 ErrorState に寄せ、警告アイコン(LuTriangleAlert)付きの
     // 独自表示が 1 つ減った後の件数
-    expect(detected.get(join('app', 'onboarding', 'page.tsx'))).toBe(12)
+    expect(detected.get(join('app', 'onboarding', 'page.tsx'))).toBe(13)
 
     expect(stylesheets.map(({ path }) => path)).toEqual(
       expect.arrayContaining([

@@ -2,6 +2,7 @@ import type {
   AccountBalanceQuery,
   AccountRepository,
   AllowlistQuery,
+  BalanceHistoryRepository,
   BankDepositRepository,
   AmazonProductKeyLearningRuleRepository,
   AppUserRepository,
@@ -51,6 +52,7 @@ import { AllowlistSchema, InMemoryEventBus, parseSmbcNotificationMail } from '@w
 import {
   createDb,
   PostgresAccountRepository,
+  PostgresBalanceHistoryRepository,
   PostgresBankDepositRepository,
   PostgresAllowlistQuery,
   PostgresAppUserRepository,
@@ -133,6 +135,7 @@ import {
 } from './mock-queries.js'
 import {
   createMockAccountRepository,
+  createMockBalanceHistoryRepository,
   createMockBankDepositRepository,
   createMockAppUserRepository,
   createMockGmailOAuthTokenRepository,
@@ -174,6 +177,8 @@ export interface AppDeps {
   accountRepository: AccountRepository
   // 入金用途判別 (#390): 手動確認待ちの入金の参照・確定
   bankDepositRepository: BankDepositRepository
+  // 残高変動履歴 (#398): 資産の推移グラフの正。残高が動くたびに追記される
+  balanceHistoryRepository: BalanceHistoryRepository
   expenseSettlementManagementQuery: ExpenseSettlementManagementQuery
   csvImportStatusQuery: CsvImportStatusQuery
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
@@ -469,6 +474,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     balanceTimeSeriesQuery: createMockBalanceTimeSeriesQuery(),
     accountRepository: createMockAccountRepository(),
     bankDepositRepository: createMockBankDepositRepository(),
+    balanceHistoryRepository: createMockBalanceHistoryRepository(),
     expenseSettlementManagementQuery: createMockExpenseSettlementManagementQuery(),
     csvImportStatusQuery: createMockCsvImportStatusQuery(),
     // 開発モードの簡易ロール判定（seed の U_HONEY_DEV やテストの user-honey-test を honey に解決する）
@@ -638,6 +644,7 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     balanceTimeSeriesQuery: new PostgresBalanceTimeSeriesQuery(db),
     accountRepository: new PostgresAccountRepository(db),
     bankDepositRepository: new PostgresBankDepositRepository(db),
+    balanceHistoryRepository: new PostgresBalanceHistoryRepository(db),
     expenseSettlementManagementQuery: new PostgresExpenseSettlementManagementQuery(db, { now }),
     csvImportStatusQuery: new PostgresCsvImportStatusQuery(db),
     resolveViewerRole,

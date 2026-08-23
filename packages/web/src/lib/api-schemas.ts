@@ -581,9 +581,30 @@ const SharedTalkRoomWireSchema = z.object({
 })
 export type SharedTalkRoomWire = z.infer<typeof SharedTalkRoomWireSchema>
 
+/**
+ * 確認セクション（C/D/E）の進捗。確認のみで完了扱いにできる（論点8）。
+ * ドメインの discriminated union をミラーし、C/D（カテゴリ・経費種別）は編集済み、
+ * E（月次上限）は変更済みを持つ（確認せずにマスタへ手を入れた場合に着く状態。
+ * 「目を通した」という意味では確認済みと同じ）。
+ */
+const SectionCDProgressWireSchema = z.object({
+  kind: z.enum(['unconfirmed', 'confirmed', 'edited']),
+})
+const SectionEProgressWireSchema = z.object({
+  kind: z.enum(['unconfirmed', 'confirmed', 'changed']),
+})
+
+/** 確認セクションの進捗状態（C/D/E を通した表示の出し分けに使う） */
+export type SectionConfirmationKind =
+  | z.infer<typeof SectionCDProgressWireSchema>['kind']
+  | z.infer<typeof SectionEProgressWireSchema>['kind']
+
 const Phase2ProgressWireSchema = z.object({
   sectionA: z.object({ kind: z.enum(['not_started', 'completed']) }),
   sectionB: z.object({ kind: z.enum(['not_started', 'completed']) }),
+  sectionC: SectionCDProgressWireSchema,
+  sectionD: SectionCDProgressWireSchema,
+  sectionE: SectionEProgressWireSchema,
   sectionF: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('not_started') }),
     z.object({ kind: z.literal('skipped') }),
