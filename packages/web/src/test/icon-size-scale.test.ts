@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { cssRules } from './css-rules'
 import { SRC_DIR, collectSources, isModuleCss, isTsx, type Source } from './sources'
 
 /**
@@ -107,21 +108,6 @@ function iconClassNames(sources: readonly Source[]): Set<string> {
     }
   }
   return names
-}
-
-/** CSS のルール(セレクタと宣言の組)。@media の入れ子は内側のルールが取れる */
-const CSS_RULE = /([^{}]+)\{([^{}]*)\}/g
-
-/** コメントはセレクタの手前に現れ、そのまま読むと本文の語をセレクタと誤認するため落とす */
-function stripComments(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
-
-function cssRules(css: string): { selector: string; body: string }[] {
-  return [...stripComments(css).matchAll(CSS_RULE)].map(match => ({
-    selector: (match[1] ?? '').trim(),
-    body: match[2] ?? '',
-  }))
 }
 
 /**
