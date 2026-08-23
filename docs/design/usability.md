@@ -306,4 +306,4 @@ return <span>{formatMoney(query.data.total)}</span>
 | 10 | 8-7 | `Modal` に `role="dialog"` / `aria-modal` / `aria-labelledby`・フォーカストラップ・Esc 閉じが無い | `packages/web/src/components/ui/Modal.tsx` |
 | 11 | 8-6 | コントラスト比が両テーマで検証されていない(半透明カード `rgba(255,255,255,0.7)` 上の `--text-secondary` 等) | `common.module.css`、`globals.css` |
 
-関連する既存 Issue: #310(ボタンが設計フォントを継承していない)、#341(空状態の共通部品化 — 対応済み)、#421(ローディング・エラーの共通部品化と通知 — 対応済み)、#90(`packages/web` の既存コードレビュー)。
+関連する既存 Issue: #310(ボタンが設計フォントを継承していない)、#341(空状態の共通部品化 — 対応済み)、#421(ローディング・エラーの共通部品化と通知 — 対応済み。ただし独自実装だった `onboarding/page.tsx` はこの時点で対象外だった)、#497(その `onboarding/page.tsx` の共通部品化 — 対応済み。これで全画面が `LoadingState` / `ErrorState` を通る)、#90(`packages/web` の既存コードレビュー)。

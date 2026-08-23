@@ -130,16 +130,6 @@ function errorNote(error: unknown): string | null {
   return error instanceof Error ? error.message : '通信に失敗しました'
 }
 
-function ErrorNote({ error }: { error: unknown }) {
-  const message = errorNote(error)
-  if (message === null) return null
-  return (
-    <p className={styles.note}>
-      <LuTriangleAlert aria-hidden="true" className={ui.iconInline} /> {message}
-    </p>
-  )
-}
-
 export default function OnboardingPage() {
   const { data: me } = useViewerRole()
   const queryClient = useQueryClient()
@@ -311,14 +301,25 @@ export default function OnboardingPage() {
     enabled: user?.kind === 'phase2_completed',
   })
 
-  if (meQuery.isPending) return null
+  // 取得中も画面の器（見出し）は出したままにする。真っ白のまま待たせると、
+  // 通信が遅いときに「開けていない」と読めるため（他画面と同じ共通部品で揃える）
+  if (meQuery.isPending) {
+    return (
+      <main className={styles.main}>
+        <h1 className={ui.pageTitle}>はじめての設定</h1>
+        <div className={ui.card}>
+          <LoadingState />
+        </div>
+      </main>
+    )
+  }
   if (meQuery.isError) {
     return (
       <main className={styles.main}>
         <h1 className={ui.pageTitle}>はじめての設定</h1>
         <div className={ui.card}>
           <span className={ui.sectionTitle}>読み込みに失敗しました</span>
-          <ErrorNote error={meQuery.error} />
+          <ErrorState>{errorNote(meQuery.error)}</ErrorState>
           <button className={ui.buttonGhost} onClick={() => void meQuery.refetch()}>
             再読み込み
           </button>
@@ -398,7 +399,7 @@ export default function OnboardingPage() {
           >
             決定して次へ
           </button>
-          <ErrorNote error={saveNickname.error} />
+          <ErrorState>{errorNote(saveNickname.error)}</ErrorState>
         </div>
       )}
 
@@ -448,7 +449,7 @@ export default function OnboardingPage() {
           >
             友だち追加しました
           </button>
-          <ErrorNote error={recordLineFriend.error} />
+          <ErrorState>{errorNote(recordLineFriend.error)}</ErrorState>
         </div>
       )}
 
@@ -476,7 +477,7 @@ export default function OnboardingPage() {
           >
             参加しました
           </button>
-          <ErrorNote error={recordTalkRoom.error} />
+          <ErrorState>{errorNote(recordTalkRoom.error)}</ErrorState>
         </div>
       )}
 
@@ -500,7 +501,7 @@ export default function OnboardingPage() {
           <button className={ui.buttonGhost} onClick={() => setNotificationsDeferred(true)}>
             あとで設定する
           </button>
-          <ErrorNote error={activateNotification.error} />
+          <ErrorState>{errorNote(activateNotification.error)}</ErrorState>
         </div>
       )}
 
@@ -521,7 +522,7 @@ export default function OnboardingPage() {
           >
             Phase 2 を開始する
           </button>
-          <ErrorNote error={startPhase2.error} />
+          <ErrorState>{errorNote(startPhase2.error)}</ErrorState>
         </div>
       )}
 
@@ -557,7 +558,7 @@ export default function OnboardingPage() {
                     連携状態を更新
                   </button>
                 </div>
-                <ErrorNote error={gmailAuthorize.error} />
+                <ErrorState>{errorNote(gmailAuthorize.error)}</ErrorState>
               </>
             )}
           </div>
@@ -649,7 +650,7 @@ export default function OnboardingPage() {
                     )}
                   </>
                 )}
-                <ErrorNote error={completeSectionB.error} />
+                <ErrorState>{errorNote(completeSectionB.error)}</ErrorState>
               </>
             )}
           </div>
@@ -695,7 +696,7 @@ export default function OnboardingPage() {
                     スキップ
                   </button>
                 </div>
-                <ErrorNote error={finishSectionF.error} />
+                <ErrorState>{errorNote(finishSectionF.error)}</ErrorState>
               </>
             )}
           </div>
@@ -709,7 +710,7 @@ export default function OnboardingPage() {
               >
                 Phase 2 を完了する
               </button>
-              <ErrorNote error={completePhase2.error} />
+              <ErrorState>{errorNote(completePhase2.error)}</ErrorState>
             </div>
           )}
         </div>
@@ -748,7 +749,7 @@ export default function OnboardingPage() {
               >
                 最新の状態を確認
               </button>
-              <ErrorNote error={spouseQuery.error} />
+              <ErrorState>{errorNote(spouseQuery.error)}</ErrorState>
             </>
           )}
         </div>
