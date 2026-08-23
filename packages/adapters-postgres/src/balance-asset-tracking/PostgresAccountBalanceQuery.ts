@@ -2,8 +2,14 @@
  * AccountBalanceQuery の PostgreSQL 実装
  * @see docs/superpowers/specs/2026-07-06-phase5-m-b-db-schema-design.md §4.3
  *
- * 残高・資産推移管理は世帯共有のため viewerId を取らず、両者の全 active 口座を読む
- * （口座数は一桁で全走査に問題なし）。inactive 口座は残高一覧・資産合計に含めない。
+ * 残高一覧（fetchBalanceList）は本人のみ可視（P2-B5 / AT-404 / OQ-60 ①）。閲覧者所有の
+ * active 口座だけを並べ、配偶者の口座は 1 件も返さない。配偶者については別銀行貯蓄残高と
+ * NISA 積立累計の合計だけを返す（配偶者の SMBC 残高・カード未払金・銀行名・口座件数は
+ * 一切返さない）。
+ *
+ * 資産合計（fetchAssetTotal）は世帯の合計と 4 つの内訳を出し続けるため閲覧者で絞らず、
+ * 両者の全 active 口座を読む（OQ-60 ②。口座数は一桁で全走査に問題なし）。
+ * inactive 口座は残高一覧・資産合計いずれにも含めない。
  *
  * 別銀行貯蓄口座の残高鮮度（経過日数・鮮度状態）は本 Query では返さない。08d L244 の
  * とおり本コンテキストは最終更新日時のみを供給し、閾値判定は家計分析側
@@ -13,7 +19,7 @@
  * データモデル上、過去時点の残高復元（historical as-of）はサポートしない
  * （過去の推移は残高変動履歴を読む BalanceTimeSeriesQuery が担う — #398）。
  */
-import { and, eq, sum } from 'drizzle-orm'
+import { and, eq, inArray, ne, sum } from 'drizzle-orm'
 import type {
   Account,
   AccountBalanceItem,
@@ -22,13 +28,17 @@ import type {
   AssetTotalView,
   MitsuiSumitomoUnpaid,
   Money,
+  UserId,
 } from '@warimaru/domain'
 import {
   AccountBalanceListViewSchema,
   AccountSchema,
   AssetTotalViewSchema,
   MitsuiSumitomoUnpaidSchema,
+  SPOUSE_TOTAL_VISIBLE_ACCOUNT_KINDS,
   brokerageNameToDisplay,
+  canListAccountInBalanceList,
+  spouseVisibleAssetTotal,
 } from '@warimaru/domain'
 import type { Db } from '../client'
 import { accounts, mitsuiSumitomoUnpaids } from '../schema'
@@ -44,20 +54,27 @@ const KIND_ORDER: Record<Account['kind'], number> = {
 export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
   constructor(private readonly db: Db) {}
 
-  async fetchBalanceList(): Promise<AccountBalanceListView> {
-    const rows = await this.db
-      .select({ payload: accounts.payload, unpaidPayload: mitsuiSumitomoUnpaids.payload })
-      .from(accounts)
-      .leftJoin(mitsuiSumitomoUnpaids, eq(mitsuiSumitomoUnpaids.accountId, accounts.accountId))
-      .where(eq(accounts.isActive, true))
+  async fetchBalanceList(viewerId: UserId): Promise<AccountBalanceListView> {
+    // 本番は 1 文 = 1 往復（neon-http）のため、本人の口座と配偶者の口座は並行に読む
+    const [rows, spouseAccounts] = await Promise.all([
+      this.db
+        .select({ payload: accounts.payload, unpaidPayload: mitsuiSumitomoUnpaids.payload })
+        .from(accounts)
+        .leftJoin(mitsuiSumitomoUnpaids, eq(mitsuiSumitomoUnpaids.accountId, accounts.accountId))
+        .where(and(eq(accounts.ownerUserId, viewerId), eq(accounts.isActive, true))),
+      this.fetchSpouseVisibleAccounts(viewerId),
+    ])
 
-    const parsed = rows.map(row => ({
-      account: parsePayload(AccountSchema, row.payload),
-      unpaid:
-        row.unpaidPayload === null
-          ? null
-          : parsePayload(MitsuiSumitomoUnpaidSchema, row.unpaidPayload),
-    }))
+    const parsed = rows
+      .map(row => ({
+        account: parsePayload(AccountSchema, row.payload),
+        unpaid:
+          row.unpaidPayload === null
+            ? null
+            : parsePayload(MitsuiSumitomoUnpaidSchema, row.unpaidPayload),
+      }))
+      // 絞り込みは SQL 側で済んでいるが、可視判定の正はドメインに置く
+      .filter(({ account }) => canListAccountInBalanceList(account, viewerId))
 
     parsed.sort((a, b) => {
       const byKind = KIND_ORDER[a.account.kind] - KIND_ORDER[b.account.kind]
@@ -66,7 +83,29 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
     })
 
     const items = parsed.map(({ account, unpaid }) => this.toItem(account, unpaid))
-    return AccountBalanceListViewSchema.parse({ items })
+    return AccountBalanceListViewSchema.parse({
+      items,
+      // 合計の求め方と「対象口座が無ければ null」の規約はドメイン側が持つ
+      spouseOtherSavingsAndNisaTotal: spouseVisibleAssetTotal(spouseAccounts, viewerId),
+    })
+  }
+
+  /**
+   * 配偶者のうち、閲覧者に合計だけを見せてよい口座（P2-B5 の「合計のみ配偶者可視」）。
+   * 対象の口座種別はドメインの定義を参照し、絞り込みだけを SQL で行う。
+   */
+  private async fetchSpouseVisibleAccounts(viewerId: UserId): Promise<Account[]> {
+    const rows = await this.db
+      .select({ payload: accounts.payload })
+      .from(accounts)
+      .where(
+        and(
+          ne(accounts.ownerUserId, viewerId),
+          eq(accounts.isActive, true),
+          inArray(accounts.kind, [...SPOUSE_TOTAL_VISIBLE_ACCOUNT_KINDS]),
+        ),
+      )
+    return rows.map(row => parsePayload(AccountSchema, row.payload))
   }
 
   async fetchAssetTotal(asOf: Date): Promise<AssetTotalView> {

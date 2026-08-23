@@ -34,16 +34,15 @@ const query = new PostgresAccountBalanceQuery(db)
 const FIXED_NOW = new Date('2026-07-06T00:00:00.000Z')
 
 describe('PostgresAccountBalanceQuery.fetchBalanceList', () => {
-  it('世帯共有: 両者の active 口座を kind 固定順で返す（inactive 除外）', async () => {
+  it('閲覧者本人の active 口座を kind 固定順で返す', async () => {
     const nisa = nisaAccount({ ownerUserId: DARLING_USER_ID })
-    const smbc = smbcAccount({ ownerUserId: HONEY_USER_ID, currentBalance: 1500000 })
+    const smbc = smbcAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 1500000 })
     const other = otherSavingsAccount({
       ownerUserId: DARLING_USER_ID,
       lastUpdatedAt: new Date('2026-06-26T00:00:00.000Z'),
     })
-    const card = cardAccount({ ownerUserId: HONEY_USER_ID })
-    const inactive = smbcAccount({ ownerUserId: DARLING_USER_ID, isActive: false })
-    for (const account of [nisa, smbc, other, card, inactive]) {
+    const card = cardAccount({ ownerUserId: DARLING_USER_ID })
+    for (const account of [nisa, smbc, other, card]) {
       await accountRepo.save(account)
     }
     const unpaid = unpaidAggregate({
@@ -53,7 +52,7 @@ describe('PostgresAccountBalanceQuery.fetchBalanceList', () => {
     })
     await unpaidRepo.save(unpaid)
 
-    const view = await query.fetchBalanceList()
+    const view = await query.fetchBalanceList(DARLING_USER_ID)
     expect(view.items.map(i => i.kind)).toEqual([
       'smbc_bank',
       'mitsui_sumitomo_card',
@@ -74,6 +73,81 @@ describe('PostgresAccountBalanceQuery.fetchBalanceList', () => {
       lastUpdatedAt: new Date('2026-06-26T00:00:00.000Z'),
     })
     expect(nisaItem).toMatchObject({ displayName: 'SBI証券', currentAccumulated: 300000 })
+  })
+
+  it('本人の inactive 口座は一覧に出ない', async () => {
+    await accountRepo.save(smbcAccount({ ownerUserId: DARLING_USER_ID, isActive: false }))
+
+    const view = await query.fetchBalanceList(DARLING_USER_ID)
+    expect(view.items).toEqual([])
+  })
+
+  // --- P2-B5 / AT-404 / OQ-60: 配偶者の口座は 1 件ずつ見えない ---
+
+  it('配偶者の口座は 1 件も一覧に出ず、別銀行貯蓄 + NISA の合計だけが返る', async () => {
+    const spouseCard = cardAccount({ ownerUserId: HONEY_USER_ID })
+    for (const account of [
+      smbcAccount({ ownerUserId: HONEY_USER_ID, currentBalance: 1500000 }),
+      spouseCard,
+      otherSavingsAccount({
+        ownerUserId: HONEY_USER_ID,
+        currentBalance: 800000,
+        bankName: '楽天銀行',
+      }),
+      nisaAccount({ ownerUserId: HONEY_USER_ID, currentAccumulated: 300000 }),
+      // 閲覧者本人の口座（合計に混ぜてはならない）
+      otherSavingsAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 90000 }),
+    ]) {
+      await accountRepo.save(account)
+    }
+    await unpaidRepo.save(
+      unpaidAggregate({ accountId: spouseCard.common.accountId, bookedAmounts: [42000] }),
+    )
+
+    const view = await query.fetchBalanceList(DARLING_USER_ID)
+
+    // 配偶者の口座は種別も銀行名も件数も漏れない（本人の別銀行貯蓄 1 件だけが並ぶ）
+    expect(view.items).toHaveLength(1)
+    expect(view.items[0]).toMatchObject({ kind: 'other_savings', currentBalance: 90000 })
+    expect(JSON.stringify(view.items)).not.toContain('楽天銀行')
+    // 配偶者の SMBC 残高（1,500,000）・カード未払金（42,000）は合計にも含めない。
+    // 合計は配偶者の別銀行貯蓄 800,000 + NISA 300,000 のみ
+    expect(view.spouseOtherSavingsAndNisaTotal).toBe(1100000)
+  })
+
+  it('配偶者の別銀行貯蓄が残高 0 円でも合計は 0 を返す（null にしない）', async () => {
+    // 取り崩して 0 円になった状態を「口座が無い」に倒すと、合計行が黙って画面から消える
+    await accountRepo.save(otherSavingsAccount({ ownerUserId: HONEY_USER_ID, currentBalance: 0 }))
+
+    const view = await query.fetchBalanceList(DARLING_USER_ID)
+    expect(view.spouseOtherSavingsAndNisaTotal).toBe(0)
+  })
+
+  it('配偶者の inactive な別銀行貯蓄・NISA は合計に含めない', async () => {
+    const inactiveSavings = otherSavingsAccount({
+      ownerUserId: HONEY_USER_ID,
+      currentBalance: 800000,
+    })
+    await accountRepo.save(inactiveSavings)
+    await accountRepo.save(
+      inactivateAccount(inactiveSavings, {
+        reason: '解約したため',
+        operatorUserId: HONEY_USER_ID,
+        at: new Date('2026-07-05T00:00:00.000Z'),
+      }),
+    )
+    await accountRepo.save(nisaAccount({ ownerUserId: HONEY_USER_ID, currentAccumulated: 300000 }))
+
+    const view = await query.fetchBalanceList(DARLING_USER_ID)
+    expect(view.spouseOtherSavingsAndNisaTotal).toBe(300000)
+  })
+
+  it('配偶者に別銀行貯蓄も NISA も無ければ合計は null（0 円と区別する）', async () => {
+    await accountRepo.save(smbcAccount({ ownerUserId: HONEY_USER_ID }))
+    await accountRepo.save(otherSavingsAccount({ ownerUserId: DARLING_USER_ID }))
+
+    const view = await query.fetchBalanceList(DARLING_USER_ID)
+    expect(view.spouseOtherSavingsAndNisaTotal).toBeNull()
   })
 })
 
@@ -128,7 +202,7 @@ describe('残高の手動操作の反映', () => {
     )
     await accountRepo.save(addNisaContributionBySmbcTransfer(nisa, { amount: money(50000), at }))
 
-    const list = await query.fetchBalanceList()
+    const list = await query.fetchBalanceList(DARLING_USER_ID)
     expect(list.items).toContainEqual(
       expect.objectContaining({ kind: 'other_savings', currentBalance: 500000 }),
     )
@@ -158,7 +232,7 @@ describe('残高の手動操作の反映', () => {
       }),
     )
 
-    const list = await query.fetchBalanceList()
+    const list = await query.fetchBalanceList(DARLING_USER_ID)
     expect(list.items).toContainEqual(
       expect.objectContaining({
         kind: 'other_savings',
@@ -181,7 +255,7 @@ describe('残高の手動操作の反映', () => {
       }),
     )
 
-    const list = await query.fetchBalanceList()
+    const list = await query.fetchBalanceList(DARLING_USER_ID)
     expect(list.items.some(i => i.kind === 'other_savings')).toBe(false)
     expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(0)
   })
@@ -204,7 +278,7 @@ describe('残高の手動操作の反映', () => {
     const { account } = reactivateAccount(stored, { operatorUserId: DARLING_USER_ID })
     await accountRepo.save(account)
 
-    const list = await query.fetchBalanceList()
+    const list = await query.fetchBalanceList(DARLING_USER_ID)
     expect(list.items).toContainEqual(
       expect.objectContaining({
         accountId: savings.common.accountId,
@@ -232,7 +306,7 @@ describe('残高の手動操作の反映', () => {
     })
     await accountRepo.save(account)
 
-    const list = await query.fetchBalanceList()
+    const list = await query.fetchBalanceList(DARLING_USER_ID)
     expect(list.items).toContainEqual(
       expect.objectContaining({ kind: 'other_savings', currentBalance: 700000 }),
     )

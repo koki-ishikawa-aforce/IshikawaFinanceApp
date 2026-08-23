@@ -36,7 +36,16 @@ export const AccountBalanceItemSchema = z.discriminatedUnion('kind', [
 ])
 export type AccountBalanceItem = z.infer<typeof AccountBalanceItemSchema>
 
+/**
+ * 残高一覧（P2-B5 / AT-404 / OQ-60）。
+ *
+ * `items` は閲覧者本人の口座のみ。配偶者の口座は 1 件ずつ並べず、別銀行貯蓄残高と
+ * NISA 積立累計の合計だけを `spouseOtherSavingsAndNisaTotal` で渡す（配偶者の SMBC
+ * 残高・カード未払金は返さない）。配偶者に対象の口座が 1 件も無ければ null で、
+ * 「配偶者の分が 0 円」と「配偶者が対象の口座を持たない」を画面が区別できるようにする。
+ */
 export const AccountBalanceListViewSchema = z.object({
   items: z.array(AccountBalanceItemSchema),
+  spouseOtherSavingsAndNisaTotal: MoneySchema.nullable(),
 })
 export type AccountBalanceListView = z.infer<typeof AccountBalanceListViewSchema>

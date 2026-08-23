@@ -136,6 +136,8 @@ describe('resolveMock: 口座未登録シナリオ', () => {
     visit(UNREGISTERED)
     const balances = AccountBalanceListWireSchema.parse(resolveMock('GET', '/api/balances'))
     expect(balances.items.map(b => b.kind)).toEqual(AUTOMANAGED_KINDS)
+    // 相手の合計行も出ない（別銀行貯蓄・NISA が未登録のシナリオのため）
+    expect(balances.spouseOtherSavingsAndNisaTotal).toBeNull()
 
     // 鮮度の対象は手入力の別銀行貯蓄口座だけなので、未登録なら知らせるものが無い
     const freshness = BalanceFreshnessListWireSchema.parse(
@@ -160,14 +162,24 @@ describe('resolveMock: 口座未登録シナリオ', () => {
     expect(unregistered.total).toBe(1380000)
   })
 
-  it('資産合計の別銀行貯蓄は、残高一覧に並ぶ口座の合計と一致する', () => {
+  it('資産合計の貯蓄・NISA は、残高一覧の本人分と相手の合計を足した額と一致する', () => {
+    // 一覧は本人の口座だけになり、相手の分は合計 1 件にまとまる（P2-B5 / AT-404）。
+    // 世帯の資産合計は据え置きのため、本人分 + 相手の合計が内訳と一致していないと
+    // プレビューの画面同士で数字が食い違う
     const balances = AccountBalanceListWireSchema.parse(resolveMock('GET', '/api/balances'))
-    const listed = balances.items.reduce(
-      (sum, item) => (item.kind === 'other_savings' ? sum + item.currentBalance : sum),
-      0,
-    )
+    const listed = balances.items.reduce((sum, item) => {
+      if (item.kind === 'other_savings') return sum + item.currentBalance
+      if (item.kind === 'nisa') return sum + item.currentAccumulated
+      return sum
+    }, 0)
     const total = AssetTotalWireSchema.parse(resolveMock('GET', '/api/balances/total'))
-    expect(total.otherSavingsBalance).toBe(listed)
+    // 軸をまたいだ付け替え（一覧の貯蓄を増やし NISA を同額減らす等）も検出できるよう、
+    // 突き合わせだけでなく本人分・相手分それぞれの額も固定する
+    expect(listed).toBe(2_940_000)
+    expect(balances.spouseOtherSavingsAndNisaTotal).toBe(260_000)
+    expect(listed + (balances.spouseOtherSavingsAndNisaTotal ?? 0)).toBe(
+      total.otherSavingsBalance + total.nisaContributionAccumulated,
+    )
   })
 
   it('ダッシュボードの資産額は、残高画面と同じ値になる', () => {

@@ -46,8 +46,11 @@ export function createMockMonthlyReportQuery(): MonthlyReportQuery {
 
 export function createMockAccountBalanceQuery(): AccountBalanceQuery {
   return {
-    async fetchBalanceList() {
-      return AccountBalanceListViewSchema.parse({ items: [] })
+    async fetchBalanceList(_viewerId: UserId) {
+      return AccountBalanceListViewSchema.parse({
+        items: [],
+        spouseOtherSavingsAndNisaTotal: null,
+      })
     },
     async fetchAssetTotal(asOf: Date) {
       return AssetTotalViewSchema.parse({

@@ -11,9 +11,13 @@ import {
   type BalanceFreshnessItemWire,
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
+import { partnerOf } from '@/lib/partner'
 import { formatDateTime, getCurrentMonth, shiftMonth } from '@/lib/month'
+import { useViewerRole } from '@/hooks/useViewerRole'
+import type { Theme } from '@/theme/tokens'
 import { TimeSeriesChart, type ChartSeries } from '@/components/balances/TimeSeriesChart'
 import { FreshnessBadge, useBalanceFreshnessQuery } from '@/components/balances/BalanceFreshness'
+import { RoleIcon } from '@/components/ui/RoleIcon'
 import { LuLandmark, LuCreditCard, LuPiggyBank, LuTrendingUp } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -90,8 +94,38 @@ function BalanceItem({
   }
 }
 
+/**
+ * 相手の「別銀行貯蓄 + NISA 積立累計」の合計 1 行（P2-B5 / AT-404）。
+ *
+ * 口座ごとの残高は本人のみが見られるため、相手の分は銀行名も件数も出さず合計だけを出す。
+ * 黙って伏せると「相手は貯めていない」に読めるため、合計だけ公開であることを明示する
+ * （docs/design/usability.md 2-1）。
+ *
+ * 受け取るのは確定した閲覧者の役割で、画面テーマ（未確定のうちは darling に倒れる）は
+ * 使わない。誰の金額かが唯一の意味を持つ行なので、確定前の既定値で名前を出して
+ * あとから差し替えると、一瞬でも他人の名前が相手の金額に付く（usability.md 7-2）。
+ */
+function SpouseSharedTotalItem({ total, viewerRole }: { total: number; viewerRole: Theme }) {
+  const partner = partnerOf(viewerRole)
+  return (
+    <div className={`${styles.balanceItem} ${styles.spouseItem}`}>
+      <div className={styles.balanceHead}>
+        <RoleIcon role={partner.role} className={`${ui.iconSm} ${styles.spouseIcon}`} />
+        <span className={`${styles.balanceName} ${styles.spouseText}`}>
+          {partner.name}の貯蓄・NISA（合計のみ）
+        </span>
+      </div>
+      <span className={`${styles.balanceValue} ${styles.spouseText}`}>{formatMoney(total)}</span>
+      <span className={styles.balanceMeta}>口座ごとの内訳はパートナーのみ閲覧可</span>
+    </div>
+  )
+}
+
 export default function BalancesPage() {
   const [rangeMonths, setRangeMonths] = useState<number>(6)
+  // 相手の合計行の名前は「確定した役割」に限る。テーマ（useTheme）は取得前 darling に
+  // 倒れるため、名前の根拠には使わない（usability.md 7-2）
+  const viewerRoleQuery = useViewerRole()
 
   const listQuery = useQuery({
     queryKey: ['balances', 'list'],
@@ -109,8 +143,10 @@ export default function BalancesPage() {
     (freshnessQuery.data?.items ?? []).map(item => [item.accountId, item]),
   )
   // 一覧だけ先に描くと「未更新タグが後から生える」ちらつきになるため、
-  // 鮮度が確定（成功・失敗いずれか）するまで口座行を描かない
-  const balanceListReady = listQuery.data !== undefined && !freshnessQuery.isPending
+  // 鮮度が確定（成功・失敗いずれか）するまで口座行を描かない。
+  // 閲覧者の役割も同じ扱いにする（確定前に描くと相手の合計行に別の名前が付く）
+  const balanceListReady =
+    listQuery.data !== undefined && !freshnessQuery.isPending && !viewerRoleQuery.isPending
 
   const to = getCurrentMonth()
   const from = shiftMonth(to, -(rangeMonths - 1))
@@ -147,7 +183,9 @@ export default function BalancesPage() {
 
       {totalQuery.data && (
         <div className={styles.heroCard}>
-          <span className={styles.heroLabel}>資産合計</span>
+          {/* 一覧は本人の口座だけになったが、合計は世帯のまま（OQ-60 ②）。
+              どちらの範囲の数字かを書かないと、下の一覧と合わない理由が画面上で解けない */}
+          <span className={styles.heroLabel}>資産合計（夫婦 2 人分）</span>
           <span className={styles.heroValue}>{formatMoney(totalQuery.data.total)}</span>
           <div className={styles.heroBreakdown}>
             <span>SMBC {formatMoney(totalQuery.data.smbcBalance)}</span>
@@ -191,8 +229,11 @@ export default function BalancesPage() {
             </ErrorState>
           )}
           {balanceListReady &&
-            (listQuery.data.items.length === 0 ? (
-              <EmptyState announce={false}>登録されている口座がありません</EmptyState>
+            (listQuery.data.items.length === 0 &&
+            listQuery.data.spouseOtherSavingsAndNisaTotal === null ? (
+              <EmptyState announce={false}>
+                あなたの口座がまだ登録されていません。設定の「口座」から登録してください
+              </EmptyState>
             ) : (
               <div className={styles.balanceList}>
                 {listQuery.data.items.map(item => (
@@ -202,6 +243,25 @@ export default function BalancesPage() {
                     freshness={freshnessByAccountId.get(item.accountId)}
                   />
                 ))}
+                {listQuery.data.spouseOtherSavingsAndNisaTotal !== null &&
+                  (viewerRoleQuery.data === undefined ? (
+                    // 誰の金額かを言えないまま出すと相手を取り違えるため、金額ごと出さない
+                    <ErrorState
+                      announce={false}
+                      onRetry={() => void viewerRoleQuery.refetch()}
+                      isRetrying={viewerRoleQuery.isFetching}
+                    >
+                      {describeRequestFailure(
+                        viewerRoleQuery.error,
+                        'パートナーの貯蓄・NISA の合計は表示できませんでした',
+                      )}
+                    </ErrorState>
+                  ) : (
+                    <SpouseSharedTotalItem
+                      total={listQuery.data.spouseOtherSavingsAndNisaTotal}
+                      viewerRole={viewerRoleQuery.data.role}
+                    />
+                  ))}
               </div>
             ))}
         </div>

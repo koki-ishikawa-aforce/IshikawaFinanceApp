@@ -4,13 +4,9 @@ import { useState, useCallback, useRef } from 'react'
 import type { Theme } from '@/theme/tokens'
 import { RoleIcon } from '@/components/ui/RoleIcon'
 import { formatMoney } from '@/lib/format'
+import { partnerOf } from '@/lib/partner'
 import ui from '@/components/ui/common.module.css'
 import styles from './SpousePersonalNote.module.css'
-
-const PARTNER_LABEL: Record<Theme, { role: 'honey' | 'darling'; name: string }> = {
-  darling: { role: 'honey', name: 'Honey' },
-  honey: { role: 'darling', name: 'Darling' },
-}
 
 const LONG_PRESS_MS = 500
 
@@ -23,7 +19,7 @@ export function SpousePersonalNote({ amount, theme }: SpousePersonalNoteProps) {
   const [showHint, setShowHint] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const partner = PARTNER_LABEL[theme]
+  const partner = partnerOf(theme)
 
   const handleTouchStart = useCallback(() => {
     timerRef.current = setTimeout(() => setShowHint(true), LONG_PRESS_MS)

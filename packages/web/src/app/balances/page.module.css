@@ -70,17 +70,31 @@
 }
 
 /*
- * 口座名（.balanceName）の左に置く見出しアイコン。口座名（--text-sm）とは大きさが
+ * 行の左端に置く見出しアイコンの大きさの基準。口座名（--text-sm）とは大きさが
  * 連動しないため、--icon-* を解決する基準の font-size をアイコン自身に明示する
  * （--text-base 14px × --icon-sm 1em = 14px）。大きさそのものは共通クラス .iconSm が与える。
  *
  * --text-base は「従来の 14px を保つ」ために選んだ基準で、隣の口座名とは連動しない。
  * 口座名に合わせて --text-sm へ寄せるとアイコンは 12px に縮む（見た目が変わる判断は #502）。
+ * 基準を 1 か所に置き、口座アイコンと相手の合計行のアイコンが揃って動くようにする。
  */
-.balanceIcon {
+.rowIcon {
   font-size: var(--text-base);
   flex-shrink: 0;
+}
+
+/** 口座名（.balanceName）の左に置く見出しアイコン */
+.balanceIcon {
+  composes: rowIcon;
   color: var(--text-secondary);
+}
+
+/*
+ * 相手の合計行に置くロール識別アイコン。色は RoleIcon が役割色（--role-*）で与えるため、
+ * ここでは大きさの基準だけを合わせる。
+ */
+.spouseIcon {
+  composes: rowIcon;
 }
 
 .balanceName {
@@ -101,6 +115,23 @@
 
 .balanceMeta {
   font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/*
+ * 相手（配偶者）の合計行。自分のテーマの淡色を敷き、ロール識別アイコンと合わせて
+ * 「本人の口座ではない」ことを面でも示す（DESIGN.md §2 色適用ルール）。
+ * 敷き色はダッシュボードの相手の個人費（SpousePersonalNote）と同じ配合に揃える。
+ */
+.spouseItem {
+  border-bottom: none;
+  padding: var(--space-2) var(--space-2_5);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/** 相手の行は本人の口座行と同じ重みで並べない（名称・金額を一段落とす） */
+.spouseText {
   color: var(--text-secondary);
 }
 
