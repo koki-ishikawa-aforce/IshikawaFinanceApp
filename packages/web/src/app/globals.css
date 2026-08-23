@@ -89,6 +89,8 @@ textarea {
   --error: #c04050;
   --error-text: #a02828;
   --white: #ffffff;
+  /* 一覧の行を区切る線の色。背景（テーマ別のグラデーション）に重ねる薄墨で、両テーマ共通 */
+  --divider: rgba(0, 0, 0, 0.06);
   --line-brand: #06c755;
 
   /* Darling theme (default) */

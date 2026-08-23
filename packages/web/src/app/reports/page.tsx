@@ -13,7 +13,7 @@ import {
   type MonthlyReportViewWire,
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
-import { formatDateTime, getCurrentMonth } from '@/lib/month'
+import { formatDateWithYear, getCurrentMonth } from '@/lib/month'
 import { LuTriangleAlert } from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { BalanceFreshnessCard } from '@/components/balances/BalanceFreshness'
@@ -65,8 +65,10 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
           </span>
         </div>
         <div className={styles.statusDates}>
-          <span>CSV確認: {formatDateTime(report.csvConfirmedAt)}</span>
-          {report.finalizedAt !== null && <span>確定: {formatDateTime(report.finalizedAt)}</span>}
+          <span>CSV確認: {formatDateWithYear(report.csvConfirmedAt)}</span>
+          {report.finalizedAt !== null && (
+            <span>確定: {formatDateWithYear(report.finalizedAt)}</span>
+          )}
           {isIncompleteMonthReport(report.common) && (
             <span className={styles.incomplete}>
               <LuTriangleAlert

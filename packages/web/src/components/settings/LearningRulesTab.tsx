@@ -12,7 +12,7 @@ import {
   type MerchantLearningRuleWire,
 } from '@/lib/api-schemas'
 import { LEARNING_AXIS_LABELS, learnedAxisLabels } from '@/lib/labels'
-import { formatDateTime } from '@/lib/month'
+import { formatDateWithYear } from '@/lib/month'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -122,7 +122,7 @@ function MerchantActionModal({
 
   return (
     <Modal title={`「${merchantName}」の${text.label}`} onClose={onClose}>
-      <p className={text.destructive ? styles.warning : styles.note}>{text.description}</p>
+      <p className={text.destructive ? ui.warning : ui.note}>{text.description}</p>
       {mutation.error && (
         <ErrorState>
           {mutation.error.message}
@@ -164,9 +164,11 @@ function MerchantRuleRow({
       {rule.kind === 'active' ? (
         <>
           <LearnedAxes refs={rule} masters={masters} />
-          <span className={styles.ruleMeta}>最終更新日: {formatDateTime(rule.lastUpdatedAt)}</span>
+          <span className={styles.ruleMeta}>
+            最終更新日: {formatDateWithYear(rule.lastUpdatedAt)}
+          </span>
           <button
-            className={`${styles.linkButton} ${styles.linkDanger}`}
+            className={`${ui.linkButton} ${ui.linkDanger}`}
             onClick={() => onAction('disable')}
             aria-label={`${rule.common.merchantName}の学習を止める`}
           >
@@ -175,9 +177,9 @@ function MerchantRuleRow({
         </>
       ) : (
         <>
-          <span className={styles.ruleMeta}>停止した日: {formatDateTime(rule.disabledAt)}</span>
+          <span className={styles.ruleMeta}>停止した日: {formatDateWithYear(rule.disabledAt)}</span>
           <button
-            className={styles.linkButton}
+            className={ui.linkButton}
             onClick={() => onAction('reenable')}
             aria-label={`${rule.common.merchantName}の学習を再開する`}
           >
@@ -208,13 +210,13 @@ function MerchantRulesSection({ masters }: { masters: MastersState }) {
   return (
     <section className={ui.card}>
       <h2 className={ui.sectionTitle}>加盟店の学習</h2>
-      <p className={styles.note}>
+      <p className={ui.note}>
         取引を手動で分類すると、その加盟店の分類を覚えて次回から自動で分類します。覚えた内容の確認と、加盟店ごとに学習を止める・再開することができます。ここに出るのはあなたの学習だけで、配偶者の学習とは共有されません。
       </p>
       {/* 「何度分類しても Amazon が一覧に出てこない」を不具合と誤解させないため、
           学習の対象外であることをこの画面で明示する（X-1 取り下げ、#572）。
           除外そのものを続けるかは判断待ちのため、変わったらこの文言も直す（#391） */}
-      <p className={styles.note}>
+      <p className={ui.note}>
         Amazon（AMAZON.CO.JP）の支払いは、加盟店名がどれも同じで中身を見分けられないため学習の対象外です。この一覧には出てこず、毎回その場で分類してください。
       </p>
       {actionResult !== null && (

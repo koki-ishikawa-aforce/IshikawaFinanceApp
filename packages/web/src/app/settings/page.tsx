@@ -86,11 +86,9 @@ function ProfileForm({
           placeholder="未設定（ロール名で表示）"
         />
       </div>
-      <p className={styles.note}>
-        空欄で保存するとニックネームを解除し、ロール名の表示に戻ります。
-      </p>
+      <p className={ui.note}>空欄で保存するとニックネームを解除し、ロール名の表示に戻ります。</p>
       {save.error && <ErrorState>{save.error.message}</ErrorState>}
-      {save.isSuccess && <p className={styles.note}>保存しました</p>}
+      {save.isSuccess && <p className={ui.note}>保存しました</p>}
       <button className={ui.button} disabled={save.isPending} onClick={() => save.mutate()}>
         {save.isPending ? '保存中...' : '保存'}
       </button>
@@ -224,7 +222,7 @@ function AccountRow({ account, onEdit }: { account: OwnAccountWire; onEdit: (() 
       <span className={styles.rowActions}>
         {detail !== null && <span className={styles.limitValue}>{detail}</span>}
         {onEdit !== null ? (
-          <button className={styles.linkButton} onClick={onEdit}>
+          <button className={ui.linkButton} onClick={onEdit}>
             編集
           </button>
         ) : (
@@ -257,7 +255,7 @@ function AccountsTab() {
   return (
     <div className={ui.card}>
       <span className={ui.sectionTitle}>口座管理</span>
-      <p className={styles.note}>
+      <p className={ui.note}>
         自分が所有する口座の一覧です。口座種別ごとに 1 つずつ登録できます。別銀行貯蓄口座の銀行名と
         NISA 口座の証券会社名は登録後も編集できます（三井住友系の名称は固定です）。
       </p>
@@ -358,7 +356,7 @@ function CategoryDeleteModal({
 
   return (
     <Modal title={`「${target.name}」を削除`} onClose={onClose}>
-      <p className={styles.warning}>
+      <p className={ui.warning}>
         削除すると、このカテゴリに分類済みの取引と学習ルールは、指定した移動先へ付け替えられます。この操作は取り消せません。
       </p>
       <div className={ui.field}>
@@ -483,7 +481,7 @@ function CategoriesTab() {
             ) : (
               <span className={styles.rowActions}>
                 <button
-                  className={styles.linkButton}
+                  className={ui.linkButton}
                   onClick={() => {
                     setRenaming(category)
                     setRenameValue(category.name)
@@ -492,7 +490,7 @@ function CategoriesTab() {
                   改名
                 </button>
                 <button
-                  className={`${styles.linkButton} ${styles.linkDanger}`}
+                  className={`${ui.linkButton} ${ui.linkDanger}`}
                   onClick={() => setDeleting(category)}
                 >
                   削除
@@ -579,7 +577,7 @@ function ExpenseTypeDeleteModal({
 
   return (
     <Modal title={`「${target.name}」を削除`} onClose={onClose}>
-      <p className={styles.warning}>
+      <p className={ui.warning}>
         削除すると、この経費種別に紐づく取引・学習ルール・月次上限は、指定した移動先へ付け替えられます。この操作は取り消せません。
       </p>
       <div className={ui.field}>
@@ -669,7 +667,7 @@ function ExpenseTypesTab() {
             ) : (
               <span className={styles.rowActions}>
                 <button
-                  className={styles.linkButton}
+                  className={ui.linkButton}
                   onClick={() => {
                     setRenaming(expenseType)
                     setRenameValue(expenseType.name)
@@ -678,7 +676,7 @@ function ExpenseTypesTab() {
                   改名
                 </button>
                 <button
-                  className={`${styles.linkButton} ${styles.linkDanger}`}
+                  className={`${ui.linkButton} ${ui.linkDanger}`}
                   onClick={() => setDeleting(expenseType)}
                 >
                   削除
@@ -820,7 +818,7 @@ function LimitsTab() {
   return (
     <div className={ui.card}>
       <span className={ui.sectionTitle}>月次上限</span>
-      <p className={styles.note}>
+      <p className={ui.note}>
         経費種別ごとに月あたりの経費上限を設定します。上限を超えた分は個人負担として按分されます。
       </p>
       {(expenseTypesQuery.isLoading || limitsQuery.isLoading) && <LoadingState />}
@@ -846,7 +844,7 @@ function LimitsTab() {
                       ? '上限なし'
                       : formatMoney(limit.capAmount)}
                 </span>
-                <button className={styles.linkButton} onClick={() => setEditing(expenseType)}>
+                <button className={ui.linkButton} onClick={() => setEditing(expenseType)}>
                   変更
                 </button>
               </span>

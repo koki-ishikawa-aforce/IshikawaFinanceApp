@@ -17,7 +17,7 @@ import {
   type ExpenseTypeAccumulationWire,
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
-import { formatDate, formatDateTime, formatMonthLabel, getCurrentMonth } from '@/lib/month'
+import { formatDate, formatDateWithYear, formatMonthLabel, getCurrentMonth } from '@/lib/month'
 import { LuPlus } from '@/components/ui/icons'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -288,7 +288,7 @@ export default function ExpenseSettlementPage() {
         {cycle !== null && (
           <div className={styles.cycleActions}>
             <span className={styles.cycleMeta}>
-              開始: {formatDateTime(cycle.common.cycleStartedAt)}
+              開始: {formatDateWithYear(cycle.common.cycleStartedAt)}
             </span>
             {cycle.kind === 'accumulating' && (
               <>
@@ -400,7 +400,7 @@ export default function ExpenseSettlementPage() {
               {formatMonthLabel(view.latestFinalizedCycle.targetYearMonth)}分
             </span>
             <span className={styles.childDate}>
-              {formatDateTime(view.latestFinalizedCycle.finalizedAt)} 確定
+              {formatDateWithYear(view.latestFinalizedCycle.finalizedAt)} 確定
             </span>
           </div>
           <div className={ui.rowBetween}>

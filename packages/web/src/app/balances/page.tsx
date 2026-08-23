@@ -12,7 +12,7 @@ import {
 } from '@/lib/api-schemas'
 import { formatMoney } from '@/lib/format'
 import { partnerOf } from '@/lib/partner'
-import { formatDateTime, getCurrentMonth, shiftMonth } from '@/lib/month'
+import { formatDateWithYear, getCurrentMonth, shiftMonth } from '@/lib/month'
 import { useViewerRole } from '@/hooks/useViewerRole'
 import type { Theme } from '@/theme/tokens'
 import { TimeSeriesChart, type ChartSeries } from '@/components/balances/TimeSeriesChart'
@@ -47,7 +47,7 @@ function BalanceItem({
             <span className={styles.balanceName}>{item.displayName}</span>
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentBalance)}</span>
-          <span className={styles.balanceMeta}>更新: {formatDateTime(item.lastUpdatedAt)}</span>
+          <span className={styles.balanceMeta}>更新: {formatDateWithYear(item.lastUpdatedAt)}</span>
         </div>
       )
     case 'mitsui_sumitomo_card':
@@ -62,7 +62,8 @@ function BalanceItem({
           </span>
           <span className={styles.balanceMeta}>
             当月未払い
-            {item.lastSettledAt !== null && ` ・ 前回精算: ${formatDateTime(item.lastSettledAt)}`}
+            {item.lastSettledAt !== null &&
+              ` ・ 前回精算: ${formatDateWithYear(item.lastSettledAt)}`}
           </span>
         </div>
       )
@@ -75,7 +76,7 @@ function BalanceItem({
             <FreshnessBadge freshness={freshness} />
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentBalance)}</span>
-          <span className={styles.balanceMeta}>更新: {formatDateTime(item.lastUpdatedAt)}</span>
+          <span className={styles.balanceMeta}>更新: {formatDateWithYear(item.lastUpdatedAt)}</span>
         </div>
       )
     case 'nisa':
@@ -87,7 +88,7 @@ function BalanceItem({
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentAccumulated)}</span>
           <span className={styles.balanceMeta}>
-            積立累計 ・ 更新: {formatDateTime(item.lastUpdatedAt)}
+            積立累計 ・ 更新: {formatDateWithYear(item.lastUpdatedAt)}
           </span>
         </div>
       )

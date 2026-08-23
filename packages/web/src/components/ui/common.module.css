@@ -14,6 +14,23 @@
   color: var(--text-primary);
 }
 
+/** 本文に添える補足文（操作の説明・保存結果など）。読まなくても操作できる情報に使う */
+.note {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/** 取り消せない操作・影響範囲を伴う操作の前に出す注意書き。`.note` より強く見せる */
+.warning {
+  font-size: var(--text-xs);
+  color: var(--error-text);
+  line-height: 1.6;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-2_5);
+}
+
 .pageTitle {
   font-size: var(--text-lg);
   font-weight: 800;
@@ -150,6 +167,30 @@
   justify-content: center;
   text-align: center;
   text-decoration: none;
+}
+
+/**
+ * リンクの見た目のボタン（一覧の行に並べる「編集」「削除」など）。
+ * `.buttonLink`（ボタンの見た目のリンク）とは逆で、要素は `&lt;button&gt;`。
+ * 行内に並べても指で押せるよう、高さの下限だけはボタンと揃える（usability 4-3）
+ */
+.linkButton {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: var(--tap-target-min);
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  padding: var(--space-0_5);
+}
+
+/** `.linkButton` と併用する色の修飾子。本文サイズのため `--error` ではなく文字用の `--error-text` を使う */
+.linkDanger {
+  color: var(--error-text);
 }
 
 /* 入力欄も指で触れて位置を合わせる操作の受け皿。同じフォームに並ぶ選択欄だけ背が高くなるのを避ける意味でも下限を揃える */
