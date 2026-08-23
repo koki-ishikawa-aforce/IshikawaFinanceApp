@@ -28,6 +28,7 @@ import {
   TransactionIdSchema,
   type AccountId,
   type UserId,
+  type MitsuiSumitomoUnpaidId,
   type SettlementNoticeId,
   type TransactionId,
 } from '../../shared/ids'
@@ -173,6 +174,89 @@ export type OtherSavingsAccount = Extract<Account, { kind: 'other_savings' }>
 export type NisaAccount = Extract<Account, { kind: 'nisa' }>
 
 /**
+ * 手入力の残高（登録時の初期残高・初期累計、補正後残高、修正後初期残高）の入力制約。
+ * 「上限以下」は入力形式なので ZodError（API 層で 400）、「負にしない」は口座の状態に対する
+ * 不変条件なので InvariantViolationError（同 409）と、翻訳先も含めて 1 か所に揃える。
+ *
+ * 登録・補正・後修正のどれにも同じ制約を課す。登録にだけ制約が無いと、登録時に入れた誤った桁を
+ * 後から直せない（直そうとした値の方が弾かれる）状態になる。
+ *
+ * label は拒否された値が何かを利用者向けの言葉で示すためのもの（「初期残高」「初期累計」など）。
+ */
+function parseBalanceInput(value: Money, label: string): Money {
+  const parsed = BalanceInputSchema.parse(value)
+  if (parsed < 0) {
+    throw new InvariantViolationError(`${label}は負にできない（${parsed}）`)
+  }
+  return parsed
+}
+
+/**
+ * behavior 口座をアプリに登録する（08d §2、SMBC 銀行口座）
+ * 設定画面・オンボーディング Phase 2-B からの登録。アクティブ状態で登録され、
+ * 現在残高 = 初期残高、初期残高基準時刻・最終更新日時 = 登録日時（論点9: ユーザー入力時点）。
+ * 反映済み引落確定通知IDは空（登録直後は何も消し込んでいない）。
+ *
+ * 初期残高は利用者が通帳・アプリを見て手入力する値のため、`correctInitialBalance` と同じ
+ * 入力制約（0 円以上・上限以下）を課す。登録後の残高変動には課さない（引落が入金より先に
+ * 届けば一時的に負になりうる — 冒頭の不変条件コメント参照）。
+ *
+ * 事前条件は registerOtherSavingsAccount と同じ（同種別未登録は Repository の一意制約が最終保証）。
+ */
+export function registerSmbcBankAccount(params: {
+  accountId: AccountId
+  ownerUserId: UserId
+  initialBalance: Money
+  at: Date
+}): SmbcBankAccount {
+  const initialBalance = parseBalanceInput(params.initialBalance, '初期残高')
+  return AccountSchema.parse({
+    kind: 'smbc_bank',
+    common: {
+      accountId: params.accountId,
+      ownerUserId: params.ownerUserId,
+      registeredAt: params.at,
+      activeness: { kind: 'active' },
+    },
+    balance: {
+      currentBalance: initialBalance,
+      initialBalance,
+      initialBalanceBaselineAt: params.at,
+      lastUpdatedAt: params.at,
+      appliedSettlementNoticeIds: [],
+    },
+  }) as SmbcBankAccount
+}
+
+/**
+ * behavior 口座をアプリに登録する（08d §2、三井住友カード口座）
+ * カードは残高ではなく未払金集約が正（08d §1）のため初期残高を受け取らず、未払金集約への
+ * 参照を持つ。参照先の集約（`openMitsuiSumitomoUnpaid`）は口座と対で作り、永続化は
+ * 口座を先に行う（未払金集約の口座IDが口座への外部キーのため）。対の作成が中断して
+ * 未払金集約が欠けると、カード利用の計上が「未払金集約が見つからない」で落ち続けるため、
+ * 呼び出し側は再実行で対を揃え直せる形にする。
+ *
+ * 事前条件は registerOtherSavingsAccount と同じ（同種別未登録は Repository の一意制約が最終保証）。
+ */
+export function registerMitsuiSumitomoCardAccount(params: {
+  accountId: AccountId
+  ownerUserId: UserId
+  unpaidAggregateRef: MitsuiSumitomoUnpaidId
+  at: Date
+}): MitsuiSumitomoCardAccount {
+  return AccountSchema.parse({
+    kind: 'mitsui_sumitomo_card',
+    common: {
+      accountId: params.accountId,
+      ownerUserId: params.ownerUserId,
+      registeredAt: params.at,
+      activeness: { kind: 'active' },
+    },
+    unpaidAggregateRef: params.unpaidAggregateRef,
+  }) as MitsuiSumitomoCardAccount
+}
+
+/**
  * behavior 口座をアプリに登録する（08d §2、別銀行貯蓄口座）
  * 設定画面・オンボーディング Phase 2-B からの登録。アクティブ状態で登録され、
  * 現在残高 = 初期残高、初期残高基準時刻・最終更新日時 = 登録日時（論点9: ユーザー入力時点）。
@@ -187,6 +271,7 @@ export function registerOtherSavingsAccount(params: {
   initialBalance: Money
   at: Date
 }): OtherSavingsAccount {
+  const initialBalance = parseBalanceInput(params.initialBalance, '初期残高')
   return AccountSchema.parse({
     kind: 'other_savings',
     common: {
@@ -197,8 +282,8 @@ export function registerOtherSavingsAccount(params: {
     },
     bankName: params.bankName,
     balance: {
-      currentBalance: params.initialBalance,
-      initialBalance: params.initialBalance,
+      currentBalance: initialBalance,
+      initialBalance,
       initialBalanceBaselineAt: params.at,
       lastUpdatedAt: params.at,
     },
@@ -218,6 +303,7 @@ export function registerNisaAccount(params: {
   initialAccumulated: Money
   at: Date
 }): NisaAccount {
+  const initialAccumulated = parseBalanceInput(params.initialAccumulated, '初期累計')
   return AccountSchema.parse({
     kind: 'nisa',
     common: {
@@ -228,8 +314,8 @@ export function registerNisaAccount(params: {
     },
     brokerageName: params.brokerageName,
     contribution: {
-      currentAccumulated: params.initialAccumulated,
-      initialAccumulated: params.initialAccumulated,
+      currentAccumulated: initialAccumulated,
+      initialAccumulated,
       initialAccumulatedBaselineAt: params.at,
       lastUpdatedAt: params.at,
     },
@@ -603,11 +689,8 @@ export function correctOtherSavingsBalance(
 ): OtherSavingsAccount {
   assertOperatedByOwner(account, params.operatorUserId, '残高の補正')
   assertActive(account, '残高の補正')
-  const correctedBalance = BalanceInputSchema.parse(params.correctedBalance)
+  const correctedBalance = parseBalanceInput(params.correctedBalance, '別銀行貯蓄残高')
   const memo = parseMemo(params.memo)
-  if (correctedBalance < 0) {
-    throw new InvariantViolationError(`別銀行貯蓄残高は負にできない（${correctedBalance}）`)
-  }
   return appendManualEntry(replaceOtherSavingsBalance(account, correctedBalance, params.at), {
     kind: 'manual_correction',
     enteredByUserId: params.operatorUserId,
@@ -663,10 +746,7 @@ export function correctInitialBalance(
 ): { account: Account; oldInitialBalance: Money } {
   assertOperatedByOwner(account, params.operatorUserId, '初期残高の修正')
   assertActive(account, '初期残高の修正')
-  const initialBalance = BalanceInputSchema.parse(params.initialBalance)
-  if (initialBalance < 0) {
-    throw new InvariantViolationError(`初期残高は負にできない（${initialBalance}）`)
-  }
+  const initialBalance = parseBalanceInput(params.initialBalance, '初期残高')
   switch (account.kind) {
     case 'mitsui_sumitomo_card':
       throw new InvariantViolationError(
@@ -743,7 +823,8 @@ export function correctInitialBalance(
  * 対象は別銀行貯蓄・NISA のみ。三井住友系（SMBC 銀行・カード）は取込基盤が管理する口座で、
  * 閉じるとメール由来の残高更新・引落消込の反映が毎回 InvariantViolationError で落ち続け、
  * 「未払金は消込済み・残高は未反映」の状態から回復できなくなる（#388 の回復経路が塞がる）。
- * 登録エンドポイントが三井住友系を対象外にしているのと対称の制限。
+ * 三井住友系も登録はできる（#395）が、閉じられるかどうかは別の判断で、閉じた後の回復手段が
+ * 無いこの制限は残す。
  *
  * 既に非アクティブな口座の再実行は InvariantViolationError。非アクティブ化日時と理由は
  * 「いつ・なぜ閉じたか」の記録であり、上書きすると最初に閉じた事実が失われる。

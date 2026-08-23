@@ -6,6 +6,12 @@ import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
+import {
+  AccountAddModal,
+  BrokerageNameFields,
+  isBrokerageNameValid,
+  normalizeBrokerageName,
+} from '@/components/accounts/AccountAddModal'
 import { LearningRulesTab } from '@/components/settings/LearningRulesTab'
 import { apiFetch, apiMutate } from '@/lib/api-client'
 import {
@@ -22,7 +28,12 @@ import {
   type MonthlyLimitWire,
   type OwnAccountWire,
 } from '@/lib/api-schemas'
-import { ACCOUNT_KIND_LABELS, EXPENSE_CLASS_LABELS, brokerageNameLabel } from '@/lib/labels'
+import {
+  ACCOUNT_KIND_LABELS,
+  ACCOUNT_KIND_ORDER,
+  EXPENSE_CLASS_LABELS,
+  brokerageNameLabel,
+} from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { RoleIcon } from '@/components/ui/RoleIcon'
 import { LuPlus, LuRocket } from '@/components/ui/icons'
@@ -111,176 +122,7 @@ function ProfileTab() {
   )
 }
 
-// ---------- 口座管理（#48） ----------
-
-function BrokerageNameFields({
-  value,
-  onChange,
-}: {
-  value: BrokerageNameWire
-  onChange: (next: BrokerageNameWire) => void
-}) {
-  return (
-    <>
-      <div className={ui.field}>
-        <label className={ui.fieldLabel}>証券会社</label>
-        <select
-          className={ui.select}
-          value={value.kind}
-          onChange={e => {
-            const kind = e.target.value as BrokerageNameWire['kind']
-            onChange(kind === 'other' ? { kind, customName: '' } : { kind })
-          }}
-        >
-          <option value="sbi">SBI証券</option>
-          <option value="rakuten">楽天証券</option>
-          <option value="other">その他</option>
-        </select>
-      </div>
-      {value.kind === 'other' && (
-        <div className={ui.field}>
-          <label className={ui.fieldLabel}>証券会社名</label>
-          <input
-            className={ui.input}
-            value={value.customName}
-            maxLength={50}
-            onChange={e => onChange({ kind: 'other', customName: e.target.value })}
-            placeholder="例: マネックス証券"
-          />
-        </div>
-      )}
-    </>
-  )
-}
-
-function isBrokerageNameValid(value: BrokerageNameWire): boolean {
-  return value.kind !== 'other' || value.customName.trim() !== ''
-}
-
-function normalizeBrokerageName(value: BrokerageNameWire): BrokerageNameWire {
-  return value.kind === 'other' ? { kind: 'other', customName: value.customName.trim() } : value
-}
-
-function OtherSavingsAddModal({ onClose }: { onClose: () => void }) {
-  const queryClient = useQueryClient()
-  const [bankName, setBankName] = useState('')
-  const [initialBalance, setInitialBalance] = useState('')
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      apiMutate(
-        '/api/accounts',
-        {
-          method: 'POST',
-          body: {
-            kind: 'other_savings',
-            bankName: bankName.trim(),
-            initialBalance: Number(initialBalance),
-          },
-        },
-        UnknownResponseSchema,
-      ),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      onClose()
-    },
-  })
-
-  const valid =
-    bankName.trim() !== '' &&
-    initialBalance !== '' &&
-    Number.isInteger(Number(initialBalance)) &&
-    Number(initialBalance) >= 0
-
-  return (
-    <Modal title="別銀行貯蓄口座を追加" onClose={onClose}>
-      <div className={ui.field}>
-        <label className={ui.fieldLabel}>銀行名</label>
-        <input
-          className={ui.input}
-          value={bankName}
-          maxLength={50}
-          onChange={e => setBankName(e.target.value)}
-          placeholder="例: 楽天銀行"
-        />
-      </div>
-      <div className={ui.field}>
-        <label className={ui.fieldLabel}>現在の残高（円、初期残高として登録）</label>
-        <input
-          className={ui.input}
-          type="number"
-          value={initialBalance}
-          onChange={e => setInitialBalance(e.target.value)}
-          placeholder="例: 500000"
-        />
-      </div>
-      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
-      <button
-        className={ui.button}
-        disabled={!valid || mutation.isPending}
-        onClick={() => mutation.mutate()}
-      >
-        {mutation.isPending ? '登録中...' : '登録'}
-      </button>
-    </Modal>
-  )
-}
-
-function NisaAddModal({ onClose }: { onClose: () => void }) {
-  const queryClient = useQueryClient()
-  const [brokerageName, setBrokerageName] = useState<BrokerageNameWire>({ kind: 'sbi' })
-  const [initialAccumulated, setInitialAccumulated] = useState('')
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      apiMutate(
-        '/api/accounts',
-        {
-          method: 'POST',
-          body: {
-            kind: 'nisa',
-            brokerageName: normalizeBrokerageName(brokerageName),
-            initialAccumulated: Number(initialAccumulated),
-          },
-        },
-        UnknownResponseSchema,
-      ),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      onClose()
-    },
-  })
-
-  const valid =
-    isBrokerageNameValid(brokerageName) &&
-    initialAccumulated !== '' &&
-    Number.isInteger(Number(initialAccumulated)) &&
-    Number(initialAccumulated) >= 0
-
-  return (
-    <Modal title="NISA口座を追加" onClose={onClose}>
-      <BrokerageNameFields value={brokerageName} onChange={setBrokerageName} />
-      <div className={ui.field}>
-        <label className={ui.fieldLabel}>積立累計（円、初期累計として登録）</label>
-        <input
-          className={ui.input}
-          type="number"
-          value={initialAccumulated}
-          onChange={e => setInitialAccumulated(e.target.value)}
-          placeholder="例: 200000"
-        />
-      </div>
-      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
-      <button
-        className={ui.button}
-        disabled={!valid || mutation.isPending}
-        onClick={() => mutation.mutate()}
-      >
-        {mutation.isPending ? '登録中...' : '登録'}
-      </button>
-    </Modal>
-  )
-}
+// ---------- 口座管理（#48 / 登録は #395 で AccountAddModal に集約） ----------
 
 function BankNameEditModal({
   account,
@@ -390,7 +232,7 @@ function AccountRow({ account, onEdit }: { account: OwnAccountWire; onEdit: (() 
 }
 
 function AccountsTab() {
-  const [adding, setAdding] = useState<'other_savings' | 'nisa' | null>(null)
+  const [adding, setAdding] = useState<OwnAccountWire['kind'] | null>(null)
   const [editing, setEditing] = useState<OwnAccountWire | null>(null)
 
   const accountsQuery = useQuery({
@@ -399,15 +241,21 @@ function AccountsTab() {
   })
 
   const items = accountsQuery.data?.items ?? []
-  const hasOtherSavings = items.some(a => a.kind === 'other_savings')
-  const hasNisa = items.some(a => a.kind === 'nisa')
+  /**
+   * 未登録の口座種別（同一ユーザー × 口座種別は 1 件のため、登録済みの種別は追加できない）。
+   * 一覧を取得できるまでは出さない。読み込み中の空配列を「未登録」と読むと、登録済みの種別にも
+   * 追加ボタンが一瞬出て、押した人が重複登録（409）に当たる。
+   */
+  const registrableKinds = accountsQuery.isSuccess
+    ? ACCOUNT_KIND_ORDER.filter(kind => !items.some(a => a.kind === kind))
+    : []
 
   return (
     <div className={ui.card}>
       <span className={ui.sectionTitle}>口座管理</span>
       <p className={styles.note}>
-        自分が所有する口座の一覧です。別銀行貯蓄口座の銀行名と NISA
-        口座の証券会社名を編集できます。三井住友系の口座は自動管理のため固定です。
+        自分が所有する口座の一覧です。口座種別ごとに 1 つずつ登録できます。別銀行貯蓄口座の銀行名と
+        NISA 口座の証券会社名は登録後も編集できます（三井住友系の名称は固定です）。
       </p>
       {accountsQuery.isLoading && <LoadingState />}
       {accountsQuery.error && <ErrorState>口座の取得に失敗しました</ErrorState>}
@@ -427,33 +275,23 @@ function AccountsTab() {
           />
         ))}
       </ul>
-      {(!hasOtherSavings || !hasNisa) && (
+      {registrableKinds.length > 0 && (
         <div className={styles.addRow}>
-          {!hasOtherSavings && (
+          {registrableKinds.map(kind => (
             <button
+              key={kind}
               className={`${ui.button} ${ui.iconLabel}`}
-              aria-label="別銀行貯蓄口座を追加"
-              onClick={() => setAdding('other_savings')}
+              aria-label={`${ACCOUNT_KIND_LABELS[kind]}を追加`}
+              onClick={() => setAdding(kind)}
             >
               <LuPlus aria-hidden="true" className={ui.iconSm} />
-              別銀行貯蓄口座
+              {ACCOUNT_KIND_LABELS[kind]}
             </button>
-          )}
-          {!hasNisa && (
-            <button
-              className={`${ui.button} ${ui.iconLabel}`}
-              aria-label="NISA口座を追加"
-              onClick={() => setAdding('nisa')}
-            >
-              <LuPlus aria-hidden="true" className={ui.iconSm} />
-              NISA口座
-            </button>
-          )}
+          ))}
         </div>
       )}
 
-      {adding === 'other_savings' && <OtherSavingsAddModal onClose={() => setAdding(null)} />}
-      {adding === 'nisa' && <NisaAddModal onClose={() => setAdding(null)} />}
+      {adding !== null && <AccountAddModal kind={adding} onClose={() => setAdding(null)} />}
       {editing?.kind === 'other_savings' && (
         <BankNameEditModal account={editing} onClose={() => setEditing(null)} />
       )}

@@ -2,7 +2,8 @@
  * 口座管理エンドポイント（#48、残高・資産推移管理コンテキスト）
  * @see docs/domain/08d-ul-残高資産推移管理.md §2
  * @see docs/superpowers/specs/2026-05-01-phase3.5-ux-ui-design.md §13（別銀行貯蓄: 銀行名 /
- *      NISA: 証券会社名が編集可。三井住友系は固定のため登録・編集の対象外）
+ *      NISA: 証券会社名が編集可。三井住友系は名称が固定のため編集の対象外。登録は #395 で
+ *      4 種すべてを受け付ける）
  *
  * - 一覧は viewer 本人が所有する口座のみ（世帯合算の残高表示は /api/balances が担う）
  * - 「同一ユーザー × 口座種別の一意性」は Repository.save の一意制約が最終保証（409 に翻訳）
@@ -28,6 +29,7 @@ import {
   InitialBalanceCorrectedSchema,
   InitialBalanceRegisteredSchema,
   ManualEntryMemoSchema,
+  MitsuiSumitomoUnpaidIdSchema,
   MoneySchema,
   NotFoundError,
   OtherSavingsBalanceUpdatedSchema,
@@ -40,8 +42,11 @@ import {
   correctInitialBalance,
   correctOtherSavingsBalance,
   inactivateAccount,
+  openMitsuiSumitomoUnpaid,
+  registerMitsuiSumitomoCardAccount,
   registerNisaAccount,
   registerOtherSavingsAccount,
+  registerSmbcBankAccount,
   subtractMoney,
   withdrawOtherSavings,
 } from '@warimaru/domain'
@@ -50,6 +55,8 @@ import type {
   AccountId,
   AccountRepository,
   EventBus,
+  MitsuiSumitomoUnpaid,
+  MitsuiSumitomoUnpaidRepository,
   Money,
   OtherSavingsUpdateSource,
   UserId,
@@ -59,6 +66,12 @@ import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 
 const RegisterBodySchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('smbc_bank'),
+    initialBalance: MoneySchema,
+  }),
+  // カードは残高ではなく未払金集約が正（08d §1）のため、登録時に受け取る項目が無い
+  z.object({ kind: z.literal('mitsui_sumitomo_card') }),
   z.object({
     kind: z.literal('other_savings'),
     bankName: BankNameSchema,
@@ -84,6 +97,8 @@ const InactivateBodySchema = z.object({ reason: InactivationReasonSchema })
 
 export interface AccountsRoutesDeps {
   accountRepository: AccountRepository
+  /** 三井住友カード口座の登録と対で開設する未払金集約の保存先（#395） */
+  mitsuiSumitomoUnpaidRepository: MitsuiSumitomoUnpaidRepository
   eventBus: EventBus
 }
 
@@ -117,31 +132,87 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
   })
 
   /**
-   * 口座の登録（別銀行貯蓄 / NISA）。三井住友系（SMBC 銀行・カード）は取込基盤側で
-   * 管理するため対象外。同種別の重複登録は一意制約により 409。
+   * 口座の登録（口座種別 4 種すべて。08d §1「口座種別 = SMBC銀行 OR 三井住友カード OR
+   * 別銀行貯蓄 OR NISA」）。同種別の重複登録は一意制約により 409。
+   *
+   * 三井住友系（SMBC 銀行・カード）はメール取込が自動で更新する口座だが、その器を作る経路は
+   * ここにしかない（#395。開発用フィクスチャは本番に存在しない）。作られていないと
+   * オンボーディング Section B が完走できず、カード利用・引落の取込先も無い。
+   *
+   * カードは口座と未払金集約が対になる。永続化は必ず「口座 → 未払金集約」の順で行う
+   * （未払金集約の口座IDは口座への外部キーで、口座行が無いうちは保存できない）。
+   * 対をひとつの取引にまとめられない（本番の接続方式では複数文をまたぐトランザクションを
+   * 張れない）ため、間で失敗すると未払金集約を持たないカード口座が残る。この状態は
+   * 同じ登録をやり直すと修復される（下の repairInterruptedCardRegistration）。
    */
   app.post('/', async c => {
     const body = RegisterBodySchema.parse(await c.req.json())
     const viewerId = c.get('viewerId')
     const now = new Date()
+
+    if (body.kind === 'mitsui_sumitomo_card') {
+      const repaired = await repairInterruptedCardRegistration(viewerId)
+      if (repaired !== null) return c.json({ account: repaired }, 201)
+    }
+
     const accountId = AccountIdSchema.parse(newUlid())
-    const account =
-      body.kind === 'other_savings'
-        ? registerOtherSavingsAccount({
-            accountId,
-            ownerUserId: viewerId,
-            bankName: body.bankName,
+    const unpaidAggregateId = MitsuiSumitomoUnpaidIdSchema.parse(newUlid())
+
+    function buildAccount(): { account: Account; initialBalance: Money | null } {
+      switch (body.kind) {
+        case 'smbc_bank':
+          return {
+            account: registerSmbcBankAccount({
+              accountId,
+              ownerUserId: viewerId,
+              initialBalance: body.initialBalance,
+              at: now,
+            }),
             initialBalance: body.initialBalance,
-            at: now,
-          })
-        : registerNisaAccount({
-            accountId,
-            ownerUserId: viewerId,
-            brokerageName: body.brokerageName,
-            initialAccumulated: body.initialAccumulated,
-            at: now,
-          })
+          }
+        case 'mitsui_sumitomo_card':
+          return {
+            account: registerMitsuiSumitomoCardAccount({
+              accountId,
+              ownerUserId: viewerId,
+              unpaidAggregateRef: unpaidAggregateId,
+              at: now,
+            }),
+            // カードは初期残高を持たない（未払金集約が正）
+            initialBalance: null,
+          }
+        case 'other_savings':
+          return {
+            account: registerOtherSavingsAccount({
+              accountId,
+              ownerUserId: viewerId,
+              bankName: body.bankName,
+              initialBalance: body.initialBalance,
+              at: now,
+            }),
+            initialBalance: body.initialBalance,
+          }
+        case 'nisa':
+          return {
+            account: registerNisaAccount({
+              accountId,
+              ownerUserId: viewerId,
+              brokerageName: body.brokerageName,
+              initialAccumulated: body.initialAccumulated,
+              at: now,
+            }),
+            initialBalance: body.initialAccumulated,
+          }
+      }
+    }
+
+    const { account, initialBalance } = buildAccount()
+    // 重複登録（409）は利用者の操作で普通に起こるため、ここは saveAccountOr500 を通さない
+    // （error-handler が 409 に翻訳する。エラーログに残すのは想定外の失敗だけにする）
     await deps.accountRepository.save(account)
+    if (body.kind === 'mitsui_sumitomo_card') {
+      await saveUnpaidOr500(openMitsuiSumitomoUnpaid({ unpaidAggregateId, accountId }), accountId)
+    }
     await deps.eventBus.publish(
       AccountRegisteredSchema.parse({
         ...domainEventBase(now),
@@ -151,17 +222,19 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
         accountKind: account.kind,
       }),
     )
-    // 登録は UL の「口座をアプリに登録する」+「初期残高を登録する」の統合アクション（08d §2）
-    await deps.eventBus.publish(
-      InitialBalanceRegisteredSchema.parse({
-        ...domainEventBase(now),
-        type: 'InitialBalanceRegistered',
-        userId: viewerId,
-        accountId,
-        initialBalance:
-          body.kind === 'other_savings' ? body.initialBalance : body.initialAccumulated,
-      }),
-    )
+    // 登録は UL の「口座をアプリに登録する」+「初期残高を登録する」の統合アクション（08d §2）。
+    // 初期残高を持たないカードは前者だけになる
+    if (initialBalance !== null) {
+      await deps.eventBus.publish(
+        InitialBalanceRegisteredSchema.parse({
+          ...domainEventBase(now),
+          type: 'InitialBalanceRegistered',
+          userId: viewerId,
+          accountId,
+          initialBalance,
+        }),
+      )
+    }
     return c.json({ account }, 201)
   })
 
@@ -229,6 +302,61 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
     const account = await getAccountOr404(accountId)
     assertOwnedByViewer(account, viewerId)
     return { account, viewerId, accountId }
+  }
+
+  /**
+   * 未払金集約を保存する。失敗時に対（どのカード口座のどの集約）を特定できるログを残す。
+   * ここで落ちると未払金集約を持たないカード口座が残り、カード利用の計上が
+   * 「未払金集約が見つからない」で落ち続ける。復旧の起点になるログなので、
+   * error-handler のスタックだけに頼らず対象 ID を残す。
+   */
+  async function saveUnpaidOr500(
+    unpaid: MitsuiSumitomoUnpaid,
+    accountId: AccountId,
+  ): Promise<void> {
+    try {
+      await deps.mitsuiSumitomoUnpaidRepository.save(unpaid)
+    } catch (e) {
+      console.error(
+        `未払金集約の保存に失敗した（カード口座 accountId=${accountId}, unpaidAggregateId=${unpaid.unpaidAggregateId}）。` +
+          'カード口座は保存済みで未払金集約が欠けている。同じ登録をやり直すと修復される',
+        e,
+      )
+      throw e
+    }
+  }
+
+  /**
+   * 中断したカード口座の登録を修復する（#395）。
+   *
+   * 口座と未払金集約は別々に保存するため、間で失敗するとカード口座だけが残る。この状態は
+   * 「同一ユーザー × 口座種別は一意」の制約により登録し直せず（409）、放置するとカード利用が
+   * 一件も計上されないまま画面上は登録済みに見え続ける。そこで同じ登録要求を受けたときに、
+   * 既存口座が持つ参照 ID のまま未払金集約を開設し直して前へ進める（ID を採番し直さないため
+   * 何度実行しても同じ結果になる）。
+   *
+   * 戻り値は修復した口座。修復が不要（カード口座が無い / 対が揃っている）なら null を返し、
+   * 呼び出し側は通常の登録へ進む（対が揃っている場合の 409 は一意制約が返す）。
+   */
+  async function repairInterruptedCardRegistration(viewerId: UserId): Promise<Account | null> {
+    const owned = await deps.accountRepository.findByOwner(viewerId)
+    const card = owned.find(a => a.kind === 'mitsui_sumitomo_card')
+    if (card === undefined || card.kind !== 'mitsui_sumitomo_card') return null
+    const unpaid = await deps.mitsuiSumitomoUnpaidRepository.findByCardAccountId(
+      card.common.accountId,
+    )
+    if (unpaid !== null) return null
+    console.warn(
+      `カード口座（accountId=${card.common.accountId}）の未払金集約が欠けていたため開設し直す（unpaidAggregateId=${card.unpaidAggregateRef}）`,
+    )
+    await saveUnpaidOr500(
+      openMitsuiSumitomoUnpaid({
+        unpaidAggregateId: card.unpaidAggregateRef,
+        accountId: card.common.accountId,
+      }),
+      card.common.accountId,
+    )
+    return card
   }
 
   /**

@@ -44,6 +44,17 @@ export const ACCOUNT_KIND_LABELS: Record<OwnAccountWire['kind'], string> = {
   nisa: 'NISA口座',
 }
 
+/**
+ * 口座種別の表示順（08d §1「口座種別 = SMBC銀行 OR 三井住友カード OR 別銀行貯蓄 OR NISA」）。
+ * 登録の導線（設定 > 口座、はじめての設定 Section B）で、未登録の種別を毎回同じ並びで出すために使う。
+ */
+export const ACCOUNT_KIND_ORDER: OwnAccountWire['kind'][] = [
+  'smbc_bank',
+  'mitsui_sumitomo_card',
+  'other_savings',
+  'nisa',
+]
+
 export function brokerageNameLabel(name: BrokerageNameWire): string {
   switch (name.kind) {
     case 'sbi':

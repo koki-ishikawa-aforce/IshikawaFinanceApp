@@ -16,8 +16,10 @@ import {
   correctInitialBalance,
   correctOtherSavingsBalance,
   inactivateAccount,
+  registerMitsuiSumitomoCardAccount,
   registerNisaAccount,
   registerOtherSavingsAccount,
+  registerSmbcBankAccount,
   withdrawOtherSavings,
   type Account,
   type NisaAccount,
@@ -138,6 +140,79 @@ describe('Account 集約', () => {
 
 // --- #48: 口座登録（設定画面 / オンボーディング Phase 2-B） ---
 
+describe('registerSmbcBankAccount()', () => {
+  const at = new Date('2026-07-01')
+  const register = (initialBalance: number) =>
+    registerSmbcBankAccount({
+      accountId: '01ACC000000000000000000001' as never,
+      ownerUserId: 'user_honey' as never,
+      initialBalance: initialBalance as never,
+      at,
+    })
+
+  it('アクティブ状態で登録され、現在残高 = 初期残高になる', () => {
+    const account = register(1500000)
+    expect(account.kind).toBe('smbc_bank')
+    expect(account.common.activeness.kind).toBe('active')
+    expect(account.common.registeredAt).toEqual(at)
+    expect(account.balance.currentBalance).toBe(1500000)
+    expect(account.balance.initialBalance).toBe(1500000)
+  })
+
+  it('初期残高基準時刻・最終更新日時 = 登録日時（論点9）', () => {
+    const account = register(1500000)
+    expect(account.balance.initialBalanceBaselineAt).toEqual(at)
+    expect(account.balance.lastUpdatedAt).toEqual(at)
+  })
+
+  it('反映済み引落確定通知IDは空で始まる（登録直後は何も消し込んでいない）', () => {
+    expect(register(1500000).balance.appliedSettlementNoticeIds).toEqual([])
+  })
+
+  it('残高 0 円でも登録できる', () => {
+    expect(register(0).balance.currentBalance).toBe(0)
+  })
+
+  it('負の初期残高は登録できない', () => {
+    expect(() => register(-1)).toThrow(InvariantViolationError)
+  })
+
+  it('上限を超える初期残高は登録できない（桁の打ち間違い）', () => {
+    expect(() => register(BALANCE_INPUT_LIMIT + 1)).toThrow(ZodError)
+    expect(register(BALANCE_INPUT_LIMIT).balance.currentBalance).toBe(BALANCE_INPUT_LIMIT)
+  })
+})
+
+describe('registerMitsuiSumitomoCardAccount()', () => {
+  const at = new Date('2026-07-01')
+  const register = () =>
+    registerMitsuiSumitomoCardAccount({
+      accountId: '01ACC000000000000000000002' as never,
+      ownerUserId: 'user_honey' as never,
+      unpaidAggregateRef: '01NP0000000000000000000001' as never,
+      at,
+    })
+
+  it('アクティブ状態で登録され、開設済みの未払金集約を参照する', () => {
+    const account = register()
+    expect(account.kind).toBe('mitsui_sumitomo_card')
+    expect(account.common.activeness.kind).toBe('active')
+    expect(account.common.registeredAt).toEqual(at)
+    expect(account.unpaidAggregateRef).toBe('01NP0000000000000000000001')
+  })
+
+  it('未払金集約参照が ULID でなければ登録できない（参照先不在の口座を作らせない）', () => {
+    expect(() =>
+      registerMitsuiSumitomoCardAccount({
+        accountId: '01ACC000000000000000000002' as never,
+        ownerUserId: 'user_honey' as never,
+        unpaidAggregateRef: '' as never,
+        at,
+      }),
+    ).toThrow(ZodError)
+  })
+})
+
 describe('registerOtherSavingsAccount()', () => {
   const at = new Date('2026-07-01')
   const register = () =>
@@ -176,6 +251,19 @@ describe('registerOtherSavingsAccount()', () => {
       }),
     ).toThrow()
   })
+
+  it('負の初期残高・上限超えは登録できない（後修正と同じ入力制約）', () => {
+    const withBalance = (initialBalance: number) =>
+      registerOtherSavingsAccount({
+        accountId: '01ACC000000000000000000002' as never,
+        ownerUserId: 'user_honey' as never,
+        bankName: '楽天銀行' as never,
+        initialBalance: initialBalance as never,
+        at,
+      })
+    expect(() => withBalance(-1)).toThrow(InvariantViolationError)
+    expect(() => withBalance(BALANCE_INPUT_LIMIT + 1)).toThrow(ZodError)
+  })
 })
 
 describe('registerNisaAccount()', () => {
@@ -206,6 +294,19 @@ describe('registerNisaAccount()', () => {
       at,
     })
     expect(account.brokerageName).toEqual({ kind: 'other', customName: 'マネックス証券' })
+  })
+
+  it('負の初期累計・上限超えは登録できない（後修正と同じ入力制約）', () => {
+    const withAccumulated = (initialAccumulated: number) =>
+      registerNisaAccount({
+        accountId: '01ACC000000000000000000003' as never,
+        ownerUserId: 'user_darling' as never,
+        brokerageName: { kind: 'sbi' },
+        initialAccumulated: initialAccumulated as never,
+        at: new Date('2026-07-01'),
+      })
+    expect(() => withAccumulated(-1)).toThrow(InvariantViolationError)
+    expect(() => withAccumulated(BALANCE_INPUT_LIMIT + 1)).toThrow(ZodError)
   })
 })
 
