@@ -10,7 +10,7 @@
  * - 銀行名・証券会社名の変更は所有者本人のみ（ドメイン関数 changeBankName /
  *   changeBrokerageName が操作者を検証し、error-handler が 403 に翻訳する）
  * - 残高の手動操作（#397。取り崩し・補正・初期残高の後修正・非アクティブ化と、その取り消しの
- *   再アクティブ化〔#457〕）も所有者本人のみ。
+ *   再アクティブ化〔#457〕、NISA 積立累計の補正〔#458〕）も所有者本人のみ。
  *   金額と残高の不変条件（1 円以上・上限・負残高にしない・操作者 = 所有者）はドメイン関数が
  *   持ち、本ルートでは再実装しない（400 / 403 / 409 への翻訳は error-handler が行う）。
  *   ルート側の assertOwnedByViewer は、口座種別の絞り込みより前に所有権を確かめて
@@ -33,6 +33,7 @@ import {
   ManualEntryMemoSchema,
   MitsuiSumitomoUnpaidIdSchema,
   MoneySchema,
+  NisaContributionCorrectedSchema,
   NotFoundError,
   OtherSavingsBalanceUpdatedSchema,
   PermissionDeniedError,
@@ -42,6 +43,7 @@ import {
   changeBrokerageName,
   ConcurrentUpdateError,
   correctInitialBalance,
+  correctNisaContribution,
   correctOtherSavingsBalance,
   inactivateAccount,
   openMitsuiSumitomoUnpaid,
@@ -92,6 +94,10 @@ const BrokerageNameBodySchema = z.object({ brokerageName: BrokerageNameSchema })
 const AmountBodySchema = z.object({ amount: MoneySchema, memo: ManualEntryMemoSchema.optional() })
 const BalanceBodySchema = z.object({
   balance: MoneySchema,
+  memo: ManualEntryMemoSchema.optional(),
+})
+const ContributionBodySchema = z.object({
+  accumulated: MoneySchema,
   memo: ManualEntryMemoSchema.optional(),
 })
 const InitialBalanceBodySchema = z.object({ initialBalance: MoneySchema })
@@ -460,6 +466,38 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
       source: 'manual_correction',
       at: now,
     })
+    return c.json({ account: updated })
+  })
+
+  /**
+   * NISA 積立累計の手動補正（#458。差分ではなく実際の積立累計へ差し替える）。
+   *
+   * 積立累計は加算しかされない軸のため、二重加算・桁の打ち間違いを戻す経路がここにしかない
+   * （初期累計を下げて辻褄を合わせると「始めた時点でいくら積み立てていたか」の記録が壊れる）。
+   * 別銀行貯蓄の残高補正（PUT /:accountId/balance）と対になる操作で、対象口座種別だけが違う。
+   */
+  app.put('/:accountId/contribution', async c => {
+    const body = ContributionBodySchema.parse(await c.req.json())
+    const { account, viewerId, accountId } = await loadOwnedAccount(c)
+    const nisa = asNisaAccount(account, '積立累計の補正')
+    const now = new Date()
+    const updated = correctNisaContribution(nisa, {
+      correctedAccumulated: body.accumulated,
+      operatorUserId: viewerId,
+      at: now,
+      ...(body.memo !== undefined ? { memo: body.memo } : {}),
+    })
+    await saveAccountOr500(updated, 'nisa_contribution_correction')
+    await deps.eventBus.publish(
+      NisaContributionCorrectedSchema.parse({
+        ...domainEventBase(now),
+        type: 'NisaContributionCorrected',
+        accountId,
+        oldAccumulated: nisa.contribution.currentAccumulated,
+        newAccumulated: updated.contribution.currentAccumulated,
+        correctedByUserId: viewerId,
+      }),
+    )
     return c.json({ account: updated })
   })
 

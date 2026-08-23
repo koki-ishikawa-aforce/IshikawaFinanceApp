@@ -9,7 +9,8 @@
  * - AccountBalanceUpdated      … 口座種別から軸を決める（SMBC 残高 / 別銀行貯蓄残高）。
  *                                 引落消込の残高反映・資金移動のシャドウ残高反映が発行する
  * - OtherSavingsBalanceUpdated … 別銀行貯蓄残高（取り崩し・残高補正の手入力）
- * - NisaContributionAdded      … NISA 積立累計
+ * - NisaContributionAdded      … NISA 積立累計（振込由来の加算）
+ * - NisaContributionCorrected  … NISA 積立累計（手入力の補正。#458）
  * - InitialBalanceRegistered   … 口座登録時の初期残高（グラフの起点）
  * - InitialBalanceCorrected    … 初期残高の後修正（現在残高も同じ差分ずれる）
  * - UnpaidBookkept             … カード未払い合計（カード利用の計上）
@@ -20,7 +21,7 @@
  * 自動反映の経路は、ドメイン集約の二重適用ガードを通過したときだけイベントを発行する
  * （bookUnpaid / settleUnpaid / applyUnpaidSettlementToSmbcBalance / applyOtherSavingsMovement）
  * ため、同じ変動が別のイベントIDで再発行されることは無い。手入力の経路（取り崩し・残高補正・
- * 初期残高の修正）にはガードが無いが、そちらは再送信のたびに残高そのものも動くので、
+ * 積立累計の補正・初期残高の修正）にはガードが無いが、そちらは再送信のたびに残高そのものも動くので、
  * 新しいイベントIDで新しい点が積まれるのが正しい。
  *
  * 回復について（重要）: 追記に失敗した点は**あとから自動では埋まらない**。上記のガードにより
@@ -28,6 +29,13 @@
  * 回復する」経路がこのハンドラーには無い（次に同じ軸が動けば絶対値が記録されるので線自体は
  * 復帰するが、欠けた点は戻らない）。したがって失敗は握りつぶさず、どの点が欠けたかを
  * 復元できる情報（軸・口座ID・発生日時・由来イベントID。金額は載せない）をログに残す。
+ *
+ * 例外は NISA 積立累計の補正（#458）で、ここだけは**手で回復できる**。補正は差し替えなので
+ * 同じ累計で `PUT /api/accounts/:id/contribution` を叩き直しても累計は二重に動かず、新しい
+ * イベントIDで正しい値の点が積まれる。復元に要る値と日時は口座の `contribution.manualEntries`
+ * に残っている。逆に `nisa_contribution` 軸は「次に同じ軸が動けば線が復帰する」があてにできない
+ * （振込由来の自動加算 NisaContributionAdded を発行する本番経路が #390 待ちで未接続のため、
+ * この補正と初期残高の修正以外にこの軸へ点を積むものが無い）。
  */
 import {
   BalanceHistoryEntryIdSchema,
@@ -47,6 +55,7 @@ import type {
   MitsuiSumitomoUnpaidRepository,
   Money,
   NisaContributionAdded,
+  NisaContributionCorrected,
   OtherSavingsBalanceUpdated,
   UnpaidBookkept,
   UnpaidSettled,
@@ -139,6 +148,17 @@ export function registerBalanceHistoryRecordEventHandlers(
   })
 
   safeSubscribe<NisaContributionAdded>(eventBus, 'NisaContributionAdded', async event => {
+    await append({
+      axis: 'nisa_contribution',
+      accountId: event.accountId,
+      value: event.newAccumulated,
+      occurredAt: event.occurredAt,
+      sourceEventId: event.eventId,
+    })
+  })
+
+  // 積立累計の手動補正（#458）。補正後の累計をそのまま点として積む
+  safeSubscribe<NisaContributionCorrected>(eventBus, 'NisaContributionCorrected', async event => {
     await append({
       axis: 'nisa_contribution',
       accountId: event.accountId,
