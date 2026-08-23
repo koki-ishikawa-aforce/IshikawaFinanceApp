@@ -14,6 +14,7 @@ import {
   changeBankName,
   changeBrokerageName,
   correctInitialBalance,
+  correctNisaContribution,
   correctOtherSavingsBalance,
   inactivateAccount,
   reactivateAccount,
@@ -1093,6 +1094,172 @@ describe('addNisaContributionBySmbcTransfer()', () => {
         at: AT,
       }),
     ).toThrow(InvariantViolationError)
+  })
+})
+
+// --- #458: NISA 積立累計の手動補正 ---
+
+describe('correctNisaContribution()', () => {
+  it('差分ではなく実際の積立累計へ差し替える（二重加算を戻せる）', () => {
+    const updated = correctNisaContribution(nisa({ currentAccumulated: 400000 }), {
+      correctedAccumulated: 300000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.contribution.currentAccumulated).toBe(300000)
+    expect(updated.contribution.lastUpdatedAt).toEqual(AT)
+  })
+
+  it('初期累計・初期累計基準時刻は動かさない（「始めた時点」の記録は補正の対象外）', () => {
+    const base = nisa({ currentAccumulated: 400000, initialAccumulated: 100000 })
+    const updated = correctNisaContribution(base, {
+      correctedAccumulated: 250000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.contribution.initialAccumulated).toBe(100000)
+    expect(updated.contribution.initialAccumulatedBaselineAt).toEqual(
+      base.contribution.initialAccumulatedBaselineAt,
+    )
+  })
+
+  it('0 円への補正はできる（積立を始めた記録ごと打ち消す、境界値）', () => {
+    const updated = correctNisaContribution(nisa(), {
+      correctedAccumulated: 0 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.contribution.currentAccumulated).toBe(0)
+  })
+
+  it('負の累計へは補正できない（InvariantViolationError）', () => {
+    expect(() =>
+      correctNisaContribution(nisa(), {
+        correctedAccumulated: -1 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('上限を超える累計へは補正できない', () => {
+    expect(() =>
+      correctNisaContribution(nisa(), {
+        correctedAccumulated: (BALANCE_INPUT_LIMIT + 1) as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(ZodError)
+  })
+
+  it('上限ちょうどへは補正できる（境界値）', () => {
+    const updated = correctNisaContribution(nisa(), {
+      correctedAccumulated: BALANCE_INPUT_LIMIT as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.contribution.currentAccumulated).toBe(BALANCE_INPUT_LIMIT)
+  })
+
+  it('配偶者は補正できない（PermissionDeniedError）', () => {
+    expect(() =>
+      correctNisaContribution(nisa(), {
+        correctedAccumulated: 1 as never,
+        operatorUserId: SPOUSE,
+        at: AT,
+      }),
+    ).toThrow(PermissionDeniedError)
+  })
+
+  it('非アクティブ口座は補正できない（09-aggregates #9）', () => {
+    expect(() =>
+      correctNisaContribution(nisa({ inactive: true }), {
+        correctedAccumulated: 1 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('積立累計補正手入力（入力者・補正前後の累計・入力日時・メモ）を操作記録に 1 件積む', () => {
+    const updated = correctNisaContribution(nisa({ currentAccumulated: 400000 }), {
+      correctedAccumulated: 300000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+      memo: '証券会社の画面と照合',
+    })
+    expect(updated.contribution.manualEntries).toEqual([
+      {
+        kind: 'manual_correction',
+        enteredByUserId: OWNER,
+        accumulatedBefore: 400000,
+        accumulatedAfter: 300000,
+        enteredAt: AT,
+        memo: '証券会社の画面と照合',
+      },
+    ])
+  })
+
+  it('メモ未指定なら記録に memo を持たせない', () => {
+    const updated = correctNisaContribution(nisa(), {
+      correctedAccumulated: 300000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.contribution.manualEntries).toHaveLength(1)
+    expect(updated.contribution.manualEntries[0]).not.toHaveProperty('memo')
+  })
+
+  it('空白のみのメモは受け付けない（書いていないことと区別が付かない）', () => {
+    expect(() =>
+      correctNisaContribution(nisa(), {
+        correctedAccumulated: 300000 as never,
+        operatorUserId: OWNER,
+        at: AT,
+        memo: '   ',
+      }),
+    ).toThrow(ZodError)
+  })
+
+  it('補正を重ねると記録が古い順に積み上がる（前の記録は書き換えない）', () => {
+    const first = correctNisaContribution(nisa({ currentAccumulated: 400000 }), {
+      correctedAccumulated: 300000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    const second = correctNisaContribution(first, {
+      correctedAccumulated: 350000 as never,
+      operatorUserId: OWNER,
+      at: new Date('2026-07-21T00:00:00Z'),
+    })
+    expect(
+      second.contribution.manualEntries.map(e => [e.accumulatedBefore, e.accumulatedAfter]),
+    ).toEqual([
+      [400000, 300000],
+      [300000, 350000],
+    ])
+  })
+
+  it('拒否された補正（負の累計）は記録に残らず、元の口座も変わらない', () => {
+    const base = nisa({ currentAccumulated: 400000 })
+    expect(() =>
+      correctNisaContribution(base, {
+        correctedAccumulated: -1 as never,
+        operatorUserId: OWNER,
+        at: AT,
+      }),
+    ).toThrow(InvariantViolationError)
+    expect(base.contribution.manualEntries).toEqual([])
+    expect(base.contribution.currentAccumulated).toBe(400000)
+  })
+
+  it('補正前と同じ額での補正も記録する（確認したこと自体が記録として意味を持つ）', () => {
+    const updated = correctNisaContribution(nisa({ currentAccumulated: 300000 }), {
+      correctedAccumulated: 300000 as never,
+      operatorUserId: OWNER,
+      at: AT,
+    })
+    expect(updated.contribution.manualEntries).toHaveLength(1)
   })
 })
 

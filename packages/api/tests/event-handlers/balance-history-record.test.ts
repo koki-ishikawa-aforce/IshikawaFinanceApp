@@ -15,6 +15,7 @@ import {
   MitsuiSumitomoUnpaidIdSchema,
   MitsuiSumitomoUnpaidSchema,
   NisaContributionAddedSchema,
+  NisaContributionCorrectedSchema,
   OtherSavingsBalanceUpdatedSchema,
   SettlementNoticeIdSchema,
   TransactionIdSchema,
@@ -212,6 +213,27 @@ describe('残高の変動 → 残高変動履歴への記録（#398）', () => {
     const entries = await historyOf(t)
     expect(entries).toHaveLength(1)
     expect(entries[0]).toMatchObject({ axis: 'nisa_contribution', value: 350000 })
+  })
+
+  it('NISA 積立累計の手動補正も積立累計の軸に、補正後の累計で残す（#458）', async () => {
+    const t = createTestApp()
+    const account = nisaAccount()
+    await t.deps.accountRepository.save(account)
+
+    await t.deps.eventBus.publish(
+      NisaContributionCorrectedSchema.parse({
+        ...domainEventBase(AT),
+        type: 'NisaContributionCorrected',
+        accountId: account.common.accountId,
+        oldAccumulated: money(350000),
+        newAccumulated: money(300000),
+        correctedByUserId: OWNER_USER_ID,
+      }),
+    )
+
+    const entries = await historyOf(t)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ axis: 'nisa_contribution', value: 300000 })
   })
 
   it('口座登録時の初期残高がグラフの起点として残る', async () => {

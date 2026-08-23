@@ -14,8 +14,9 @@
  *    各ドメイン関数が事前条件として検証する）。SMBC 残高には課さない — 通知由来の変動を
  *    そのまま反映する設計（applySmbcBalanceChange）で、引落が入金より先に届けば一時的に
  *    負になりうるため
- *  - 手入力（取り崩し記録・残高補正）は 1 件ごとに操作記録として口座に積む（#459。08d §1
- *    `List<シャドウ口座更新>` の手入力由来分）。記録は追記のみで書き換え・削除はしない
+ *  - 手入力（取り崩し記録・残高補正・積立累計補正）は 1 件ごとに操作記録として口座に積む
+ *    （#459 / #458。08d §1 `List<シャドウ口座更新>` `List<NISA積立累計更新>` の手入力由来分）。
+ *    記録は追記のみで書き換え・削除はしない
  *  - 読み出してから保存するまでに他の処理が同じ口座を更新していたら書き込まない
  *    （#459。版数 `common.version` を Repository.save が照合する）
  */
@@ -53,6 +54,7 @@ import {
   OtherSavingsManualEntrySchema,
   type OtherSavingsManualEntry,
 } from '../value-objects/OtherSavingsManualEntry'
+import { NisaManualEntrySchema, type NisaManualEntry } from '../value-objects/NisaManualEntry'
 
 export const ActivenessSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('active') }),
@@ -139,6 +141,16 @@ export const NisaContributionSchema = z.object({
   initialAccumulated: MoneySchema,
   initialAccumulatedBaselineAt: z.date(),
   lastUpdatedAt: z.date(),
+  /**
+   * 手入力（積立累計の補正）の操作記録（#458。08d §1 `List<NISA積立累計更新>` の手入力由来分）。
+   * 古い順に積む追記専用のリストで、既存データ（この項目を持たない payload）は
+   * 空配列として読み出される。
+   *
+   * 別銀行貯蓄の `manualEntries` と同じ理由で持つ。手入力は取引を持たないため、残さないと
+   * 累計の数字以外に痕跡が無く、「いつ誰がいくらへ直したか」も「二重に直していないか」も
+   * 後から確かめられない。
+   */
+  manualEntries: z.array(NisaManualEntrySchema).default([]),
 })
 export type NisaContribution = z.infer<typeof NisaContributionSchema>
 
@@ -722,6 +734,70 @@ export function addNisaContributionBySmbcTransfer(
       lastUpdatedAt: params.at,
     },
   }) as NisaAccount
+}
+
+/**
+ * NISA 口座の積立累計を差し替え、手入力の操作記録を 1 件積む（本ファイル内の共通処理）。
+ * 別銀行貯蓄の `replaceOtherSavingsBalance` + `appendManualEntry` に相当するが、NISA は
+ * 残高鮮度の根拠を供給しない（08d §1 の残高鮮度根拠は別銀行貯蓄口座のみが持つ）ため、
+ * 進めるのは積立累計の最終更新日時だけ。
+ */
+function replaceNisaAccumulated(
+  account: NisaAccount,
+  newAccumulated: Money,
+  entry: NisaManualEntry,
+  at: Date,
+): NisaAccount {
+  return AccountSchema.parse({
+    ...account,
+    contribution: {
+      ...account.contribution,
+      currentAccumulated: newAccumulated,
+      lastUpdatedAt: at,
+      manualEntries: [...account.contribution.manualEntries, entry],
+    },
+  }) as NisaAccount
+}
+
+/**
+ * behavior NISA積立累計を手動補正する（08d §2、#458）
+ * 事前: 入力者ユーザーID = 口座所有者ユーザーID。
+ * 補正は差分ではなく「実際の積立累計」への差し替え（証券会社の画面を見て入れ直す操作）。
+ *
+ * 積立累計は買い付けの累計で減算されない（08d §1）ため、通常の経路は加算だけになる。
+ * 二重に加算した・桁を打ち間違えたときに正しい値へ戻す手段がこれで、無いと初期累計
+ * （「始めた時点でいくら積み立てていたか」の記録）を歪めて辻褄を合わせるしかなくなる。
+ *
+ * 不変条件: 補正後の積立累計は負にならない。
+ *
+ * 事後: 積立累計補正手入力（入力者・補正前後の累計・入力日時・メモ）が操作記録に 1 件積まれる。
+ * 補正前と同じ額での補正も記録する（別銀行貯蓄の残高補正と同じ扱い）。
+ * 拒否された補正（負の累計・非アクティブ・他人の口座）は記録に残らない。
+ *
+ * 初期累計・初期累計基準時刻は動かさない。そこは「始めた時点」の記録で、現在の累計を
+ * 直す操作とは別（初期累計そのものの誤りは `correctInitialBalance` で直す）。
+ */
+export function correctNisaContribution(
+  account: NisaAccount,
+  params: { correctedAccumulated: Money; operatorUserId: UserId; at: Date; memo?: string },
+): NisaAccount {
+  assertOperatedByOwner(account, params.operatorUserId, '積立累計の補正')
+  assertActive(account, '積立累計の補正')
+  const correctedAccumulated = parseBalanceInput(params.correctedAccumulated, 'NISA積立累計')
+  const memo = parseMemo(params.memo)
+  return replaceNisaAccumulated(
+    account,
+    correctedAccumulated,
+    NisaManualEntrySchema.parse({
+      kind: 'manual_correction',
+      enteredByUserId: params.operatorUserId,
+      accumulatedBefore: account.contribution.currentAccumulated,
+      accumulatedAfter: correctedAccumulated,
+      enteredAt: params.at,
+      ...memo,
+    }),
+    params.at,
+  )
 }
 
 /**

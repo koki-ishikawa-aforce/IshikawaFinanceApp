@@ -9,6 +9,7 @@ import type {
   BrokerageNameChanged,
   InitialBalanceCorrected,
   InitialBalanceRegistered,
+  NisaContributionCorrected,
   OtherSavingsBalanceUpdated,
 } from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
@@ -21,7 +22,11 @@ interface AccountWire {
   bankName?: string
   brokerageName?: { kind: string; customName?: string }
   balance?: { currentBalance: number; initialBalance: number }
-  contribution?: { currentAccumulated: number; initialAccumulated: number }
+  contribution?: {
+    currentAccumulated: number
+    initialAccumulated: number
+    manualEntries?: { kind: string; accumulatedBefore: number; accumulatedAfter: number }[]
+  }
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -422,6 +427,7 @@ describe('PUT /api/accounts/:accountId/brokerage-name', () => {
 
 interface ManualEventLog {
   otherSavingsUpdated: OtherSavingsBalanceUpdated[]
+  nisaContributionCorrected: NisaContributionCorrected[]
   initialBalanceCorrected: InitialBalanceCorrected[]
   inactivated: AccountInactivated[]
   reactivated: AccountReactivated[]
@@ -430,10 +436,14 @@ interface ManualEventLog {
 function subscribeManualEvents(t: TestApp): ManualEventLog {
   const log: ManualEventLog = {
     otherSavingsUpdated: [],
+    nisaContributionCorrected: [],
     initialBalanceCorrected: [],
     inactivated: [],
     reactivated: [],
   }
+  t.deps.eventBus.subscribe<NisaContributionCorrected>('NisaContributionCorrected', e => {
+    log.nisaContributionCorrected.push(e)
+  })
   t.deps.eventBus.subscribe<AccountReactivated>('AccountReactivated', e => {
     log.reactivated.push(e)
   })
@@ -584,6 +594,87 @@ describe('PUT /api/accounts/:accountId/balance', () => {
       body: { balance: 1 },
     })
     expect(res.status).toBe(403)
+  })
+})
+
+describe('PUT /api/accounts/:accountId/contribution', () => {
+  it('実際の積立累計へ差し替え、NisaContributionCorrected を発行する', async () => {
+    const t = createTestApp()
+    const log = subscribeManualEvents(t)
+    // 登録直後は 現在累計 = 初期累計 = 200000。二重に加算した分を 150000 へ戻す
+    const id = await accountId(await registerNisa(t))
+    const res = await request(t.app, 'PUT', `/api/accounts/${id}/contribution`, {
+      body: { accumulated: 150000, memo: '二重に登録した分を戻す' },
+    })
+    expect(res.status).toBe(200)
+    const { account } = await json<{ account: AccountWire }>(res)
+    expect(account.contribution?.currentAccumulated).toBe(150000)
+    // 初期累計は「始めた時点」の記録なので動かない
+    expect(account.contribution?.initialAccumulated).toBe(200000)
+    expect(account.contribution?.manualEntries).toEqual([
+      expect.objectContaining({
+        kind: 'manual_correction',
+        accumulatedBefore: 200000,
+        accumulatedAfter: 150000,
+        memo: '二重に登録した分を戻す',
+      }),
+    ])
+    expect(log.nisaContributionCorrected[0]).toMatchObject({
+      accountId: id,
+      oldAccumulated: 200000,
+      newAccumulated: 150000,
+      correctedByUserId: VIEWER_ID,
+    })
+  })
+
+  it('負の積立累計へは補正できない（409）', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerNisa(t))
+    const res = await request(t.app, 'PUT', `/api/accounts/${id}/contribution`, {
+      body: { accumulated: -1 },
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('別銀行貯蓄口座は積立累計補正の対象外（409）', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerOtherSavings(t))
+    const res = await request(t.app, 'PUT', `/api/accounts/${id}/contribution`, {
+      body: { accumulated: 1000 },
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('配偶者は補正できない（403）', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerNisa(t))
+    const res = await request(t.app, 'PUT', `/api/accounts/${id}/contribution`, {
+      viewerId: SPOUSE_ID,
+      body: { accumulated: 1000 },
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('配偶者には口座種別を判別する前に 403 を返す（存在・種別を漏らさない）', async () => {
+    const t = createTestApp()
+    const log = subscribeManualEvents(t)
+    const id = await accountId(await registerOtherSavings(t))
+    const res = await request(t.app, 'PUT', `/api/accounts/${id}/contribution`, {
+      viewerId: SPOUSE_ID,
+      body: { accumulated: 1000 },
+    })
+    // 別銀行貯蓄口座（種別違いで 409 になる口座）でも、他人の口座なら 403 が先に返る
+    expect(res.status).toBe(403)
+    expect(log.nisaContributionCorrected).toHaveLength(0)
+  })
+
+  it('金額が数値でないボディは 400', async () => {
+    const t = createTestApp()
+    const id = await accountId(await registerNisa(t))
+    const res = await request(t.app, 'PUT', `/api/accounts/${id}/contribution`, {
+      body: { accumulated: '150000' },
+    })
+    expect(res.status).toBe(400)
   })
 })
 
