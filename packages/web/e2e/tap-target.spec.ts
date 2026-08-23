@@ -10,7 +10,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
  * 満たすかどうかはここで数値として固定する。
  *
  * 対象は共通の操作部品(`components/ui/common.module.css` の 5 クラスと、それを
- * 使うボタン風リンク)と、共通部品であるモーダルの閉じるボタン。画面ごとに独自の
+ * 使うボタン風リンク)と、共通部品であるモーダルの閉じるボタン・2 択の切り替え
+ * (`components/ui/SegmentedControl.tsx`)。画面ごとに独自の
  * スタイルを持つボタン(設定のタブ・月送り・下部ナビなど)は #467 の対象。
  */
 
@@ -42,7 +43,16 @@ test('取込画面のボタンと選択欄が下限の大きさを満たす', as
     '取込ボタン',
     min,
   )
-  await expectTapTargetSize(page.getByLabel('ファイル種別'), 'ファイル種別の選択欄', min)
+  // ファイル種別の切り替え(SegmentedControl)。ラジオは透明にして選択肢いっぱいに広げており、
+  // 押せる範囲が見た目の枠と一致していることをここで実寸として固定する
+  const fileKind = page.getByRole('radiogroup', { name: 'ファイル種別' })
+  for (const label of ['カード利用明細', '銀行入出金明細']) {
+    await expectTapTargetSize(
+      fileKind.getByRole('radio', { name: label }),
+      `ファイル種別の切り替え（${label}）`,
+      min,
+    )
+  }
 })
 
 test('共通ボタンを使う他の画面でも下限の大きさを満たす', async ({ page }) => {
