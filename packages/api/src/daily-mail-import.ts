@@ -133,6 +133,18 @@ export type DailyMailImportFailureKind =
 export type MailImportNotLaunchedReason = 'not_linked' | 'revocation_detected'
 
 /**
+ * 起動しなかった理由ごとの文言。ここに定義した固定文だけが結末に載る。
+ *
+ * この結末はそのまま手動実行の API 応答に入るため、文言を呼び出しの都度組み立てられる形
+ * （任意の `string`）にしておくと、後からリポジトリや Gmail API のエラー文を流し込む変更が
+ * 入ったときに内部情報が応答へ素通しになる。定数に閉じて型でも狭めておく。
+ */
+const NOT_LAUNCHED_DETAIL = {
+  not_linked: 'Gmail 連携が未設定のため取り込めない',
+  revocation_detected: 'Gmail 連携が失効しており再認可待ち',
+} as const satisfies Record<MailImportNotLaunchedReason, string>
+
+/**
  * 1 ユーザーぶんの取込結果。
  *
  * `not_launched` は「起動の事前条件を満たさないので始めなかった」結末で、失敗（起動したが
@@ -150,8 +162,8 @@ export type DailyMailImportOutcome =
   | {
       status: 'not_launched'
       reason: MailImportNotLaunchedReason
-      /** ログ・応答に載る短い文言。シークレット・PII・メール本文を含めない */
-      detail: string
+      /** ログ・応答に載る短い文言。`NOT_LAUNCHED_DETAIL` の固定文だけを取る */
+      detail: (typeof NOT_LAUNCHED_DETAIL)[MailImportNotLaunchedReason]
     }
   | ({
       importBatchId: ImportBatchId
@@ -279,8 +291,7 @@ export async function runDailyMailImportForUser(
     // 呼出し元が異常として扱う）
     const reason: MailImportNotLaunchedReason =
       token === null ? 'not_linked' : 'revocation_detected'
-    const detail =
-      token === null ? 'Gmail 連携が未設定のため取り込めない' : 'Gmail 連携が失効しており再認可待ち'
+    const detail = NOT_LAUNCHED_DETAIL[reason]
     console.warn(
       `[transaction-import] Gmail 連携が無いためメール取込を起動しなかった（reason=${reason}）— ${detail}`,
     )
