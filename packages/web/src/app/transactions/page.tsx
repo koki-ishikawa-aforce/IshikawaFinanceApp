@@ -33,7 +33,7 @@ import {
 import { EXPENSE_CLASS_LABELS, expenseClassLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { formatDate, formatMonthLabel, getCurrentMonth } from '@/lib/month'
-import { currentDate } from '@/lib/now'
+import { now } from '@/lib/now'
 import { LuPlus } from '@/components/ui/icons'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -51,7 +51,7 @@ function toDateInputValue(date: Date): string {
 
 /** 発生日の初期値。表示中の月が当月なら今日、それ以外の月なら 1 日 */
 function defaultOccurredAt(month: YearMonth): string {
-  return month === getCurrentMonth() ? toDateInputValue(currentDate()) : `${month}-01`
+  return month === getCurrentMonth() ? toDateInputValue(now()) : `${month}-01`
 }
 
 interface CreateModalProps {

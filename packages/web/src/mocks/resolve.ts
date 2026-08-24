@@ -6,6 +6,7 @@
  * {@link MockNotFoundError} を投げる（呼び出し側で ApiError に変換される）。
  */
 import { YearMonthSchema, type DashboardMode, type YearMonth } from '@warimaru/domain'
+import { MOCK_DEFAULT_MONTH } from './clock'
 import { getMockRole } from './role'
 import { getMockScenario } from './scenario'
 import {
@@ -64,7 +65,7 @@ function parseMode(params: URLSearchParams): DashboardMode {
 }
 
 /** fixture が持つ標準の月。月指定が無い・壊れているときはここへ落とす */
-const DEFAULT_MONTH = YearMonthSchema.parse('2026-07')
+const DEFAULT_MONTH = YearMonthSchema.parse(MOCK_DEFAULT_MONTH)
 
 /**
  * 表示中の月。実 API は不正な月を弾くが、モックは画面を落とさず既定月で描画する

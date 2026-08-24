@@ -12,8 +12,10 @@
  * サーバー側の描画（`next dev` の SSR）とブラウザ側の描画が同じ「今」を見るよう、
  * ブラウザの時計ではなく環境変数で渡す。片方だけを固定すると初期 HTML と
  * ハイドレーション後で月がずれ、開発時のハイドレーション不一致になる。
+ *
+ * 固定値の出所は `src/mocks/clock.ts`（fixture が想定している「今」）。
  */
-export function currentDate(): Date {
+export function now(): Date {
   // 条件を直接 if に書くことで、通常ビルドでは process.env の畳み込みにより
   // if(false) となり、この分岐がデッドコード除去される（`api-client` と同じ書き方）。
   if (process.env.NEXT_PUBLIC_MOCK === '1') {
