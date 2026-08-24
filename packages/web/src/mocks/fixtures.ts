@@ -735,9 +735,8 @@ export function currentCycleFixture(yearMonth: YearMonth): unknown {
  * 直近の確定サイクルだけは表示中の月の前月に合わせる。固定にすると、その月を開いたときに
  * 「集積中のサイクル」と「同じ月が最終確定済み」が同じ画面に並んで矛盾するため。
  *
- * なお、この画面が上限の使い切り具合をどう見せるか（進捗バーと上限額を出すか）は
- * DESIGN.md §1 と現行実装が食い違っており #505 で判断待ち。ここは現状の画面を
- * そのまま写すためのデータで、どちらが正かを先取りしない。
+ * 上限あり経費種別と無制限経費種別の両方を返し、月次上限と進捗バーが出る行と
+ * 「上限なし」の行が並んだ見え方を確認できるようにする（DESIGN.md §1）。
  */
 export function expenseSettlementViewFixture(role: UserRole, yearMonth: YearMonth): unknown {
   const userId = role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK'
