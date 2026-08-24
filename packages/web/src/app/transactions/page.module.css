@@ -77,7 +77,8 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1_5);
+  /* 行が 44px の的になったぶん、並んだ的の間隔の下限（usability §4-4）を満たす */
+  gap: var(--space-2);
 }
 
 .item {
@@ -149,8 +150,15 @@
   justify-content: center;
   position: fixed;
   right: calc(50% - 150px + 12px);
-  bottom: 66px;
-  /* 円形のアイコンボタン。タップ領域の下限をそのまま大きさにする */
+  /* ナビの上に --space-2 の隙間（usability §4-4）を空けて浮かせる */
+  bottom: calc(var(--app-nav-height) + var(--space-2));
+  /*
+   * 円形のアイコンボタン。タップ領域の下限をそのまま大きさにする。
+   * 大きさを固定する `width` / `height` は下限の宣言として走査されないため、
+   * 下限そのものも併記してガード（src/test/tap-target.test.ts）の対象に入れる
+   */
+  min-width: var(--tap-target-min);
+  min-height: var(--tap-target-min);
   width: var(--tap-target-min);
   height: var(--tap-target-min);
   border: none;

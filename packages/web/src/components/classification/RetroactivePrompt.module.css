@@ -17,6 +17,8 @@
   flex-direction: row;
   align-items: center;
   gap: var(--space-1_5);
+  /* さかのぼり再分類のチェック行。行全体が押せる受け皿になる（§4-3） */
+  min-height: var(--tap-target-min);
   padding: var(--space-2) var(--space-2_5);
   cursor: pointer;
 }

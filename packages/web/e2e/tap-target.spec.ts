@@ -1,6 +1,13 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 /**
+ * 下限が意味を持つのは片手で持つ縦画面(LIFF は 360〜390px 幅)。既定の 1280px 幅では
+ * 下部ナビの項目がラベルの幅まで広がるなど、下限が効いているかを確かめられない。
+ * VRT 側の幅を変えると基準画像を全部撮り直すことになるため、この spec だけ狭くする。
+ */
+test.use({ viewport: { width: 390, height: 844 } })
+
+/**
  * 実際に描画された操作部品が、タップターゲットの下限(`docs/design/usability.md` §4-3)を
  * 満たしているかを実寸で確かめる(#568)。
  *
@@ -205,15 +212,91 @@ test('残高の期間切り替えと精算の小ボタンが下限の大きさ�
   )
 })
 
-test('チェック行が下限の大きさを満たす', async ({ page }) => {
-  // チェックボックス本体は 13px ほどしかなく、押せる受け皿は行を包む `<label>` の側。
-  // 行の高さは中の文字で決まるため、宣言が消えると実寸だけが静かに縮む
+/**
+ * チェック行の受け皿を測る。
+ *
+ * チェックボックス本体は 13px ほどしかなく、押せる受け皿は行を包む `<label>` の側。
+ * `<label>` が入力を包む関係が崩れて `htmlFor` + 兄弟要素になると、44px の `<label>` は
+ * 残るのに実際の受け皿は 13px へ戻る。テストは緑のままなので、包含関係も併せて固定する。
+ */
+async function expectCheckRowSize(
+  row: Locator,
+  checkboxName: string | RegExp,
+  name: string,
+  min: number,
+): Promise<void> {
+  await expect(
+    row.getByRole('checkbox', { name: checkboxName }),
+    `${name} が入力を包む`,
+  ).toHaveCount(1)
+  await expectTapTargetSize(row, name, min)
+}
+
+test('取引一覧のチェック行・取引行・未分類の帯が下限の大きさを満たす', async ({ page }) => {
   await page.goto('/transactions')
   const min = await tapTargetMin(page)
 
-  await expectTapTargetSize(
+  await expectCheckRowSize(
     page.locator('label').filter({ hasText: '未分類のみ' }),
+    '未分類のみ',
     '取引一覧の「未分類のみ」チェック行',
     min,
   )
+  // 取引 1 件ぶんの行。中身が 1 行に収まる取引でも押せる高さを割らない
+  await expectTapTargetSize(page.locator('main ul li button').first(), '取引一覧の取引行', min)
+  // 未分類を片付ける導線の帯。器（ui.card）より内側の余白に上書きしているぶん背が低い。
+  // 中の `role="status"` のため役割からは名前で引けないので、要素と文字で指す
+  await expectTapTargetSize(
+    page.locator('button').filter({ hasText: '未分類の取引が' }),
+    '未分類の取引の帯',
+    min,
+  )
+})
+
+test('設定の上限なしチェック行とさかのぼり候補行が下限の大きさを満たす', async ({ page }) => {
+  await page.goto('/settings?section=limits')
+  const min = await tapTargetMin(page)
+
+  await page.getByRole('button', { name: '変更' }).first().click()
+  await expectCheckRowSize(
+    page.locator('label').filter({ hasText: '上限なし' }),
+    /上限なし/,
+    '月次上限の「上限なし」チェック行',
+    min,
+  )
+
+  // さかのぼり再分類の候補行。ダイアログを開くまで出ないため導線をたどる
+  await page.goto('/transactions')
+  await page.getByRole('button', { name: /ドラッグストアA/ }).click()
+  const detail = page.getByRole('dialog', { name: '未分類取引' })
+  await detail.getByLabel('カテゴリ').selectOption({ label: '食費' })
+  await detail.getByRole('button', { name: '分類を確定' }).click()
+
+  const retroactive = page.getByRole('dialog', { name: '過去の取引にも適用' })
+  await expectCheckRowSize(
+    retroactive.locator('label').first(),
+    /円$/,
+    'さかのぼり再分類の候補行',
+    min,
+  )
+})
+
+test('画面が狭くても下部ナビが下限を保ったまま収まる', async ({ page }) => {
+  // ナビの幅は 7 項目ぶんの下限で決まる（44 × 7 + 左右の余白 = 316px）。項目は縮まないので、
+  // 想定する最小幅（320px）で下限と「はみ出さない」が両立することを境界として測る
+  await page.setViewportSize({ width: 320, height: 720 })
+  await page.goto('/')
+  const min = await tapTargetMin(page)
+
+  const nav = page.getByRole('navigation')
+  for (const label of ['ホーム', '設定']) {
+    await expectTapTargetSize(nav.getByRole('link', { name: label }), `下部ナビ（${label}）`, min)
+  }
+
+  const navBox = await nav.boundingBox()
+  expect(navBox?.width ?? 0, '下部ナビの幅が画面幅に収まる').toBeLessThanOrEqual(320)
+  const overflows = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  )
+  expect(overflows, '横スクロールが出ていない').toBe(false)
 })

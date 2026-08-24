@@ -93,6 +93,22 @@ const CONTROLS: readonly {
   { css: join('app', 'imports', 'page.module.css'), selectors: ['.candidateLabel'] },
   { css: join('app', 'transactions', 'page.module.css'), selectors: ['.item', '.checkRow'] },
   {
+    // 取引追加の丸ボタン。中身はアイコンだけで、大きさは width/height で固定している
+    css: join('app', 'transactions', 'page.module.css'),
+    selectors: ['.fab'],
+    properties: HEIGHT_AND_WIDTH,
+  },
+  {
+    // 未分類一覧への導線の帯。器の余白を上書きしているぶん背が低くなる
+    css: join('components', 'classification', 'BulkClassificationEntry.module.css'),
+    selectors: ['.banner'],
+  },
+  {
+    // さかのぼり再分類のチェック行
+    css: join('components', 'classification', 'RetroactivePrompt.module.css'),
+    selectors: ['.row'],
+  },
+  {
     // オンボーディングの「スキップ」。短い文字だけのボタンなので幅も宣言する
     css: join('app', 'onboarding', 'page.module.css'),
     selectors: ['.backLink'],

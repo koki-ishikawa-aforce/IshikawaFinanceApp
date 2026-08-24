@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Page, type Response } from '@playwright/test'
 
 /**
  * 撮影前に画面を安定させるヘルパー置き場(書体・開発オーバーレイ・取得の完了)。
@@ -61,8 +61,14 @@ export async function hideDevOverlay(page: Page): Promise<void> {
  * まま写るという再現しにくい形で現れ、`--update-snapshots` で撮り直すと**読み込み中の
  * 画面が基準になり**、その画面の中身が以後まったく見張られなくなる。
  *
- * 待つのは `LoadingState` の目印(`data-loading`)が画面から消えること。
+ * 待つのは `LoadingState` の目印(`data-loading`)が画面から消えること。「0 件になった」が
+ * 待ちとして意味を持つのは、目印が**サーバが返した HTML の時点で存在する**からで、
+ * これが崩れると待ちは即座に成立して素通りする(ハイドレーション前に 0 件で通り、
+ * 直後に「読み込み中」が現れる)。素通りに気づけるよう、遷移時のレスポンス本文に
+ * 目印があることを併せて確かめる。
  */
-export async function waitForDataLoaded(page: Page): Promise<void> {
+export async function waitForDataLoaded(page: Page, response: Response | null): Promise<void> {
+  const html = (await response?.text()) ?? ''
+  expect(html, '取得中の目印がサーバの返す HTML に含まれている').toContain('data-loading')
   await expect(page.locator('[data-loading]')).toHaveCount(0)
 }

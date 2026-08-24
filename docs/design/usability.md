@@ -210,7 +210,7 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 | **6-6 空状態** | 共通部品 `EmptyState`(`packages/web/src/components/ui/EmptyState.tsx`)。インラインのテキストで、イラスト・空状態専用カードは採用しない。置き場所はその空状態が説明するセクションの器(`ui.card` かモーダル)の内側。`*.module.css` に独自の空状態スタイルを定義しない |
 | **6-7 月の切り替え** | 画面上部の月ナビゲーション。日付ピッカーで月を選ばせない |
 | **6-8 補足情報・手順の格納** | カード内の開閉トグル(見出しが `aria-expanded` + `aria-controls` を持つボタンを包む)。主操作の前に読まなくてよい補足はこれで畳む。モーダル・別ページ・常時展開は採用しない |
-| **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は #366 で本部品へ寄せた。未追随は口座追加の証券会社(3 択、`components/accounts/AccountAddModal.tsx`)だけで、セレクトのまま。次にその画面を触るときに本部品へ寄せる |
+| **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は #366 で本部品へ寄せた。未追随は 2 つ。口座追加の証券会社(3 択、`components/accounts/AccountAddModal.tsx`)はセレクトのままで、次にその画面を触るときに本部品へ寄せる。資産推移の期間切り替え(3 択、`app/balances/page.tsx`)は独自のボタンのままで、寄せるかは #612 で判断待ち |
 
 ### 違反例
 
@@ -330,7 +330,8 @@ return <span>{formatMoney(query.data.total)}</span>
 | 1 | 8-3 | `<label>` が `htmlFor` でもラップでも入力に関連付けられていない(`ui.fieldLabel` を使う全箇所が `.field` 内の兄弟要素) | `packages/web/src/app/transactions/page.tsx`、`settings/page.tsx`、`expense-settlement/page.tsx` ほか |
 | 2 | 8-5 | セクション見出しが `<span className={ui.sectionTitle}>` で、`<h2>` が存在しない(見出し階層が `<h1>` のみ) | `expense-settlement/page.tsx:255,317,343,369`、`settings/page.tsx:96,403,610,792,954` ほか |
 | 3 | 8-1 | フォーカスの可視スタイルが `.input:focus` にしか無い。`.button` / `.buttonGhost` / `.buttonDanger` / `.select` は `:hover` のみ | `packages/web/src/components/ui/common.module.css` |
-| 4 | 4-3 | 対応済み。共通の操作部品(`.button` / `.buttonGhost` / `.buttonDanger` / `.select` / `.input`)とモーダルの閉じるボタンは #568(`--tap-target-min` トークンは #463)、ダッシュボードの月送り(`MonthNavigator`)・世帯/個人の切り替え(`ModeToggle`)・カテゴリ内訳の凡例行は #366、一覧の行に並ぶリンク風のボタン(`.textButton`)は #462、残っていた画面固有の操作部品は #467 で対応した。宣言は `src/test/tap-target.test.ts`、描画された実寸は `e2e/tap-target.spec.ts` が見張る | — |
+| 4 | 4-3 | 共通の操作部品(`.button` / `.buttonGhost` / `.buttonDanger` / `.select` / `.input`)とモーダルの閉じるボタンは #568(`--tap-target-min` トークンは #463)、ダッシュボードの月送り(`MonthNavigator`)・世帯/個人の切り替え(`ModeToggle`)・カテゴリ内訳の凡例行は #366、一覧の行に並ぶリンク風のボタン(`.textButton`)は #462、画面固有の操作部品は #467 で対応した。宣言は `src/test/tap-target.test.ts`、描画された実寸は `e2e/tap-target.spec.ts` が見張る。残るのは、大きくすると見た目が壊れるため判断待ちの吹き出し 1 件 | 相手の個人費の吹き出し(`SpousePersonalNote` の `.hint`。押すと閉じるが役割は注意書き)。追跡は #611 |
+| 4-2 | 4-4 | 下部ナビ(`AppNav`)の 7 項目が隙間なく並んでいる(各 44px で間隔 0)。`--space-2` の隙間を入れると 356px 必要になり 320px 幅に収まらないため、項目数か見せ方の判断が要る | `packages/web/src/components/ui/AppNav.module.css`。追跡は #614 |
 | 5 | 6-1 / 3-2 | 破壊的操作の確認が `window.confirm`(取引削除)で、`Modal` 採用パターンと不統一。文言に影響(学習ルールの扱い)が書かれていない | `packages/web/src/app/transactions/page.tsx:378` |
 | 6 | 4-1 | 金額入力が `type="number"` のみで、規範の `type="text"` + `inputMode="numeric"` になっていない | `transactions/page.tsx:207,335`、`expense-settlement/page.tsx:97`、`settings/page.tsx:207,263,916` |
 | 7 | 1-3 | 再試行手段は #366 で `ErrorState` の `onRetry` に集約し、自前のボタンを並べていた箇所も寄せ切った(同じ文言・同じ位置で出る)。残るのは、まだ `onRetry` を渡していない画面で取得失敗が文言だけになること | `expense-settlement/page.tsx`、`reports/page.tsx`、`settings/page.tsx` の各取得クエリほか |
