@@ -256,9 +256,11 @@ export function createMockTransactionCandidateRepository(): TransactionCandidate
     async findById(id: TransactionCandidateId) {
       return store.get(id) ?? null
     },
-    async findByGmailMessageId(gmailMessageId: GmailMessageId) {
+    async findByGmailMessageId(userId: UserId, gmailMessageId: GmailMessageId) {
+      // 実 DB の (user_id, gmail_message_id) partial unique と同じく利用者に閉じる（#487）
       return (
         [...store.values()].find(c => {
+          if (c.common.userId !== userId) return false
           const source = c.common.importSource
           if (source.kind === 'email') return source.gmailMessageId === gmailMessageId
           if (source.kind === 'amazon_match') return source.smbcGmailMessageId === gmailMessageId

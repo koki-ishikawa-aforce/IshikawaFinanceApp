@@ -204,7 +204,10 @@ async function revokeToken(t: TestApp, userId: UserId = VIEWER_ID): Promise<void
 async function savedCandidates(t: TestApp, ids: string[]): Promise<TransactionCandidate[]> {
   const found = await Promise.all(
     ids.map(id =>
-      t.deps.transactionCandidateRepository.findByGmailMessageId(GmailMessageIdSchema.parse(id)),
+      t.deps.transactionCandidateRepository.findByGmailMessageId(
+        VIEWER_ID,
+        GmailMessageIdSchema.parse(id),
+      ),
     ),
   )
   return found.filter((c): c is TransactionCandidate => c !== null)
@@ -387,7 +390,7 @@ describe('日次メール取込ワーカー: Gmail message ID による重複除
       duplicateExcludedCount: 1,
     })
     expect(
-      await existing.findByGmailMessageId(GmailMessageIdSchema.parse('gmail-1')),
+      await existing.findByGmailMessageId(VIEWER_ID, GmailMessageIdSchema.parse('gmail-1')),
     ).not.toBeNull()
     vi.restoreAllMocks()
   })

@@ -42,16 +42,45 @@ describe('PostgresTransactionCandidateRepository', () => {
     const amazonCandidate = amazonMatchedCandidate({ smbcGmailMessageId: 'gm-smbc-1' })
     await repo.save(emailCandidate)
     await repo.save(amazonCandidate)
-    expect(await repo.findByGmailMessageId('gm-email-1' as GmailMessageId)).toEqual(emailCandidate)
-    expect(await repo.findByGmailMessageId('gm-smbc-1' as GmailMessageId)).toEqual(amazonCandidate)
-    expect(await repo.findByGmailMessageId('gm-none' as GmailMessageId)).toBeNull()
+    expect(await repo.findByGmailMessageId(HONEY_USER_ID, 'gm-email-1' as GmailMessageId)).toEqual(
+      emailCandidate,
+    )
+    expect(await repo.findByGmailMessageId(HONEY_USER_ID, 'gm-smbc-1' as GmailMessageId)).toEqual(
+      amazonCandidate,
+    )
+    expect(await repo.findByGmailMessageId(HONEY_USER_ID, 'gm-none' as GmailMessageId)).toBeNull()
   })
 
-  it('同一 Gmail メッセージの重複 save は InvariantViolationError（partial unique）', async () => {
-    await repo.save(normalCandidate({ gmailMessageId: 'gm-dup' }))
-    await expect(repo.save(normalCandidate({ gmailMessageId: 'gm-dup' }))).rejects.toThrow(
-      InvariantViolationError,
-    )
+  it('findByGmailMessageId は利用者に閉じる（別利用者の同一 Gmail ID は引かない、#487）', async () => {
+    const honey = normalCandidate({ userId: HONEY_USER_ID, gmailMessageId: 'gm-shared' })
+    await repo.save(honey)
+    // 別利用者で同じ Gmail message ID を照会しても引かない
+    expect(
+      await repo.findByGmailMessageId(DARLING_USER_ID, 'gm-shared' as GmailMessageId),
+    ).toBeNull()
+  })
+
+  it('別々の利用者は同一 Gmail message ID の候補を共存できる（#487。片方が黙って欠落しない）', async () => {
+    // Gmail message ID は受信箱ごとの採番でアカウント間の一意性を保証しない。夫婦それぞれの
+    // メールに同じ番号が振られても、双方が取り込めることを保証する（partial unique を
+    // (user_id, gmail_message_id) で閉じたことの確認）。
+    const honey = normalCandidate({ userId: HONEY_USER_ID, gmailMessageId: 'gm-collision' })
+    const darling = normalCandidate({ userId: DARLING_USER_ID, gmailMessageId: 'gm-collision' })
+    await repo.save(honey)
+    await expect(repo.save(darling)).resolves.toBeUndefined()
+    expect(
+      await repo.findByGmailMessageId(HONEY_USER_ID, 'gm-collision' as GmailMessageId),
+    ).toEqual(honey)
+    expect(
+      await repo.findByGmailMessageId(DARLING_USER_ID, 'gm-collision' as GmailMessageId),
+    ).toEqual(darling)
+  })
+
+  it('同一利用者・同一 Gmail メッセージの重複 save は InvariantViolationError（partial unique）', async () => {
+    await repo.save(normalCandidate({ userId: HONEY_USER_ID, gmailMessageId: 'gm-dup' }))
+    await expect(
+      repo.save(normalCandidate({ userId: HONEY_USER_ID, gmailMessageId: 'gm-dup' })),
+    ).rejects.toThrow(InvariantViolationError)
   })
 
   it('Gmail ID なし（CSV 由来）は partial unique の対象外で複数共存できる', async () => {

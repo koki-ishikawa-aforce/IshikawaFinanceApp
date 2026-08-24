@@ -9,6 +9,9 @@
  *   kind='email' の gmailMessageId と kind='amazon_match' の smbcGmailMessageId。
  *   normal 候補が Amazon 突合済みへ遷移しても同一 SMBC メールの重複除外
  *   （partial unique）が効き続けるため
+ * - メール重複除外の partial unique は (user_id, gmail_message_id) で閉じる（#487）。
+ *   Gmail message ID は受信箱ごとの採番でアカウント間の一意性を保証しないため、
+ *   夫婦それぞれのメールに同じ番号が振られても双方を取り込めるよう利用者ごとに閉じる
  */
 import {
   pgTable,
@@ -42,9 +45,9 @@ export const transactionCandidates = pgTable(
       'transaction_candidates_kind_check',
       sql`${t.kind} IN ('normal', 'amazon_matched', 'match_timeout', 'confirmed')`,
     ),
-    // メール重複除外（Gmail message ID 完全一致）
-    uniqueIndex('idx_transaction_candidates_gmail_unique')
-      .on(t.gmailMessageId)
+    // メール重複除外（利用者 + Gmail message ID 完全一致、#487）
+    uniqueIndex('idx_transaction_candidates_user_gmail_unique')
+      .on(t.userId, t.gmailMessageId)
       .where(sql`${t.gmailMessageId} IS NOT NULL`),
     // 三項一致 findByTripleMatch(userId, occurredOn, amount, merchantName)
     index('idx_transaction_candidates_triple').on(t.userId, t.occurredOn, t.amount, t.merchantName),

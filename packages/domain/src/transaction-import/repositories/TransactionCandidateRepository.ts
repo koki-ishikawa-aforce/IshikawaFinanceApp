@@ -2,9 +2,13 @@
  * 取引候補 Repository I/F
  * @see docs/superpowers/plans/2026-07-06-phase5-m-a-context-typing.md §2.3
  *
- * 重複除外: findByGmailMessageId（Gmail_message_ID 完全一致）と
+ * 重複除外: findByGmailMessageId（利用者 + Gmail_message_ID 完全一致）と
  * findByTripleMatch（発生日 + 金額 + 加盟店名〔NFKC 正規化済み〕、OQ-23 / OQ-7）で
  * 生成前チェックを行う（Phase 5 M-B）。
+ *
+ * findByGmailMessageId が利用者を受け取るのは、Gmail message ID が受信箱ごとの採番で
+ * アカウント間の一意性を保証しないため（#487）。夫婦それぞれのメールに同じ番号が振られても
+ * 双方を取り込めるよう、重複判定と DB の一意制約を「利用者 + メールの番号」で閉じる。
  */
 import type {
   AmazonOrderId,
@@ -21,7 +25,10 @@ import type {
 
 export interface TransactionCandidateRepository {
   findById(id: TransactionCandidateId): Promise<TransactionCandidate | null>
-  findByGmailMessageId(gmailMessageId: GmailMessageId): Promise<TransactionCandidate | null>
+  findByGmailMessageId(
+    userId: UserId,
+    gmailMessageId: GmailMessageId,
+  ): Promise<TransactionCandidate | null>
   findByTripleMatch(
     userId: UserId,
     occurredOn: Date,
