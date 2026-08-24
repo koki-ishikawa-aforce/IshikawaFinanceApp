@@ -1,22 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Modal } from '@/components/ui/Modal'
+import { useQuery } from '@tanstack/react-query'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { AccountAddModal } from '@/components/accounts/AccountAddModal'
 import {
-  AccountAddModal,
-  BrokerageNameFields,
-  isBrokerageNameValid,
-  normalizeBrokerageName,
-} from '@/components/accounts/AccountAddModal'
-import { apiFetch, apiMutate, describeRequestFailure } from '@/lib/api-client'
-import {
-  OwnAccountListWireSchema,
-  UnknownResponseSchema,
-  type BrokerageNameWire,
-  type OwnAccountWire,
-} from '@/lib/api-schemas'
+  BankNameEditModal,
+  BrokerageNameEditModal,
+} from '@/components/accounts/AccountNameEditModal'
+import { apiFetch, describeRequestFailure } from '@/lib/api-client'
+import { OwnAccountListWireSchema, type OwnAccountWire } from '@/lib/api-schemas'
 import { ACCOUNT_KIND_LABELS, ACCOUNT_KIND_ORDER, brokerageNameLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { LuPlus } from '@/components/ui/icons'
@@ -24,87 +17,6 @@ import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './AccountsTab.module.css'
-
-function BankNameEditModal({
-  account,
-  onClose,
-}: {
-  account: Extract<OwnAccountWire, { kind: 'other_savings' }>
-  onClose: () => void
-}) {
-  const queryClient = useQueryClient()
-  const [bankName, setBankName] = useState(account.bankName)
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      apiMutate(
-        `/api/accounts/${account.common.accountId}/bank-name`,
-        { method: 'PUT', body: { bankName: bankName.trim() } },
-        UnknownResponseSchema,
-      ),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      onClose()
-    },
-  })
-
-  return (
-    <Modal title="銀行名を変更" onClose={onClose}>
-      <input
-        className={ui.input}
-        value={bankName}
-        maxLength={50}
-        onChange={e => setBankName(e.target.value)}
-      />
-      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
-      <button
-        className={ui.button}
-        disabled={bankName.trim() === '' || mutation.isPending}
-        onClick={() => mutation.mutate()}
-      >
-        {mutation.isPending ? '保存中...' : '保存'}
-      </button>
-    </Modal>
-  )
-}
-
-function BrokerageNameEditModal({
-  account,
-  onClose,
-}: {
-  account: Extract<OwnAccountWire, { kind: 'nisa' }>
-  onClose: () => void
-}) {
-  const queryClient = useQueryClient()
-  const [brokerageName, setBrokerageName] = useState<BrokerageNameWire>(account.brokerageName)
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      apiMutate(
-        `/api/accounts/${account.common.accountId}/brokerage-name`,
-        { method: 'PUT', body: { brokerageName: normalizeBrokerageName(brokerageName) } },
-        UnknownResponseSchema,
-      ),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      onClose()
-    },
-  })
-
-  return (
-    <Modal title="証券会社名を変更" onClose={onClose}>
-      <BrokerageNameFields value={brokerageName} onChange={setBrokerageName} />
-      {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}
-      <button
-        className={ui.button}
-        disabled={!isBrokerageNameValid(brokerageName) || mutation.isPending}
-        onClick={() => mutation.mutate()}
-      >
-        {mutation.isPending ? '保存中...' : '保存'}
-      </button>
-    </Modal>
-  )
-}
 
 function AccountRow({ account, onEdit }: { account: OwnAccountWire; onEdit: (() => void) | null }) {
   const detail =
@@ -116,8 +28,8 @@ function AccountRow({ account, onEdit }: { account: OwnAccountWire; onEdit: (() 
           ? `${brokerageNameLabel(account.brokerageName)} / ${formatMoney(account.contribution.currentAccumulated)}`
           : null
   return (
-    <li className={styles.masterRow}>
-      <span className={styles.masterName}>{ACCOUNT_KIND_LABELS[account.kind]}</span>
+    <li className={styles.accountRow}>
+      <span className={styles.accountName}>{ACCOUNT_KIND_LABELS[account.kind]}</span>
       <span className={styles.rowActions}>
         {detail !== null && <span className={styles.accountDetail}>{detail}</span>}
         {onEdit !== null ? (
@@ -174,22 +86,25 @@ export function AccountsTab() {
           {describeRequestFailure(accountsQuery.error, '口座の取得に失敗しました')}
         </ErrorState>
       )}
-      {!accountsQuery.isLoading && items.length === 0 && (
+      {/* 空状態は一覧を取れたときだけ出す。失敗時にも出すと「取れなかった」が「0 件」に見える */}
+      {accountsQuery.isSuccess && items.length === 0 && (
         <EmptyState>登録済みの口座はありません。</EmptyState>
       )}
-      <ul className={styles.masterList}>
-        {items.map(account => (
-          <AccountRow
-            key={account.common.accountId}
-            account={account}
-            onEdit={
-              account.kind === 'other_savings' || account.kind === 'nisa'
-                ? () => setEditing(account)
-                : null
-            }
-          />
-        ))}
-      </ul>
+      {items.length > 0 && (
+        <ul className={styles.accountList}>
+          {items.map(account => (
+            <AccountRow
+              key={account.common.accountId}
+              account={account}
+              onEdit={
+                account.kind === 'other_savings' || account.kind === 'nisa'
+                  ? () => setEditing(account)
+                  : null
+              }
+            />
+          ))}
+        </ul>
+      )}
       {registrableKinds.length > 0 && (
         <div className={styles.addRow}>
           {registrableKinds.map(kind => (

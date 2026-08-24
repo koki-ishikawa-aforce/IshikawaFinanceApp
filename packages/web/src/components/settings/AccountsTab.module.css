@@ -1,11 +1,11 @@
-.masterList {
+.accountList {
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: var(--space-0_5);
 }
 
-.masterRow {
+.accountRow {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -14,11 +14,11 @@
   border-bottom: 1px solid var(--divider);
 }
 
-.masterRow:last-child {
+.accountRow:last-child {
   border-bottom: none;
 }
 
-.masterName {
+.accountName {
   font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text-primary);
