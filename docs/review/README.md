@@ -2,7 +2,7 @@
 
 割まる(わりまる)の品質を「誰が・どこで・何を見るか」に分解した一次資料。レビュー観点を追加するときは、必ず本ドキュメントの表に位置づけてから追加する。
 
-> 関連: [`CLAUDE.md`](../../CLAUDE.md)(開発フロー)、[`DESIGN.md`](../../DESIGN.md)(見た目の規約)、[`docs/design/usability.md`](../design/usability.md)(使用性の規範)、[`docs/acceptance/README.md`](../acceptance/README.md)(受入テスト)
+> 関連: [`docs/workflow/README.md`](../workflow/README.md)(開発ワークフローの全体像と原則)、[`CLAUDE.md`](../../CLAUDE.md)(開発フロー)、[`DESIGN.md`](../../DESIGN.md)(見た目の規約)、[`docs/design/usability.md`](../design/usability.md)(使用性の規範)、[`docs/acceptance/README.md`](../acceptance/README.md)(受入テスト)
 
 ## 1. 切り分けの原則
 

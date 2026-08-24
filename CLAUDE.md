@@ -44,10 +44,11 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 - デザインガイド: `DESIGN.md` — web の見た目に関わる変更はこれに従う(トークン・アイコン・装飾・テーマ・アクセシビリティ)
 - 使用性の規範: `docs/design/usability.md` — web の画面・フローに関わる変更はこれにも従う(状態の網羅・プライバシーの UI 表現・ユーザーエラー防止・入力負荷・マイクロコピー・インタラクションの一貫性・LIFF 固有・アクセシビリティ)
 - レビュー観点の体系: `docs/review/README.md` — 品質特性ごとの担保手段(CI / レビュースキル / 人間)と「変更パス → 起動するレビュー」のトリガー表
+- 開発ワークフローの全体像: `docs/workflow/README.md` — 工程の通し仕様・ラベルの状態遷移・実行基盤(skills / hooks / Routine)・設計原則
 
 ## 開発フロー
 
-タスク管理は GitHub Issue 起点。どの差分でどのレビューを回すかは `docs/review/README.md` のトリガー表に従う。
+タスク管理は GitHub Issue 起点。全体像は `docs/workflow/README.md`、どの差分でどのレビューを回すかは `docs/review/README.md` のトリガー表に従う。
 
 1. 要件の Issue 化: `/issue-create`
 2. Issue の実装〜PR 作成: `/issue-work`
@@ -65,15 +66,13 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 ブランチ名は `feat/issue-<番号>-<slug>`、PR 本文に `Closes #<番号>` を含める。
 着手中の Issue には `status:in-progress` ラベルを付与する(`/issue-work` が自動で行う)。
 
-バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ実装 → PR → CI green → **マージ**まで進める(運用・セットアップ: `docs/automation/backlog-routine.md`)。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える(設計判断が残存する Issue には `needs-decision` を付けて `/decide` に接続する)。依存する先行 Issue が open でも ready は付与でき、着手は Routine の依存チェックが遅延する(マージすると次の fire が自動で後続に着手)。無人モードはユーザー確認の代わりに撤退を選ぶ。溜まった `needs-decision` は `/decide` でまとめて消化する。
+バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ実装 → PR → CI green → **マージ**まで進める。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える(設計判断が残存する Issue には `needs-decision` を付けて `/decide` に接続する)。無人モードはユーザー確認の代わりに撤退を選び、溜まった `needs-decision` は `/decide` でまとめて消化する。
 
 **人間の承認ゲートは `ready-to-implement` の付与(着手承認)1点**。マージ可否は機械的な**マージゲート**(CI green・コンフリクトなし・`needs-decision` なし等をコマンド出力で確定)で判定し、満たせば無人モードがマージする。ゲートの定義は `.claude/skills/issue-work/SKILL.md`「マージゲート」の1箇所のみ。個別 PR の自動マージを止めたいときは、その PR に `needs-decision` を付ける。
 
-PR の保守(CI 修復・コンフリクト解消・重複検知): `/pr-steward` が Routine 起点の open PR を巡回して green に戻す(マージはしない。green にした PR は次のバックログ fire の回収マージが拾う。運用: `docs/automation/pr-steward-routine.md`)。
+PR の保守(CI 修復・コンフリクト解消・重複検知): `/pr-steward` が Routine 起点の open PR を巡回して green に戻す(マージはしない。green にした PR は次のバックログ fire の回収マージが拾う)。
 
-画面の確認材料: `packages/web` に変更がある PR は、モック起動モードの画面が GitHub Pages に自動配信され、配信 URL が PR にコメントされる(運用・セットアップ: `docs/automation/pr-preview.md`)。
-
-無人運用の自己改善: `/retro` が無人モードの失敗データ(撤退・CI リトライ・レビュー指摘)を週次で振り返り、繰り返す失敗パターンから改善案を `needs-decision` Issue として起票する(読み取り専用。運用: `docs/automation/retro-routine.md`)。
+無人運用の全体像 — Routine 4本(バックログ / PR 執事 / 振り返り / 乖離検知)、ラベルの状態遷移、hooks による実行時ガード、PR プレビュー配信、設計原則 — は `docs/workflow/README.md` を参照。各運用のセットアップと止め方は `docs/automation/` にある。
 
 ## してはいけないこと
 
