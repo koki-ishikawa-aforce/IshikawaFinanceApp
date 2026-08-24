@@ -12,6 +12,7 @@ import {
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { RestrictedState } from '@/components/ui/RestrictedState'
 import { BulkClassificationEntry } from '@/components/classification/BulkClassificationEntry'
 import { RetroactivePrompt } from '@/components/classification/RetroactivePrompt'
 import {
@@ -160,6 +161,15 @@ interface DetailModalProps {
   onClose: () => void
 }
 
+/**
+ * 詳細モーダルの見出し。編集できない行では「編集」と掲げない(usability 5-7)。
+ * 見出しは `Modal` の `aria-label` にもなるため、読み上げでも本文と食い違わせない
+ */
+function detailModalTitle(transaction: TransactionListItemWire, editable: boolean): string {
+  if (!editable) return '取引の詳細'
+  return transaction.isUnclassified ? '未分類取引' : '取引の編集'
+}
+
 function DetailModal({ transaction, onClose }: DetailModalProps) {
   const queryClient = useQueryClient()
   const masters = useMasters()
@@ -224,8 +234,16 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
     onSuccess: invalidateAndClose,
   })
 
-  // プライバシー適用で merchantName / amount が null の行（配偶者の個人取引）は編集不可
+  // プライバシー適用で merchantName / amount が null の行は編集不可。
+  // 本番の一覧にはこの行そのものが載らない（domain の applyPrivacyFilter が相手の
+  // 個人取引を行ごと除外する）ため、通常はモック起動モードでのみ到達する保険の分岐
   const editable = transaction.merchantName !== null && transaction.amount !== null
+  // 伏せている旨を出してよいのは個人費だけ。経費(会社)は「見えないものがある」ことすら
+  // 相手に示唆してはならない（usability 2-3）ので、同じ面には載せない
+  const restrictedByPrivacy =
+    !editable &&
+    (transaction.expenseClass === 'personal_honey' ||
+      transaction.expenseClass === 'personal_darling')
   const updateValid =
     merchantName.trim() !== '' &&
     amount !== '' &&
@@ -247,13 +265,14 @@ function DetailModal({ transaction, onClose }: DetailModalProps) {
   }
 
   return (
-    <Modal title={transaction.isUnclassified ? '未分類取引' : '取引の編集'} onClose={onClose}>
-      {!editable && (
-        // 権限による制限であることは文言側で伝えている(usability 2-2)。汎用の空文言には落とさない。
-        // モーダルを開いた時点で確定していて切り替わらないため、読み上げは重ねない
-        <EmptyState announce={false}>
-          配偶者の個人取引のため、詳細の閲覧・編集はできません
-        </EmptyState>
+    // 編集できない行に「編集」と掲げてから本文で打ち消さない(usability 5-7)。
+    // 見出しはモーダルの aria-label にもなるため、読み上げでも食い違わせない
+    <Modal title={detailModalTitle(transaction, editable)} onClose={onClose}>
+      {restrictedByPrivacy && (
+        // 権限による制限なので、空状態ではなく専用の見せ方で出す(usability 2-2)。
+        // Modal は開いてもフォーカスを内側へ移さない(同 §9 #10)ため、ここで通知を
+        // 落とすと伏せている旨が読み上げ利用者に一度も伝わらない。既定の role="status" のまま出す
+        <RestrictedState>パートナーの個人取引のため、詳細の閲覧・編集はできません</RestrictedState>
       )}
       {editable && (
         <>

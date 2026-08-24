@@ -109,6 +109,12 @@ textarea {
   /* 一覧の行を区切る線の色。背景（テーマ別のグラデーション）に重ねる薄墨で、両テーマ共通 */
   --divider: rgba(0, 0, 0, 0.06);
   --line-brand: #06c755;
+  /*
+   * テーマ色をごく薄く敷いた面。相手の個人費・プライバシーで伏せている表示・
+   * 資産推移の注記など、「本文の流れから少し持ち上げたい小さな面」に使う。
+   * --accent は使う側の要素で解決されるため、テーマ別の再定義は要らない
+   */
+  --surface-accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
 
   /* Darling theme (default) */
   --bg-gradient: linear-gradient(180deg, #ffc8d8 0%, #ffd8e0 30%, #ffe0e8 60%, #fff0f5 100%);

@@ -1,0 +1,33 @@
+/*
+ * 空状態(`EmptyState` の `.empty`)と見た目を分けるための面。
+ *
+ * 空状態は背景を持たない中央寄せのテキストなので、面と錠前を足すだけで
+ * 「データが無い」ではなく「意図して伏せている」ことが視覚的にも区別できる。
+ * 背景と余白は相手の個人費(`SpousePersonalNote`)と同じアクセントの淡い面に揃え、
+ * プライバシーで伏せている箇所の見た目を 1 つにまとめる。
+ *
+ * 文字色は補足文の `--text-secondary` ではなく `--text-primary` を使う。
+ * 面を一段濃くしたぶん `--text-secondary` では両テーマとも 4.5:1 を割るうえ、
+ * 伏せている理由は読み飛ばしてよい補足ではなく本文相当のため
+ */
+.restricted {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1_5);
+  padding: var(--space-2_5) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-accent-soft);
+  /* 錠前(--icon-sm は 1em)の基準。ここに置かないと文言と大きさが連動しない */
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.icon {
+  /* 文言が折り返しても錠前は潰さない */
+  flex-shrink: 0;
+}
+
+.message {
+  line-height: var(--leading-relaxed);
+}

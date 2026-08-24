@@ -133,7 +133,7 @@
   border-bottom: none;
   padding: var(--space-2) var(--space-2_5);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: var(--surface-accent-soft);
 }
 
 /** 相手の行は本人の口座行と同じ重みで並べない（名称・金額を一段落とす） */

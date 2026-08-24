@@ -78,7 +78,8 @@
 ### 規範
 
 - **2-1** 権限で明細が見えない値を**黙って空欄・ゼロ・ハイフンにしない**。「合計のみ公開」であることが分かるラベル(例: `(合計のみ)`)または補足を併記する
-- **2-2** 相手の個人明細を開こうとしたとき、**権限による制限であることを文言で伝える**。汎用のエラー・空状態に落とさない
+- **2-2** 相手の個人明細を開こうとしたとき、**権限による制限であることを文言で伝える**。汎用のエラー・空状態に落とさない。文言だけでなく**見た目も空状態と分ける** — 共通部品 `RestrictedState`(`packages/web/src/components/ui/RestrictedState.tsx`)を使う(§6-10)。同じインラインのテキストで出すと「データが無い」と読まれ、相手の取引が消えたと受け取られる
+  - 前提: **本番の取引一覧に伏せ字の行は載らない**。プライバシーの判定点である `applyPrivacyFilter`(domain)が相手の個人取引を行ごと除外するため、`GET /api/transactions` から明細が null の行は返らない。この表示が実際に出るのはモック起動モードと、万一そうした行が届いたときの保険の経路になる。「伏せ字行が一覧に残る」ことを前提にした画面を新たに作らない
 - **2-3** 経費(会社) は例外。相手の画面に「経費があるが見えない」ことを示唆する表示を出してはならない(合計すら不可視 = 存在を漏らさない)。セクションごと出さない
 - **2-4** 相手の値を表示する箇所は、色だけでなくロール識別アイコン + ニックネームを併記する(`DESIGN.md` §4 ロール識別アイコン)
 - **2-5** プライバシー段階の判定を UI 側で再実装しない。API が返す値(null 等)に従う。判定ロジックはドメイン層の ViewerContext に集約する(`/ddd-review` の観点と重複させないため、UI レビューでは「API の判定結果に従っているか」だけを見る)
@@ -92,8 +93,11 @@
 // 違反(2-2): 権限制限を汎用エラーに落としている
 {tx.amount === null && <ErrorState>データを取得できませんでした</ErrorState>}
 
-// 適合
+// 違反(2-2): 文言は制限を伝えているが、空状態と同じ見た目なので「データが無い」と読まれる
 <EmptyState>配偶者の個人取引のため、詳細の閲覧・編集はできません</EmptyState>
+
+// 適合
+<RestrictedState>配偶者の個人取引のため、詳細の閲覧・編集はできません</RestrictedState>
 ```
 
 ---
@@ -211,6 +215,7 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 | **6-7 月の切り替え** | 画面上部の月ナビゲーション。日付ピッカーで月を選ばせない |
 | **6-8 補足情報・手順の格納** | カード内の開閉トグル(見出しが `aria-expanded` + `aria-controls` を持つボタンを包む)。主操作の前に読まなくてよい補足はこれで畳む。モーダル・別ページ・常時展開は採用しない |
 | **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は #366 で本部品へ寄せた。未追随は 2 つ。口座追加の証券会社(3 択、`components/accounts/AccountAddModal.tsx`)はセレクトのままで、次にその画面を触るときに本部品へ寄せる。資産推移の期間切り替え(3 択、`app/balances/page.tsx`)は独自のボタンのままで、寄せるかは #612 で判断待ち |
+| **6-10 明細をまるごと伏せている面** | 共通部品 `RestrictedState`(`packages/web/src/components/ui/RestrictedState.tsx`)。錠前のアイコンとアクセントの淡い面を持ち、空状態(§6-6)とは見た目で区別できる。`*.module.css` に独自のスタイルを定義しない。対象は「明細をまるごと見せていない」ことを伝える面に限る — 金額は出したうえで明細だけ伏せる「合計のみ公開」の行(`SpousePersonalNote`、残高画面の内訳の注記)は §2-1 の担当で、この部品には寄せない。経費(会社)にも使わない — 相手の画面には存在自体を出さないため(§2-3) |
 
 ### 違反例
 
@@ -328,7 +333,7 @@ return <span>{formatMoney(query.data.total)}</span>
 | # | 規範 | 未対応の内容 | 該当箇所 |
 | --- | --- | --- | --- |
 | 1 | 8-3 | `<label>` が `htmlFor` でもラップでも入力に関連付けられていない(`ui.fieldLabel` を使う全箇所が `.field` 内の兄弟要素) | `packages/web/src/app/transactions/page.tsx`、`settings/page.tsx`、`expense-settlement/page.tsx` ほか |
-| 2 | 8-5 | セクション見出しが `<span className={ui.sectionTitle}>` で、`<h2>` が存在しない(見出し階層が `<h1>` のみ) | `expense-settlement/page.tsx:255,317,343,369`、`settings/page.tsx:96,403,610,792,954` ほか |
+| 2 | 8-5 | セクション見出しが `<span className={ui.sectionTitle}>` で、`<h2>` が存在しない(見出し階層が `<h1>` のみ)。ダッシュボード(`app/page.tsx`)は `<h1>` すら無かったが #498 で対応した(見出しの文字を出す場所が無いため、`ui.srOnly` の `<h1>` を置いてカテゴリ内訳を `<h2>` にした)。残るのは下記の画面 | `expense-settlement/page.tsx:255,317,343,369`、`settings/page.tsx:96,403,610,792,954`、`reports/page.tsx:62,87,109,139,158` ほか |
 | 3 | 8-1 | フォーカスの可視スタイルが `.input:focus` にしか無い。`.button` / `.buttonGhost` / `.buttonDanger` / `.select` は `:hover` のみ | `packages/web/src/components/ui/common.module.css` |
 | 4 | 4-3 | 共通の操作部品(`.button` / `.buttonGhost` / `.buttonDanger` / `.select` / `.input`)とモーダルの閉じるボタンは #568(`--tap-target-min` トークンは #463)、ダッシュボードの月送り(`MonthNavigator`)・世帯/個人の切り替え(`ModeToggle`)・カテゴリ内訳の凡例行は #366、一覧の行に並ぶリンク風のボタン(`.textButton`)は #462、画面固有の操作部品は #467 で対応した。宣言は `src/test/tap-target.test.ts`、描画された実寸は `e2e/tap-target.spec.ts` が見張る。残るのは、大きくすると見た目が壊れるため判断待ちの吹き出し 1 件 | 相手の個人費の吹き出し(`SpousePersonalNote` の `.hint`。押すと閉じるが役割は注意書き)。追跡は #611 |
 | 4-2 | 4-4 | 下部ナビ(`AppNav`)の 7 項目が隙間なく並んでいる(各 44px で間隔 0)。`--space-2` の隙間を入れると 356px 必要になり 320px 幅に収まらないため、項目数か見せ方の判断が要る | `packages/web/src/components/ui/AppNav.module.css`。追跡は #614 |
@@ -337,7 +342,7 @@ return <span>{formatMoney(query.data.total)}</span>
 | 7 | 1-3 | 再試行手段は #366 で `ErrorState` の `onRetry` に集約し、自前のボタンを並べていた箇所も寄せ切った(同じ文言・同じ位置で出る)。残るのは、まだ `onRetry` を渡していない画面で取得失敗が文言だけになること | `expense-settlement/page.tsx`、`reports/page.tsx`、`settings/page.tsx` の各取得クエリほか |
 | 8 | 1-2 | 空状態が次の行動を示していないものがある(`この条件の取引はありません`、`当月の按分子取引はありません` 等)。示しているもの(`突合待ちの入金がありません。先に…`)と混在 | `transactions/page.tsx`、`expense-settlement/page.tsx` ほか。共通部品化は #341 で完了済みで、残るのは文言の見直し |
 | 9 | 1-4 | 部分失敗の扱いが定義されていない。複数クエリを並べる画面で一部だけ失敗した場合の表示方針が実装ごとに異なる | `app/page.tsx`(ダッシュボード)、`reports/page.tsx`、`balances/page.tsx` |
-| 10 | 8-7 | `Modal` に `role="dialog"` / `aria-modal` / `aria-labelledby`・フォーカストラップ・Esc 閉じが無い | `packages/web/src/components/ui/Modal.tsx` |
+| 10 | 8-7 | `Modal` は `role="dialog"` / `aria-modal="true"` / `aria-label`(タイトル)・Esc 閉じを備えたが、**開いたときのフォーカス移動と閉じたときの復帰が無い**。このためモーダルを開いても読み上げは発生せず、中身は個別に `role="status"` 等で通知する必要がある(#498 の `RestrictedState` はそれを前提に `announce` を既定のままにしている) | `packages/web/src/components/ui/Modal.tsx` |
 | 11 | 8-6 | 金額カード(`--kpi-1` / `--kpi-hero` 上の `--text-on-kpi`)は #366 で両テーマ 4.5:1 を満たし、比率を `src/test/kpi-contrast.test.ts` が見張るようになった。残るのは他の配色の未検証(半透明カード `rgba(255,255,255,0.7)` 上の `--text-secondary` 等) | `common.module.css`、`globals.css` |
 
 関連する既存 Issue: #310(ボタンが設計フォントを継承していない)、#341(空状態の共通部品化 — 対応済み)、#421(ローディング・エラーの共通部品化と通知 — 対応済み。ただし独自実装だった `onboarding/page.tsx` はこの時点で対象外だった)、#497(その `onboarding/page.tsx` の共通部品化 — 対応済み。これで取得・保存の失敗表示は全画面が共通部品を通る。確認結果の否定・前提条件の警告(`onboarding/page.tsx` の友だち未追加・トークルーム未特定)は「失敗」と別扱いのため独自表示のまま残る)、#90(`packages/web` の既存コードレビュー)。

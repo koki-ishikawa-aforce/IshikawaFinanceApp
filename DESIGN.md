@@ -129,6 +129,7 @@ JSX に絵文字（Unicode Emoji）を表示目的で埋め込まない。装飾
 - 色だけでロールや状態を区別しない — 形状・テキストを併用する
 - 2〜3 択の切り替えを画面ごとに書き起こさない — 共通部品 `SegmentedControl`（`packages/web/src/components/ui/SegmentedControl.tsx`）を使う（見た目は「選択中を白い面 + アクセントの枠で浮かせる」に統一する）
 - 空状態（「〜がありません」）を画面ごとに書き起こさない — 共通部品 `EmptyState`（`packages/web/src/components/ui/EmptyState.tsx`）を使い、`*.module.css` に独自の空状態スタイルを定義しない
+- プライバシーで伏せている表示（「配偶者の個人取引のため〜」）を空状態として出さない — 共通部品 `RestrictedState`（`packages/web/src/components/ui/RestrictedState.tsx`）を使い、`*.module.css` に独自のスタイルを定義しない（空状態と同じ見た目だと「データが無い」と受け取られる）
 - ローディング（「読み込み中...」）・エラー（「〜の取得に失敗しました」）を画面ごとに書き起こさない — 共通部品 `LoadingState`（`packages/web/src/components/ui/LoadingState.tsx`）・`ErrorState`（同 `ErrorState.tsx`）を使い、`*.module.css` に独自の `.loading` / `.error` を定義しない
 - 取得失敗からの再読み込みを画面ごとに書き起こさない — `ErrorState` の `onRetry` に渡す（文言と置き場所が揃い、ボタンが読み上げ範囲の外に置かれる）
 - 補足文（`.note` / 一段大きい `.noteLg`）・注意書き（`.warning`）・一覧の行に並べるリンク風のボタン（`.textButton` / `.textButtonDanger`）を画面ごとに定義しない — `common.module.css` の共通クラスを使う

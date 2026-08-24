@@ -57,6 +57,25 @@
 }
 
 /**
+ * 画面には出さず、支援技術にだけ伝える文言。
+ *
+ * 見出し階層（`docs/design/usability.md` 8-5）を満たすのに見出しの文字を出す場所が
+ * 無い画面（ダッシュボード）で `<h1>` に使う。`display: none` や `visibility: hidden`
+ * では読み上げからも消えるため、1px に切り詰めて視覚だけを取り除く。
+ * 余白を持たせないので、置いてもレイアウトは 1 ドットも動かない
+ */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/**
  * アイコンの大きさ。DESIGN.md §4 のスケール（小 / 中 / 大）から選ぶ。
  *
  * react-icons の `size` プロパティで画面ごとに指定すると大きさが散らばるため、
