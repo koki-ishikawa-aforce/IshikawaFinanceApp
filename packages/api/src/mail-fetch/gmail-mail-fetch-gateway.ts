@@ -30,9 +30,12 @@
  * `detail` には応答ボディ・メール本文・Parameter Store のパス・メールアドレスを載せない
  * （ログに出る前提で、金額・氏名・保管先パス（ユーザーID を含む）を漏らさないため）。
  *
- * 送信元は実アドレスの一致で判定する。送信認証（DKIM / SPF）の結果までは見ていないため、
- * 差出人アドレスそのものを詐称したメールは弾けない。どこまで厳しくするかは実メールの確認が
- * 要るため判断を分けている（#478）。
+ * 送信元は実アドレスの一致で判定する。差出人アドレス自体は詐称できるため、これだけでは
+ * 三井住友カードを装ったメールを弾けない。#478 の決定に従い、まず受信サーバが付けた送信認証
+ * （DKIM / SPF / DMARC）の判定を**取り込んだメールごとに記録に残す**段階から始める。
+ * **この段階では判定を根拠に 1 通も弾かない**（正規の通知が不合格になる余地を確かめる前に弾くと、
+ * その月の利用が丸ごと取り込まれない）。記録で正規の通知が必ず合格することを確かめたうえで、
+ * 弾く側へ切り替える（段階3、別 Issue）。
  */
 import type {
   AmazonOrderConfirmationMailBody,
@@ -47,6 +50,11 @@ import type {
 import { GmailMessageIdSchema, NotFoundError } from '@warimaru/domain'
 import { z } from 'zod'
 import { withTimeout } from '../with-timeout.js'
+import {
+  isFullyAuthenticated,
+  parseAuthenticationResults,
+  type MailAuthenticationResults,
+} from './authentication-results.js'
 
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me'
@@ -103,6 +111,21 @@ export interface GmailMailFetchGatewayConfig {
   maxMessages?: number
 }
 
+/**
+ * 送信元の目印（#478 段階1 の記録を送信元ごとに集計するためのラベル）。
+ * ログに残す値なので、アドレスそのものではなく固定のラベルにする。
+ * 対応: `smbc_card` = `SMBC_CARD_SENDER` / `smbc_bank` = `SMBC_BANK_SENDER` /
+ * `amazon` = `AMAZON_SENDER_DOMAIN`（送信元を増やすときはこのラベルも足す）
+ */
+type MailSender = 'smbc_card' | 'smbc_bank' | 'amazon'
+
+/** 取り込んだメール 1 通ぶんの送信認証の記録（#478 段階1） */
+interface MailAuthenticationObservation {
+  gmailMessageId: string
+  sender: MailSender
+  results: MailAuthenticationResults
+}
+
 interface GmailHeader {
   name?: string
   value?: string
@@ -142,9 +165,10 @@ function epochSeconds(at: Date): number {
 
 /**
  * 検索条件を組み立てる。`includeSpamTrash` は付けないため、**迷惑メール・ゴミ箱のメールは
- * 対象外**になる（Gmail API の既定）。送信元を騙る偽の通知を取り込まない側に倒した既定だが、
- * 正規の通知が迷惑メール判定されると静かに取りこぼす。どちらに倒すかは実運用の観察が要るため
- * 判断を分けている（#478）。
+ * 対象外**になる（Gmail API の既定）。送信元を騙る偽の通知を取り込まない側に倒した既定で、
+ * 正規の通知が迷惑メール判定されると静かに取りこぼすが、#478 の決定により**当面この既定のまま
+ * にする**（なりすまし対策が効くまでは、取りこぼしより取り違えを避ける側に倒す。取りこぼした
+ * 月は CSV 取込で補う）。含める判断は送信認証の記録が溜まってから改めて行う。
  */
 function buildSearchQuery(from: Date, to: Date): string {
   const senders = [
@@ -159,6 +183,17 @@ function headerValue(part: GmailPart | undefined, name: string): string {
   const lower = name.toLowerCase()
   const found = part?.headers?.find(h => (h.name ?? '').toLowerCase() === lower)
   return found?.value ?? ''
+}
+
+/**
+ * 同名ヘッダの値を**メールに現れる順**（上から順）で集める。`Authentication-Results` は
+ * 受信サーバが受信時に先頭へ足すため、順序が意味を持つ（下位は送信者が埋め込める）。
+ */
+function headerValues(part: GmailPart | undefined, name: string): string[] {
+  const lower = name.toLowerCase()
+  return (part?.headers ?? [])
+    .filter(h => (h.name ?? '').toLowerCase() === lower)
+    .map(h => h.value ?? '')
 }
 
 function decodeBytes(bytes: Uint8Array, charset: string, context?: string): string {
@@ -394,6 +429,7 @@ export function createGmailMailFetchGateway(
         const smbcMails: SmbcNotificationMailBody[] = []
         const amazonMails: AmazonOrderConfirmationMailBody[] = []
         const skipped: string[] = []
+        const observations: MailAuthenticationObservation[] = []
         for (const id of messageIds) {
           const raw = await callGmail(
             `${GMAIL_API_BASE}/messages/${encodeURIComponent(id)}?format=full`,
@@ -417,9 +453,18 @@ export function createGmailMailFetchGateway(
             skipped.push(id)
             continue
           }
+          // 送信認証の判定は取り込んだメールぶんだけ記録する（対象送信元でないものは
+          // 取り込まないので、記録しても段階2 の「正規の通知が合格しているか」の確認には使えない）
+          observations.push({
+            gmailMessageId: classified.mail.gmailMessageId,
+            sender: classified.sender,
+            results: classified.authentication,
+          })
           if (classified.kind === 'smbc') smbcMails.push(classified.mail)
           else amazonMails.push(classified.mail)
         }
+
+        recordAuthenticationResults(observations)
 
         // 検索でヒットしたのに対象送信元と判定されなかったメールは捨てている。送信元アドレスの
         // 形が変わったときに「取得完了」の陰で毎日取りこぼし続けるのを避けるため、件数と ID を残す
@@ -632,11 +677,19 @@ async function listMessageIds(args: {
  * message ID ごと消えて「取り込めなかったこと」が記録に残らないため、パース側の失敗
  * （`MailParseFailed`）として扱わせる。
  */
-function toMailBody(
-  message: GmailMessageResponse,
-):
-  | { kind: 'smbc'; mail: SmbcNotificationMailBody }
-  | { kind: 'amazon'; mail: AmazonOrderConfirmationMailBody }
+function toMailBody(message: GmailMessageResponse):
+  | {
+      kind: 'smbc'
+      sender: MailSender
+      authentication: MailAuthenticationResults
+      mail: SmbcNotificationMailBody
+    }
+  | {
+      kind: 'amazon'
+      sender: MailSender
+      authentication: MailAuthenticationResults
+      mail: AmazonOrderConfirmationMailBody
+    }
   | undefined {
   const id = message.id
   // payload の形は開かれているのでここで型を絞る（欠落・想定外は本文空・ヘッダ空として扱う）
@@ -646,17 +699,78 @@ function toMailBody(
   const receivedAt = new Date(Number(message.internalDate))
   const body = extractBody(payload, id)
   const gmailMessageId = GmailMessageIdSchema.parse(id)
+  const authentication = parseAuthenticationResults(headerValues(payload, 'Authentication-Results'))
 
   if (isSmbcSender(address)) {
     return {
       kind: 'smbc',
+      sender: address === SMBC_CARD_SENDER ? 'smbc_card' : 'smbc_bank',
+      authentication,
       mail: { gmailMessageId, receivedAt, subject, body, kindHint: hintOf(subject) },
     }
   }
   if (isAmazonSender(address)) {
-    return { kind: 'amazon', mail: { gmailMessageId, receivedAt, subject, body } }
+    return {
+      kind: 'amazon',
+      sender: 'amazon',
+      authentication,
+      mail: { gmailMessageId, receivedAt, subject, body },
+    }
   }
   return undefined
+}
+
+/**
+ * 送信認証の判定を記録する（#478 段階1）。**判定を根拠にメールを弾かない**。
+ *
+ * 段階2 で「正規の通知が必ず合格しているか」を送信元ごとに数えられるよう、メール 1 通ごとに
+ * 送信元の目印と方式ごとの判定を残し、あわせて送信元 × 判定の組み合わせごとの件数を 1 行に
+ * まとめて出す。**メール本文・件名・差出人アドレス・利用者を辿れる値は載せない**
+ * （Gmail message ID は重複除外のため DB にも持つ識別子で PII ではない）。
+ *
+ * 記録は取得に付随する処理なので、ここでの失敗が取得そのものを巻き添えにしないよう閉じ込める
+ * （取得を失敗にすると、取得済みのメールが丸ごと捨てられ、その期間は CSV 取込でのやり直しになる）。
+ */
+function recordAuthenticationResults(observations: readonly MailAuthenticationObservation[]): void {
+  if (observations.length === 0) return
+
+  try {
+    for (const observed of observations) {
+      const { gmailMessageId, sender, results } = observed
+      const record = {
+        gmailMessageId,
+        sender,
+        authServId: results.authServId,
+        dkim: results.dkim,
+        spf: results.spf,
+        dmarc: results.dmarc,
+      }
+      // 合格でないものは記録に埋もれさせず、その場で気づけるようにする（この段階では弾かない）
+      if (isFullyAuthenticated(results)) {
+        console.info('Gmail メール取得: 送信認証の判定結果', record)
+      } else {
+        console.warn(
+          'Gmail メール取得: 送信認証が合格でないメールを取り込んだ（この段階では除外しない）',
+          record,
+        )
+      }
+    }
+
+    const counts = new Map<string, number>()
+    for (const { sender, results } of observations) {
+      const key = `${sender} dkim=${results.dkim} spf=${results.spf} dmarc=${results.dmarc}`
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    console.info(
+      `Gmail メール取得: 送信認証の判定結果（集計）— ${[...counts]
+        .map(([key, count]) => `${key} ×${count}`)
+        .join(', ')}`,
+    )
+  } catch (e) {
+    console.warn(
+      `Gmail メール取得: 送信認証の判定を記録できなかった（${e instanceof Error ? e.name : 'unknown'}）`,
+    )
+  }
 }
 
 /** Gmail が未構成の環境用フォールバック（呼び出し時に失敗として返す。例外は投げない） */
