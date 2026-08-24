@@ -1,30 +1,23 @@
 /**
- * 設定 > 口座タブの登録導線（#395）の結線を固定する。
+ * 設定 > 口座タブの登録導線（#395）と追加ボタンの出し分け（#507）を固定する。
  *
  * 本番で口座を作れる経路はこの画面だけで、ここから登録できない口座種別があると
  * はじめての設定（初期残高の登録）とメール取込の反映先が揃わない。登録できる種別と
  * 送る内容は画面の結線にしか現れないため、ここで検証する。
+ *
+ * 追加ボタンは未登録の種別にだけ出る。画像の見比べ（VRT）が撮っているのは「別銀行貯蓄・NISA が
+ * どちらも未登録」と「4 種すべて未登録」の 2 通りで、片方だけ登録済みの 2 通りと読み込み中は
+ * このテストだけが押さえている。
  */
-import type { ReactNode } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import SettingsPage from '../page'
+import { AccountsTab } from '../AccountsTab'
 import { ApiError } from '@/lib/api-client'
 
 const apiFetch = vi.fn()
 const apiMutate = vi.fn()
-
-vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams('section=accounts'),
-}))
-
-vi.mock('next/link', () => ({
-  default: ({ children, href }: { children: ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
-  ),
-}))
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client')
@@ -64,11 +57,11 @@ function ownAccount(kind: string, accountId: string): unknown {
 
 let registeredKinds: string[] = []
 
-function renderPage() {
+function renderTab() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <SettingsPage />
+      <AccountsTab />
     </QueryClientProvider>,
   )
 }
@@ -78,7 +71,6 @@ beforeEach(() => {
   apiMutate.mockReset()
   registeredKinds = []
   apiFetch.mockImplementation((path: string, schema: { parse: (input: unknown) => unknown }) => {
-    if (path === '/api/me') return Promise.resolve({ viewerId: VIEWER_ID, role: 'honey' })
     if (path === '/api/accounts') {
       return Promise.resolve(
         schema.parse({ items: registeredKinds.map((kind, i) => ownAccount(kind, `ACC_${i + 1}`)) }),
@@ -92,8 +84,8 @@ beforeEach(() => {
 })
 
 describe('設定 > 口座タブの登録導線', () => {
-  it('口座が 1 つも無ければ、4 種すべてを追加できる', async () => {
-    renderPage()
+  it('口座が 1 つも無ければ、空状態を伝えたうえで 4 種すべてを追加できる', async () => {
+    renderTab()
 
     for (const name of [
       'SMBC銀行口座を追加',
@@ -103,19 +95,22 @@ describe('設定 > 口座タブの登録導線', () => {
     ]) {
       expect(await screen.findByRole('button', { name })).toBeInTheDocument()
     }
+    expect(screen.getByText('登録済みの口座はありません。')).toBeInTheDocument()
   })
 
-  it('登録済みの種別は追加できない（同一ユーザー × 口座種別は 1 件）', async () => {
-    registeredKinds = ['smbc_bank', 'mitsui_sumitomo_card']
-    renderPage()
+  it('一覧の各行に口座種別と残高（NISA は積立累計）が出る', async () => {
+    registeredKinds = ['smbc_bank', 'mitsui_sumitomo_card', 'other_savings', 'nisa']
+    renderTab()
 
-    expect(await screen.findByRole('button', { name: '別銀行貯蓄口座を追加' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'SMBC銀行口座を追加' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '三井住友カードを追加' })).toBeNull()
+    expect(await screen.findByText('1,500,000円')).toBeInTheDocument()
+    expect(screen.getByText('楽天銀行 / 500,000円')).toBeInTheDocument()
+    // 積立ゼロの NISA も「0円」と出す（金額を持たない三井住友カードとは別物として見せる）
+    expect(screen.getByText('SBI証券 / 0円')).toBeInTheDocument()
+    expect(screen.getByText('三井住友カード')).toBeInTheDocument()
   })
 
   it('SMBC 銀行口座は入力した現在の残高を初期残高として登録する', async () => {
-    renderPage()
+    renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: 'SMBC銀行口座を追加' }))
     await userEvent.type(screen.getByLabelText('現在の残高（円、初期残高として登録）'), '1500000')
@@ -130,7 +125,7 @@ describe('設定 > 口座タブの登録導線', () => {
   })
 
   it('登録できたらモーダルが閉じ、一覧が取り直されて追加ボタンが消える', async () => {
-    renderPage()
+    renderTab()
     await userEvent.click(await screen.findByRole('button', { name: 'SMBC銀行口座を追加' }))
     await userEvent.type(screen.getByLabelText('現在の残高（円、初期残高として登録）'), '1500000')
     // 登録が通ったあとの一覧は登録済みを返す（サーバー状態が正）
@@ -148,7 +143,7 @@ describe('設定 > 口座タブの登録導線', () => {
   })
 
   it('登録に失敗したらモーダルは閉じず、次の行動が分かる文言を出す', async () => {
-    renderPage()
+    renderTab()
     await userEvent.click(await screen.findByRole('button', { name: 'SMBC銀行口座を追加' }))
     await userEvent.type(screen.getByLabelText('現在の残高（円、初期残高として登録）'), '1500000')
     apiMutate.mockRejectedValue(new ApiError(409, '{"error":"Conflict"}'))
@@ -163,14 +158,14 @@ describe('設定 > 口座タブの登録導線', () => {
   })
 
   it('残高が未入力のあいだは SMBC 銀行口座を登録できない', async () => {
-    renderPage()
+    renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: 'SMBC銀行口座を追加' }))
     expect(screen.getByRole('button', { name: '登録' })).toBeDisabled()
   })
 
   it('負の値・小数のあいだは SMBC 銀行口座を登録できない', async () => {
-    renderPage()
+    renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: 'SMBC銀行口座を追加' }))
     const amount = screen.getByLabelText('現在の残高（円、初期残高として登録）')
@@ -185,7 +180,7 @@ describe('設定 > 口座タブの登録導線', () => {
   })
 
   it('三井住友カードは入力なしで登録できる（未払金は取込が積み上げる）', async () => {
-    renderPage()
+    renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: '三井住友カードを追加' }))
     await userEvent.click(screen.getByRole('button', { name: '登録' }))
@@ -198,7 +193,7 @@ describe('設定 > 口座タブの登録導線', () => {
   })
 
   it('別銀行貯蓄口座は銀行名の前後の空白を落として送る（空欄のあいだは登録できない）', async () => {
-    renderPage()
+    renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: '別銀行貯蓄口座を追加' }))
     expect(screen.getByRole('button', { name: '登録' })).toBeDisabled()
@@ -214,7 +209,7 @@ describe('設定 > 口座タブの登録導線', () => {
   })
 
   it('NISA 口座はその他証券会社の名前の前後の空白を落として送る（未入力のあいだは登録できない）', async () => {
-    renderPage()
+    renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: 'NISA口座を追加' }))
     await userEvent.selectOptions(screen.getByLabelText('証券会社'), 'other')
@@ -237,11 +232,10 @@ describe('設定 > 口座タブの登録導線', () => {
 
   it('口座の一覧を取得できないあいだは追加ボタンを出さない（重複登録に当てない）', async () => {
     apiFetch.mockImplementation((path: string, schema: { parse: (input: unknown) => unknown }) => {
-      if (path === '/api/me') return Promise.resolve({ viewerId: VIEWER_ID, role: 'honey' })
       if (path === '/api/accounts') return Promise.reject(new ApiError(500, 'サーバーエラー'))
       return Promise.resolve(schema.parse({ items: [] }))
     })
-    renderPage()
+    renderTab()
 
     expect(await screen.findByText('口座の取得に失敗しました')).toBeInTheDocument()
     for (const name of [
@@ -252,5 +246,132 @@ describe('設定 > 口座タブの登録導線', () => {
     ]) {
       expect(screen.queryByRole('button', { name })).toBeNull()
     }
+    // 取れなかったのか 0 件なのかを取り違えさせない（失敗時に空状態の文言は出さない）
+    expect(screen.queryByText('登録済みの口座はありません。')).toBeNull()
+  })
+
+  it('一覧を取得できるまでは追加ボタンを出さない（読み込み中の空配列を未登録と読まない）', async () => {
+    registeredKinds = ['smbc_bank', 'mitsui_sumitomo_card', 'other_savings', 'nisa']
+    let release: (() => void) | undefined
+    apiFetch.mockImplementation((path: string, schema: { parse: (input: unknown) => unknown }) => {
+      if (path === '/api/accounts') {
+        return new Promise(resolve => {
+          release = () =>
+            resolve(
+              schema.parse({
+                items: registeredKinds.map((kind, i) => ownAccount(kind, `ACC_${i + 1}`)),
+              }),
+            )
+        })
+      }
+      return Promise.resolve(schema.parse({ items: [] }))
+    })
+    renderTab()
+
+    // 応答が返る前。ここでボタンが出ると、登録済みの種別を押した人が重複登録（409）に当たる
+    expect(await screen.findByRole('status')).toBeInTheDocument()
+    for (const name of [
+      'SMBC銀行口座を追加',
+      '三井住友カードを追加',
+      '別銀行貯蓄口座を追加',
+      'NISA口座を追加',
+    ]) {
+      expect(screen.queryByRole('button', { name })).toBeNull()
+    }
+
+    release?.()
+
+    expect(await screen.findByText('楽天銀行 / 500,000円')).toBeInTheDocument()
+  })
+})
+
+describe('設定 > 口座タブ: 登録済みの口座の名称編集', () => {
+  it('別銀行貯蓄口座の銀行名は前後の空白を落として送る（空欄のあいだは保存できない）', async () => {
+    registeredKinds = ['other_savings']
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: '別銀行貯蓄口座を編集' }))
+    const bankName = screen.getByDisplayValue('楽天銀行')
+    await userEvent.clear(bankName)
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+
+    await userEvent.type(bankName, '  住信SBIネット銀行  ')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
+    expect(apiMutate.mock.calls[0]?.[0]).toBe('/api/accounts/ACC_1/bank-name')
+    expect(apiMutate.mock.calls[0]?.[1]).toEqual({
+      method: 'PUT',
+      body: { bankName: '住信SBIネット銀行' },
+    })
+  })
+
+  it('NISA 口座の証券会社は選び直した先を送る', async () => {
+    registeredKinds = ['nisa']
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'NISA口座を編集' }))
+    await userEvent.selectOptions(screen.getByLabelText('証券会社'), 'rakuten')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1))
+    expect(apiMutate.mock.calls[0]?.[0]).toBe('/api/accounts/ACC_1/brokerage-name')
+    expect(apiMutate.mock.calls[0]?.[1]).toEqual({
+      method: 'PUT',
+      body: { brokerageName: { kind: 'rakuten' } },
+    })
+  })
+
+  it('三井住友系の口座には編集ボタンを出さない（名称は固定）', async () => {
+    registeredKinds = ['smbc_bank', 'mitsui_sumitomo_card']
+    renderTab()
+
+    expect(await screen.findByText('SMBC銀行口座')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'SMBC銀行口座を編集' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '三井住友カードを編集' })).toBeNull()
+  })
+})
+
+/**
+ * 別銀行貯蓄口座と NISA 口座は、他の 2 種（SMBC 銀行・三井住友カード）と違って
+ * 「片方だけ登録済み」が起こりうる。登録済みの側にボタンが残ると重複登録（409）に当たり、
+ * 未登録の側からボタンが消えると口座を作る手段が無くなるため、4 通りすべてを固定する。
+ */
+describe('設定 > 口座タブ: 別銀行貯蓄・NISA の追加ボタンの出し分け', () => {
+  it('どちらも未登録なら両方の追加ボタンが出て、登録済みの種別には出ない', async () => {
+    registeredKinds = ['smbc_bank', 'mitsui_sumitomo_card']
+    renderTab()
+
+    expect(await screen.findByRole('button', { name: '別銀行貯蓄口座を追加' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'NISA口座を追加' })).toBeInTheDocument()
+    // 同一ユーザー × 口座種別は 1 件。登録済みの 2 種には追加ボタンを出さない
+    expect(screen.queryByRole('button', { name: 'SMBC銀行口座を追加' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '三井住友カードを追加' })).toBeNull()
+  })
+
+  it('どちらも登録済みなら、追加ボタンは 1 つも出ない', async () => {
+    registeredKinds = ['smbc_bank', 'mitsui_sumitomo_card', 'other_savings', 'nisa']
+    renderTab()
+
+    // 一覧が出るまで待ってから、ボタンが無いことを見る（読み込み中の「無い」を成功と読まない）
+    expect(await screen.findByLabelText('別銀行貯蓄口座を編集')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '別銀行貯蓄口座を追加' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'NISA口座を追加' })).toBeNull()
+  })
+
+  it('NISA だけ登録済みなら、別銀行貯蓄口座の追加ボタンだけが出る', async () => {
+    registeredKinds = ['smbc_bank', 'mitsui_sumitomo_card', 'nisa']
+    renderTab()
+
+    expect(await screen.findByRole('button', { name: '別銀行貯蓄口座を追加' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'NISA口座を追加' })).toBeNull()
+  })
+
+  it('別銀行貯蓄口座だけ登録済みなら、NISA 口座の追加ボタンだけが出る', async () => {
+    registeredKinds = ['smbc_bank', 'mitsui_sumitomo_card', 'other_savings']
+    renderTab()
+
+    expect(await screen.findByRole('button', { name: 'NISA口座を追加' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '別銀行貯蓄口座を追加' })).toBeNull()
   })
 })
