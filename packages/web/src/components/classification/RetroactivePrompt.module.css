@@ -41,12 +41,6 @@
   margin-left: auto;
 }
 
-.hint {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  line-height: var(--leading-normal);
-}
-
 .result {
   font-size: var(--text-sm);
   font-weight: 700;

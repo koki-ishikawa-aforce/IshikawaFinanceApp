@@ -54,9 +54,3 @@
   font-weight: 800;
   color: var(--text-primary);
 }
-
-.finalizeNote {
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-  line-height: var(--leading-normal);
-}

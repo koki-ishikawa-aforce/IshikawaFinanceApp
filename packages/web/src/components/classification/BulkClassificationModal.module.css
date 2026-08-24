@@ -31,12 +31,6 @@
   font-weight: 600;
 }
 
-.hint {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  line-height: var(--leading-normal);
-}
-
 .lead {
   font-size: var(--text-sm);
   font-weight: 700;

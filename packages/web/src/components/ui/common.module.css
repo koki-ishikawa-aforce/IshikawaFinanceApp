@@ -14,21 +14,26 @@
   color: var(--text-primary);
 }
 
-/** 本文に添える補足文（操作の説明・保存結果など）。読まなくても操作できる情報に使う */
+/**
+ * 本文に添える補足文（操作の説明・保存結果など）。読まなくても操作できる情報に使う。
+ *
+ * 補足文は数行にわたる説明が多いため、行間は詰めない側（`--leading-relaxed`）を既定にする。
+ */
 .note {
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  line-height: var(--leading-normal);
+  line-height: var(--leading-relaxed);
 }
 
 /**
  * 補足文の大きさ違い。文字は `--text-sm`（既定の `.note` の `--text-xs` より一段大きい）で、
- * 色・行間は `.note` と同じ。
+ * 色・行間は `.note` と同じ。手順の説明や取込・分類の結果など、本文と同じ流れで
+ * 読ませたい補足文に使う。
  *
- * 操作の前に読ませたい説明や、取込・分類の結果を伝える複数行の文に使う。
  * 太さは変えない（強調は `.warning` か見出しの側で持たせる）。
+ * `.note` と同じ詳細度で当たるため、必ず `.note` より後ろに置く（同詳細度では後勝ち）。
  */
-.noteSm {
+.noteLg {
   composes: note;
   font-size: var(--text-sm);
 }

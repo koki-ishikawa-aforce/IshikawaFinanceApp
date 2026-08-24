@@ -315,7 +315,7 @@ export function BulkClassificationModal({
           )}
           {!classificationValid(input) && !masters.isPending && !masters.isError && (
             // 3-5: なぜ押せないかを画面上に出す
-            <p className={styles.hint}>
+            <p className={ui.noteLg}>
               {input.categoryId === ''
                 ? 'カテゴリを選ぶと分類できます'
                 : '経費種別を選ぶと分類できます'}
@@ -339,7 +339,7 @@ export function BulkClassificationModal({
       )}
 
       <div className={styles.footer}>
-        <p className={styles.hint}>
+        <p className={ui.noteLg}>
           「あとで続ける」はここまでの分類を残したまま中断し、取引一覧から続きを再開できます。「やめる」を選ぶと、残りの取引は未分類のままこのまとめて分類を打ち切ります（分類済みの取引はそのまま残ります）。
         </p>
         <button className={ui.buttonGhost} disabled={pending} onClick={() => onClose('left')}>
