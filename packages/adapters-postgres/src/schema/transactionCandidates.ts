@@ -48,5 +48,8 @@ export const transactionCandidates = pgTable(
       .where(sql`${t.gmailMessageId} IS NOT NULL`),
     // 三項一致 findByTripleMatch(userId, occurredOn, amount, merchantName)
     index('idx_transaction_candidates_triple').on(t.userId, t.occurredOn, t.amount, t.merchantName),
+    // Amazon 突合 findEmailSourcedNormalCandidates(userId, kind, occurredOn の範囲)。
+    // 三項一致の索引は 2 列目が occurred_on の等価比較向けで、kind で絞る範囲検索には効かない
+    index('idx_transaction_candidates_user_kind_occurred').on(t.userId, t.kind, t.occurredOn),
   ],
 )

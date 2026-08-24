@@ -137,6 +137,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       gmailOAuthTokenRepository: deps.gmailOAuthTokenRepository,
       gmailMailFetchGateway: deps.gmailMailFetchGateway,
       parseSmbcNotificationMail: deps.parseSmbcNotificationMail,
+      parseAmazonOrderConfirmationMail: deps.parseAmazonOrderConfirmationMail,
       transactionRepository: deps.transactionRepository,
       pdfToCsvConverter: deps.pdfToCsvConverter,
       resolveViewerRole: deps.resolveViewerRole,

@@ -82,7 +82,7 @@ export function pdfCandidate(
 }
 
 export function amazonMatchedCandidate(
-  input: { userId?: UserId; smbcGmailMessageId?: string } = {},
+  input: { userId?: UserId; smbcGmailMessageId?: string; occurredAt?: Date } = {},
 ): TransactionCandidate {
   return TransactionCandidateSchema.parse({
     kind: 'amazon_matched',
@@ -96,14 +96,16 @@ export function amazonMatchedCandidate(
       },
       merchantName: 'AMAZON.CO.JP',
       amount: 3480,
-      occurredAt: new Date('2026-07-04T03:00:00.000Z'),
+      occurredAt: input.occurredAt ?? new Date('2026-07-04T03:00:00.000Z'),
     },
     products: [{ productName: 'ドメイン駆動設計', productAmount: 3480 }],
     matchedAt: new Date('2026-07-04T09:00:00.000Z'),
   })
 }
 
-export function matchTimeoutCandidate(input: { userId?: UserId } = {}): TransactionCandidate {
+export function matchTimeoutCandidate(
+  input: { userId?: UserId; occurredAt?: Date } = {},
+): TransactionCandidate {
   return TransactionCandidateSchema.parse({
     kind: 'match_timeout',
     common: {
@@ -112,7 +114,7 @@ export function matchTimeoutCandidate(input: { userId?: UserId } = {}): Transact
       importSource: { kind: 'email', gmailMessageId: `gm-${newUlid()}` },
       merchantName: 'AMAZON.CO.JP',
       amount: 1980,
-      occurredAt: new Date('2026-07-01T03:00:00.000Z'),
+      occurredAt: input.occurredAt ?? new Date('2026-07-01T03:00:00.000Z'),
     },
     timedOutAt: new Date('2026-07-03T03:00:00.000Z'),
     timeoutDirection: 'smbc_first_awaiting_amazon',

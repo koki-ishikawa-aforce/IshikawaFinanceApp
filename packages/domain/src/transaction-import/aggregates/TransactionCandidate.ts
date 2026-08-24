@@ -15,10 +15,11 @@
  */
 import { z } from 'zod'
 import { TransactionCandidateIdSchema, TransactionIdSchema, UserIdSchema } from '../../shared/ids'
-import type { TransactionId } from '../../shared/ids'
+import type { GmailMessageId, TransactionId } from '../../shared/ids'
+import { InvariantViolationError } from '../../shared/errors/DomainError'
 import { MoneySchema } from '../../shared/value-objects/Money'
 import { CandidateImportSourceSchema } from '../value-objects/CandidateImportSource'
-import { AmazonProductInfoSchema } from '../value-objects/AmazonOrderInfo'
+import { AmazonProductInfoSchema, type AmazonOrderInfo } from '../value-objects/AmazonOrderInfo'
 
 /** タイムアウト方向 */
 export const TimeoutDirectionSchema = z.enum([
@@ -87,6 +88,86 @@ export type MatchTimeoutTransactionCandidate = Extract<
   { kind: 'match_timeout' }
 >
 export type ConfirmedTransactionCandidate = Extract<TransactionCandidate, { kind: 'confirmed' }>
+
+/**
+ * メール由来の取引候補の出所（Gmail message ID）。
+ *
+ * 取込ソースは 5 種の判別共用体で、メール由来以外は Gmail message ID を持たない。突合イベントの
+ * SMBC 側の出所として使うため、持たない候補を渡されたら不変条件違反として弾く（呼出し側が
+ * 絞り込みを間違えると、突合の記録が別経路の取込を指すことになる）。
+ */
+export function emailGmailMessageIdOf(candidate: NormalTransactionCandidate): GmailMessageId {
+  const source = candidate.common.importSource
+  if (source.kind !== 'email') {
+    throw new InvariantViolationError('メール由来でない取引候補は Gmail message ID を持たない')
+  }
+  return source.gmailMessageId
+}
+
+/**
+ * 状態遷移: 通常取引候補 → Amazon突合取引候補（08a §2「Amazon注文とSMBCカード利用通知を突合する」）
+ *
+ * カード利用通知から作った候補に、突き合わせた注文の商品名を紐付ける。候補 ID は変えない
+ * （同じ支払いの記録が 2 件になると、金額が二重に計上される）。取込ソースは `amazon_match` へ
+ * 変わるが、元の Gmail message ID は `smbcGmailMessageId` として持ち続けるため、同じメールの
+ * 重複除外は突合の後も効く。
+ *
+ * 突合できるのはメール由来の候補だけ。CSV / PDF 由来の候補には突き合わせる Gmail message ID が
+ * 無く、`amazon_match` の取込ソースを組み立てられない（呼出し側の絞り込み漏れを型では防げない
+ * ため、ここで不変条件として弾く）。
+ *
+ * 持ち主が違う組み合わせも同じく弾く。夫婦 2 人ぶんの取込が同じ関数を通るため、ここを呼出し側の
+ * 絞り込みだけに任せると、相手の買い物の商品名が本人の候補に載りうる（プライバシー3段階ルールで
+ * 最も避けたい混線）。
+ */
+export function matchAmazonOrder(
+  candidate: NormalTransactionCandidate,
+  order: AmazonOrderInfo,
+  at: Date,
+): AmazonMatchedTransactionCandidate {
+  const source = candidate.common.importSource
+  if (source.kind !== 'email') {
+    throw new InvariantViolationError(
+      'Amazon 突合できるのはメール由来の取引候補だけ（SMBC_Gmail_message_ID が必要）',
+    )
+  }
+  if (order.userId !== candidate.common.userId) {
+    throw new InvariantViolationError('Amazon 注文と取引候補の持ち主が一致しない')
+  }
+  return TransactionCandidateSchema.parse({
+    kind: 'amazon_matched',
+    common: {
+      ...candidate.common,
+      importSource: {
+        kind: 'amazon_match',
+        smbcGmailMessageId: source.gmailMessageId,
+        amazonOrderId: order.amazonOrderId,
+      },
+    },
+    products: order.products,
+    matchedAt: at,
+  }) as AmazonMatchedTransactionCandidate
+}
+
+/**
+ * 状態遷移: 通常取引候補 → 突合タイムアウト未分類候補（08a §1 / 08b §2 の事後条件）
+ *
+ * 双方向 3 日のタイムアウトに達した候補を「Amazon 注文不明」として未分類で確定させる（V-2）。
+ * 取込ソースは元のまま（メール由来）残す — 突合が成立していない以上、Amazon 突合由来を
+ * 名乗らせると、どの注文と結び付いたのかが不明なまま `amazonOrderId` を持つことになる。
+ */
+export function confirmMatchTimeout(
+  candidate: NormalTransactionCandidate,
+  timeoutDirection: TimeoutDirection,
+  at: Date,
+): MatchTimeoutTransactionCandidate {
+  return TransactionCandidateSchema.parse({
+    kind: 'match_timeout',
+    common: candidate.common,
+    timedOutAt: at,
+    timeoutDirection,
+  }) as MatchTimeoutTransactionCandidate
+}
 
 /** 状態遷移: 未確定候補 → 確定済み（取引生成済み・消費済み） */
 export function confirmCandidate(

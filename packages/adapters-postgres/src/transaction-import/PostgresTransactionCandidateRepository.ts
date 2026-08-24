@@ -7,17 +7,23 @@
  *   save 時の occurred_on 導出と検索時のパラメータ変換に同じ関数を使う
  * - メール重複除外は partial unique が最終保証（violation は InvariantViolationError へ翻訳）
  */
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm'
 import type {
+  AmazonOrderId,
   GmailMessageId,
   Money,
+  NormalTransactionCandidate,
   TransactionCandidate,
   TransactionCandidateId,
   TransactionCandidateRepository,
   UploadFileId,
   UserId,
 } from '@warimaru/domain'
-import { InvariantViolationError, TransactionCandidateSchema } from '@warimaru/domain'
+import {
+  AmazonOrderIdSchema,
+  InvariantViolationError,
+  TransactionCandidateSchema,
+} from '@warimaru/domain'
 import type { Db } from '../client'
 import { transactionCandidates } from '../schema'
 import { parsePayload, serializeForPayload } from '../serialize'
@@ -102,6 +108,60 @@ export class PostgresTransactionCandidateRepository implements TransactionCandid
       )
       .orderBy(asc(transactionCandidates.transactionCandidateId))
     return rows.map(row => parsePayload(TransactionCandidateSchema, row.payload))
+  }
+
+  async findEmailSourcedNormalCandidates(
+    userId: UserId,
+    range: { occurredFrom?: Date; occurredTo: Date },
+  ): Promise<NormalTransactionCandidate[]> {
+    // 「メール由来」は昇格列 gmail_message_id の有無で見る（kind='normal' に昇格されるのは
+    // importSource.kind='email' の候補だけ。amazon_match は突合後の kind なのでここには来ない）。
+    //
+    // occurred_on は JST 暦日への丸めなので、範囲の端では時刻ぶんだけ広めに返る。突合と
+    // タイムアウトの期限判定は発生日時（時刻まで）で行う必要があるため、絞り込みの最終判定は
+    // 呼出し側のドメイン関数（matchAmazonOrders / judgeCardUsageMatchTimeout）が持つ。
+    // ここで暦日に丸めた範囲を返しすぎるぶんには結果は変わらない（取りこぼしだけを避ける）。
+    const conditions = [
+      eq(transactionCandidates.userId, userId),
+      eq(transactionCandidates.kind, 'normal'),
+      isNotNull(transactionCandidates.gmailMessageId),
+      lte(transactionCandidates.occurredOn, dateToJstCalendarDate(range.occurredTo)),
+      ...(range.occurredFrom === undefined
+        ? []
+        : [gte(transactionCandidates.occurredOn, dateToJstCalendarDate(range.occurredFrom))]),
+    ]
+    const rows = await this.db
+      .select({ payload: transactionCandidates.payload })
+      .from(transactionCandidates)
+      .where(and(...conditions))
+      .orderBy(asc(transactionCandidates.transactionCandidateId))
+    return (
+      rows
+        .map(row => parsePayload(TransactionCandidateSchema, row.payload))
+        // 列と payload の持ち主が食い違った行を返さない。突合はこの結果の候補を「別ユーザー由来の
+        // 注文情報で上書き保存する」処理なので、乖離があると相手の明細に商品名が付く
+        .filter(
+          (c): c is NormalTransactionCandidate => c.kind === 'normal' && c.common.userId === userId,
+        )
+    )
+  }
+
+  async findMatchedAmazonOrderIds(
+    userId: UserId,
+    amazonOrderIds: readonly AmazonOrderId[],
+  ): Promise<AmazonOrderId[]> {
+    if (amazonOrderIds.length === 0) return []
+    // amazonOrderId は昇格列を持たないため payload（importSource union の kind='amazon_match'）を
+    // 直接参照する。kind では絞らない — 突合済みの候補が確定済み（confirmed）へ進んでも取込ソースは
+    // amazon_match のまま残り、その注文が消費済みであることに変わりはないため
+    const orderId = sql`${transactionCandidates.payload}->'common'->'importSource'->>'amazonOrderId'`
+    const rows = await this.db
+      .select({ amazonOrderId: orderId })
+      .from(transactionCandidates)
+      .where(and(eq(transactionCandidates.userId, userId), inArray(orderId, [...amazonOrderIds])))
+    return rows.flatMap(row =>
+      typeof row.amazonOrderId === 'string' ? [AmazonOrderIdSchema.parse(row.amazonOrderId)] : [],
+    )
   }
 
   async save(candidate: TransactionCandidate): Promise<void> {

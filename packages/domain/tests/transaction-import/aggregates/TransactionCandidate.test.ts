@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest'
 import {
   TransactionCandidateSchema,
   confirmCandidate,
+  confirmMatchTimeout,
+  emailGmailMessageIdOf,
+  matchAmazonOrder,
 } from '../../../src/transaction-import/aggregates/TransactionCandidate'
+import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 import type {
   AmazonMatchedTransactionCandidate,
   MatchTimeoutTransactionCandidate,
@@ -170,5 +174,81 @@ describe('confirmCandidate 状態遷移', () => {
     }) as MatchTimeoutTransactionCandidate
     const confirmed = confirmCandidate(candidate, createdTransactionId, at)
     expect(confirmed.kind).toBe('confirmed')
+  })
+})
+
+describe('TransactionCandidate: Amazon 突合の状態遷移', () => {
+  const at = new Date('2026-07-16T00:00:00+09:00')
+  const order = {
+    amazonOrderId: '250-1234567-1234567' as never,
+    userId: 'user_honey' as never,
+    gmailMessageId: 'gm_amazon_1' as never,
+    orderedAt: new Date('2026-07-15T09:53:00+09:00'),
+    orderTotal: 2500 as never,
+    products: [{ productName: 'マスタリングTCP/IP', productAmount: 2500 as never }],
+  }
+
+  function normal(importSource: unknown = emailSource): NormalTransactionCandidate {
+    return TransactionCandidateSchema.parse({
+      kind: 'normal',
+      common: common(importSource),
+    }) as NormalTransactionCandidate
+  }
+
+  it('normal → amazon_matched: 商品名が付き、取込ソースが Amazon突合由来になる', () => {
+    const candidate = normal()
+
+    const matched = matchAmazonOrder(candidate, order, at)
+
+    expect(matched.kind).toBe('amazon_matched')
+    expect(matched.products).toEqual(order.products)
+    expect(matched.matchedAt).toEqual(at)
+    expect(matched.common.importSource).toEqual({
+      kind: 'amazon_match',
+      smbcGmailMessageId: 'gm_001',
+      amazonOrderId: order.amazonOrderId,
+    })
+  })
+
+  it('突合しても候補 ID・金額・発生日時は変わらない（同じ支払いの記録を増やさない）', () => {
+    const candidate = normal()
+
+    const matched = matchAmazonOrder(candidate, order, at)
+
+    expect(matched.common.transactionCandidateId).toBe(candidate.common.transactionCandidateId)
+    expect(matched.common.amount).toBe(candidate.common.amount)
+    expect(matched.common.occurredAt).toEqual(candidate.common.occurredAt)
+  })
+
+  it('持ち主が違う注文とは突合できない（相手の買い物が本人の候補に載らない）', () => {
+    expect(() =>
+      matchAmazonOrder(normal(), { ...order, userId: 'user_darling' as never }, at),
+    ).toThrow(InvariantViolationError)
+  })
+
+  it('メール由来でない候補は突合できない（不変条件違反）', () => {
+    const csvSource = { kind: 'csv', csvFileId: '01F10000000000000000000001', rowNumber: 1 }
+
+    expect(() => matchAmazonOrder(normal(csvSource), order, at)).toThrow(InvariantViolationError)
+  })
+
+  it('normal → match_timeout: タイムアウト方向と到達日時が残り、取込ソースは元のまま', () => {
+    const candidate = normal()
+
+    const timedOut = confirmMatchTimeout(candidate, 'smbc_first_awaiting_amazon', at)
+
+    expect(timedOut.kind).toBe('match_timeout')
+    expect(timedOut.timedOutAt).toEqual(at)
+    expect(timedOut.timeoutDirection).toBe('smbc_first_awaiting_amazon')
+    expect(timedOut.common.importSource).toEqual(emailSource)
+  })
+
+  it('emailGmailMessageIdOf: メール由来なら出所を返し、それ以外は不変条件違反', () => {
+    expect(emailGmailMessageIdOf(normal())).toBe('gm_001')
+    expect(() =>
+      emailGmailMessageIdOf(
+        normal({ kind: 'manual', enteredAt: new Date(), enteredByUserId: 'user_honey' }),
+      ),
+    ).toThrow(InvariantViolationError)
   })
 })
