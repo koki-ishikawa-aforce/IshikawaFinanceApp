@@ -6,7 +6,7 @@
  * 集約に 'in_progress' という kind は存在しない（spec §5 カタログの表記は
  * Step 7 で実 kind に訂正）。
  */
-import { pgTable, text, timestamp, jsonb, check, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, jsonb, check, index, uniqueIndex } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 export const dailyMailImportBatches = pgTable(
@@ -27,5 +27,9 @@ export const dailyMailImportBatches = pgTable(
     uniqueIndex('idx_mail_batches_in_progress')
       .on(t.userId)
       .where(sql`${t.kind} IN ('started', 'importing')`),
+    // 直近バッチの引き当て（手動実行のクールダウン判定 #489）。状態を問わず引くため
+    // partial unique では効かない。降順の読み出しは後方スキャンで賄えるので、他の索引と
+    // 同じく昇順で宣言する（DESC 宣言だと NULLS 順がクエリ側と食い違い索引順を使えない）
+    index('idx_mail_batches_user_created_at').on(t.userId, t.createdAt, t.importBatchId),
   ],
 )

@@ -52,6 +52,7 @@ import {
   completeBatch,
   detectTokenRevocation,
   failBatch,
+  resumeBatchImporting,
   startBatchImporting,
   updateBatchImportedCount,
 } from '@warimaru/domain'
@@ -340,9 +341,13 @@ export async function runDailyMailImportForUser(
     await deps.dailyMailImportBatchRepository.save(batch)
   } else {
     // 前回の実行が残したバッチを引き継ぐ。取込対象期間はそのバッチが起動時に決めたものを使う
-    // （引き継ぎ先の期間で取り直すと、前回ぶんの取りこぼしが検索範囲から外れうる）
-    batch = active.kind === 'started' ? startBatchImporting(active, at) : active
-    if (active.kind === 'started') await deps.dailyMailImportBatchRepository.save(batch)
+    // （引き継ぎ先の期間で取り直すと、前回ぶんの取りこぼしが検索範囲から外れうる）。
+    // 取込中からの引き継ぎでも取込開始日時は引き継いだ実行のものへ進めて保存する — この時刻が
+    // 手動実行のクールダウンの起点（#489）で、前の実行の時刻のまま残すと、いま走っている
+    // この実行の最中に叩き直された手動実行を止められない
+    batch =
+      active.kind === 'started' ? startBatchImporting(active, at) : resumeBatchImporting(active, at)
+    await deps.dailyMailImportBatchRepository.save(batch)
     await deps.eventBus.publish(
       MailImportResumedSchema.parse({
         ...domainEventBase(at),

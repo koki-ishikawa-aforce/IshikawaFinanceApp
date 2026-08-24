@@ -18,6 +18,7 @@ import {
   confirmCandidate,
   createTransaction,
   failImportJob,
+  judgeManualMailImportCooldown,
   money,
   roleToPersonalExpenseClass,
   startFormatValidation,
@@ -447,6 +448,11 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
    * 受け取ってしまう）。Gmail の連携が切れているなら再認可が要るので 409、外部の障害なら
    * 時間をおいて再実行すれば直りうるので 502 を返す。結末の詳細は `result` に入る。
    * 連携がそもそも無い場合はバッチを起動しないため 409 で `batch` は null になる（#488）。
+   *
+   * 直近の実行から `MANUAL_MAIL_IMPORT_COOLDOWN_MS` 未満なら取込を始めず 429 を返す（#489）。
+   * 応答を待てずに叩き直された実行が、前の実行が進めているバッチを引き継いで同じ記録を
+   * 同時に書き換えるのを防ぐ。クールダウンを過ぎていれば、途中で落ちた取込の引き継ぎは
+   * これまでどおり行う。日次の自動起動はこの経路を通らないため制限を受けない。
    */
   app.post('/mail-batch', async c => {
     const rawBody = await c.req.text()
@@ -477,6 +483,39 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
           reason: 'period_too_long',
         },
         400,
+      )
+    }
+    // 直近の実行からクールダウンを空ける（#489）。判定そのものはドメインが持ち、ここは
+    // 直近バッチを引いて結果を HTTP に写すだけにする
+    const latestBatch = await deps.dailyMailImportBatchRepository.findLatestByUser(viewerId)
+    const cooldown = judgeManualMailImportCooldown(latestBatch, new Date())
+    if (cooldown.kind === 'cooling_down') {
+      // 429（時間をおけば受け付ける）。連携切れの 409 とは違い、利用者に操作は要らない。
+      // 秒は切り上げる — Retry-After の秒数を待って叩き直したときに、まだ足りずに
+      // もう一度弾かれることがないようにする
+      const retryAfterSeconds = Math.ceil(cooldown.retryAfterMs / 1000)
+      const waitMinutes = Math.ceil(retryAfterSeconds / 60)
+      // 進行中と終端で理由が違う。終端のバッチしか無いのに「まだ動いている」と返すと、
+      // 完了サマリを見たあとの利用者には事実と食い違う案内になる
+      const stillRunning =
+        cooldown.latestBatchKind === 'started' || cooldown.latestBatchKind === 'importing'
+      // 弾いたことを運用側にも残す（「取込が動かない」と言われたときに切り分けられるように）。
+      // 出すのはバッチ ID と状態だけで、ユーザーID・メール本文・金額は出さない
+      console.info(
+        '[transaction-import] 手動のメール取込をクールダウンで受け付けなかった' +
+          `（importBatchId=${latestBatch?.common.importBatchId ?? 'unknown'}, ` +
+          `kind=${cooldown.latestBatchKind}, retryAfter=${retryAfterSeconds}s）`,
+      )
+      return c.json(
+        {
+          error: stillRunning
+            ? `前のメール取込がまだ動いている。約 ${waitMinutes} 分後に実行する`
+            : `直前のメール取込から間隔が空いていない。約 ${waitMinutes} 分後に実行する`,
+          reason: 'cooling_down',
+          retryAfterSeconds,
+        },
+        429,
+        { 'Retry-After': String(retryAfterSeconds) },
       )
     }
     const result = await runDailyMailImportForUser(deps, {

@@ -1,0 +1,1 @@
+CREATE INDEX "idx_mail_batches_user_created_at" ON "daily_mail_import_batches" USING btree ("user_id","created_at","import_batch_id");
