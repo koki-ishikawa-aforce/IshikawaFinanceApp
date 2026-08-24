@@ -1,5 +1,6 @@
 import type {
   AccountBalanceQuery,
+  AccountDetailQuery,
   AccountRepository,
   AllowlistQuery,
   BalanceHistoryRepository,
@@ -88,6 +89,7 @@ import {
   PostgresTransactionRepository,
   PostgresMonthlyReportQuery,
   PostgresAccountBalanceQuery,
+  PostgresAccountDetailQuery,
   PostgresBalanceTimeSeriesQuery,
   PostgresExpenseSettlementManagementQuery,
   PostgresCsvImportStatusQuery,
@@ -129,6 +131,7 @@ import {
   createMockTransactionListQuery,
   createMockMonthlyReportQuery,
   createMockAccountBalanceQuery,
+  createMockAccountDetailQuery,
   createMockBalanceTimeSeriesQuery,
   createMockExpenseSettlementManagementQuery,
   createMockCsvImportStatusQuery,
@@ -175,6 +178,7 @@ export interface AppDeps {
   transactionListQuery: TransactionListQuery
   monthlyReportQuery: MonthlyReportQuery
   accountBalanceQuery: AccountBalanceQuery
+  accountDetailQuery: AccountDetailQuery
   balanceTimeSeriesQuery: BalanceTimeSeriesQuery
   // 口座管理 (#48): 設定画面の口座登録・銀行名/証券会社名変更
   accountRepository: AccountRepository
@@ -479,6 +483,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     transactionListQuery: createMockTransactionListQuery(),
     monthlyReportQuery: createMockMonthlyReportQuery(),
     accountBalanceQuery: createMockAccountBalanceQuery(),
+    accountDetailQuery: createMockAccountDetailQuery(),
     balanceTimeSeriesQuery: createMockBalanceTimeSeriesQuery(),
     accountRepository: createMockAccountRepository(),
     bankDepositRepository: createMockBankDepositRepository(),
@@ -651,6 +656,7 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     }),
     monthlyReportQuery: new PostgresMonthlyReportQuery(db, { resolveViewerRole }),
     accountBalanceQuery: new PostgresAccountBalanceQuery(db),
+    accountDetailQuery: new PostgresAccountDetailQuery(db),
     balanceTimeSeriesQuery: new PostgresBalanceTimeSeriesQuery(db),
     accountRepository: new PostgresAccountRepository(db),
     bankDepositRepository: new PostgresBankDepositRepository(db),

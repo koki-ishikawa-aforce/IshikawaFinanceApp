@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type { AccountId } from '@warimaru/domain'
 import { PostgresBalanceHistoryRepository } from '../../src/balance-asset-tracking/PostgresBalanceHistoryRepository'
 import { PostgresAccountRepository } from '../../src/balance-asset-tracking/PostgresAccountRepository'
 import { db } from './setup'
@@ -13,7 +14,7 @@ const accounts = new PostgresAccountRepository(db)
 const repo = new PostgresBalanceHistoryRepository(db)
 
 /** 履歴は accounts への FK を持つため、先に口座を用意してその ID を使う */
-async function givenAccount(ownerUserId = HONEY_USER_ID): Promise<string> {
+async function givenAccount(ownerUserId = HONEY_USER_ID): Promise<AccountId> {
   const account = smbcAccount({ ownerUserId })
   await accounts.save(account)
   return account.common.accountId
@@ -174,6 +175,128 @@ describe('PostgresBalanceHistoryRepository', () => {
       expect(await repo.findLatestPerAccountBefore(new Date('2026-05-01T00:00:00.000Z'))).toEqual(
         [],
       )
+    })
+  })
+
+  describe('口座 1 件ぶんの読み出し（#406）', () => {
+    it('期間は下端が以上・上端が未満で、別の口座・別の軸は返さない', async () => {
+      const accountId = await givenAccount()
+      const otherAccountId = await givenAccount(DARLING_USER_ID)
+      const at = (iso: string) => new Date(iso)
+
+      await repo.append(
+        balanceHistoryEntry({ accountId, value: 1, occurredAt: at('2026-05-01T00:00:00.000Z') }),
+      )
+      await repo.append(
+        balanceHistoryEntry({ accountId, value: 2, occurredAt: at('2026-05-20T00:00:00.000Z') }),
+      )
+      // 上端ちょうど（含めない）
+      await repo.append(
+        balanceHistoryEntry({ accountId, value: 3, occurredAt: at('2026-06-01T00:00:00.000Z') }),
+      )
+      // 別の軸・別の口座（どちらも返らない）
+      await repo.append(
+        balanceHistoryEntry({
+          accountId,
+          axis: 'nisa_contribution',
+          value: 4,
+          occurredAt: at('2026-05-10T00:00:00.000Z'),
+        }),
+      )
+      await repo.append(
+        balanceHistoryEntry({
+          accountId: otherAccountId,
+          value: 5,
+          occurredAt: at('2026-05-10T00:00:00.000Z'),
+        }),
+      )
+
+      const rows = await repo.findByAccountAxisAndOccurredAtRange(
+        accountId,
+        'smbc_balance',
+        at('2026-05-01T00:00:00.000Z'),
+        at('2026-06-01T00:00:00.000Z'),
+      )
+      expect(rows.map(r => r.value)).toEqual([1, 2])
+    })
+
+    it('起点は指定時刻より前の最後の 1 件（ちょうどは含めない）', async () => {
+      const accountId = await givenAccount()
+      await repo.append(
+        balanceHistoryEntry({
+          accountId,
+          value: 100,
+          occurredAt: new Date('2026-04-01T00:00:00.000Z'),
+        }),
+      )
+      await repo.append(
+        balanceHistoryEntry({
+          accountId,
+          value: 200,
+          occurredAt: new Date('2026-04-20T00:00:00.000Z'),
+        }),
+      )
+      await repo.append(
+        balanceHistoryEntry({
+          accountId,
+          value: 300,
+          occurredAt: new Date('2026-05-01T00:00:00.000Z'),
+        }),
+      )
+
+      const opening = await repo.findLatestForAccountAxisBefore(
+        accountId,
+        'smbc_balance',
+        new Date('2026-05-01T00:00:00.000Z'),
+      )
+      expect(opening?.value).toBe(200)
+    })
+
+    it('起点に別の口座・別の軸の値を拾わない（他人の残高が自分のグラフの起点にならない）', async () => {
+      const accountId = await givenAccount()
+      const otherAccountId = await givenAccount(DARLING_USER_ID)
+      await repo.append(
+        balanceHistoryEntry({
+          accountId: otherAccountId,
+          value: 999,
+          occurredAt: new Date('2026-04-20T00:00:00.000Z'),
+        }),
+      )
+      await repo.append(
+        balanceHistoryEntry({
+          accountId,
+          axis: 'nisa_contribution',
+          value: 888,
+          occurredAt: new Date('2026-04-20T00:00:00.000Z'),
+        }),
+      )
+
+      expect(
+        await repo.findLatestForAccountAxisBefore(
+          accountId,
+          'smbc_balance',
+          new Date('2026-05-01T00:00:00.000Z'),
+        ),
+      ).toBeNull()
+    })
+
+    it('同時刻に 2 件あれば記録順（履歴エントリID）の後の方を起点にする', async () => {
+      const accountId = await givenAccount()
+      const occurredAt = new Date('2026-04-20T00:00:00.000Z')
+      await repo.append(
+        balanceHistoryEntry({ accountId, value: 100, occurredAt, sourceEventId: 'evt-a' }),
+      )
+      await repo.append(
+        balanceHistoryEntry({ accountId, value: 200, occurredAt, sourceEventId: 'evt-b' }),
+      )
+
+      const opening = await repo.findLatestForAccountAxisBefore(
+        accountId,
+        'smbc_balance',
+        new Date('2026-05-01T00:00:00.000Z'),
+      )
+      // 追記した順（ULID は採番順に単調増加）で後の方
+      expect(opening?.value).toBe(200)
     })
   })
 })

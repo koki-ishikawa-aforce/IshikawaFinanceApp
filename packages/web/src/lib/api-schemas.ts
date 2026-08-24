@@ -257,6 +257,36 @@ export const BalanceTimeSeriesWireSchema = z.object({
 })
 export type BalanceTimeSeriesWire = z.infer<typeof BalanceTimeSeriesWireSchema>
 
+/**
+ * 口座詳細（GET /api/balances/accounts/:accountId）。#406
+ *
+ * 本人の口座だけが返る（他人の口座・存在しない口座はどちらも 404）。
+ * `supportsBalanceManualEntry` は「取り崩し・補正のボタンを出してよい口座か」を API が答えたもの。
+ * 画面で口座種別から出し分けると、種別が増えたときにここだけ取り残される。
+ */
+export const AccountBalanceHistoryRowWireSchema = z.object({
+  occurredAt: IsoDate,
+  valueAfter: z.number(),
+  delta: z.number().nullable(),
+  source: z.enum(['auto', 'manual_withdrawal', 'manual_correction']),
+  memo: z.string().optional(),
+})
+export type AccountBalanceHistoryRowWire = z.infer<typeof AccountBalanceHistoryRowWireSchema>
+
+export const AccountDetailWireSchema = z.object({
+  accountId: z.string(),
+  kind: z.enum(['smbc_bank', 'mitsui_sumitomo_card', 'other_savings', 'nisa']),
+  displayName: z.string(),
+  isActive: z.boolean(),
+  currentValue: z.number(),
+  lastUpdatedAt: IsoDate.nullable(),
+  supportsBalanceManualEntry: z.boolean(),
+  yearMonthRange: z.object({ from: z.string(), to: z.string() }),
+  series: z.array(BalancePointWire),
+  history: z.array(AccountBalanceHistoryRowWireSchema),
+})
+export type AccountDetailWire = z.infer<typeof AccountDetailWireSchema>
+
 // ---------- 経費精算（#29） ----------
 
 export const ExpenseAllocationWireSchema = z.discriminatedUnion('kind', [

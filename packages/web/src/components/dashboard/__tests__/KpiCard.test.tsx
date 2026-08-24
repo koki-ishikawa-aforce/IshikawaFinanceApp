@@ -1,6 +1,13 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
 import { KpiCard } from '../KpiCard'
+
+vi.mock('next/link', () => ({
+  default: ({ children, href }: { children: ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+}))
 
 describe('KpiCard', () => {
   it('ラベルと整形済み金額を表示する', () => {
@@ -23,5 +30,17 @@ describe('KpiCard', () => {
     expect(screen.queryByText('✨')).not.toBeInTheDocument()
     expect(screen.queryByText('⭐')).not.toBeInTheDocument()
     expect(screen.getByText('9,999,999円')).toBeInTheDocument()
+  })
+
+  it('行き先を渡したカードだけがリンクになる（押せないカードを押せるように見せない）', () => {
+    render(
+      <>
+        <KpiCard label="貯蓄残高" value={2000000} href="/balances" />
+        <KpiCard label="今月支出" value={123456} />
+      </>,
+    )
+
+    expect(screen.getByRole('link', { name: /貯蓄残高/ })).toHaveAttribute('href', '/balances')
+    expect(screen.queryByRole('link', { name: /今月支出/ })).not.toBeInTheDocument()
   })
 })

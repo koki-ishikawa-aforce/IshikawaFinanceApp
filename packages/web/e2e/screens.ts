@@ -25,6 +25,9 @@ export const SCREENS = [
   // 同じシナリオは残高画面の見え方も変える（貯蓄・NISA の行が消え、鮮度の知らせが
   // 空になり、推移グラフの系列が減る）。撮っておかないとその状態だけ見張られない
   { name: 'balances-accounts-unregistered', path: '/balances?mockScenario=accounts-unregistered' },
+  // 口座詳細（#406）。fixture が用意してある別銀行貯蓄の口座を撮る（手入力ボタン・
+  // 自動反映と手入力が混ざった履歴が出るのはこの口座種別だけ）
+  { name: 'account-detail', path: '/accounts?id=ACC_MOCK_003' },
   { name: 'onboarding', path: '/onboarding' },
 ] as const
 

@@ -1,7 +1,14 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
 import { DashboardKpisViewSchema } from '@warimaru/domain'
 import { KpiGrid } from '../KpiGrid'
+
+vi.mock('next/link', () => ({
+  default: ({ children, href }: { children: ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+}))
 
 const kpis = DashboardKpisViewSchema.parse({
   mode: 'household',
@@ -29,5 +36,17 @@ describe('KpiGrid', () => {
     expect(screen.getByText('2,000,000円')).toBeInTheDocument()
     expect(screen.getByText('500,000円')).toBeInTheDocument()
     expect(screen.getByText('2,450,000円')).toBeInTheDocument()
+  })
+
+  it('資産に関わる 3 タイルは残高一覧へ入れ、今月支出は押せないままにする（#406 / spec §5.5）', () => {
+    render(<KpiGrid kpis={kpis} />)
+
+    for (const label of ['貯蓄残高', 'NISA積立累計', '資産合計']) {
+      expect(screen.getByRole('link', { name: new RegExp(label) })).toHaveAttribute(
+        'href',
+        '/balances',
+      )
+    }
+    expect(screen.queryByRole('link', { name: /今月支出/ })).not.toBeInTheDocument()
   })
 })

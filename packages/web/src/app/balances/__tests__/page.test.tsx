@@ -10,11 +10,18 @@
  *   分かる書き方で出すこと、相手に対象の口座が無ければ出さないこと
  */
 import { render, screen, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import BalancesPage from '../page'
 
 const apiFetch = vi.fn()
+
+vi.mock('next/link', () => ({
+  default: ({ children, href }: { children: ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+}))
 
 vi.mock('@/lib/api-client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api-client')>('@/lib/api-client')
@@ -214,5 +221,23 @@ describe('相手の貯蓄・NISA の合計行', () => {
         'あなたの口座がまだ登録されていません。設定の「口座」から登録してください',
       ),
     ).toBeInTheDocument()
+  })
+})
+
+describe('口座詳細への導線（#406）', () => {
+  it('本人の口座行はその口座の詳細へのリンクになる', async () => {
+    mockBalanceList({ items: [OWN_SMBC], spouseOtherSavingsAndNisaTotal: null })
+    renderPage()
+
+    const link = await screen.findByRole('link', { name: /三井住友銀行/ })
+    expect(link).toHaveAttribute('href', '/accounts?id=ACC_1')
+  })
+
+  it('相手の合計行はリンクにしない（口座ごとの中身は本人しか見られないため）', async () => {
+    mockBalanceList({ items: [OWN_SMBC], spouseOtherSavingsAndNisaTotal: 260000 }, 'darling')
+    renderPage()
+
+    expect(await screen.findByText('Honeyの貯蓄・NISA（合計のみ）')).toBeInTheDocument()
+    expect(within(balanceCard()).getAllByRole('link')).toHaveLength(1)
   })
 })

@@ -4,6 +4,8 @@
  *
  * 追記のみ。更新・削除の口を持たせない（過去のグラフが後から変わらないようにする）。
  */
+import type { AccountId } from '../../shared/ids'
+import type { BalanceAxis } from '../value-objects/BalanceAxis'
 import type { BalanceHistoryEntry } from '../aggregates/BalanceHistoryEntry'
 
 export interface BalanceHistoryRepository {
@@ -22,6 +24,29 @@ export interface BalanceHistoryRepository {
    * 翌月の開始時刻を渡せば、月境界の点が隣の月へ二重に入らない）。
    */
   findByOccurredAtRange(from: Date, toExclusive: Date): Promise<BalanceHistoryEntry[]>
+
+  /**
+   * 口座 1 件ぶんの `findByOccurredAtRange`（口座詳細画面 #406）。
+   *
+   * 世帯ぶんを読んでから絞ると、口座が増えるほど無駄に読む量が増える。軸も受け取るのは
+   * 口座 1 件 = 1 軸で絞り込みが強くなるうえ、索引の先頭列に合わせられるため。
+   */
+  findByAccountAxisAndOccurredAtRange(
+    accountId: AccountId,
+    axis: BalanceAxis,
+    from: Date,
+    toExclusive: Date,
+  ): Promise<BalanceHistoryEntry[]>
+
+  /**
+   * 口座 1 件ぶんの `findLatestPerAccountBefore`（期間の起点になる直前の値）。
+   * 該当が無ければ null。
+   */
+  findLatestForAccountAxisBefore(
+    accountId: AccountId,
+    axis: BalanceAxis,
+    atExclusive: Date,
+  ): Promise<BalanceHistoryEntry | null>
 
   /**
    * atExclusive より前に記録された、(残高軸, 口座) ごとの最後のエントリ。

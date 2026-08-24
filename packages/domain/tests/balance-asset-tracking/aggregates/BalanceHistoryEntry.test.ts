@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   BalanceHistoryEntrySchema,
+  accountBalanceHistoryRows,
+  accountBalanceSeriesOfAxis,
   balanceHistoryOfAxis,
   householdBalanceSeriesOfAxis,
   latestHouseholdValueOfAxis,
@@ -220,5 +222,210 @@ describe('残高変動履歴エントリ（#398）', () => {
         latestHouseholdValueOfAxis([entry({ axis: 'smbc_balance' })], 'card_unpaid'),
       ).toBeNull()
     })
+  })
+})
+
+describe('口座 1 件の推移（#406）', () => {
+  const WINDOW_START = new Date('2026-05-01T00:00:00.000Z')
+
+  it('期間内の変動をそのまま点にする（世帯合算と違い、直近値の持ち越し合計をしない）', () => {
+    const series = accountBalanceSeriesOfAxis({
+      entries: [
+        entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') }),
+        entry({ value: 1200, occurredAt: new Date('2026-05-20T00:00:00.000Z') }),
+      ],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: null,
+      windowStart: WINDOW_START,
+    })
+    expect(series).toEqual([
+      { occurredAt: new Date('2026-05-10T00:00:00.000Z'), value: 1000 },
+      { occurredAt: new Date('2026-05-20T00:00:00.000Z'), value: 1200 },
+    ])
+  })
+
+  it('期間より前の最後の値を期間の起点に置く（期間中に動きが無くても線が出る）', () => {
+    const opening = entry({ value: 900, occurredAt: new Date('2026-03-01T00:00:00.000Z') })
+    const series = accountBalanceSeriesOfAxis({
+      entries: [],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening,
+      windowStart: WINDOW_START,
+    })
+    expect(series).toEqual([{ occurredAt: WINDOW_START, value: 900 }])
+  })
+
+  it('起点と期間内の点が両方あれば、起点を先頭に置いてから発生日時の順に並べる', () => {
+    const series = accountBalanceSeriesOfAxis({
+      entries: [entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') })],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: entry({ value: 900, occurredAt: new Date('2026-03-01T00:00:00.000Z') }),
+      windowStart: WINDOW_START,
+    })
+    expect(series).toEqual([
+      { occurredAt: WINDOW_START, value: 900 },
+      { occurredAt: new Date('2026-05-10T00:00:00.000Z'), value: 1000 },
+    ])
+  })
+
+  it('期間の開始ちょうどに記録があれば起点を置かない（同じ時刻に点が 2 つ並ばない）', () => {
+    const series = accountBalanceSeriesOfAxis({
+      entries: [entry({ value: 1000, occurredAt: WINDOW_START })],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: entry({ value: 900, occurredAt: new Date('2026-03-01T00:00:00.000Z') }),
+      windowStart: WINDOW_START,
+    })
+    expect(series).toEqual([{ occurredAt: WINDOW_START, value: 1000 }])
+  })
+
+  it('起点の軸が違えば持ち越さない', () => {
+    const series = accountBalanceSeriesOfAxis({
+      entries: [],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: entry({ axis: 'nisa_contribution', value: 900 }),
+      windowStart: WINDOW_START,
+    })
+    expect(series).toEqual([])
+  })
+
+  it('別の口座のエントリは点にも起点にもしない（線が他人の残高を行き来しない）', () => {
+    const series = accountBalanceSeriesOfAxis({
+      entries: [
+        entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') }),
+        entry({
+          accountId: SPOUSE_ACCOUNT_ID,
+          value: 5000,
+          occurredAt: new Date('2026-05-15T00:00:00.000Z'),
+        }),
+      ],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: entry({ accountId: SPOUSE_ACCOUNT_ID, value: 4000 }),
+      windowStart: WINDOW_START,
+    })
+    expect(series).toEqual([{ occurredAt: new Date('2026-05-10T00:00:00.000Z'), value: 1000 }])
+  })
+})
+
+describe('口座 1 件の残高変動履歴（#406）', () => {
+  it('直前の値からの増減を出し、起点が無い最初の行だけ増減を空にする', () => {
+    const rows = accountBalanceHistoryRows({
+      entries: [
+        entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') }),
+        entry({ value: 1200, occurredAt: new Date('2026-05-20T00:00:00.000Z') }),
+        entry({ value: 800, occurredAt: new Date('2026-05-25T00:00:00.000Z') }),
+      ],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: null,
+      manualEntries: [],
+    })
+    expect(rows.map(r => r.delta)).toEqual([null, 200, -400])
+    expect(rows.map(r => r.valueAfter)).toEqual([1000, 1200, 800])
+  })
+
+  it('値が動かなかった行の増減は 0 で、起点が無い行（null）と区別できる', () => {
+    const rows = accountBalanceHistoryRows({
+      entries: [
+        entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') }),
+        entry({ value: 1000, occurredAt: new Date('2026-05-20T00:00:00.000Z') }),
+      ],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: null,
+      manualEntries: [],
+    })
+    expect(rows.map(r => r.delta)).toEqual([null, 0])
+  })
+
+  it('期間より前の値がある行は、そこからの増減を出す', () => {
+    const rows = accountBalanceHistoryRows({
+      entries: [entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') })],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: entry({ value: 700, occurredAt: new Date('2026-03-01T00:00:00.000Z') }),
+      manualEntries: [],
+    })
+    expect(rows[0]?.delta).toBe(300)
+  })
+
+  it('発生日時が一致する手入力記録の種別とメモを添える', () => {
+    const enteredAt = new Date('2026-05-20T00:00:00.000Z')
+    const rows = accountBalanceHistoryRows({
+      entries: [
+        entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') }),
+        entry({ value: 800, occurredAt: enteredAt }),
+      ],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: null,
+      manualEntries: [{ kind: 'manual_withdrawal', enteredAt, memo: '旅行費' }],
+    })
+    expect(rows.map(r => r.source)).toEqual(['auto', 'manual_withdrawal'])
+    expect(rows.map(r => r.memo)).toEqual([undefined, '旅行費'])
+  })
+
+  it('発生日時が一致しない手入力記録は添えない（金額と件数は履歴の側が正）', () => {
+    const rows = accountBalanceHistoryRows({
+      entries: [entry({ value: 800, occurredAt: new Date('2026-05-20T00:00:00.000Z') })],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: null,
+      manualEntries: [
+        { kind: 'manual_correction', enteredAt: new Date('2026-05-21T00:00:00.000Z') },
+      ],
+    })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.source).toBe('auto')
+  })
+
+  it('別の軸のエントリは混ぜない', () => {
+    const rows = accountBalanceHistoryRows({
+      entries: [
+        entry({ axis: 'smbc_balance', value: 1000 }),
+        entry({ axis: 'nisa_contribution', value: 5000 }),
+      ],
+      accountId: ACCOUNT_ID,
+      axis: 'nisa_contribution',
+      opening: null,
+      manualEntries: [],
+    })
+    expect(rows.map(r => r.valueAfter)).toEqual([5000])
+  })
+
+  it('別の口座のエントリは混ぜず、起点にもしない', () => {
+    const rows = accountBalanceHistoryRows({
+      entries: [
+        entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') }),
+        entry({
+          accountId: SPOUSE_ACCOUNT_ID,
+          value: 5000,
+          occurredAt: new Date('2026-05-15T00:00:00.000Z'),
+        }),
+      ],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: entry({ accountId: SPOUSE_ACCOUNT_ID, value: 4000 }),
+      manualEntries: [],
+    })
+    expect(rows.map(r => r.valueAfter)).toEqual([1000])
+    // 別口座の値を起点にすると、最初の行に本来出ない増減が付く
+    expect(rows[0]?.delta).toBeNull()
+  })
+
+  it('起点の軸が違えば持ち越さない（増減の起点にしない）', () => {
+    const rows = accountBalanceHistoryRows({
+      entries: [entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') })],
+      accountId: ACCOUNT_ID,
+      axis: 'smbc_balance',
+      opening: entry({ axis: 'nisa_contribution', value: 700 }),
+      manualEntries: [],
+    })
+    expect(rows[0]?.delta).toBeNull()
   })
 })

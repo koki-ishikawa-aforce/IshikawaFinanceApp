@@ -83,6 +83,12 @@ const CONTROLS: readonly {
     selectors: ['.rangeButton'],
     properties: HEIGHT_AND_WIDTH,
   },
+  {
+    // 口座詳細の「残高一覧へ戻る」。文字だけの導線なので高さを宣言する（期間切替は
+    // 共通部品 SegmentedControl 側で下限を満たす）
+    css: join('app', 'accounts', 'page.module.css'),
+    selectors: ['.back'],
+  },
   { css: join('app', 'expense-settlement', 'page.module.css'), selectors: ['.smallButton'] },
   {
     // 取込候補の「閉じる」は 3 文字だけなので幅も要る。チェック行は行の幅いっぱいに広がる

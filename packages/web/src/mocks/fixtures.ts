@@ -488,6 +488,90 @@ export function balanceTimeSeriesFixture(scenario: MockScenario): unknown {
   }
 }
 
+/**
+ * GET /api/balances/accounts/:accountId（口座詳細、#406）
+ *
+ * 実 API は本人の口座だけを返し、他人の口座も存在しない口座も 404 にする。モックも
+ * 用意していない口座IDでは null を返し、呼び出し側が 404 相当として扱えるようにする。
+ *
+ * 別銀行貯蓄（ACC_MOCK_003）は手入力の口座なので、自動反映と手入力が混ざった履歴を持たせる
+ * （どちらか一方しか無いと、履歴の見た目を両方とも見張れない）。
+ */
+export function accountDetailFixture(accountId: string, scenario: MockScenario): unknown {
+  const details: Record<string, unknown> = {
+    ACC_MOCK_001: {
+      accountId: 'ACC_MOCK_001',
+      kind: 'smbc_bank',
+      displayName: '三井住友銀行',
+      isActive: true,
+      currentValue: 1500000,
+      lastUpdatedAt: '2026-07-23T00:00:00.000Z',
+      supportsBalanceManualEntry: false,
+      series: [
+        { date: '2026-02-01T00:00:00.000Z', amount: 1250000 },
+        { date: '2026-04-30T00:00:00.000Z', amount: 1350000 },
+        { date: '2026-07-23T00:00:00.000Z', amount: 1500000 },
+      ],
+      history: [
+        {
+          occurredAt: '2026-07-23T00:00:00.000Z',
+          valueAfter: 1500000,
+          delta: 150000,
+          source: 'auto',
+        },
+        {
+          occurredAt: '2026-04-30T00:00:00.000Z',
+          valueAfter: 1350000,
+          delta: 100000,
+          source: 'auto',
+        },
+      ],
+    },
+    ACC_MOCK_003: {
+      accountId: 'ACC_MOCK_003',
+      kind: 'other_savings',
+      displayName: '楽天銀行',
+      isActive: true,
+      currentValue: 1740000,
+      lastUpdatedAt: '2026-06-14T00:00:00.000Z',
+      supportsBalanceManualEntry: true,
+      series: [
+        { date: '2026-02-01T00:00:00.000Z', amount: 1620000 },
+        { date: '2026-04-18T00:00:00.000Z', amount: 1700000 },
+        { date: '2026-05-06T00:00:00.000Z', amount: 1670000 },
+        { date: '2026-06-14T00:00:00.000Z', amount: 1740000 },
+      ],
+      history: [
+        {
+          occurredAt: '2026-06-14T00:00:00.000Z',
+          valueAfter: 1740000,
+          delta: 70000,
+          source: 'manual_correction',
+          memo: '通帳を見て入れ直した',
+        },
+        {
+          occurredAt: '2026-05-06T00:00:00.000Z',
+          valueAfter: 1670000,
+          delta: -30000,
+          source: 'manual_withdrawal',
+          memo: '旅行費として引き出し',
+        },
+        {
+          occurredAt: '2026-04-18T00:00:00.000Z',
+          valueAfter: 1700000,
+          delta: 80000,
+          source: 'auto',
+        },
+      ],
+    },
+  }
+  if (!hasShadowAccounts(scenario) && accountId === 'ACC_MOCK_003') return null
+  if (!hasAnyAccounts(scenario)) return null
+  const detail = details[accountId]
+  if (detail === undefined) return null
+  return { ...detail, yearMonthRange: { from: '2026-02', to: '2026-07' } }
+}
+
 /** GET /api/monthly-reports */
 export function monthlyReportFixture(yearMonth: string): unknown {
   return {

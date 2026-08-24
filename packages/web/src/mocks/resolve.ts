@@ -10,6 +10,7 @@ import { getMockRole } from './role'
 import { getMockScenario } from './scenario'
 import {
   accountBalanceListFixture,
+  accountDetailFixture,
   assetTotalFixture,
   balanceFreshnessFixture,
   balanceTimeSeriesFixture,
@@ -125,6 +126,14 @@ export function resolveMock(method: string, path: string): unknown {
         return importStatusFixture()
       case '/api/classification/merchant-rules':
         return merchantLearningRuleListFixture(getMockRole())
+    }
+    // 口座詳細（#406）は口座IDを含むため、固定のパス一覧では引けない
+    const accountDetail = /^\/api\/balances\/accounts\/([^/]+)$/.exec(pathname)
+    if (accountDetail !== null) {
+      const fixture = accountDetailFixture(accountDetail[1] ?? '', getMockScenario())
+      // 実 API は本人以外・未登録の口座を 404 にする。モックも同じ形で返す
+      if (fixture === null) throw new MockNotFoundError(method, pathname)
+      return fixture
     }
   }
 

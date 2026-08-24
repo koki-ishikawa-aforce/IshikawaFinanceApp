@@ -1,0 +1,127 @@
+.main {
+  max-width: 300px;
+  margin: 0 auto;
+  padding: var(--space-3_5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2_5);
+  min-height: 100dvh;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* 戻る導線。文字だけのボタンでもタップの下限（§4-3）を満たす高さを確保する */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  min-height: var(--tap-target-min);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.heroCard {
+  background: var(--kpi-hero);
+  border: 2px solid var(--deco-highlight);
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  box-shadow: var(--shadow-hero);
+}
+
+.heroHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/*
+ * hero カードの上の文字は半透明にしない。背景が透けたぶんだけコントラストが落ち、
+ * 4.5:1 を割るため（#366。残高一覧の hero と同じ扱い）
+ */
+.heroLabel {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-on-kpi);
+}
+
+.heroValue {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--text-on-kpi);
+}
+
+.heroMeta {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-on-kpi);
+}
+
+.manualActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.manualActions > * {
+  flex: 1;
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history > li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0_5);
+  border-bottom: 1px solid var(--divider);
+  padding-bottom: var(--space-2);
+}
+
+.history > li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.historyDate {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.historyDelta {
+  font-size: var(--text-md);
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+/* 減少は赤系にするが、色だけに頼らず符号（-）も併記する（DESIGN.md §6） */
+.negative {
+  color: var(--error-text);
+}
+
+.historySource {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.historyAfter {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
