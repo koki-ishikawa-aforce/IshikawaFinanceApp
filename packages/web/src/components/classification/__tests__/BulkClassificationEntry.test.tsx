@@ -35,15 +35,14 @@ function listItem(id: string, merchantName: string, isUnclassified: boolean): un
   }
 }
 
-function inProgressSession(targetIds: string[]): unknown {
+function inProgressSession(targetIds: string[], classifiedTransactionIds: string[] = []): unknown {
   return BulkClassificationSessionWireSchema.parse({
     kind: 'in_progress',
     common: {
       bulkClassificationSessionId: 'BCS_1',
       userId: 'U_DARLING',
       trigger: {
-        kind: 'single_correction',
-        transactionId: targetIds[0],
+        kind: 'transaction_list',
         startedAt: '2026-07-24T00:00:00.000Z',
       },
       targets: targetIds.map(id => ({
@@ -55,7 +54,8 @@ function inProgressSession(targetIds: string[]): unknown {
       })),
     },
     startedAt: '2026-07-24T00:00:00.000Z',
-    remainingCount: targetIds.length,
+    classifiedTransactionIds,
+    remainingCount: targetIds.length - classifiedTransactionIds.length,
   })
 }
 
@@ -147,7 +147,7 @@ describe('BulkClassificationEntry', () => {
         {
           method: 'POST',
           body: {
-            trigger: { kind: 'single_correction', transactionId: 'TX1' },
+            trigger: { kind: 'transaction_list' },
             transactionIds: ['TX1', 'TX2'],
           },
         },
@@ -221,9 +221,31 @@ describe('BulkClassificationEntry', () => {
 
     await user.click(await screen.findByRole('button', { name: 'まとめて分類を続ける' }))
 
-    // 残っている 1 店舗だけが提示される
-    expect(await screen.findByText('1 / 1 店舗（分類済み 0 件）')).toBeInTheDocument()
+    // 残っている 1 店舗だけが提示され、分類済みの件数はセッション全体で数える
+    expect(await screen.findByText('1 / 1 店舗（分類済み 1 件）')).toBeInTheDocument()
     expect(screen.getByText('店舗TX1')).toBeInTheDocument()
+    expect(screen.queryByText('店舗TX2')).not.toBeInTheDocument()
+  })
+
+  it('再開したセッションは、サーバーが記録した分類済み（表示月の一覧に無い取引）も対象から外す', async () => {
+    const user = userEvent.setup()
+    apiMock.apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/api/classification/bulk-sessions/current')) {
+        // TX2 は別の月の対象で、表示月の一覧には現れないがサーバーには分類済みとして残っている
+        return Promise.resolve({ session: inProgressSession(['TX1', 'TX2'], ['TX2']) })
+      }
+      if (path.startsWith('/api/transactions?month=2026-07')) {
+        return Promise.resolve([listItem('TX1', 'スーパーA', true)])
+      }
+      if (path === '/api/categories') return Promise.resolve({ items: [] })
+      if (path === '/api/expense-types') return Promise.resolve({ items: [] })
+      throw new Error(`unexpected apiFetch: ${path}`)
+    })
+    renderEntry({})
+
+    await user.click(await screen.findByRole('button', { name: 'まとめて分類を続ける' }))
+
+    expect(await screen.findByText('1 / 1 店舗（分類済み 1 件）')).toBeInTheDocument()
     expect(screen.queryByText('店舗TX2')).not.toBeInTheDocument()
   })
 

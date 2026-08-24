@@ -8,6 +8,7 @@ import {
 } from '@warimaru/domain'
 import type {
   BulkClassificationCompleted,
+  UserId,
   MerchantLearningDisabled,
   MerchantLearningReenabled,
   RetroactiveCandidateItem,
@@ -118,6 +119,214 @@ describe('POST /api/classification/bulk-sessions/:id/complete', () => {
     expect(events).toHaveLength(1)
     expect(events[0]?.bulkClassificationSessionId).toBe(sessionId)
     expect(events[0]?.processedCount).toBe(0)
+  })
+})
+
+describe('POST /api/classification/bulk-sessions', () => {
+  it('取引一覧起因（起点の取引IDなし）でセッションを開始できる', async () => {
+    const t = createTestApp()
+    const tx1 = await seedUnclassified(t)
+
+    const res = await request(t.app, 'POST', '/api/classification/bulk-sessions', {
+      body: { trigger: { kind: 'transaction_list' }, transactionIds: [tx1] },
+    })
+    expect(res.status).toBe(201)
+    const created = (await res.json()) as {
+      kind: string
+      common: { trigger: { kind: string } }
+      classifiedTransactionIds: string[]
+      remainingCount: number
+    }
+    expect(created.kind).toBe('in_progress')
+    expect(created.common.trigger.kind).toBe('transaction_list')
+    expect(created.classifiedTransactionIds).toEqual([])
+    expect(created.remainingCount).toBe(1)
+  })
+
+  it('同じ取引を重複して指定したセッションは開始できない', async () => {
+    const t = createTestApp()
+    const tx1 = await seedUnclassified(t)
+
+    const res = await request(t.app, 'POST', '/api/classification/bulk-sessions', {
+      body: { trigger: { kind: 'transaction_list' }, transactionIds: [tx1, tx1] },
+    })
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('POST /api/classification/bulk-sessions/:id/progress', () => {
+  /** 対象 2 件の進行中セッションを作り、セッション ID と対象取引 ID を返す */
+  async function seedSession(t: TestApp): Promise<{ sessionId: string; txIds: string[] }> {
+    const tx1 = await seedUnclassified(t, '進捗ストアA')
+    const tx2 = await seedUnclassified(t, '進捗ストアB')
+    const createRes = await request(t.app, 'POST', '/api/classification/bulk-sessions', {
+      body: { trigger: { kind: 'transaction_list' }, transactionIds: [tx1, tx2] },
+    })
+    expect(createRes.status).toBe(201)
+    const sessionId = (
+      (await createRes.json()) as { common: { bulkClassificationSessionId: string } }
+    ).common.bulkClassificationSessionId
+    return { sessionId, txIds: [tx1, tx2] }
+  }
+
+  async function classifyTx(t: TestApp, transactionId: string): Promise<void> {
+    const res = await request(t.app, 'PUT', `/api/transactions/${transactionId}/classify`, {
+      body: { categoryId: newUlid(), expenseClass: 'household' },
+    })
+    expect(res.status).toBe(200)
+  }
+
+  function recordProgress(
+    t: TestApp,
+    sessionId: string,
+    transactionIds: unknown,
+    viewerId?: UserId,
+  ) {
+    return request(t.app, 'POST', `/api/classification/bulk-sessions/${sessionId}/progress`, {
+      body: { transactionIds },
+      ...(viewerId === undefined ? {} : { viewerId }),
+    })
+  }
+
+  async function remainingCountOf(t: TestApp, sessionId: string): Promise<number> {
+    const res = await request(t.app, 'GET', `/api/classification/bulk-sessions/${sessionId}`)
+    return ((await res.json()) as { remainingCount: number }).remainingCount
+  }
+
+  it('分類し終えた対象を記録すると残件数が減り、中断してもその残件数が残る', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+    await classifyTx(t, txIds[0] as string)
+
+    const res = await recordProgress(t, sessionId, [txIds[0]])
+    expect(res.status).toBe(200)
+    const advanced = (await res.json()) as {
+      classifiedTransactionIds: string[]
+      remainingCount: number
+    }
+    expect(advanced.classifiedTransactionIds).toEqual([txIds[0]])
+    expect(advanced.remainingCount).toBe(1)
+
+    const abortRes = await request(
+      t.app,
+      'POST',
+      `/api/classification/bulk-sessions/${sessionId}/abort`,
+    )
+    expect(abortRes.status).toBe(200)
+    expect((await abortRes.json()) as { remainingCount: number }).toMatchObject({
+      remainingCount: 1,
+    })
+  })
+
+  it('まだ未分類の取引を申告されても残件数は減らない（実状態から数え直す）', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+
+    // 1 件も分類せずに 2 件とも申告する
+    const res = await recordProgress(t, sessionId, txIds)
+    expect(res.status).toBe(200)
+    const advanced = (await res.json()) as {
+      classifiedTransactionIds: string[]
+      remainingCount: number
+    }
+    expect(advanced.classifiedTransactionIds).toEqual([])
+    expect(advanced.remainingCount).toBe(2)
+  })
+
+  it('累積を送り直すと、前回記録できなかったぶんも含めて残件数が揃う', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+    await classifyTx(t, txIds[0] as string)
+    await classifyTx(t, txIds[1] as string)
+
+    // 画面は「このセッションで分類し終えた累積」を送る
+    const res = await recordProgress(t, sessionId, txIds)
+    expect(res.status).toBe(200)
+    expect((await res.json()) as { remainingCount: number }).toMatchObject({ remainingCount: 0 })
+  })
+
+  it('同じ要求を再送しても残件数は二重に減らない', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+    await classifyTx(t, txIds[0] as string)
+
+    for (let i = 0; i < 2; i++) {
+      const res = await recordProgress(t, sessionId, [txIds[0]])
+      expect(res.status).toBe(200)
+      expect((await res.json()) as { remainingCount: number }).toMatchObject({ remainingCount: 1 })
+    }
+  })
+
+  it('配偶者のセッションの進捗は記録できない', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+    await classifyTx(t, txIds[0] as string)
+
+    const res = await recordProgress(t, sessionId, [txIds[0]], SPOUSE_ID)
+    expect(res.status).toBe(403)
+
+    // 拒否された要求でセッションの残件数が動いていないこと
+    expect(await remainingCountOf(t, sessionId)).toBe(2)
+  })
+
+  it('このセッションの対象でない取引は記録できず、残件数も動かない', async () => {
+    const t = createTestApp()
+    const { sessionId } = await seedSession(t)
+    // 別の未分類取引（このセッションの対象ではない）を分類したうえで申告する
+    const outsider = await seedUnclassified(t, '対象外ストア')
+    await classifyTx(t, outsider)
+
+    const res = await recordProgress(t, sessionId, [outsider])
+    expect(res.status).toBe(400)
+    expect(await remainingCountOf(t, sessionId)).toBe(2)
+  })
+
+  it('中断済みのセッションには進捗を記録できない（409）', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+    expect(
+      (await request(t.app, 'POST', `/api/classification/bulk-sessions/${sessionId}/abort`)).status,
+    ).toBe(200)
+
+    const res = await recordProgress(t, sessionId, [txIds[0]])
+    expect(res.status).toBe(409)
+    expect(((await res.json()) as { error: string }).error).toContain('現状態: aborted')
+  })
+
+  it('完了済みのセッションには進捗を記録できない（409）', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+    expect(
+      (await request(t.app, 'POST', `/api/classification/bulk-sessions/${sessionId}/complete`))
+        .status,
+    ).toBe(200)
+
+    const res = await recordProgress(t, sessionId, [txIds[0]])
+    expect(res.status).toBe(409)
+    expect(((await res.json()) as { error: string }).error).toContain('現状態: completed')
+  })
+
+  it('存在しないセッションは 404', async () => {
+    const t = createTestApp()
+    const res = await recordProgress(t, newUlid(), [newUlid()])
+    expect(res.status).toBe(404)
+  })
+
+  it('対象が空、または上限を超える件数は 400', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+
+    expect((await recordProgress(t, sessionId, [])).status).toBe(400)
+    expect(
+      (
+        await recordProgress(
+          t,
+          sessionId,
+          Array.from({ length: 1001 }, () => txIds[0]),
+        )
+      ).status,
+    ).toBe(400)
+    expect(await remainingCountOf(t, sessionId)).toBe(2)
   })
 })
 

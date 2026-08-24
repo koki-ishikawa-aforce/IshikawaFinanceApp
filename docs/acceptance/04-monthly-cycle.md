@@ -52,11 +52,11 @@ CSV 取込 → 一括分類 → CSV 確定 → 経費按分 → 精算入金突�
 | 2 | 取込完了画面の「取引一覧でまとめて分類する」から取引一覧へ進み、「未分類をまとめて分類する」を押す | 一括分類セッションが起動し、未分類取引が加盟店ごとにまとめて表示される(「1 / N 店舗」の進捗つき) | ☐ |
 | 3 | 加盟店ごとに分類(カテゴリ/費用区分/経費種別)を割り当て、「この店舗の N 件を分類」で順に確定する | 対象取引がすべて分類され、加盟店ごとに学習ルールが一括登録される | ☐ |
 | 4 | 最後の加盟店を確定してセッションを完了する | セッションが完了状態になり(「N 件を分類しました」)、ダッシュボードの未分類件数が減っている | ☐ |
-| 5 | (別の取込で)一括分類の途中で「あとで続ける」を押して離脱し、取引一覧に戻る | 取引一覧に「まとめて分類が途中のままです」と再開の導線が出て、続きから分類できる | ☐ |
+| 5 | (別の取込で)一括分類の途中で「あとで続ける」を押して離脱し、取引一覧に戻る | 取引一覧に「まとめて分類が途中のままです」と再開の導線が出る。続きを開くと、**すでに分類し終えた店舗は出てこず**、残りの店舗だけを分類できる | ☐ |
 | 6 | 進行中のセッションで「まとめて分類をやめる」を押す | セッションが中断(abort)され、再開の導線が消えて新しい一括分類を始められる。分類済みの取引はそのまま残る | ☐ |
 
 - 事後処理: テストで登録した学習ルールのうち実運用に不要なものを無効化・整理
-- 備考: 依存 API `POST /api/classification/bulk-sessions`, `GET /api/classification/bulk-sessions/current`, `POST /api/classification/bulk-sessions/:id/complete`, `POST /api/classification/bulk-sessions/:id/abort`
+- 備考: 依存 API `POST /api/classification/bulk-sessions`, `GET /api/classification/bulk-sessions/current`, `POST /api/classification/bulk-sessions/:id/progress`, `POST /api/classification/bulk-sessions/:id/complete`, `POST /api/classification/bulk-sessions/:id/abort`
 
 ### 実施記録
 
