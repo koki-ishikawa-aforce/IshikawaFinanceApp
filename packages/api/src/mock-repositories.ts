@@ -92,6 +92,7 @@ import type {
   StatementImportJob,
   StatementImportJobRepository,
   Transaction,
+  NormalTransactionCandidate,
   TransactionCandidate,
   TransactionCandidateId,
   TransactionCandidateRepository,
@@ -282,6 +283,20 @@ export function createMockTransactionCandidateRepository(): TransactionCandidate
     async findByPdfFileId(pdfFileId: UploadFileId) {
       return [...store.values()].filter(
         c => c.common.importSource.kind === 'pdf' && c.common.importSource.pdfFileId === pdfFileId,
+      )
+    },
+    async findEmailSourcedNormalCandidates(
+      userId: UserId,
+      range: { occurredFrom?: Date; occurredTo: Date },
+    ) {
+      return [...store.values()].filter(
+        (c): c is NormalTransactionCandidate =>
+          c.kind === 'normal' &&
+          c.common.userId === userId &&
+          c.common.importSource.kind === 'email' &&
+          jstCalendarDate(c.common.occurredAt) <= jstCalendarDate(range.occurredTo) &&
+          (range.occurredFrom === undefined ||
+            jstCalendarDate(c.common.occurredAt) >= jstCalendarDate(range.occurredFrom)),
       )
     },
     async save(candidate: TransactionCandidate) {

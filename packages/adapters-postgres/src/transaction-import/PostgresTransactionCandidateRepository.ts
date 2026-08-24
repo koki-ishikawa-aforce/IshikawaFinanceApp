@@ -7,10 +7,11 @@
  *   save 時の occurred_on 導出と検索時のパラメータ変換に同じ関数を使う
  * - メール重複除外は partial unique が最終保証（violation は InvariantViolationError へ翻訳）
  */
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, isNotNull, lte, sql } from 'drizzle-orm'
 import type {
   GmailMessageId,
   Money,
+  NormalTransactionCandidate,
   TransactionCandidate,
   TransactionCandidateId,
   TransactionCandidateRepository,
@@ -102,6 +103,36 @@ export class PostgresTransactionCandidateRepository implements TransactionCandid
       )
       .orderBy(asc(transactionCandidates.transactionCandidateId))
     return rows.map(row => parsePayload(TransactionCandidateSchema, row.payload))
+  }
+
+  async findEmailSourcedNormalCandidates(
+    userId: UserId,
+    range: { occurredFrom?: Date; occurredTo: Date },
+  ): Promise<NormalTransactionCandidate[]> {
+    // 「メール由来」は昇格列 gmail_message_id の有無で見る（kind='normal' に昇格されるのは
+    // importSource.kind='email' の候補だけ。amazon_match は突合後の kind なのでここには来ない）。
+    //
+    // occurred_on は JST 暦日への丸めなので、範囲の端では時刻ぶんだけ広めに返る。突合と
+    // タイムアウトの期限判定は発生日時（時刻まで）で行う必要があるため、絞り込みの最終判定は
+    // 呼出し側のドメイン関数（matchAmazonOrders / judgeCardUsageMatchTimeout）が持つ。
+    // ここで暦日に丸めた範囲を返しすぎるぶんには結果は変わらない（取りこぼしだけを避ける）。
+    const conditions = [
+      eq(transactionCandidates.userId, userId),
+      eq(transactionCandidates.kind, 'normal'),
+      isNotNull(transactionCandidates.gmailMessageId),
+      lte(transactionCandidates.occurredOn, dateToJstCalendarDate(range.occurredTo)),
+      ...(range.occurredFrom === undefined
+        ? []
+        : [gte(transactionCandidates.occurredOn, dateToJstCalendarDate(range.occurredFrom))]),
+    ]
+    const rows = await this.db
+      .select({ payload: transactionCandidates.payload })
+      .from(transactionCandidates)
+      .where(and(...conditions))
+      .orderBy(asc(transactionCandidates.transactionCandidateId))
+    return rows
+      .map(row => parsePayload(TransactionCandidateSchema, row.payload))
+      .filter((c): c is NormalTransactionCandidate => c.kind === 'normal')
   }
 
   async save(candidate: TransactionCandidate): Promise<void> {

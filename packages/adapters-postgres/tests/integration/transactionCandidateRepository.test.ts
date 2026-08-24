@@ -107,6 +107,59 @@ describe('PostgresTransactionCandidateRepository', () => {
     )
   })
 
+  it('findEmailSourcedNormalCandidates はメール由来・通常の候補だけを発生日の範囲で返す', async () => {
+    // JST 暦日で 7/10・7/12・7/15 に当たる 3 件（UTC 表記）
+    const jul10 = new Date('2026-07-10T03:00:00.000Z')
+    const jul12 = new Date('2026-07-12T03:00:00.000Z')
+    const jul15 = new Date('2026-07-15T03:00:00.000Z')
+    const inRangeEarly = normalCandidate({ occurredAt: jul10, merchantName: 'AMAZON CO JP' })
+    const inRangeLate = normalCandidate({ occurredAt: jul12, merchantName: 'AMAZON CO JP' })
+    const outOfRange = normalCandidate({ occurredAt: jul15 })
+    const otherUser = normalCandidate({ occurredAt: jul10, userId: DARLING_USER_ID })
+    // メール由来でない候補（CSV / PDF）と、突合済み・タイムアウト済みの候補は返らない
+    const csv = csvCandidate({ occurredAt: jul10 })
+    const pdf = pdfCandidate({ occurredAt: jul10 })
+    const matched = amazonMatchedCandidate()
+    const timedOut = matchTimeoutCandidate()
+    for (const candidate of [
+      inRangeEarly,
+      inRangeLate,
+      outOfRange,
+      otherUser,
+      csv,
+      pdf,
+      matched,
+      timedOut,
+    ]) {
+      await repo.save(candidate)
+    }
+
+    const found = await repo.findEmailSourcedNormalCandidates(HONEY_USER_ID, {
+      occurredFrom: jul10,
+      occurredTo: jul12,
+    })
+
+    expect(found.map(c => c.common.transactionCandidateId).sort()).toEqual(
+      [inRangeEarly, inRangeLate].map(c => c.common.transactionCandidateId).sort(),
+    )
+    expect(found.every(c => c.kind === 'normal')).toBe(true)
+  })
+
+  it('findEmailSourcedNormalCandidates は下限を省くと期限切れの掃き出し用に古い候補まで返す', async () => {
+    const old = normalCandidate({ occurredAt: new Date('2026-01-05T03:00:00.000Z') })
+    const recent = normalCandidate({ occurredAt: new Date('2026-07-20T03:00:00.000Z') })
+    await repo.save(old)
+    await repo.save(recent)
+
+    const found = await repo.findEmailSourcedNormalCandidates(HONEY_USER_ID, {
+      occurredTo: new Date('2026-07-10T03:00:00.000Z'),
+    })
+
+    const ids = found.map(c => c.common.transactionCandidateId)
+    expect(ids).toContain(old.common.transactionCandidateId)
+    expect(ids).not.toContain(recent.common.transactionCandidateId)
+  })
+
   it('confirmed 候補を save → findById で往復できる（kind CHECK 拡張の確認）', async () => {
     const candidate = csvCandidate()
     if (candidate.kind !== 'normal') throw new Error('fixture が normal でない')

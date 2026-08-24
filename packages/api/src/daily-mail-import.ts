@@ -56,6 +56,7 @@ import {
   updateBatchImportedCount,
 } from '@warimaru/domain'
 import type {
+  AmazonOrderConfirmationMailParser,
   AppUserRepository,
   DailyMailImportBatch,
   DailyMailImportBatchRepository,
@@ -78,6 +79,7 @@ import type {
 } from '@warimaru/domain'
 import { newUlid } from '@warimaru/adapters-postgres'
 import { domainEventBase } from './event-handlers/index.js'
+import { runAmazonOrderMatching, type AmazonOrderMatchSummary } from './amazon-order-match.js'
 
 /** 毎回さかのぼって再走査する日数（論点22 / OQ-31。実運用で調整するためのパラメータ） */
 export const DEFAULT_MAIL_SCAN_DAYS = 5
@@ -94,6 +96,8 @@ export interface DailyMailImportDeps {
   gmailMailFetchGateway: GmailMailFetchGateway
   /** SMBC 通知メール本文のパース（実装はドメインの `parseSmbcNotificationMail`） */
   parseSmbcNotificationMail: SmbcNotificationMailParser
+  /** Amazon 注文確認メール本文のパース（実装はドメインの `parseAmazonOrderConfirmationMail`） */
+  parseAmazonOrderConfirmationMail: AmazonOrderConfirmationMailParser
   eventBus: EventBus
 }
 
@@ -180,6 +184,8 @@ export type DailyMailImportOutcome =
           duplicateExcludedCount: number
           failedCount: number
           otherNotificationCount: number
+          /** Amazon 注文確認メールの突合結果（08a §2）。この実行で数えたぶん */
+          amazonMatch: AmazonOrderMatchSummary
         }
       | {
           status: 'failed'
@@ -479,13 +485,38 @@ export async function runDailyMailImportForUser(
     )
   }
 
-  if (failedCount > 0 || fetched.amazonMails.length > 0) {
-    // 取り込めなかったメールがあることを、バッチ記録を引かずに気づけるようにする。
-    // Amazon 注文確認メールの突合はまだ実装が無いため、取得したまま使っていない
+  if (failedCount > 0) {
+    // 取り込めなかったメールがあることを、バッチ記録を引かずに気づけるようにする
     console.info(
       `[transaction-import] 取り込めなかったメールがある（${batchLabel(batch)}, ` +
-        `パース失敗=${failedCount}, 未処理の Amazon 注文確認メール=${fetched.amazonMails.length}）`,
+        `パース失敗=${failedCount}）`,
     )
+  }
+
+  // Amazon 注文確認メールの突合はカード利用通知の取込のあとに行う。順番が逆だと、この実行で
+  // 取り込んだ候補が突合の相手に入らない（記録と結末は amazon-order-match.ts が持つ）。
+  // 注文確認メールが 0 通でも呼ぶ — 注文が届かないまま期限を過ぎた候補の未分類確定
+  // （SMBC 先着タイムアウト）は、この実行で Amazon のメールが無くても進める必要がある
+  let amazonMatch: AmazonOrderMatchSummary
+  try {
+    amazonMatch = await runAmazonOrderMatching(deps, {
+      userId: params.userId,
+      amazonMails: fetched.amazonMails,
+      targetPeriod: batch.common.targetPeriod,
+      at,
+    })
+  } catch (e) {
+    // カード利用通知の取込と同じ扱いで、バッチを取込中のまま残さず失敗として閉じる
+    // （残すと二重起動防止のロックが解けない）。保存済みの候補はそのまま残り、翌日の
+    // 再走査で突合をやり直せる（突合していない候補は通常のまま残っているため）
+    const failureKind = e instanceof Error ? e.name : 'unknown'
+    const retryable = !(e instanceof InvariantViolationError)
+    console.error(
+      `[transaction-import] Amazon 注文の突合中に失敗した（${batchLabel(batch)}, ` +
+        `error=${failureKind}, retryable=${retryable}）— ` +
+        (retryable ? '翌日の再走査でやり直す' : '実装の誤りのため再実行では回復しない'),
+    )
+    return fail('unexpected_error', 'Amazon 注文の突合に失敗した', retryable)
   }
 
   const completedAt = new Date()
@@ -513,6 +544,7 @@ export async function runDailyMailImportForUser(
     duplicateExcludedCount,
     failedCount,
     otherNotificationCount,
+    amazonMatch,
   }
 }
 

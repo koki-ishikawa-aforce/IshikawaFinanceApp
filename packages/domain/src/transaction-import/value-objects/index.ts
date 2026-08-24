@@ -1,5 +1,7 @@
 export * from './CandidateImportSource'
 export * from './AmazonOrderInfo'
+export * from './AmazonMailParseResult'
+export * from './AmazonMatchPending'
 export * from './SmbcMailParseResult'
 export * from './DuplicationJudgment'
 export * from './ImportResultSummary'
