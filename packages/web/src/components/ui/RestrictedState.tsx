@@ -9,8 +9,10 @@ interface RestrictedStateProps {
   /**
    * 支援技術へ通知するか。既定 true。
    *
-   * 開いた時点から内容が変わらない場所(モーダル内の固定メッセージなど)では false にする。
-   * そこに live region を置くと、モーダル自体の読み上げに重ねて二重に読まれるため
+   * false にしてよいのは、その場所が**別の経路で確実に読み上げられる**ときだけ。
+   * 現状の `Modal` は開いてもフォーカスをモーダル内へ移さないため(同 §9 #10)、
+   * ダイアログとしての読み上げは起きない。ここで false にすると、伏せている旨が
+   * 読み上げ利用者に一度も伝わらなくなる
    */
   announce?: boolean
 }
@@ -25,18 +27,22 @@ interface RestrictedStateProps {
  *   「見えないものがある」と示唆する表示を出すこと自体が違反になる(同 2-3)
  * - 表示するかどうかは API が返す値(null 等)で決める。UI 側でプライバシー段階を
  *   再判定しない(同 2-5)
- * - 見せない対象が切り替わる場所では既定で `role="status"` を付ける(同 8-4)。
- *   同じ器の中で入れ替わる空状態・ローディング・エラーと揃えている
+ *
+ * **本番の取引一覧には、伏せ字の行そのものが載らない。** プライバシーの判定点である
+ * `applyPrivacyFilter`(domain)は相手の個人取引を**行ごと除外**するため、
+ * `GET /api/transactions` から明細が null の行は返らない。この表示が実際に出るのは
+ * モック起動モード(`src/mocks/fixtures.ts`)と、万一そうした行が届いたときの保険の経路。
+ * 「相手の個人取引は伏せ字行として一覧に残る」という契約ではないことに注意する
  */
 export function RestrictedState({ children, announce = true }: RestrictedStateProps) {
-  // 文言が空なら何も出さない。錠前のアイコンと面だけが残ると、何が見えないのか
-  // 伝わらないまま「見えないものがある」ことだけを示すことになる
+  // 文言が空なら何も出さない(`ErrorState` と同じガード)。錠前のアイコンと面だけが残ると、
+  // 何が見えないのか伝わらないまま「見えないものがある」ことだけを示すことになる
   if (children === null || children === undefined || children === '') return null
 
   return (
     <div className={styles.restricted} role={announce ? 'status' : undefined}>
       {/* 文言が意味を伝えるため装飾扱い(`DESIGN.md` §6) */}
-      <LuLock className={ui.iconSm} aria-hidden="true" />
+      <LuLock className={`${ui.iconSm} ${styles.icon}`} aria-hidden="true" />
       <span className={styles.message}>{children}</span>
     </div>
   )

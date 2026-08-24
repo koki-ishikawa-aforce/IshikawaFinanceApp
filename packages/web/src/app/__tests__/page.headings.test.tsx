@@ -10,10 +10,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import { cssRules } from '@/test/css-rules'
 import { SRC_DIR } from '@/test/sources'
+import ui from '@/components/ui/common.module.css'
 import DashboardPage from '../page'
 
 // 見出しは取得状態によらず出る。応答は返さず、描画だけを見る
@@ -32,12 +34,20 @@ function renderDashboard(): void {
 }
 
 describe('ダッシュボードの見出し', () => {
-  it('画面名の見出し(h1)を 1 つ持つ', () => {
+  it('画面名の見出し(h1)を 1 つ持ち、画面には文字として出さない', () => {
     renderDashboard()
 
     // 文言は下部ナビの項目名と揃える(同 5-1)。利用者が目にしない「ダッシュボード」は使わない
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('ホーム')
+    const h1 = screen.getByRole('heading', { level: 1 })
+    expect(h1).toHaveTextContent('ホーム')
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    // 「見た目は変えない」が決定の中身。可視のクラス(ui.pageTitle 等)に
+    // 取り違えたり、クラスを落としたりするとここで落ちる。
+    // クラス名が消えるとアサーションが空振りするため、存在も併せて確認する
+    expect(ui.srOnly).toBeTruthy()
+    const classNames = h1.className.split(' ')
+    expect(classNames).toContain(ui.srOnly)
+    expect(classNames).not.toContain(ui.pageTitle)
   })
 
   it('カテゴリ内訳のセクション見出しが h2 として扱われる', () => {
@@ -46,16 +56,22 @@ describe('ダッシュボードの見出し', () => {
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('世帯支出（カテゴリ別）')
   })
 
-  it('見出しの階層を飛ばさない(h1 の次が h2)', () => {
+  it('個人モードに切り替えても h2 のまま文言だけが変わる', async () => {
+    renderDashboard()
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('radio', { name: '個人' }))
+
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('個人支出（カテゴリ別）')
+  })
+
+  it('文書順で見出しの階層を飛ばさない', () => {
     renderDashboard()
 
-    const levels = screen
-      .getAllByRole('heading')
-      .map(heading => Number(heading.tagName.slice(1)))
-      .sort((a, b) => a - b)
+    // getAllByRole は文書順で返る。並べ替えると「h2 が h1 より前」を見逃す
+    const levels = screen.getAllByRole('heading').map(heading => Number(heading.tagName.slice(1)))
 
     expect(levels[0]).toBe(1)
-    // 隣り合う見出しの段差が 1 を超えない
     for (const [index, level] of levels.slice(1).entries()) {
       expect(level - (levels[index] ?? 0)).toBeLessThanOrEqual(1)
     }
