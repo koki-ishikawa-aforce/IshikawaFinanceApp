@@ -332,7 +332,10 @@ export default function ExpenseSettlementPage() {
             aria-label="入金記録を追加"
             onClick={() => setDepositModal(true)}
           >
-            {/* ラベルと並ぶ追加ボタンのアイコン。設定画面の「〜を追加」と同じ .iconSm に揃える（#502） */}
+            {/*
+              ラベルと並ぶ追加ボタンのアイコン。実寸を設定画面の「〜を追加」と揃えるため、
+              クラスを .iconSm にし、基準の font-size も .smallButton 側で --text-sm に合わせた（#502）
+            */}
             <LuPlus aria-hidden="true" className={ui.iconSm} />
             入金記録
           </button>

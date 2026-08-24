@@ -104,6 +104,7 @@
   composes: rowIcon;
 }
 
+/* 行頭アイコンの基準（.rowIcon の font-size）と対で動かす。片方だけ変えると大きさの揃いが崩れる */
 .balanceName {
   font-size: var(--text-sm);
   font-weight: 700;
