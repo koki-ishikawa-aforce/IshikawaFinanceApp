@@ -20,9 +20,14 @@ import {
   UserIdSchema,
   ImportJobIdSchema,
   TransactionIdSchema,
+  type BulkClassificationSessionId,
   type TransactionId,
+  type UserId,
 } from '../../shared/ids'
-import { BulkClassificationTargetSchema } from '../value-objects/ClassificationResult'
+import {
+  BulkClassificationTargetSchema,
+  type BulkClassificationTarget,
+} from '../value-objects/ClassificationResult'
 
 /**
  * 取込起因（CSV取込ID は取引取込の取込ジョブ ID にマップ）
@@ -70,7 +75,7 @@ export const BulkClassificationSessionSchema = z
        * 進捗を持たなかった頃に保存された行を読み戻せるよう既定は空にする
        * （その場合 残件数 = 対象取引数 となり、不変条件と矛盾しない）。
        */
-      processedTransactionIds: z.array(TransactionIdSchema).default([]),
+      classifiedTransactionIds: z.array(TransactionIdSchema).default([]),
       remainingCount: z.number().int().nonnegative(),
     }),
     z.object({
@@ -91,22 +96,24 @@ export const BulkClassificationSessionSchema = z
   .superRefine((session, ctx) => {
     if (session.kind !== 'in_progress') return
     const targetIds = new Set<string>(session.common.targets.map(target => target.transactionId))
-    if (new Set(session.processedTransactionIds).size !== session.processedTransactionIds.length) {
+    if (
+      new Set(session.classifiedTransactionIds).size !== session.classifiedTransactionIds.length
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: '分類済み取引に重複がある',
-        path: ['processedTransactionIds'],
+        path: ['classifiedTransactionIds'],
       })
     }
-    const unknown = session.processedTransactionIds.filter(id => !targetIds.has(id))
+    const unknown = session.classifiedTransactionIds.filter(id => !targetIds.has(id))
     if (unknown.length > 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `対象に含まれない取引は分類済みにできない: ${unknown.join(', ')}`,
-        path: ['processedTransactionIds'],
+        path: ['classifiedTransactionIds'],
       })
     }
-    const expected = session.common.targets.length - session.processedTransactionIds.length
+    const expected = session.common.targets.length - session.classifiedTransactionIds.length
     if (session.remainingCount !== expected) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -131,21 +138,47 @@ export type AbortedBulkClassificationSession = Extract<
 >
 
 /**
+ * 一括分類セッションを開始する（08b §3「一括分類セッションを開始する」）
+ *
+ * 事後条件「分類済み取引ID は空、残件数 = 対象取引数」をここで満たす。
+ * 対象取引が本人のもので未分類かの判定は I/O を伴うため呼び出し側（api）に残す。
+ */
+export function startBulkClassificationSession(input: {
+  bulkClassificationSessionId: BulkClassificationSessionId
+  userId: UserId
+  trigger: BulkClassificationTrigger
+  targets: readonly BulkClassificationTarget[]
+}): InProgressBulkClassificationSession {
+  return BulkClassificationSessionSchema.parse({
+    kind: 'in_progress',
+    common: {
+      bulkClassificationSessionId: input.bulkClassificationSessionId,
+      userId: input.userId,
+      trigger: input.trigger,
+      targets: input.targets,
+    },
+    startedAt: input.trigger.startedAt,
+    classifiedTransactionIds: [],
+    remainingCount: input.targets.length,
+  }) as InProgressBulkClassificationSession
+}
+
+/**
  * 状態遷移: 進行中 → 進行中（分類し終えた対象を記録して残件数を減らす）
  *
  * 既に記録済みの取引を再度渡しても結果は変わらない（同じ要求の再送で二重に
  * 減算されない）。対象に含まれない取引を渡した場合は不変条件で弾かれる。
  */
-export function recordBulkClassificationProgress(
+export function advanceBulkClassificationSession(
   session: InProgressBulkClassificationSession,
-  processedTransactionIds: readonly TransactionId[],
+  classifiedTransactionIds: readonly TransactionId[],
 ): InProgressBulkClassificationSession {
-  const merged = [...new Set([...session.processedTransactionIds, ...processedTransactionIds])]
+  const merged = [...new Set([...session.classifiedTransactionIds, ...classifiedTransactionIds])]
   return BulkClassificationSessionSchema.parse({
     kind: 'in_progress',
     common: session.common,
     startedAt: session.startedAt,
-    processedTransactionIds: merged,
+    classifiedTransactionIds: merged,
     remainingCount: session.common.targets.length - merged.length,
   }) as InProgressBulkClassificationSession
 }

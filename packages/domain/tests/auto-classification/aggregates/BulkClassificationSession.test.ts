@@ -3,7 +3,8 @@ import {
   BulkClassificationSessionSchema,
   completeBulkClassificationSession,
   abortBulkClassificationSession,
-  recordBulkClassificationProgress,
+  advanceBulkClassificationSession,
+  startBulkClassificationSession,
   type InProgressBulkClassificationSession,
 } from '../../../src/auto-classification/aggregates/BulkClassificationSession'
 
@@ -85,18 +86,22 @@ describe('BulkClassificationSession 集約', () => {
       startedAt: new Date(),
       remainingCount: 1,
     })
-    expect(parsed.kind === 'in_progress' && parsed.processedTransactionIds).toEqual([])
+    expect(parsed.kind === 'in_progress' && parsed.classifiedTransactionIds).toEqual([])
   })
 
-  it('残件数が負なら parse 失敗', () => {
-    expect(() =>
-      BulkClassificationSessionSchema.parse({
-        kind: 'in_progress',
-        common,
-        startedAt: new Date(),
-        remainingCount: -1,
-      }),
-    ).toThrow()
+  it('残件数が負なら parse 失敗（負値そのものを弾く）', () => {
+    // 「残件数 = 対象取引数 - 分類済み取引数」でも落ちるため、
+    // 負値の拒否が生きていることを issue の中身で確かめる
+    const result = BulkClassificationSessionSchema.safeParse({
+      kind: 'in_progress',
+      common,
+      startedAt: new Date(),
+      remainingCount: -1,
+    })
+    expect(result.success).toBe(false)
+    expect(
+      result.success ? [] : result.error.issues.filter(issue => issue.code === 'too_small'),
+    ).not.toHaveLength(0)
   })
 
   it('completeBulkClassificationSession: 進行中 → 完了', () => {
@@ -133,26 +138,48 @@ describe('BulkClassificationSession 集約', () => {
       }) as InProgressBulkClassificationSession
 
     it('分類し終えた対象を記録すると残件数が減る', () => {
-      const advanced = recordBulkClassificationProgress(inProgress(), [TX1])
-      expect(advanced.processedTransactionIds).toEqual([TX1])
+      const advanced = advanceBulkClassificationSession(inProgress(), [TX1])
+      expect(advanced.classifiedTransactionIds).toEqual([TX1])
       expect(advanced.remainingCount).toBe(1)
     })
 
     it('同じ取引を再度記録しても残件数は二重に減らない', () => {
-      const once = recordBulkClassificationProgress(inProgress(), [TX1])
-      const twice = recordBulkClassificationProgress(once, [TX1])
-      expect(twice.processedTransactionIds).toEqual([TX1])
+      const once = advanceBulkClassificationSession(inProgress(), [TX1])
+      const twice = advanceBulkClassificationSession(once, [TX1])
+      expect(twice.classifiedTransactionIds).toEqual([TX1])
       expect(twice.remainingCount).toBe(1)
     })
 
     it('全件を記録すると残件数は 0 になり、中断してもその残件数が引き継がれる', () => {
-      const advanced = recordBulkClassificationProgress(inProgress(), [TX1, TX2])
+      const advanced = advanceBulkClassificationSession(inProgress(), [TX1, TX2])
       expect(advanced.remainingCount).toBe(0)
       expect(abortBulkClassificationSession(advanced, new Date()).remainingCount).toBe(0)
     })
 
+    it('一部だけ重なるバッチを続けて記録しても、集合として積み上がる', () => {
+      const once = advanceBulkClassificationSession(inProgress(), [TX1])
+      const twice = advanceBulkClassificationSession(once, [TX1, TX2])
+      expect(twice.classifiedTransactionIds).toEqual([TX1, TX2])
+      expect(twice.remainingCount).toBe(0)
+    })
+
+    it('1 回の呼び出しに重複が含まれていても 1 件として数える', () => {
+      const advanced = advanceBulkClassificationSession(inProgress(), [TX1, TX1])
+      expect(advanced.classifiedTransactionIds).toEqual([TX1])
+      expect(advanced.remainingCount).toBe(1)
+    })
+
+    it('空の記録では何も変わらない', () => {
+      const before = inProgress()
+      const advanced = advanceBulkClassificationSession(before, [])
+      expect(advanced.classifiedTransactionIds).toEqual([])
+      expect(advanced.remainingCount).toBe(before.remainingCount)
+    })
+
     it('対象に含まれない取引は分類済みにできない', () => {
-      expect(() => recordBulkClassificationProgress(inProgress(), [TX3])).toThrow()
+      expect(() => advanceBulkClassificationSession(inProgress(), [TX3])).toThrow(
+        /対象に含まれない取引/,
+      )
     })
 
     it('残件数が 対象取引数 - 分類済み取引数 と食い違う進行中は parse 失敗', () => {
@@ -161,10 +188,10 @@ describe('BulkClassificationSession 集約', () => {
           kind: 'in_progress',
           common: commonWithTwoTargets,
           startedAt: new Date(),
-          processedTransactionIds: [TX1],
+          classifiedTransactionIds: [TX1],
           remainingCount: 2,
         }),
-      ).toThrow()
+      ).toThrow(/残件数は 対象取引数 - 分類済み取引数/)
     })
 
     it('分類済み取引に重複があれば parse 失敗', () => {
@@ -173,10 +200,37 @@ describe('BulkClassificationSession 集約', () => {
           kind: 'in_progress',
           common: commonWithTwoTargets,
           startedAt: new Date(),
-          processedTransactionIds: [TX1, TX1],
+          classifiedTransactionIds: [TX1, TX1],
           remainingCount: 0,
         }),
-      ).toThrow()
+      ).toThrow(/分類済み取引に重複がある/)
+    })
+
+    it('新しい不変条件は進行中にだけ掛かる（中断は残件数の一致を求めない）', () => {
+      // 08b の 中断 = 開始日時 AND 中断日時 AND 残件数 で、分類済み取引IDを持たない
+      expect(() =>
+        BulkClassificationSessionSchema.parse({
+          kind: 'aborted',
+          common: commonWithTwoTargets,
+          startedAt: new Date(),
+          abortedAt: new Date(),
+          remainingCount: 5,
+        }),
+      ).not.toThrow()
+    })
+  })
+
+  describe('開始', () => {
+    it('開始直後は分類済みが空で、残件数が対象取引数と一致する', () => {
+      const started = startBulkClassificationSession({
+        bulkClassificationSessionId: common.bulkClassificationSessionId,
+        userId: common.userId,
+        trigger: { kind: 'transaction_list', startedAt: new Date('2026-08-01T00:00:00.000Z') },
+        targets: commonWithTwoTargets.targets as never,
+      })
+      expect(started.classifiedTransactionIds).toEqual([])
+      expect(started.remainingCount).toBe(2)
+      expect(started.startedAt).toEqual(new Date('2026-08-01T00:00:00.000Z'))
     })
   })
 })

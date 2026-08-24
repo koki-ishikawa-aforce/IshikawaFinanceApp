@@ -106,25 +106,30 @@ test.describe('AT-302: 取込サマリと一括分類セッション', () => {
     }
   })
 
-  test('AT-302-3b: 分類し終えた対象を進捗として記録すると残件数が減る', async ({ request }) => {
-    const res = await request.post(
+  test('AT-302-3b: 途中まで分類して離脱すると、続きに残るのは未分類のぶんだけ', async ({
+    request,
+  }) => {
+    const firstId = transactionIds[0] as string
+    const progressRes = await request.post(
       `${API_URL}/api/classification/bulk-sessions/${bulkSessionId}/progress`,
-      { headers: HEADERS, data: { transactionIds: transactionIds.slice(0, 1) } },
+      { headers: HEADERS, data: { transactionIds: [firstId] } },
     )
-    expect(res.status()).toBe(200)
+    expect(progressRes.status()).toBe(200)
 
-    const body = await res.json()
+    const body = await progressRes.json()
     expect(body.kind).toBe('in_progress')
-    expect(body.processedTransactionIds).toEqual(transactionIds.slice(0, 1))
+    expect(body.classifiedTransactionIds).toEqual([firstId])
     expect(body.remainingCount).toBe(transactionIds.length - 1)
 
-    // 同じ要求を再送しても残件数は二重に減らない
-    const again = await request.post(
-      `${API_URL}/api/classification/bulk-sessions/${bulkSessionId}/progress`,
-      { headers: HEADERS, data: { transactionIds: transactionIds.slice(0, 1) } },
-    )
-    expect(again.status()).toBe(200)
-    expect((await again.json()).remainingCount).toBe(transactionIds.length - 1)
+    // 離脱して取引一覧に戻った状態（進捗はサーバーに残っている）
+    const currentRes = await request.get(`${API_URL}/api/classification/bulk-sessions/current`, {
+      headers: HEADERS,
+    })
+    expect(currentRes.status()).toBe(200)
+    const { session } = await currentRes.json()
+    expect(session.common.bulkClassificationSessionId).toBe(bulkSessionId)
+    expect(session.classifiedTransactionIds).toEqual([firstId])
+    expect(session.remainingCount).toBe(transactionIds.length - 1)
   })
 
   test('AT-302-4: セッションを完了できる', async ({ request }) => {

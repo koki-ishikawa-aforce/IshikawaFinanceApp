@@ -5,6 +5,7 @@ import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   BulkClassificationSessionWireSchema,
+  type BulkClassificationTargetWire,
   type InProgressBulkClassificationSessionWire,
 } from '@/lib/api-schemas'
 
@@ -41,11 +42,33 @@ function session(
       })),
     },
     startedAt: '2026-07-24T00:00:00.000Z',
-    processedTransactionIds: [],
+    classifiedTransactionIds: [],
     remainingCount: targets.length,
   })
   if (parsed.kind !== 'in_progress') throw new Error('in_progress を期待')
   return parsed
+}
+
+/**
+ * 既定では「セッションの対象をそのまま提示し、引き継ぐ進捗は無し」で描画する。
+ * 再開の引き継ぎを見るテストだけが targets / classifiedTransactionIds を明示する。
+ */
+function ModalUnderTest(props: {
+  session: InProgressBulkClassificationSessionWire
+  targets?: BulkClassificationTargetWire[]
+  classifiedTransactionIds?: string[]
+  onClose: (reason: 'completed' | 'aborted' | 'left') => void
+}) {
+  return (
+    <BulkClassificationModal
+      session={props.session}
+      targets={props.targets ?? props.session.common.targets}
+      classifiedTransactionIds={
+        props.classifiedTransactionIds ?? props.session.classifiedTransactionIds
+      }
+      onClose={props.onClose}
+    />
+  )
 }
 
 function renderWithClient(element: ReactElement) {
@@ -121,7 +144,7 @@ describe('groupTargetsByMerchant', () => {
 describe('BulkClassificationModal', () => {
   it('加盟店ごとにまとめて表示し、同一加盟店の件数を示す', async () => {
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([
           { transactionId: 'TX1', merchantName: 'スーパーA' },
           { transactionId: 'TX2', merchantName: 'スーパーA' },
@@ -140,7 +163,7 @@ describe('BulkClassificationModal', () => {
 
   it('カテゴリ未選択では分類できず、押せない理由を画面に出す', async () => {
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([{ transactionId: 'TX1', merchantName: 'スーパーA' }])}
         onClose={vi.fn()}
       />,
@@ -157,7 +180,7 @@ describe('BulkClassificationModal', () => {
   it('経費(会社) は経費種別を選ぶまで分類できない', async () => {
     const user = userEvent.setup()
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([{ transactionId: 'TX1', merchantName: 'スーパーA' }])}
         onClose={vi.fn()}
       />,
@@ -177,7 +200,7 @@ describe('BulkClassificationModal', () => {
   it('同一加盟店の取引をすべて分類してから次の加盟店へ進む', async () => {
     const user = userEvent.setup()
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([
           { transactionId: 'TX1', merchantName: 'スーパーA' },
           { transactionId: 'TX2', merchantName: 'スーパーA' },
@@ -212,7 +235,7 @@ describe('BulkClassificationModal', () => {
   it('分類し終えた加盟店の取引をセッションの進捗として記録する', async () => {
     const user = userEvent.setup()
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([
           { transactionId: 'TX1', merchantName: 'スーパーA' },
           { transactionId: 'TX2', merchantName: 'スーパーA' },
@@ -233,10 +256,38 @@ describe('BulkClassificationModal', () => {
     )
   })
 
-  it('とばした加盟店は進捗に記録しない', async () => {
+  it('分類が全件終わってから進捗を送る（分類が失敗したら送らない）', async () => {
+    const user = userEvent.setup()
+    apiMock.apiMutate.mockImplementation((path: string) =>
+      path === '/api/transactions/TX2/classify'
+        ? Promise.reject(new Error('boom'))
+        : Promise.resolve({}),
+    )
+    renderWithClient(
+      <ModalUnderTest
+        session={session([
+          { transactionId: 'TX1', merchantName: 'スーパーA' },
+          { transactionId: 'TX2', merchantName: 'スーパーA' },
+        ])}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await classifyCurrentGroup(user)
+
+    // 2 件目が失敗したので、この加盟店は分類し終えていない
+    expect(await screen.findByRole('alert')).toHaveTextContent('分類の保存に失敗しました。')
+    expect(apiMock.apiMutate).not.toHaveBeenCalledWith(
+      '/api/classification/bulk-sessions/BCS_1/progress',
+      expect.anything(),
+      expect.anything(),
+    )
+  })
+
+  it('とばした加盟店は、次の加盟店を分類したときの進捗にも混ざらない', async () => {
     const user = userEvent.setup()
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([
           { transactionId: 'TX1', merchantName: 'スーパーA' },
           { transactionId: 'TX2', merchantName: 'カフェB' },
@@ -246,22 +297,30 @@ describe('BulkClassificationModal', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: 'この店舗はとばす' }))
-
     expect(await screen.findByText('カフェB')).toBeInTheDocument()
-    expect(apiMock.apiMutate).not.toHaveBeenCalledWith(
-      '/api/classification/bulk-sessions/BCS_1/progress',
-      expect.anything(),
-      expect.anything(),
+    await classifyCurrentGroup(user)
+
+    await waitFor(() =>
+      expect(apiMock.apiMutate).toHaveBeenCalledWith(
+        '/api/classification/bulk-sessions/BCS_1/progress',
+        { method: 'POST', body: { transactionIds: ['TX2'] } },
+        expect.anything(),
+      ),
     )
   })
 
-  it('進捗の記録に失敗しても分類は確定済みとして次の加盟店へ進む', async () => {
+  it('進捗の記録に失敗しても分類は確定済みとして次へ進み、次の記録で送り直す', async () => {
     const user = userEvent.setup()
-    apiMock.apiMutate.mockImplementation((path: string) =>
-      path.endsWith('/progress') ? Promise.reject(new Error('boom')) : Promise.resolve({}),
-    )
+    let progressCalls = 0
+    apiMock.apiMutate.mockImplementation((path: string) => {
+      if (path.endsWith('/progress')) {
+        progressCalls++
+        if (progressCalls === 1) return Promise.reject(new Error('boom'))
+      }
+      return Promise.resolve({})
+    })
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([
           { transactionId: 'TX1', merchantName: 'スーパーA' },
           { transactionId: 'TX2', merchantName: 'カフェB' },
@@ -272,8 +331,49 @@ describe('BulkClassificationModal', () => {
 
     await classifyCurrentGroup(user)
 
-    expect(await screen.findByText('カフェB')).toBeInTheDocument()
+    // 記録が失敗しても分類は確定済みなので、件数は巻き戻らずエラーも出さない
+    expect(await screen.findByText('2 / 2 店舗（分類済み 1 件）')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    await classifyCurrentGroup(user)
+
+    // 2 回目は累積を送るので、取りこぼした TX1 もここで記録される
+    await waitFor(() =>
+      expect(apiMock.apiMutate).toHaveBeenCalledWith(
+        '/api/classification/bulk-sessions/BCS_1/progress',
+        { method: 'POST', body: { transactionIds: ['TX1', 'TX2'] } },
+        expect.anything(),
+      ),
+    )
+  })
+
+  it('再開したセッションでは、引き継いだ分類済みも累積に含めて送る', async () => {
+    const user = userEvent.setup()
+    const full = session([
+      { transactionId: 'TX1', merchantName: 'スーパーA' },
+      { transactionId: 'TX2', merchantName: 'カフェB' },
+    ])
+    renderWithClient(
+      <ModalUnderTest
+        session={full}
+        targets={full.common.targets.filter(target => target.transactionId === 'TX2')}
+        classifiedTransactionIds={['TX1']}
+        onClose={vi.fn()}
+      />,
+    )
+
+    // 分類済みの件数はセッション全体で数える（開いた分だけではない）
+    expect(await screen.findByText('1 / 1 店舗（分類済み 1 件）')).toBeInTheDocument()
+
+    await classifyCurrentGroup(user)
+
+    await waitFor(() =>
+      expect(apiMock.apiMutate).toHaveBeenCalledWith(
+        '/api/classification/bulk-sessions/BCS_1/progress',
+        { method: 'POST', body: { transactionIds: ['TX1', 'TX2'] } },
+        expect.anything(),
+      ),
+    )
   })
 
   it('完了の件数は画面で数えた件数ではなくサーバーの処理件数を出す', async () => {
@@ -298,7 +398,7 @@ describe('BulkClassificationModal', () => {
       }
       return Promise.resolve({})
     })
-    renderWithClient(<BulkClassificationModal session={session(targets)} onClose={vi.fn()} />)
+    renderWithClient(<ModalUnderTest session={session(targets)} onClose={vi.fn()} />)
 
     await classifyCurrentGroup(user)
     await screen.findByText('カフェB')
@@ -335,7 +435,7 @@ describe('BulkClassificationModal', () => {
       }
       return Promise.resolve({})
     })
-    renderWithClient(<BulkClassificationModal session={session(targets)} onClose={vi.fn()} />)
+    renderWithClient(<ModalUnderTest session={session(targets)} onClose={vi.fn()} />)
 
     // 未分類理由も、加盟店ルールの学習に結び付かない理由がそのまま出る
     expect(screen.getByText('Amazon の注文と結び付けられませんでした')).toBeInTheDocument()
@@ -363,7 +463,7 @@ describe('BulkClassificationModal', () => {
       return Promise.resolve({})
     })
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([{ transactionId: 'TX1', merchantName: 'スーパーA' }])}
         onClose={vi.fn()}
       />,
@@ -402,7 +502,7 @@ describe('BulkClassificationModal', () => {
       }
       return Promise.resolve({})
     })
-    renderWithClient(<BulkClassificationModal session={empty} onClose={vi.fn()} />)
+    renderWithClient(<ModalUnderTest session={empty} onClose={vi.fn()} />)
 
     expect(
       screen.getByText('分類する取引が残っていません。このまとめて分類をおえてください。'),
@@ -420,7 +520,7 @@ describe('BulkClassificationModal', () => {
       return Promise.resolve({})
     })
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([{ transactionId: 'TX1', merchantName: 'スーパーA' }])}
         onClose={vi.fn()}
       />,
@@ -437,7 +537,7 @@ describe('BulkClassificationModal', () => {
   it('とばした加盟店は分類されない', async () => {
     const user = userEvent.setup()
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([
           { transactionId: 'TX1', merchantName: 'スーパーA' },
           { transactionId: 'TX2', merchantName: 'カフェB' },
@@ -460,7 +560,7 @@ describe('BulkClassificationModal', () => {
     const user = userEvent.setup()
     apiMock.apiMutate.mockRejectedValue(new Error('boom'))
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([
           { transactionId: 'TX1', merchantName: 'スーパーA' },
           { transactionId: 'TX2', merchantName: 'カフェB' },
@@ -487,7 +587,7 @@ describe('BulkClassificationModal', () => {
       return Promise.resolve({})
     })
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([
           { transactionId: 'TX1', merchantName: 'スーパーA' },
           { transactionId: 'TX2', merchantName: 'スーパーA' },
@@ -510,11 +610,36 @@ describe('BulkClassificationModal', () => {
     expect(screen.queryByText('カフェB')).not.toBeInTheDocument()
   })
 
+  it('やめる確認の件数には、とばした加盟店の取引も含まれる', async () => {
+    const user = userEvent.setup()
+    renderWithClient(
+      <ModalUnderTest
+        session={session([
+          { transactionId: 'TX1', merchantName: 'スーパーA' },
+          { transactionId: 'TX2', merchantName: 'カフェB' },
+          { transactionId: 'TX3', merchantName: '書店C' },
+        ])}
+        onClose={vi.fn()}
+      />,
+    )
+
+    // 1 店舗目をとばし、2 店舗目を分類する（とばした 1 件は未分類のまま残る）
+    await user.click(await screen.findByRole('button', { name: 'この店舗はとばす' }))
+    expect(await screen.findByText('カフェB')).toBeInTheDocument()
+    await classifyCurrentGroup(user)
+    expect(await screen.findByText('書店C')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'まとめて分類をやめる' }))
+
+    // 残るのは とばした TX1 と、まだ見ていない TX3 の 2 件
+    expect(screen.getByText(/まだ分類していない 2 件は未分類のままになり/)).toBeInTheDocument()
+  })
+
   it('「まとめて分類をやめる」でセッションを中断する', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([{ transactionId: 'TX1', merchantName: 'スーパーA' }])}
         onClose={onClose}
       />,
@@ -538,7 +663,7 @@ describe('BulkClassificationModal', () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([{ transactionId: 'TX1', merchantName: 'スーパーA' }])}
         onClose={onClose}
       />,
@@ -557,7 +682,7 @@ describe('BulkClassificationModal', () => {
     const onClose = vi.fn()
     apiMock.apiMutate.mockRejectedValue(new Error('boom'))
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([{ transactionId: 'TX1', merchantName: 'スーパーA' }])}
         onClose={onClose}
       />,
@@ -576,7 +701,7 @@ describe('BulkClassificationModal', () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     renderWithClient(
-      <BulkClassificationModal
+      <ModalUnderTest
         session={session([{ transactionId: 'TX1', merchantName: 'スーパーA' }])}
         onClose={onClose}
       />,

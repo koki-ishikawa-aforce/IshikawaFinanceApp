@@ -8,6 +8,7 @@ import {
   BulkClassificationSessionWireSchema,
   CurrentBulkSessionWireSchema,
   TransactionListWireSchema,
+  type BulkClassificationTargetWire,
   type InProgressBulkClassificationSessionWire,
 } from '@/lib/api-schemas'
 import { LuTriangleAlert } from '@/components/ui/icons'
@@ -16,6 +17,13 @@ import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './BulkClassificationEntry.module.css'
+
+/** モーダルへ渡す一組。集約は書き換えず、提示する残りと引き継ぐ進捗を別に持つ */
+interface OpenSession {
+  session: InProgressBulkClassificationSessionWire
+  targets: BulkClassificationTargetWire[]
+  classifiedTransactionIds: string[]
+}
 
 interface BulkClassificationEntryProps {
   /** 表示中の月。対象の未分類取引はこの月から集める */
@@ -45,9 +53,7 @@ export function BulkClassificationEntry({
   onFilterUnclassified,
 }: BulkClassificationEntryProps) {
   const queryClient = useQueryClient()
-  const [openSession, setOpenSession] = useState<InProgressBulkClassificationSessionWire | null>(
-    null,
-  )
+  const [openSession, setOpenSession] = useState<OpenSession | null>(null)
 
   const currentSessionQuery = useQuery({
     queryKey: ['classification', 'bulk-session', 'current'],
@@ -92,27 +98,37 @@ export function BulkClassificationEntry({
       )
     },
     onSuccess: async created => {
-      if (created.kind === 'in_progress') setOpenSession(created)
+      if (created.kind === 'in_progress') {
+        setOpenSession({
+          session: created,
+          targets: created.common.targets,
+          classifiedTransactionIds: created.classifiedTransactionIds,
+        })
+      }
       await queryClient.invalidateQueries({ queryKey: ['classification', 'bulk-session'] })
     },
   })
 
   const resume = useMutation({
-    mutationFn: async (target: InProgressBulkClassificationSessionWire) => {
+    mutationFn: async (target: InProgressBulkClassificationSessionWire): Promise<OpenSession> => {
       // 再開時は「もう分類した取引」を外し、まだ残っているものだけを提示する。
       // サーバーが記録した進捗（表示中の月に限らない）に加えて、このセッションの外で
-      // 分類された取引も一覧の状態から外す
+      // 分類された取引も一覧の状態から外す。
+      // 一覧が取れないと再開できないのは、分類済みの取引を未分類として出し直すと
+      // 既定値のまま確定されて既存の分類を上書きしうるため（そこは黙って諦めない）
       const listed = await apiFetch(`/api/transactions?month=${month}`, TransactionListWireSchema)
-      const doneIds = new Set<string>(target.processedTransactionIds)
+      const doneIds = new Set<string>(target.classifiedTransactionIds)
       for (const item of listed) {
         if (!item.isUnclassified) doneIds.add(item.transactionId)
       }
+      // 集約の対象に含まれる ID だけを引き継ぐ（対象外を進捗として送ると拒否される）
+      const classifiedTransactionIds = target.common.targets
+        .map(item => item.transactionId)
+        .filter(id => doneIds.has(id))
       return {
-        ...target,
-        common: {
-          ...target.common,
-          targets: target.common.targets.filter(item => !doneIds.has(item.transactionId)),
-        },
+        session: target,
+        targets: target.common.targets.filter(item => !doneIds.has(item.transactionId)),
+        classifiedTransactionIds,
       }
     },
     onSuccess: setOpenSession,
@@ -183,7 +199,9 @@ export function BulkClassificationEntry({
       {startBulk.error && <ErrorState>{startErrorMessage(startBulk.error)}</ErrorState>}
       {openSession && (
         <BulkClassificationModal
-          session={openSession}
+          session={openSession.session}
+          targets={openSession.targets}
+          classifiedTransactionIds={openSession.classifiedTransactionIds}
           onClose={() => {
             setOpenSession(null)
             void queryClient.invalidateQueries({ queryKey: ['classification', 'bulk-session'] })

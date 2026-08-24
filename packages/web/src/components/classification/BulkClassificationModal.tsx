@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { apiMutate, describeRequestFailure } from '@/lib/api-client'
+import { ApiError, apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   BulkClassificationSessionWireSchema,
   UnknownResponseSchema,
@@ -65,6 +65,14 @@ function initialInput(group: MerchantGroup): ClassificationInput {
 interface BulkClassificationModalProps {
   session: InProgressBulkClassificationSessionWire
   /**
+   * 提示する対象（再開時は分類済みを除いた残り）。
+   * 集約そのもの（`session.common.targets`）を組み替えて渡すと、
+   * 「残件数 = 対象取引数 - 分類済み取引数」を満たさない形が出回るため別に受け取る
+   */
+  targets: BulkClassificationTargetWire[]
+  /** この画面を開く前に既に分類済みだった対象（再開時の引き継ぎ。進捗の記録にも合流させる） */
+  classifiedTransactionIds: string[]
+  /**
    * 閉じたときの後始末。`reason` は呼び出し側がバナー表示を切り替えるために使う
    * - `completed` / `aborted`: セッションは終端状態になった
    * - `left`: 進行中のまま離脱した（再開できる）
@@ -82,10 +90,15 @@ interface BulkClassificationModalProps {
  * 状態の呼び名は 08b のライフサイクル（進行中 / 完了 / 中断）に 1 語ずつ対応させる:
  * 完了 =「おえる」、中断 =「やめる」、離脱 =「あとで続ける」。
  */
-export function BulkClassificationModal({ session, onClose }: BulkClassificationModalProps) {
+export function BulkClassificationModal({
+  session,
+  targets,
+  classifiedTransactionIds,
+  onClose,
+}: BulkClassificationModalProps) {
   const queryClient = useQueryClient()
   const masters = useMasters()
-  const groups = groupTargetsByMerchant(session.common.targets)
+  const groups = groupTargetsByMerchant(targets)
   const sessionId = session.common.bulkClassificationSessionId
 
   const [index, setIndex] = useState(0)
@@ -94,7 +107,10 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
       ? { categoryId: '', expenseClass: 'personal_darling' }
       : initialInput(groups[0]),
   )
-  const [classifiedCount, setClassifiedCount] = useState(0)
+  // このセッションで分類し終えた取引の累積。毎回まとめて送ることで、
+  // 一度の記録失敗が次の加盟店の確定で自然に回復する（記録は冪等）
+  const classifiedIdsRef = useRef<string[]>([...classifiedTransactionIds])
+  const [classifiedCount, setClassifiedCount] = useState(classifiedTransactionIds.length)
   const [learnedMerchantCount, setLearnedMerchantCount] = useState(0)
   const [completed, setCompleted] = useState<{ processedCount: number } | null>(null)
   const [confirmingAbort, setConfirmingAbort] = useState(false)
@@ -142,23 +158,30 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
         )
       }
       // 分類し終えた取引をセッションの進捗として残す。中断して再開したときに
-      // 残りだけを出せるようにするためで、同じ取引を再送しても残件数は二重に減らない。
-      // ここが失敗しても分類そのものは確定済みなので、進捗の記録漏れとして扱い先へ進む
-      // （再開時は取引の状態からも分類済みを外すため、二重に提示されることはない）
+      // 残りだけを出せるようにするため。ここが失敗しても分類そのものは確定済みなので
+      // 画面は止めず、累積を次の加盟店の確定でまとめて送り直す（記録は冪等）
+      classifiedIdsRef.current = [
+        ...new Set([...classifiedIdsRef.current, ...target.targets.map(i => i.transactionId)]),
+      ]
       try {
         await apiMutate(
           `/api/classification/bulk-sessions/${sessionId}/progress`,
-          { method: 'POST', body: { transactionIds: target.targets.map(i => i.transactionId) } },
+          { method: 'POST', body: { transactionIds: classifiedIdsRef.current } },
           UnknownResponseSchema,
         )
       } catch (e) {
-        console.warn('[bulk-classification] 進捗を記録できませんでした', e)
+        // 応答ボディには対象の加盟店名が載りうるため、原因の種別とセッションだけを残す
+        const cause = e instanceof ApiError ? `status=${e.status}` : 'network'
+        console.warn(
+          `[bulk-classification] 進捗を記録できませんでした（session=${sessionId}, ${cause}, ${classifiedIdsRef.current.length} 件）`,
+        )
       }
       return target
     },
-    onSuccess: async classified => {
-      setClassifiedCount(prev => prev + classified.targets.length)
-      if (learnsMerchantRule(classified.head.reason)) {
+    onSuccess: async () => {
+      setClassifiedCount(classifiedIdsRef.current.length)
+      const justClassified = groups[index]
+      if (justClassified !== undefined && learnsMerchantRule(justClassified.head.reason)) {
         setLearnedMerchantCount(prev => prev + 1)
       }
       await queryClient.invalidateQueries({ queryKey: ['transactions'] })
@@ -181,7 +204,9 @@ export function BulkClassificationModal({ session, onClose }: BulkClassification
   })
 
   const pending = classify.isPending || complete.isPending || abort.isPending
-  const remainingCount = groups.slice(index).reduce((sum, item) => sum + item.targets.length, 0)
+  // 中断すると未分類のまま残る件数。とばした加盟店もここに含める必要があるため、
+  // 「対象取引数 - 分類済み取引数」（サーバーの残件数と同じ定義）で数える
+  const remainingCount = session.common.targets.length - classifiedCount
 
   if (completed !== null) {
     return (

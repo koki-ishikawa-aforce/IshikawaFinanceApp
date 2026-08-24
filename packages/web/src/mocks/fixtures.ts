@@ -260,7 +260,7 @@ export function bulkClassificationSessionFixture(role: UserRole): unknown {
       })),
     },
     startedAt: '2026-07-24T01:00:00.000Z',
-    processedTransactionIds: [],
+    classifiedTransactionIds: [],
     remainingCount: own.length,
   }
 }

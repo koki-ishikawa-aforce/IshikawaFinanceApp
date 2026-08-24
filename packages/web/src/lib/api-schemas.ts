@@ -79,7 +79,7 @@ export const BulkClassificationSessionWireSchema = z.discriminatedUnion('kind', 
     common: BulkClassificationSessionCommonWire,
     startedAt: IsoDate,
     /** 分類済みとして記録済みの対象取引（再開時に残りだけを出すために使う） */
-    processedTransactionIds: z.array(z.string()).default([]),
+    classifiedTransactionIds: z.array(z.string()).default([]),
     remainingCount: z.number().int(),
   }),
   z.object({

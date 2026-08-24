@@ -35,7 +35,7 @@ function listItem(id: string, merchantName: string, isUnclassified: boolean): un
   }
 }
 
-function inProgressSession(targetIds: string[], processedTransactionIds: string[] = []): unknown {
+function inProgressSession(targetIds: string[], classifiedTransactionIds: string[] = []): unknown {
   return BulkClassificationSessionWireSchema.parse({
     kind: 'in_progress',
     common: {
@@ -54,8 +54,8 @@ function inProgressSession(targetIds: string[], processedTransactionIds: string[
       })),
     },
     startedAt: '2026-07-24T00:00:00.000Z',
-    processedTransactionIds,
-    remainingCount: targetIds.length - processedTransactionIds.length,
+    classifiedTransactionIds,
+    remainingCount: targetIds.length - classifiedTransactionIds.length,
   })
 }
 
@@ -221,8 +221,8 @@ describe('BulkClassificationEntry', () => {
 
     await user.click(await screen.findByRole('button', { name: 'まとめて分類を続ける' }))
 
-    // 残っている 1 店舗だけが提示される
-    expect(await screen.findByText('1 / 1 店舗（分類済み 0 件）')).toBeInTheDocument()
+    // 残っている 1 店舗だけが提示され、分類済みの件数はセッション全体で数える
+    expect(await screen.findByText('1 / 1 店舗（分類済み 1 件）')).toBeInTheDocument()
     expect(screen.getByText('店舗TX1')).toBeInTheDocument()
     expect(screen.queryByText('店舗TX2')).not.toBeInTheDocument()
   })
@@ -245,7 +245,7 @@ describe('BulkClassificationEntry', () => {
 
     await user.click(await screen.findByRole('button', { name: 'まとめて分類を続ける' }))
 
-    expect(await screen.findByText('1 / 1 店舗（分類済み 0 件）')).toBeInTheDocument()
+    expect(await screen.findByText('1 / 1 店舗（分類済み 1 件）')).toBeInTheDocument()
     expect(screen.queryByText('店舗TX2')).not.toBeInTheDocument()
   })
 
