@@ -32,7 +32,8 @@
         "gap",
         "row-gap",
         "column-gap",
-        "font-size"
+        "font-size",
+        "line-height"
       ],
       {
         "ignoreValues": [

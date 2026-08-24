@@ -123,7 +123,7 @@ function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
         <h2 id="import-confirm-title" className={ui.sectionTitle}>
           確定完了
         </h2>
-        <p className={styles.note}>
+        <p className={ui.noteSm}>
           {confirmResult.confirmedCount} 件を未分類取引として登録しました
           {confirmResult.alreadyConfirmedCount > 0 &&
             `（${confirmResult.alreadyConfirmedCount} 件は確定済みでした）`}
@@ -167,7 +167,7 @@ function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
       )}
       {candidates.length > 0 && (
         <>
-          <p className={styles.note}>
+          <p className={ui.noteSm}>
             チェックを外した行は確定から除外されます（{selectedIds.length} / {confirmable.length}{' '}
             件を確定）
           </p>
@@ -428,7 +428,7 @@ function ImportsPageContent() {
               : 'アップロード中...'
             : 'CSV / PDF ファイルを選択して取込'}
         </button>
-        <p className={styles.note}>
+        <p className={ui.noteSm}>
           CSV(.csv)と明細 PDF(.pdf)を取り込めます。PDF
           はアップロード後に明細を読み取るため、完了まで数分かかることがあります。
         </p>

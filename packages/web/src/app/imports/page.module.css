@@ -8,12 +8,6 @@
   min-height: 100dvh;
 }
 
-.note {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
 .hiddenInput {
   display: none;
 }

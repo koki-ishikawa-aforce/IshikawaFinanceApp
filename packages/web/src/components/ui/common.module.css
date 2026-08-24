@@ -18,14 +18,26 @@
 .note {
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
+}
+
+/**
+ * 補足文の大きさ違い。文字は `--text-sm`（既定の `.note` の `--text-xs` より一段大きい）で、
+ * 色・行間は `.note` と同じ。
+ *
+ * 操作の前に読ませたい説明や、取込・分類の結果を伝える複数行の文に使う。
+ * 太さは変えない（強調は `.warning` か見出しの側で持たせる）。
+ */
+.noteSm {
+  composes: note;
+  font-size: var(--text-sm);
 }
 
 /** 取り消せない操作・影響範囲を伴う操作の前に出す注意書き。`.note` より強く見せる */
 .warning {
   font-size: var(--text-xs);
   color: var(--error-text);
-  line-height: 1.6;
+  line-height: var(--leading-relaxed);
   background: rgba(255, 255, 255, 0.6);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-2_5);

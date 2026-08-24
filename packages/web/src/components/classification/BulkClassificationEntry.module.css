@@ -23,10 +23,3 @@
 .bannerIcon {
   flex-shrink: 0;
 }
-
-.note {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-secondary);
-  line-height: 1.5;
-}

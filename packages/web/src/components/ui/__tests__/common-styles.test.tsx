@@ -8,10 +8,10 @@ import { definesClass, findDuplicateClassDefinitions, listStylesheets } from '@/
  * 集約前は同じ見た目が設定ページと学習タブに別々に書かれており、片方だけ直しても
  * もう片方が古いまま残った。名前が同じ重複はここで機械的に止める。
  *
- * `.note`(補足文)は値の違う定義が 3 画面に残っているため、まだこのガードに載せられない
- * (統合するか別クラスにするかの判断は #473)。
+ * `.note`(補足文)は値の違う定義が 3 画面に残っていたが、大きさ違いを共通側の
+ * `.noteSm` として持たせて集約したためガードに載せている(#473)。
  */
-const CONSOLIDATED = ['warning', 'textButton', 'textButtonDanger'] as const
+const CONSOLIDATED = ['note', 'noteSm', 'warning', 'textButton', 'textButtonDanger'] as const
 
 const COMMON_CSS = 'common.module.css'
 

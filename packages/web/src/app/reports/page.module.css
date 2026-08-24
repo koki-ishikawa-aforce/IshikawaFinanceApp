@@ -58,5 +58,5 @@
 .finalizeNote {
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
