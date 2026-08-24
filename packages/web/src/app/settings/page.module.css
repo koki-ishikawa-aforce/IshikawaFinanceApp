@@ -19,6 +19,11 @@
 
 .tab {
   flex: 1 0 30%;
+  /* 文字は行の高さぶんしか無いので、押す受け皿を下限まで広げて中身を中央に置く（§4-3） */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
   padding: var(--space-1_5) 0;
   border: none;
   border-radius: var(--radius-md);
@@ -99,6 +104,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-1_5);
+  /* チェックボックス本体は小さく、行全体が押せる受け皿になる（§4-3） */
+  min-height: var(--tap-target-min);
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-secondary);
@@ -106,6 +113,11 @@
 }
 
 .onboardingLink {
+  /* `<a>` の既定は inline で下限が効かないため、受け皿になる表示形式を明示する（§4-3） */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
   text-align: center;
   font-size: var(--text-sm);
   font-weight: 700;

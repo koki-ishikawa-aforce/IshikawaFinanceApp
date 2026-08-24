@@ -910,6 +910,8 @@ function SettingsPageContent() {
           <button
             key={t.id}
             className={tab === t.id ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+            // 選択中は塗りの違いだけで伝えており、色に頼らない識別が要る（DESIGN.md §6）
+            aria-pressed={tab === t.id}
             onClick={() => setTab(t.id)}
           >
             {t.label}

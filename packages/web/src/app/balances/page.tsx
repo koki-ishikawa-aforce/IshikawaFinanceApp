@@ -280,6 +280,8 @@ export default function BalancesPage() {
                     ? `${styles.rangeButton} ${styles.rangeActive}`
                     : styles.rangeButton
                 }
+                // 選択中は塗りの違いだけで伝えており、色に頼らない識別が要る（DESIGN.md §6）
+                aria-pressed={rangeMonths === option.months}
                 onClick={() => setRangeMonths(option.months)}
               >
                 {option.label}

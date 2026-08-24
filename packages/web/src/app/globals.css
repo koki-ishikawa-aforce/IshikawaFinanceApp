@@ -52,6 +52,13 @@ textarea {
   /* タップターゲットの下限（docs/design/usability.md 4-3。padding ではなく min-height で保証する） */
   --tap-target-min: 44px;
 
+  /*
+   * 下部固定ナビ（AppNav）の実高。項目の下限 + ナビ自身の上下パディングで決まる。
+   * body の逃げ（padding-bottom）と取引追加ボタンの位置がこの値に依存するため、
+   * AppNav.module.css の .nav と別々に持たず、ここ 1 か所から導く
+   */
+  --app-nav-height: calc(var(--tap-target-min) + var(--space-1_5) + var(--space-2));
+
   /* Border radius (§2.4) */
   --radius-sm: 8px;
   --radius-md: 10px;
@@ -169,5 +176,5 @@ body {
 
 /* 下部固定ナビゲーション（AppNav）と重ならない余白 */
 body {
-  padding-bottom: var(--space-14);
+  padding-bottom: var(--app-nav-height);
 }

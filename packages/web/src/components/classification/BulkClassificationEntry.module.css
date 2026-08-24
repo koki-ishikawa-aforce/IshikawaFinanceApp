@@ -9,6 +9,8 @@
   flex-direction: row;
   align-items: center;
   gap: var(--space-1_5);
+  /* 未分類一覧への導線。器の `ui.card` より内側の余白に上書きしているぶん背が低い（§4-3） */
+  min-height: var(--tap-target-min);
   border: none;
   color: var(--warning-muted);
   font-size: var(--text-sm);

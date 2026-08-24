@@ -3,8 +3,16 @@
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 100%;
-  max-width: 300px;
+  /*
+   * 項目それぞれがタップ下限（44px、usability §4-3）の幅を確保できるよう、
+   * 幅は項目数ぶんの下限に合わせて伸ばす（従来は 300px 固定で 7 項目が 41px まで痩せていた）。
+   * その結果ナビは約 316px（44px × 7 + 左右の余白）になり、本文カラム（各画面の .main は
+   * 300px）より左右へ張り出す。position: fixed なので max-width の基準はビューポートで、
+   * 画面幅が 316px を下回るときだけ頭打ちになる（項目の min-width は縮まないため、
+   * それより狭い端末では横に溢れる。実機の縦幅 360px 以上では起きない）。
+   */
+  width: fit-content;
+  max-width: 100%;
   display: flex;
   justify-content: space-between;
   background: rgba(255, 255, 255, 0.85);
@@ -20,10 +28,20 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: var(--space-0_5);
   text-decoration: none;
+  /*
+   * `<a>` に色を書かないとアイコン（currentColor で描く）がブラウザ既定のリンク色に
+   * なり、両テーマとも青（rgb(0,0,238)）でラベルと食い違っていた。ラベル（.label）と
+   * 同じテーマ色に揃える
+   */
+  color: var(--text-primary);
   border-radius: var(--radius-sm);
   padding: var(--space-1) 0;
+  /* アイコンとラベルの合計では下限に届かないため、縦横とも受け皿として確保する（§4-3） */
+  min-height: var(--tap-target-min);
+  min-width: var(--tap-target-min);
   opacity: 0.55;
   transition: opacity 0.15s;
 }

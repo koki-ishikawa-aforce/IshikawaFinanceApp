@@ -18,6 +18,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-1_5);
+  /* チェックボックス本体は小さく、行全体が押せる受け皿になる（§4-3） */
+  min-height: var(--tap-target-min);
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-secondary);
@@ -75,7 +77,8 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1_5);
+  /* 行が 44px の的になったぶん、並んだ的の間隔の下限（usability §4-4）を満たす */
+  gap: var(--space-2);
 }
 
 .item {
@@ -83,6 +86,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* 取引 1 件ぶんの行。中身が 1 行に収まる取引でも押せる高さを割らない（§4-3） */
+  min-height: var(--tap-target-min);
   gap: var(--space-2);
   border: none;
   border-radius: var(--radius-card);
@@ -145,8 +150,15 @@
   justify-content: center;
   position: fixed;
   right: calc(50% - 150px + 12px);
-  bottom: 66px;
-  /* 円形のアイコンボタン。タップ領域の下限をそのまま大きさにする */
+  /* ナビの上に --space-2 の隙間（usability §4-4）を空けて浮かせる */
+  bottom: calc(var(--app-nav-height) + var(--space-2));
+  /*
+   * 円形のアイコンボタン。タップ領域の下限をそのまま大きさにする。
+   * 大きさを固定する `width` / `height` は下限の宣言として走査されないため、
+   * 下限そのものも併記してガード（src/test/tap-target.test.ts）の対象に入れる
+   */
+  min-width: var(--tap-target-min);
+  min-height: var(--tap-target-min);
   width: var(--tap-target-min);
   height: var(--tap-target-min);
   border: none;

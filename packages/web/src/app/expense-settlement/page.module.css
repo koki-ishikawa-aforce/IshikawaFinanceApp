@@ -20,6 +20,8 @@
 }
 
 .smallButton {
+  /* 中身の上下中央寄せは `ui.iconLabel`（inline-flex）が担うので、ここは下限だけ足す（§4-3） */
+  min-height: var(--tap-target-min);
   border: none;
   border-radius: var(--radius-sm);
   background: var(--accent);

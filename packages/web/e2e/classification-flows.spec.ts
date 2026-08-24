@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { hideDevOverlay, waitForAppFonts } from './fonts'
+import { hideDevOverlay, waitForAppFonts, waitForDataLoaded } from './fonts'
 import { mockRoleQuery } from './screens'
 
 /**
@@ -14,7 +14,7 @@ const MERCHANT_COUNT = { darling: 3, honey: 2 } as const
 
 for (const theme of ['darling', 'honey'] as const) {
   test(`bulk classification - ${theme} theme`, async ({ page }) => {
-    await page.goto(`/transactions${mockRoleQuery(theme)}`)
+    const response = await page.goto(`/transactions${mockRoleQuery(theme)}`)
 
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     await page.getByRole('button', { name: '未分類をまとめて分類する' }).click()
@@ -24,6 +24,7 @@ for (const theme of ['darling', 'honey'] as const) {
       dialog.getByText(`1 / ${MERCHANT_COUNT[theme]} 店舗（分類済み 0 件）`),
     ).toBeVisible()
     await page.waitForLoadState('networkidle')
+    await waitForDataLoaded(page, response)
     await waitForAppFonts(page)
     await hideDevOverlay(page)
 
@@ -31,7 +32,7 @@ for (const theme of ['darling', 'honey'] as const) {
   })
 
   test(`retroactive reclassification - ${theme} theme`, async ({ page }) => {
-    await page.goto(`/transactions${mockRoleQuery(theme)}`)
+    const response = await page.goto(`/transactions${mockRoleQuery(theme)}`)
 
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     await page.getByRole('button', { name: /ドラッグストアA/ }).click()
@@ -45,6 +46,7 @@ for (const theme of ['darling', 'honey'] as const) {
       dialog.getByText(/過去にも未分類の「ドラッグストアA」の取引が 2 件あります/),
     ).toBeVisible()
     await page.waitForLoadState('networkidle')
+    await waitForDataLoaded(page, response)
     await waitForAppFonts(page)
     await hideDevOverlay(page)
 

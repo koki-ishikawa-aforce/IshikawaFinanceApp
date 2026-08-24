@@ -38,6 +38,21 @@ describe('LoadingState', () => {
     expect(screen.getByRole('status')).toHaveTextContent('読み込み中...')
   })
 
+  it('取得中を機械的に待てるよう data-loading の目印を持つ', () => {
+    // e2e/fonts.ts の waitForDataLoaded は「[data-loading] が 0 件になる」で待つ。目印を
+    // 消しても待ちは即座に成立して緑になるため、目印そのものはここで固定する
+    const { container } = render(<LoadingState />)
+
+    expect(container.querySelector('[data-loading]')).toBeInTheDocument()
+  })
+
+  it('announce={false} でも目印は残す', () => {
+    // 読み上げの有無と、撮影前に取得の完了を待てるかは別の話
+    const { container } = render(<LoadingState announce={false} />)
+
+    expect(container.querySelector('[data-loading]')).toBeInTheDocument()
+  })
+
   it('announce={false} のときは live region にしない', () => {
     // 呼び出し側が常時マウントの live region を持つ場合、入れ子にすると二重に読まれる
     render(<LoadingState announce={false} />)

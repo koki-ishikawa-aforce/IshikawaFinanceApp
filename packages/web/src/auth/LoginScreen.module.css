@@ -25,7 +25,11 @@
 }
 
 .loginButton {
-  display: inline-block;
+  /* inline-block のままでは中身が上に寄るため、下限を足すのに合わせて中央寄せにする（§4-3） */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
   padding: var(--space-3) var(--space-8);
   font-size: var(--text-lg);
   font-weight: 500;
