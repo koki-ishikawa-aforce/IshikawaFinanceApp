@@ -22,6 +22,23 @@ test('ダッシュボードが描画され、ナビが表示される', async ({
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'darling')
 })
 
+/**
+ * 撮影中の「今」が固定されていること(#506)。
+ *
+ * これを確かめないと、固定日時の受け渡し(playwright.config.ts → next.config.ts の env →
+ * ブラウザ / SSR)がどこかで切れても誰も気づけない。切れたときに起きるのは「月ラベルが
+ * 実時刻に戻る」だけで、そのずれは maxDiffPixelRatio の許容量に吸収されて基準画像の
+ * 比較は緑のまま通る — この PR が無くしたはずの失敗そのものに静かに戻る。
+ *
+ * 期待値は設定から導かず、リテラルで書く。導くと設定を書き換えたとき期待値も一緒に
+ * 動いてしまい、固定が外れたことを検知できない。
+ */
+test('撮影中の「今」が 2026 年 7 月に固定されている', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.getByText('2026年7月')).toBeVisible()
+})
+
 test('?mockRole=honey で honey テーマに切り替わる', async ({ page }) => {
   await page.goto('/?mockRole=honey')
 

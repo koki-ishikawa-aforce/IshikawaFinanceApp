@@ -7,6 +7,15 @@ import {
   getCurrentMonth,
   shiftMonth,
 } from '../month'
+import { now } from '../now'
+
+// 「今」の取り方は now() の責務なので、ここでは差し替えられる形にして委譲だけを見る
+// (環境変数の名前など now() の内側の取り決めをこのファイルに持ち込まない)。
+// 既定では本物に委ねるため、偽の時計を使う下のテストはそのまま動く
+vi.mock('../now', async importOriginal => {
+  const actual = await importOriginal<typeof import('../now')>()
+  return { now: vi.fn(actual.now) }
+})
 
 const ym = (value: string) => YearMonthSchema.parse(value)
 
@@ -25,6 +34,30 @@ describe('getCurrentMonth', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-03-01T00:00:00'))
     expect(getCurrentMonth()).toBe('2026-03')
+  })
+
+  // 月の境界は JST で決まる(usability 5-4)。UTC 基準で判定すると、月末の 15:00Z 以降に
+  // 開いた画面だけ前月のままになる
+  it('JST で月が替わる瞬間から翌月を返す', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-31T15:00:00.000Z'))
+    expect(getCurrentMonth()).toBe('2026-08')
+  })
+
+  it('JST で月が替わる 1 分前はまだ当月を返す', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-31T14:59:00.000Z'))
+    expect(getCurrentMonth()).toBe('2026-07')
+  })
+
+  // 見た目の自動チェックは「当月」で表示が変わる画面を撮る(#506)。委譲が切れると、
+  // 固定した日時がここまで届かず、月が替わるたび基準画像がずれる状態に戻る
+  it('「今」の取得を now() に委ねる', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-24T10:00:00+09:00'))
+    vi.mocked(now).mockReturnValueOnce(new Date('2026-07-24T12:00:00+09:00'))
+
+    expect(getCurrentMonth()).toBe('2026-07')
   })
 })
 
