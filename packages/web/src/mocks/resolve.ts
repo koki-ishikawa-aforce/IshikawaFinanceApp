@@ -143,6 +143,10 @@ export function resolveMock(method: string, path: string): unknown {
     if (pathname === '/api/classification/retroactive-candidates/apply') {
       return retroactiveApplyResultFixture()
     }
+    if (/^\/api\/classification\/bulk-sessions\/[^/]+\/progress$/.test(pathname)) {
+      // 進捗はサーバー状態なので、モック起動モードでは記録前のセッションをそのまま返す
+      return bulkClassificationSessionFixture(getMockRole())
+    }
     if (/^\/api\/classification\/bulk-sessions\/[^/]+\/complete$/.test(pathname)) {
       return bulkClassificationCompletedFixture(getMockRole())
     }

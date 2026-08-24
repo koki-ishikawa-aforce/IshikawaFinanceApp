@@ -3,7 +3,6 @@ import { z } from 'zod'
 import {
   BulkClassificationCompletedSchema,
   BulkClassificationSessionIdSchema,
-  BulkClassificationSessionSchema,
   ClassifiedDetailsSchema,
   ImportJobIdSchema,
   InvariantViolationError,
@@ -18,17 +17,21 @@ import {
   disableMerchantLearning,
   MerchantLearningDisabledSchema,
   MerchantLearningReenabledSchema,
+  advanceBulkClassificationSession,
   reenableMerchantLearning,
+  startBulkClassificationSession,
 } from '@warimaru/domain'
 import type {
   ActiveMerchantLearningRule,
   BulkClassificationSession,
+  BulkClassificationSessionId,
   BulkClassificationSessionRepository,
   ClassifiedDetails,
   EventBus,
   InProgressBulkClassificationSession,
   MerchantLearningRuleRepository,
   RetroactiveCandidateQuery,
+  TransactionId,
   TransactionRepository,
   UserId,
   UserRole,
@@ -54,8 +57,20 @@ const BulkSessionCreateBodySchema = z.object({
   trigger: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('csv_import'), importJobId: ImportJobIdSchema }),
     z.object({ kind: z.literal('single_correction'), transactionId: TransactionIdSchema }),
+    z.object({ kind: z.literal('transaction_list') }),
   ]),
-  transactionIds: z.array(TransactionIdSchema).min(1),
+  // 対象の重複は「残件数 = 対象取引数 - 分類済み取引数」を永遠に 0 にできなくする
+  // （分類済みは集合なので重複ぶんが埋まらない）ため、入口で弾く
+  transactionIds: z
+    .array(TransactionIdSchema)
+    .min(1)
+    .refine(ids => new Set(ids).size === ids.length, { message: '対象取引の重複は指定できない' }),
+})
+
+const BulkSessionProgressBodySchema = z.object({
+  // 1 回の記録は分類し終えた 1 加盟店ぶんなので、実際は数件で足りる。
+  // 巨大な配列の parse でメモリ・CPU を使わせないよう上限を宣言する
+  transactionIds: z.array(TransactionIdSchema).min(1).max(1000),
 })
 
 export interface ClassificationRoutesDeps {
@@ -105,6 +120,25 @@ function assertInProgress(
       `進行中でないセッションは操作できない（現状態: ${session.kind}）`,
     )
   }
+}
+
+/**
+ * 進行中セッションを「存在・所有者・進行中」の 3 点を確かめたうえで取り出す。
+ *
+ * 所有権はリソース単位の判定でミドルウェアには寄せられないため、セッションを
+ * 変更するハンドラは必ずこの関数経由で取得する（ハンドラごとに 3 行を書き写すと、
+ * 1 行落としたときに認可の抜け道になる）。
+ */
+async function loadOwnedInProgressSession(
+  repository: BulkClassificationSessionRepository,
+  id: BulkClassificationSessionId,
+  viewerId: UserId,
+): Promise<InProgressBulkClassificationSession> {
+  const session = await repository.findById(id)
+  if (session === null) throw new NotFoundError('BulkClassificationSession', id)
+  assertSessionOwnedByViewer(session, viewerId)
+  assertInProgress(session)
+  return session
 }
 
 export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEnv> {
@@ -272,16 +306,11 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
         defaultExpenseClass: transaction.defaultExpenseClass,
       })
     }
-    const session = BulkClassificationSessionSchema.parse({
-      kind: 'in_progress',
-      common: {
-        bulkClassificationSessionId: BulkClassificationSessionIdSchema.parse(newUlid()),
-        userId: viewerId,
-        trigger: { ...body.trigger, startedAt: now },
-        targets,
-      },
-      startedAt: now,
-      remainingCount: targets.length,
+    const session = startBulkClassificationSession({
+      bulkClassificationSessionId: BulkClassificationSessionIdSchema.parse(newUlid()),
+      userId: viewerId,
+      trigger: { ...body.trigger, startedAt: now },
+      targets,
     })
     await deps.bulkClassificationSessionRepository.save(session)
     return c.json(session, 201)
@@ -303,14 +332,54 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
     return c.json(session)
   })
 
+  /**
+   * 一括分類セッションの進捗記録（分類し終えた対象を残件数から差し引く）
+   *
+   * 08b: 進行中の残件数はセッションの状態なので、途中経過はサーバーに残す。
+   *
+   * 記録するのは「実際に分類済みになっている取引」だけで、申告をそのままは
+   * 信じない（完了時の処理件数を実状態から数え直しているのと同じ導出。残件数は
+   * 中断状態にも引き継がれるため、申告だけで 0 にできると意味が崩れる）。
+   * まだ未分類の取引は無視して 200 を返す — 画面は通信の失敗に備えて
+   * 「このセッションで分類し終えた累積」を毎回送るので、その時点でまだ
+   * 分類されていないものが混じるのは異常ではない。
+   *
+   * 再送しても二重に減算されない（advanceBulkClassificationSession が冪等）ため、
+   * 通信の失敗で同じ要求が繰り返されても残件数は壊れない。
+   */
+  app.post('/bulk-sessions/:id/progress', async c => {
+    const id = BulkClassificationSessionIdSchema.parse(c.req.param('id'))
+    const body = BulkSessionProgressBodySchema.parse(await c.req.json())
+    const session = await loadOwnedInProgressSession(
+      deps.bulkClassificationSessionRepository,
+      id,
+      c.get('viewerId'),
+    )
+    // 対象取引かどうかの判定は domain の不変条件が正なので、api では絞り込まずに渡す
+    // （対象外の ID はそこで弾かれる）。対象のうち「まだ未分類のもの」だけを落とす
+    const targetIds = new Set<string>(session.common.targets.map(target => target.transactionId))
+    const toRecord: TransactionId[] = []
+    for (const transactionId of body.transactionIds) {
+      if (!targetIds.has(transactionId)) {
+        toRecord.push(transactionId)
+        continue
+      }
+      const transaction = await deps.transactionRepository.findById(transactionId)
+      if (transaction !== null && transaction.kind !== 'unclassified') toRecord.push(transactionId)
+    }
+    const advanced = advanceBulkClassificationSession(session, toRecord)
+    await deps.bulkClassificationSessionRepository.save(advanced)
+    return c.json(advanced)
+  })
+
   /** 一括分類セッションの完了（processedCount は対象取引の実状態から算出する） */
   app.post('/bulk-sessions/:id/complete', async c => {
     const id = BulkClassificationSessionIdSchema.parse(c.req.param('id'))
-    const viewerId = c.get('viewerId')
-    const session = await deps.bulkClassificationSessionRepository.findById(id)
-    if (session === null) throw new NotFoundError('BulkClassificationSession', id)
-    assertSessionOwnedByViewer(session, viewerId)
-    assertInProgress(session)
+    const session = await loadOwnedInProgressSession(
+      deps.bulkClassificationSessionRepository,
+      id,
+      c.get('viewerId'),
+    )
     let processedCount = 0
     for (const target of session.common.targets) {
       const transaction = await deps.transactionRepository.findById(target.transactionId)
@@ -335,11 +404,11 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
   /** 一括分類セッションの中断 */
   app.post('/bulk-sessions/:id/abort', async c => {
     const id = BulkClassificationSessionIdSchema.parse(c.req.param('id'))
-    const viewerId = c.get('viewerId')
-    const session = await deps.bulkClassificationSessionRepository.findById(id)
-    if (session === null) throw new NotFoundError('BulkClassificationSession', id)
-    assertSessionOwnedByViewer(session, viewerId)
-    assertInProgress(session)
+    const session = await loadOwnedInProgressSession(
+      deps.bulkClassificationSessionRepository,
+      id,
+      c.get('viewerId'),
+    )
     const aborted = abortBulkClassificationSession(session, new Date())
     await deps.bulkClassificationSessionRepository.save(aborted)
     return c.json(aborted)
