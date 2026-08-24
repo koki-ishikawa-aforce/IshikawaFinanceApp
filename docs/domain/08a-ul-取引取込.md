@@ -247,9 +247,11 @@ behavior Amazon注文確認メール本文をパースする = Amazon注文確�
 
 // --- 重複検出（ACL の責務） ---
 
-behavior メールの重複を判定する = Gmail_message_ID -> 重複判定結果
+behavior メールの重複を判定する = ユーザーID AND Gmail_message_ID -> 重複判定結果
 // 事前: 過去 5 日以前のメール再スキャンで再取得された可能性がある
-// 事後: Gmail message ID 一致なら 重複あり、なければ 重複なし
+// 事後: 同一ユーザー内で Gmail message ID 一致なら 重複あり、なければ 重複なし
+//       （Gmail message ID は受信箱ごとの採番でアカウント間の一意性を保証しないため、
+//        判定と DB の一意制約を「利用者 + メールの番号」で閉じる。#487）
 
 behavior CSV取引の重複を判定する = CSVから抽出した取引候補 AND 既存取引候補リスト -> 重複判定結果
 // 事前: CSV 取込で抽出された取引候補

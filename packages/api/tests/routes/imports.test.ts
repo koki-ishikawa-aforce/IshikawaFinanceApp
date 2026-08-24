@@ -451,6 +451,7 @@ describe('POST /api/imports/mail-batch', () => {
     expect(json.result).toMatchObject({ status: 'completed', importedCount: 1 })
     expect(json.batch.kind).toBe('completed')
     const candidate = await deps.transactionCandidateRepository.findByGmailMessageId(
+      VIEWER_ID,
       GmailMessageIdSchema.parse('gmail-route-1'),
     )
     expect(candidate?.common.merchantName).toBe('スーパーA')

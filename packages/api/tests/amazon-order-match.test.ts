@@ -170,6 +170,7 @@ async function seedCardUsageCandidate(
 
 async function candidateOf(t: TestApp, gmailMessageId: string): Promise<TransactionCandidate> {
   const found = await t.deps.transactionCandidateRepository.findByGmailMessageId(
+    VIEWER_ID,
     GmailMessageIdSchema.parse(gmailMessageId),
   )
   if (found === null) throw new Error(`取引候補が見つからない（${gmailMessageId}）`)
@@ -524,6 +525,7 @@ describe('Amazon 注文突合: 双方向 3 日のタイムアウト', () => {
     expect(outcome.amazonMatch).toMatchObject({ parsedCount: 1, expiredCount: 1, pendingCount: 0 })
     expect(
       await t.deps.transactionCandidateRepository.findByGmailMessageId(
+        VIEWER_ID,
         GmailMessageIdSchema.parse('gm_amz_expired'),
       ),
     ).toBeNull()

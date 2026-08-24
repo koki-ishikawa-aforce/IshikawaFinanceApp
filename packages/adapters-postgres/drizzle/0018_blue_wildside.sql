@@ -1,0 +1,2 @@
+DROP INDEX "idx_transaction_candidates_gmail_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_transaction_candidates_user_gmail_unique" ON "transaction_candidates" USING btree ("user_id","gmail_message_id") WHERE "transaction_candidates"."gmail_message_id" IS NOT NULL;

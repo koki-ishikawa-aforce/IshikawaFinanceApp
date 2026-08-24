@@ -5,7 +5,8 @@
  * - gmail_message_id の昇格元は importSource の 2 kind（スキーマ docstring 参照）
  * - findByTripleMatch の「発生日」は JST 暦日（§3 の月境界規約の暦日版）。
  *   save 時の occurred_on 導出と検索時のパラメータ変換に同じ関数を使う
- * - メール重複除外は partial unique が最終保証（violation は InvariantViolationError へ翻訳）
+ * - メール重複除外は (user_id, gmail_message_id) の partial unique が最終保証（#487）。
+ *   violation は InvariantViolationError へ翻訳
  */
 import { and, asc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm'
 import type {
@@ -51,12 +52,20 @@ export class PostgresTransactionCandidateRepository implements TransactionCandid
     return parsePayload(TransactionCandidateSchema, row.payload)
   }
 
-  async findByGmailMessageId(gmailMessageId: GmailMessageId): Promise<TransactionCandidate | null> {
-    // partial unique により 0..1 行
+  async findByGmailMessageId(
+    userId: UserId,
+    gmailMessageId: GmailMessageId,
+  ): Promise<TransactionCandidate | null> {
+    // (user_id, gmail_message_id) の partial unique により 0..1 行（#487）
     const rows = await this.db
       .select({ payload: transactionCandidates.payload })
       .from(transactionCandidates)
-      .where(eq(transactionCandidates.gmailMessageId, gmailMessageId))
+      .where(
+        and(
+          eq(transactionCandidates.userId, userId),
+          eq(transactionCandidates.gmailMessageId, gmailMessageId),
+        ),
+      )
       .limit(1)
     const row = rows[0]
     if (row === undefined) return null
@@ -187,7 +196,7 @@ export class PostgresTransactionCandidateRepository implements TransactionCandid
     } catch (e) {
       if (isUniqueViolation(e)) {
         throw new InvariantViolationError(
-          `同一 Gmail メッセージ由来の取引候補は 1 件のみ（重複除外の閉包）: ${row.gmailMessageId ?? ''}`,
+          `同一利用者・同一 Gmail メッセージ由来の取引候補は 1 件のみ（重複除外の閉包）: ${row.userId}/${row.gmailMessageId ?? ''}`,
           e,
         )
       }

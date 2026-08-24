@@ -413,7 +413,13 @@ export async function runDailyMailImportForUser(
   try {
     for (const mail of fetched.smbcMails) {
       processing = mail.gmailMessageId
-      const judgment = await judgeDuplication(deps, mail.gmailMessageId, seenInBatch, at)
+      const judgment = await judgeDuplication(
+        deps,
+        params.userId,
+        mail.gmailMessageId,
+        seenInBatch,
+        at,
+      )
       if (judgment.kind !== 'not_duplicate') {
         duplicateExcludedCount++
         await publishDuplicateExcluded(deps, judgment, at)
@@ -553,17 +559,23 @@ export async function runDailyMailImportForUser(
  * メールの重複を判定する（08a §2「メールの重複を判定する」）。
  *
  * 保存済みの候補との一致と、同一バッチ内で同じメールが 2 度返った場合の一致を、どちらも
- * Gmail message ID で見る。既存候補が判明した場合は判定結果にその候補 ID を載せる
+ * Gmail message ID で見る。保存済み候補の照合は取込対象の利用者に閉じる（#487。Gmail
+ * message ID はアカウント間の一意性を保証しないため、相手の同番号メールを重複と誤判定しない）。
+ * 既存候補が判明した場合は判定結果にその候補 ID を載せる
  * （重複除外イベントの主体を「どのメールか」ではなく「どの候補と重なったか」で残せる）。
  */
 async function judgeDuplication(
   deps: DailyMailImportDeps,
+  userId: UserId,
   gmailMessageId: GmailMessageId,
   seenInBatch: ReadonlySet<GmailMessageId>,
   at: Date,
 ): Promise<DuplicationJudgment | { kind: 'in_batch_duplicate'; gmailMessageId: GmailMessageId }> {
   if (seenInBatch.has(gmailMessageId)) return { kind: 'in_batch_duplicate', gmailMessageId }
-  const existing = await deps.transactionCandidateRepository.findByGmailMessageId(gmailMessageId)
+  const existing = await deps.transactionCandidateRepository.findByGmailMessageId(
+    userId,
+    gmailMessageId,
+  )
   return DuplicationJudgmentSchema.parse(
     existing === null
       ? { kind: 'not_duplicate', detectedAt: at }
@@ -650,6 +662,7 @@ async function createCardUsageCandidate(
   } catch (e) {
     if (e instanceof InvariantViolationError) {
       const concurrent = await deps.transactionCandidateRepository.findByGmailMessageId(
+        userId,
         parsed.gmailMessageId,
       )
       if (concurrent !== null) {
