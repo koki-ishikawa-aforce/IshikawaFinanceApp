@@ -11,6 +11,7 @@
  *    （Repository.findInProgressByUser で保証、Phase 5 M-B）
  *  - 完了・失敗の終端状態からは遷移しない（終端からの遷移関数を提供しない）
  *  - 取込対象期間は from < to（過去 5 日再走査、OQ-31）
+ *  - 手動実行は直前の実行からクールダウンを空ける（#489。`judgeManualMailImportCooldown`）
  */
 import { z } from 'zod'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
@@ -117,6 +118,67 @@ export function completeBatch(
     completedAt: at,
     ...counts,
   }) as CompletedImportBatch
+}
+
+/**
+ * 手動実行（`POST /api/imports/mail-batch`）を受け付けない期間の長さ。
+ *
+ * 日次の自動起動には掛けない。手で叩いたときだけの制限で、狙いは 2 つある:
+ *  - 実行中に重ねて叩かれると、進行中バッチを引き継ぐ経路（`findInProgressByUser` で拾って
+ *    再開する）に 2 つの実行が同時に乗り、同じバッチ記録を両方が書き換える
+ *  - 本番の前段（API Gateway 想定）は 30 秒前後で応答を切るため、実行した人には「失敗した」
+ *    ように見える。処理自体は続いているので、そこで叩き直すと上の状態になりやすい
+ *
+ * 長さは「1 回の取込が終わるのに掛かる時間」より長く取る（Gmail の取得だけで最大 2 分、
+ * 候補の保存を含めて数分）。これより長く走り続けている実行はクールダウンを過ぎた再実行と
+ * 重なりうるが、その場合も同じメールから取引候補が二重に作られることは Gmail message ID の
+ * 一意制約が防ぐ（重なるのはバッチ記録の書き換えまで）。
+ */
+export const MANUAL_MAIL_IMPORT_COOLDOWN_MS = 10 * 60 * 1000
+
+/** 手動実行を受け付けてよいかの判定。待つ必要があるときは残り時間を持つ */
+export type ManualMailImportCooldownJudgment =
+  | { kind: 'acceptable' }
+  | { kind: 'cooling_down'; retryAfterMs: number }
+
+/**
+ * そのバッチが最後に動いた時刻。
+ *
+ * 取込中バッチの `importStartedAt` は取込を始めた（または起動済みから引き継いだ）時刻で、
+ * 取込の進捗ではそれ以上進まない。クールダウンの起点としては「その実行が始まった時刻」に
+ * なる。
+ */
+function lastActivityAt(batch: DailyMailImportBatch): Date {
+  switch (batch.kind) {
+    case 'started':
+      return batch.common.launchedAt
+    case 'importing':
+      return batch.importStartedAt
+    case 'completed':
+      return batch.completedAt
+    case 'failed':
+      return batch.failedAt
+  }
+}
+
+/**
+ * 手動実行を受け付けてよいかを判定する（#489 の決定）。
+ *
+ * `latestBatch` はそのユーザーの直近のバッチ（状態を問わない。無ければ null）。直近の実行から
+ * `cooldownMs` 未満なら受け付けず、残り時間を返す。クールダウンを過ぎていれば受け付ける
+ * — 途中で落ちた取込の引き継ぎ自体は止めない（止めると、落ちた実行の対象期間が二度と
+ * 走査されない）。
+ */
+export function judgeManualMailImportCooldown(
+  latestBatch: DailyMailImportBatch | null,
+  at: Date,
+  cooldownMs: number = MANUAL_MAIL_IMPORT_COOLDOWN_MS,
+): ManualMailImportCooldownJudgment {
+  if (latestBatch === null) return { kind: 'acceptable' }
+  const elapsedMs = at.getTime() - lastActivityAt(latestBatch).getTime()
+  // 経過が負（直近バッチの時刻が未来）になるのは時計のずれ。待たせる側に倒す
+  if (elapsedMs >= cooldownMs) return { kind: 'acceptable' }
+  return { kind: 'cooling_down', retryAfterMs: cooldownMs - elapsedMs }
 }
 
 /** 状態遷移: 起動済み/取込中 → 失敗（終端） */

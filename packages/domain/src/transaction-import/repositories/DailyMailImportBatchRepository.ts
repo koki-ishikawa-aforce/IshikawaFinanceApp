@@ -10,5 +10,10 @@ import type { DailyMailImportBatch } from '../aggregates/DailyMailImportBatch'
 export interface DailyMailImportBatchRepository {
   findById(id: ImportBatchId): Promise<DailyMailImportBatch | null>
   findInProgressByUser(userId: UserId): Promise<DailyMailImportBatch | null>
+  /**
+   * そのユーザーの直近のバッチ（状態を問わない。起動が最も新しいもの）。
+   * 手動実行のクールダウン判定に使う（#489。`judgeManualMailImportCooldown`）。
+   */
+  findLatestByUser(userId: UserId): Promise<DailyMailImportBatch | null>
   save(batch: DailyMailImportBatch): Promise<void>
 }

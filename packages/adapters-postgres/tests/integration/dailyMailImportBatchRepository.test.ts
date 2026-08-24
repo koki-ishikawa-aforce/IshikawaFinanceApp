@@ -54,6 +54,23 @@ describe('PostgresDailyMailImportBatchRepository', () => {
     await expect(repo.save(startedBatch({ userId: DARLING_USER_ID }))).resolves.toBeUndefined()
   })
 
+  it('findLatestByUser は状態を問わず直近に起動したバッチを返す', async () => {
+    // 手動実行のクールダウン判定は「直近の実行」を状態に関わらず見る（#489）。終端で
+    // 終わったバッチしか無いときに null が返ると、完了直後の連打を止められない
+    const older = completedBatch({ userId: HONEY_USER_ID })
+    await repo.save(older)
+    expect(await repo.findLatestByUser(HONEY_USER_ID)).toEqual(older)
+
+    const newer = startedBatch({ userId: HONEY_USER_ID })
+    await repo.save(newer)
+    expect(await repo.findLatestByUser(HONEY_USER_ID)).toEqual(newer)
+  })
+
+  it('findLatestByUser は配偶者のバッチを返さない（実行が無ければ null）', async () => {
+    await repo.save(completedBatch({ userId: HONEY_USER_ID }))
+    expect(await repo.findLatestByUser(DARLING_USER_ID)).toBeNull()
+  })
+
   it('完了後は新しいバッチを起動できる', async () => {
     await repo.save(completedBatch({ userId: HONEY_USER_ID }))
     await expect(repo.save(startedBatch({ userId: HONEY_USER_ID }))).resolves.toBeUndefined()

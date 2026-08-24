@@ -18,6 +18,7 @@ import {
   confirmCandidate,
   createTransaction,
   failImportJob,
+  judgeManualMailImportCooldown,
   money,
   roleToPersonalExpenseClass,
   startFormatValidation,
@@ -447,6 +448,11 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
    * 受け取ってしまう）。Gmail の連携が切れているなら再認可が要るので 409、外部の障害なら
    * 時間をおいて再実行すれば直りうるので 502 を返す。結末の詳細は `result` に入る。
    * 連携がそもそも無い場合はバッチを起動しないため 409 で `batch` は null になる（#488）。
+   *
+   * 直近の実行から `MANUAL_MAIL_IMPORT_COOLDOWN_MS` 未満なら取込を始めず 429 を返す（#489）。
+   * 応答を待てずに叩き直された実行が、前の実行が進めているバッチを引き継いで同じ記録を
+   * 同時に書き換えるのを防ぐ。クールダウンを過ぎていれば、途中で落ちた取込の引き継ぎは
+   * これまでどおり行う。日次の自動起動はこの経路を通らないため制限を受けない。
    */
   app.post('/mail-batch', async c => {
     const rawBody = await c.req.text()
@@ -477,6 +483,28 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
           reason: 'period_too_long',
         },
         400,
+      )
+    }
+    // 直近の実行からクールダウンを空ける（#489）。判定そのものはドメインが持ち、ここは
+    // 直近バッチを引いて結果を HTTP に写すだけにする
+    const cooldown = judgeManualMailImportCooldown(
+      await deps.dailyMailImportBatchRepository.findLatestByUser(viewerId),
+      new Date(),
+    )
+    if (cooldown.kind === 'cooling_down') {
+      // 429（時間をおけば受け付ける）。連携切れの 409 とは違い、利用者に操作は要らない。
+      // 秒は切り上げる — Retry-After の秒数を待って叩き直したときに、まだ足りずに
+      // もう一度弾かれることがないようにする
+      const retryAfterSeconds = Math.ceil(cooldown.retryAfterMs / 1000)
+      return c.json(
+        {
+          error:
+            '直前のメール取込から間隔が空いていない。前の取込がまだ動いている可能性があるため、時間をおいて実行する',
+          reason: 'cooling_down',
+          retryAfterSeconds,
+        },
+        429,
+        { 'Retry-After': String(retryAfterSeconds) },
       )
     }
     const result = await runDailyMailImportForUser(deps, {

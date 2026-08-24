@@ -363,6 +363,14 @@ export function createMockDailyMailImportBatchRepository(): DailyMailImportBatch
         ) ?? null
       )
     },
+    async findLatestByUser(userId: UserId) {
+      // 起動が新しい順（Postgres 実装は created_at 降順。ここでは launchedAt で同じ順序を作る）
+      return (
+        [...store.values()]
+          .filter(b => b.common.userId === userId)
+          .sort((a, b) => b.common.launchedAt.getTime() - a.common.launchedAt.getTime())[0] ?? null
+      )
+    },
     async save(batch: DailyMailImportBatch) {
       store.set(batch.common.importBatchId, batch)
     },

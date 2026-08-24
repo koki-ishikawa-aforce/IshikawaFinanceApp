@@ -45,6 +45,31 @@ function leftoverImportingBatch() {
   })
 }
 
+/** クールダウン検証用のバッチ。時刻は「いま」に寄せる（ルートは実時刻でクールダウンを測る） */
+function recentBatch(kind: 'completed' | 'importing', now: Date = new Date()) {
+  const common = {
+    importBatchId: '01BATCH0000000000000000001',
+    userId: VIEWER_ID,
+    launchedAt: new Date(now.getTime() - 60_000),
+    targetPeriod: {
+      from: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000),
+      to: new Date(now.getTime() - 60_000),
+    },
+  }
+  return DailyMailImportBatchSchema.parse(
+    kind === 'completed'
+      ? {
+          kind: 'completed',
+          common,
+          completedAt: now,
+          importedCount: 1,
+          duplicateExcludedCount: 0,
+          failedCount: 0,
+        }
+      : { kind: 'importing', common, importStartedAt: now, importedCount: 0 },
+  )
+}
+
 /**
  * Gmail 連携済みで、指定したメールを返す取込経路のアプリ。
  * 既定のモックは取得 0 件・パース未実装で 1 件も取り込めないため、そのままでは候補生成が
@@ -553,7 +578,7 @@ describe('POST /api/imports/mail-batch', () => {
     expect(res.status).toBe(400)
   })
 
-  it('取込中のバッチが残っていれば新規起動せず引き継ぐ（進行中でも弾かない）', async () => {
+  it('クールダウンを過ぎた取込中バッチは新規起動せず引き継ぐ（引き継ぎを止めない）', async () => {
     const { app, deps } = await authorizedMailBatchApp([])
     await deps.dailyMailImportBatchRepository.save(leftoverImportingBatch())
     const res = await request(app, 'POST', '/api/imports/mail-batch', { body: {} })
@@ -561,6 +586,56 @@ describe('POST /api/imports/mail-batch', () => {
     const json = (await res.json()) as { result: { resumed: boolean; importBatchId: string } }
     expect(json.result.resumed).toBe(true)
     expect(json.result.importBatchId).toBe('01BATCH0000000000000000000')
+  })
+
+  it('直前に取込が終わっていれば 429 で受け付けない（待ち時間つき）', async () => {
+    let fetchCount = 0
+    const { app, deps } = await authorizedMailBatchApp([], {
+      gmailMailFetchGateway: {
+        fetchMails: () => {
+          fetchCount++
+          return Promise.resolve({ ok: true, smbcMails: [], amazonMails: [] })
+        },
+      },
+    })
+    await deps.dailyMailImportBatchRepository.save(recentBatch('completed'))
+
+    const res = await request(app, 'POST', '/api/imports/mail-batch', { body: {} })
+
+    expect(res.status).toBe(429)
+    const json = (await res.json()) as { reason?: string; retryAfterSeconds?: number }
+    expect(json.reason).toBe('cooling_down')
+    expect(json.retryAfterSeconds).toBeGreaterThan(0)
+    expect(json.retryAfterSeconds).toBeLessThanOrEqual(600)
+    expect(res.headers.get('Retry-After')).toBe(String(json.retryAfterSeconds))
+    // 弾いた実行は取込を始めない（Gmail を叩かない・新しいバッチ記録を作らない）
+    expect(fetchCount).toBe(0)
+    expect(await deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
+    const latest = await deps.dailyMailImportBatchRepository.findLatestByUser(VIEWER_ID)
+    expect(latest?.common.importBatchId).toBe('01BATCH0000000000000000001')
+  })
+
+  it('実行中に重ねて叩いても、進行中バッチを引き継がず 429（同じ記録の二重書き換えを防ぐ）', async () => {
+    // 応答を待てずに叩き直したときが本命。引き継ぎ経路に 2 つの実行が乗ると、同じバッチ記録を
+    // 両方が書き換える
+    const { app, deps } = await authorizedMailBatchApp([mailBody('gmail-cooldown-1')])
+    const inProgress = recentBatch('importing')
+    await deps.dailyMailImportBatchRepository.save(inProgress)
+
+    const res = await request(app, 'POST', '/api/imports/mail-batch', { body: {} })
+
+    expect(res.status).toBe(429)
+    // 進行中バッチは触られないまま残る（完了にも失敗にも倒れない）
+    expect(await deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toEqual(
+      inProgress,
+    )
+    // 取込も走っていない
+    expect(
+      await deps.transactionCandidateRepository.findByGmailMessageId(
+        VIEWER_ID,
+        GmailMessageIdSchema.parse('gmail-cooldown-1'),
+      ),
+    ).toBeNull()
   })
 
   it('不正な JSON ボディは 400（500 に落ちない）', async () => {

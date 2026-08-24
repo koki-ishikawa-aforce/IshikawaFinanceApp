@@ -5,7 +5,7 @@
  * 「進行中」= kind IN ('started', 'importing')。二重起動防止は
  * partial unique (user_id) WHERE kind IN ('started', 'importing') が最終保証（§2.2）。
  */
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import type {
   DailyMailImportBatch,
   DailyMailImportBatchRepository,
@@ -45,6 +45,23 @@ export class PostgresDailyMailImportBatchRepository implements DailyMailImportBa
           inArray(dailyMailImportBatches.kind, IN_PROGRESS_KINDS),
         ),
       )
+      .limit(1)
+    const row = rows[0]
+    if (row === undefined) return null
+    return parsePayload(DailyMailImportBatchSchema, row.payload)
+  }
+
+  async findLatestByUser(userId: UserId): Promise<DailyMailImportBatch | null> {
+    // 起動が新しい順に 1 行。`created_at` は行の挿入時刻＝バッチの起動時刻で、再開しても
+    // 動かない（更新は `updated_at` 側に載る）ため「直近に起動したバッチ」の順序になる。
+    // 同一ユーザーの進行中バッチは partial unique により高々 1 件なので、直近に起動した
+    // ものが直近の実行に当たる
+    const rows = await this.db
+      .select({ payload: dailyMailImportBatches.payload })
+      .from(dailyMailImportBatches)
+      .where(eq(dailyMailImportBatches.userId, userId))
+      // 同一時刻に 2 件並んだ場合も順序が決まるよう、ID（ULID = 生成順）を第 2 キーに置く
+      .orderBy(desc(dailyMailImportBatches.createdAt), desc(dailyMailImportBatches.importBatchId))
       .limit(1)
     const row = rows[0]
     if (row === undefined) return null

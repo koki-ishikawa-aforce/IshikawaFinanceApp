@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 import {
   DailyMailImportBatchSchema,
+  MANUAL_MAIL_IMPORT_COOLDOWN_MS,
+  judgeManualMailImportCooldown,
   startBatchImporting,
   updateBatchImportedCount,
   completeBatch,
@@ -97,5 +99,81 @@ describe('DailyMailImportBatch 集約', () => {
     const failed = failBatch(started, 'Gmail API エラー', new Date())
     expect(failed.kind).toBe('failed')
     expect(failed.failureDetail).toBe('Gmail API エラー')
+  })
+})
+
+describe('手動実行のクールダウン判定', () => {
+  const startedAt = new Date('2026-07-06T06:00:00Z')
+  const started = DailyMailImportBatchSchema.parse({
+    kind: 'started',
+    common: { ...common, launchedAt: startedAt },
+  }) as StartedImportBatch
+  const after = (base: Date, ms: number): Date => new Date(base.getTime() + ms)
+
+  it('一度も実行していなければ受け付ける', () => {
+    expect(judgeManualMailImportCooldown(null, startedAt)).toEqual({ kind: 'acceptable' })
+  })
+
+  it('直前に完了した実行があればクールダウン中として弾き、残り時間を返す', () => {
+    const completed = completeBatch(
+      startBatchImporting(started, startedAt),
+      { importedCount: 1, duplicateExcludedCount: 0, failedCount: 0 },
+      after(startedAt, 60_000),
+    )
+    const judgment = judgeManualMailImportCooldown(completed, after(startedAt, 60_000 + 3 * 60_000))
+    expect(judgment).toEqual({
+      kind: 'cooling_down',
+      retryAfterMs: MANUAL_MAIL_IMPORT_COOLDOWN_MS - 3 * 60_000,
+    })
+  })
+
+  it('境界: 経過がちょうどクールダウンなら受け付ける（1ms 手前は弾く）', () => {
+    const importing = startBatchImporting(started, startedAt)
+    expect(
+      judgeManualMailImportCooldown(importing, after(startedAt, MANUAL_MAIL_IMPORT_COOLDOWN_MS)),
+    ).toEqual({ kind: 'acceptable' })
+    expect(
+      judgeManualMailImportCooldown(
+        importing,
+        after(startedAt, MANUAL_MAIL_IMPORT_COOLDOWN_MS - 1),
+      ),
+    ).toEqual({ kind: 'cooling_down', retryAfterMs: 1 })
+  })
+
+  it('取込中バッチの起点は取込を始めた時刻（起動時刻ではない）', () => {
+    // 起動から間があいて取込が始まった実行を、起動時刻で測ると早く受け付けてしまう
+    const importing = startBatchImporting(started, after(startedAt, 5 * 60_000))
+    expect(judgeManualMailImportCooldown(importing, after(startedAt, 12 * 60_000))).toEqual({
+      kind: 'cooling_down',
+      retryAfterMs: MANUAL_MAIL_IMPORT_COOLDOWN_MS - 7 * 60_000,
+    })
+  })
+
+  it('失敗で終わった実行の直後も弾く（失敗しても叩き直しは間隔を空ける）', () => {
+    const failed = failBatch(started, 'Gmail API エラー', after(startedAt, 60_000))
+    expect(judgeManualMailImportCooldown(failed, after(startedAt, 2 * 60_000)).kind).toBe(
+      'cooling_down',
+    )
+  })
+
+  it('クールダウンを過ぎた進行中バッチは受け付ける（引き継ぎを止めない）', () => {
+    const importing = startBatchImporting(started, startedAt)
+    expect(judgeManualMailImportCooldown(importing, after(startedAt, 2 * 60 * 60_000))).toEqual({
+      kind: 'acceptable',
+    })
+  })
+
+  it('直近バッチの時刻が未来（時計のずれ）なら弾く', () => {
+    const importing = startBatchImporting(started, after(startedAt, 60_000))
+    const judgment = judgeManualMailImportCooldown(importing, startedAt)
+    expect(judgment.kind).toBe('cooling_down')
+  })
+
+  it('クールダウンの長さは呼出し側で指定できる（既定は 10 分）', () => {
+    expect(MANUAL_MAIL_IMPORT_COOLDOWN_MS).toBe(10 * 60_000)
+    const importing = startBatchImporting(started, startedAt)
+    expect(judgeManualMailImportCooldown(importing, after(startedAt, 60_000), 30_000)).toEqual({
+      kind: 'acceptable',
+    })
   })
 })
