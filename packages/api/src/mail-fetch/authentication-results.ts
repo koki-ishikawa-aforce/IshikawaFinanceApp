@@ -9,7 +9,10 @@
  * なくなる）。溜まった記録で正規の通知が必ず合格することを確かめてから、弾く側へ切り替える。
  *
  * ヘッダの解析はここに閉じた純粋関数として書く（外部表現の読み取りは ACL の責務で、
- * 件名の encoded-word デコードや From のアドレス取り出しと同じ層に置く）。
+ * 件名の encoded-word デコードや From のアドレス取り出しと同じ層に置く）。この段階では判定が
+ * ドメインへ越境せず、記録に出るだけだからでもある。**弾く側へ切り替える段階3 では、判定が
+ * 取引候補の受理可否を左右する = ドメインの受理規則になるため、語彙を 08a に足して
+ * `GmailMailFetchGateway`（ドメインの port）側へ引き上げる**（api 層でのゲート実装にしない）。
  *
  * **偽の判定を読まないための約束**:
  *  - 見るのは**最上位の 1 本だけ**。`Authentication-Results` は受信サーバが受信時に先頭へ足す。
@@ -38,7 +41,7 @@ export type MailAuthenticationVerdict =
   | 'neutral'
   | 'none'
   | 'temperror'
-  | 'permperror'
+  | 'permerror'
   | 'unknown'
   | 'absent'
 
@@ -57,7 +60,7 @@ const KNOWN_VERDICTS: readonly MailAuthenticationVerdict[] = [
   'neutral',
   'none',
   'temperror',
-  'permperror',
+  'permerror',
 ]
 
 const METHODS = ['dkim', 'spf', 'dmarc'] as const
@@ -86,6 +89,22 @@ function verdictOf(keyword: string): MailAuthenticationVerdict {
 }
 
 /**
+ * 判定を採用してよい受信サーバ（authserv-id）。Gmail は `mx.google.com` を名乗る。
+ *
+ * 「最上位の 1 本は受信サーバが付けたもの」という前提は、Gmail が必ずヘッダを足すことに
+ * 依存する。何らかの事情で Gmail 由来のヘッダが無いメールでは、最上位が送信者の埋め込んだ
+ * 偽ヘッダになるため、名乗りが合わない判定は採用しない（`absent` = 判定なしとして残す）。
+ * この段階ではどのみち弾かないので、採用しないことでメールを取りこぼすことはない。
+ */
+const TRUSTED_AUTH_SERV_SUFFIX = '.google.com'
+const TRUSTED_AUTH_SERV_ID = 'mx.google.com'
+
+function isTrustedAuthServId(authServId: string | undefined): authServId is string {
+  if (authServId === undefined) return false
+  return authServId === TRUSTED_AUTH_SERV_ID || authServId.endsWith(TRUSTED_AUTH_SERV_SUFFIX)
+}
+
+/**
  * `Authentication-Results` ヘッダの値から DKIM / SPF / DMARC の判定を読み取る。
  *
  * @param headerValues メールに付いていた `Authentication-Results` ヘッダの値（**上から順**）。
@@ -101,6 +120,10 @@ export function parseAuthenticationResults(
   const stripped = stripQuotedAndComments(topmost)
   const [authServSegment = '', ...resultSegments] = stripped.split(';')
   const authServId = authServSegment.trim().split(/\s+/)[0]?.toLowerCase()
+  // 名乗りが Gmail でないヘッダの判定は採らない（誰の判定か分かるよう authserv-id は残す）
+  if (!isTrustedAuthServId(authServId)) {
+    return authServId === undefined || authServId === '' ? ABSENT : { ...ABSENT, authServId }
+  }
 
   const results: Record<Method, MailAuthenticationVerdict> = {
     dkim: 'absent',
@@ -118,10 +141,17 @@ export function parseAuthenticationResults(
     if (results[method] === 'absent') results[method] = verdictOf(keyword)
   }
 
-  return authServId === undefined || authServId === '' ? { ...results } : { ...results, authServId }
+  return { ...results, authServId }
 }
 
-/** 1 つでも不合格の判定があるか（記録を見るまでもなく気づけるようログに出すため） */
-export function hasAuthenticationFailure(results: MailAuthenticationResults): boolean {
-  return METHODS.some(method => results[method] === 'fail')
+/**
+ * 3 方式すべてが合格か。
+ *
+ * 合格でないものを目立たせる（ログの警告に上げる）ための判定で、`fail` だけを見ない。
+ * 三井住友カードを装うメールは、署名を付けなければ DKIM が `none` / `absent`、SPF が
+ * `softfail` になるなど、**不合格ではなく「認証されていない」形で届く**ことが多いため、
+ * `fail` だけを警告にすると、まさに見たいメールが並の記録に埋もれる。
+ */
+export function isFullyAuthenticated(results: MailAuthenticationResults): boolean {
+  return METHODS.every(method => results[method] === 'pass')
 }

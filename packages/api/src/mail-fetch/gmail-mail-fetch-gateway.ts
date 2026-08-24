@@ -51,7 +51,7 @@ import { GmailMessageIdSchema, NotFoundError } from '@warimaru/domain'
 import { z } from 'zod'
 import { withTimeout } from '../with-timeout.js'
 import {
-  hasAuthenticationFailure,
+  isFullyAuthenticated,
   parseAuthenticationResults,
   type MailAuthenticationResults,
 } from './authentication-results.js'
@@ -113,7 +113,9 @@ export interface GmailMailFetchGatewayConfig {
 
 /**
  * 送信元の目印（#478 段階1 の記録を送信元ごとに集計するためのラベル）。
- * ログに残す値なので、アドレスそのものではなく固定のラベルにする
+ * ログに残す値なので、アドレスそのものではなく固定のラベルにする。
+ * 対応: `smbc_card` = `SMBC_CARD_SENDER` / `smbc_bank` = `SMBC_BANK_SENDER` /
+ * `amazon` = `AMAZON_SENDER_DOMAIN`（送信元を増やすときはこのラベルも足す）
  */
 type MailSender = 'smbc_card' | 'smbc_bank' | 'amazon'
 
@@ -725,41 +727,50 @@ function toMailBody(message: GmailMessageResponse):
  * 送信元の目印と方式ごとの判定を残し、あわせて送信元 × 判定の組み合わせごとの件数を 1 行に
  * まとめて出す。**メール本文・件名・差出人アドレス・利用者を辿れる値は載せない**
  * （Gmail message ID は重複除外のため DB にも持つ識別子で PII ではない）。
+ *
+ * 記録は取得に付随する処理なので、ここでの失敗が取得そのものを巻き添えにしないよう閉じ込める
+ * （取得を失敗にすると、取得済みのメールが丸ごと捨てられ、その期間は CSV 取込でのやり直しになる）。
  */
 function recordAuthenticationResults(observations: readonly MailAuthenticationObservation[]): void {
   if (observations.length === 0) return
 
-  for (const observed of observations) {
-    const { gmailMessageId, sender, results } = observed
-    const record = {
-      gmailMessageId,
-      sender,
-      authServId: results.authServId,
-      dkim: results.dkim,
-      spf: results.spf,
-      dmarc: results.dmarc,
+  try {
+    for (const observed of observations) {
+      const { gmailMessageId, sender, results } = observed
+      const record = {
+        gmailMessageId,
+        sender,
+        authServId: results.authServId,
+        dkim: results.dkim,
+        spf: results.spf,
+        dmarc: results.dmarc,
+      }
+      // 合格でないものは記録に埋もれさせず、その場で気づけるようにする（この段階では弾かない）
+      if (isFullyAuthenticated(results)) {
+        console.info('Gmail メール取得: 送信認証の判定結果', record)
+      } else {
+        console.warn(
+          'Gmail メール取得: 送信認証が合格でないメールを取り込んだ（この段階では除外しない）',
+          record,
+        )
+      }
     }
-    // 不合格は記録に埋もれさせず、その場で気づけるようにする（この段階では弾かない）
-    if (hasAuthenticationFailure(results)) {
-      console.warn(
-        'Gmail メール取得: 送信認証が不合格のメールを取り込んだ（この段階では除外しない）',
-        record,
-      )
-    } else {
-      console.info('Gmail メール取得: 送信認証の判定結果', record)
-    }
-  }
 
-  const counts = new Map<string, number>()
-  for (const { sender, results } of observations) {
-    const key = `${sender} dkim=${results.dkim} spf=${results.spf} dmarc=${results.dmarc}`
-    counts.set(key, (counts.get(key) ?? 0) + 1)
+    const counts = new Map<string, number>()
+    for (const { sender, results } of observations) {
+      const key = `${sender} dkim=${results.dkim} spf=${results.spf} dmarc=${results.dmarc}`
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    console.info(
+      `Gmail メール取得: 送信認証の判定結果（集計）— ${[...counts]
+        .map(([key, count]) => `${key} ×${count}`)
+        .join(', ')}`,
+    )
+  } catch (e) {
+    console.warn(
+      `Gmail メール取得: 送信認証の判定を記録できなかった（${e instanceof Error ? e.name : 'unknown'}）`,
+    )
   }
-  console.info(
-    `Gmail メール取得: 送信認証の判定結果（集計）— ${[...counts]
-      .map(([key, count]) => `${key} ×${count}`)
-      .join(', ')}`,
-  )
 }
 
 /** Gmail が未構成の環境用フォールバック（呼び出し時に失敗として返す。例外は投げない） */

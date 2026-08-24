@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  hasAuthenticationFailure,
+  isFullyAuthenticated,
   parseAuthenticationResults,
 } from '../../src/mail-fetch/authentication-results.js'
 
@@ -70,10 +70,10 @@ describe('parseAuthenticationResults', () => {
     })
   })
 
-  it('一時的な失敗（temperror / permperror）をそのまま残す', () => {
+  it('一時的な失敗（temperror / permerror）をそのまま残す', () => {
     expect(
-      parseAuthenticationResults(['mx.google.com; dkim=temperror; spf=permperror']),
-    ).toMatchObject({ dkim: 'temperror', spf: 'permperror' })
+      parseAuthenticationResults(['mx.google.com; dkim=temperror; spf=permerror']),
+    ).toMatchObject({ dkim: 'temperror', spf: 'permerror' })
   })
 
   describe('偽の判定を読まない', () => {
@@ -85,6 +85,44 @@ describe('parseAuthenticationResults', () => {
         spf: 'fail',
         dmarc: 'fail',
         authServId: 'mx.google.com',
+      })
+    })
+
+    it('最上位が触れていない方式を、下に埋め込まれたヘッダで埋めない', () => {
+      // 受信サーバが spf しか報告していない隙に、送信者が下の行で dkim / dmarc の合格を
+      // 名乗るのが現実的な攻め方。最上位に無い方式は「判定なし」のまま残さなければならない
+      const received = 'mx.google.com; spf=fail'
+      const forged = 'evil.example.com; dkim=pass; dmarc=pass'
+      expect(parseAuthenticationResults([received, forged])).toEqual({
+        dkim: 'absent',
+        spf: 'fail',
+        dmarc: 'absent',
+        authServId: 'mx.google.com',
+      })
+    })
+
+    it('Gmail 以外を名乗るヘッダの判定は採らない（判定なしとして残す）', () => {
+      // 何かの事情で Gmail がヘッダを付けなかったメールでは、最上位が送信者の埋め込みになる
+      expect(
+        parseAuthenticationResults(['evil.example.com; dkim=pass; spf=pass; dmarc=pass']),
+      ).toEqual({
+        dkim: 'absent',
+        spf: 'absent',
+        dmarc: 'absent',
+        authServId: 'evil.example.com',
+      })
+    })
+
+    it('Google の受信サーバを名乗るヘッダは採用する', () => {
+      expect(parseAuthenticationResults(['mx.google.com; dkim=pass'])).toMatchObject({
+        dkim: 'pass',
+      })
+    })
+
+    it('名乗りが Gmail に似せただけのドメインの判定は採らない', () => {
+      expect(parseAuthenticationResults(['mx.google.com.evil.example; dkim=pass'])).toMatchObject({
+        dkim: 'absent',
+        authServId: 'mx.google.com.evil.example',
       })
     })
 
@@ -126,16 +164,24 @@ describe('parseAuthenticationResults', () => {
   })
 })
 
-describe('hasAuthenticationFailure', () => {
-  it('いずれかの方式が不合格なら true', () => {
-    expect(hasAuthenticationFailure({ dkim: 'pass', spf: 'fail', dmarc: 'pass' })).toBe(true)
+describe('isFullyAuthenticated', () => {
+  it('3 方式すべてが合格なら true', () => {
+    expect(isFullyAuthenticated({ dkim: 'pass', spf: 'pass', dmarc: 'pass' })).toBe(true)
   })
 
-  it('すべて合格なら false', () => {
-    expect(hasAuthenticationFailure({ dkim: 'pass', spf: 'pass', dmarc: 'pass' })).toBe(false)
+  it('いずれかが不合格なら false', () => {
+    expect(isFullyAuthenticated({ dkim: 'pass', spf: 'fail', dmarc: 'pass' })).toBe(false)
   })
 
-  it('判定なしは不合格として扱わない（この段階では弾かないため、fail だけを目立たせる）', () => {
-    expect(hasAuthenticationFailure({ dkim: 'absent', spf: 'absent', dmarc: 'absent' })).toBe(false)
+  it('「認証されていない」形（判定なし・none・softfail）も合格として扱わない', () => {
+    // なりすましメールは fail ではなくこの形で届くことが多い。合格に丸めると警告に上がらない
+    expect(isFullyAuthenticated({ dkim: 'absent', spf: 'softfail', dmarc: 'none' })).toBe(false)
+    expect(isFullyAuthenticated({ dkim: 'pass', spf: 'pass', dmarc: 'absent' })).toBe(false)
+  })
+
+  it('一時的な失敗・既知でない判定語も合格として扱わない', () => {
+    expect(isFullyAuthenticated({ dkim: 'temperror', spf: 'permerror', dmarc: 'unknown' })).toBe(
+      false,
+    )
   })
 })

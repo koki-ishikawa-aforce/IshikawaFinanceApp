@@ -661,15 +661,17 @@ describe('GmailMailFetchGateway（送信認証の判定の記録）', () => {
     }
   }
 
+  const ALL_PASS = 'mx.google.com; dkim=pass header.i=@vpass.ne.jp; spf=pass; dmarc=pass'
+
   it('取り込んだメールごとに、送信元と方式ごとの判定を記録する', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     const { fetchImpl } = stubGmail({
       pages: { '': { messages: [{ id: 'msg-card-1' }, { id: 'msg-amazon-1' }] } },
       messages: {
-        'msg-card-1': withAuthHeader(cardUsageMessage(), [
-          'mx.google.com; dkim=pass header.i=@vpass.ne.jp; spf=pass; dmarc=pass',
+        'msg-card-1': withAuthHeader(cardUsageMessage(), [ALL_PASS]),
+        'msg-amazon-1': withAuthHeader(amazonMessage(), [
+          'mx.google.com; dkim=pass; spf=pass; dmarc=pass',
         ]),
-        'msg-amazon-1': withAuthHeader(amazonMessage(), ['mx.google.com; dkim=pass; spf=none']),
       },
     })
 
@@ -686,7 +688,32 @@ describe('GmailMailFetchGateway（送信認証の判定の記録）', () => {
       dmarc: 'pass',
     })
     // 送信元ごとに集計できるよう、Amazon 側にも送信元の目印が付く
-    expect(records[1]?.[1]).toMatchObject({ sender: 'amazon', spf: 'none', dmarc: 'absent' })
+    expect(records[1]?.[1]).toMatchObject({ gmailMessageId: 'msg-amazon-1', sender: 'amazon' })
+    info.mockRestore()
+  })
+
+  it('送信元と判定の組み合わせごとに件数をまとめた集計を残す（段階2 で数えるため）', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const { fetchImpl } = stubGmail({
+      pages: {
+        '': { messages: [{ id: 'msg-card-1' }, { id: 'msg-card-2' }, { id: 'msg-amazon-1' }] },
+      },
+      messages: {
+        'msg-card-1': withAuthHeader(cardUsageMessage(), [ALL_PASS]),
+        'msg-card-2': withAuthHeader({ ...(cardUsageMessage() as object), id: 'msg-card-2' }, [
+          ALL_PASS,
+        ]),
+        'msg-amazon-1': withAuthHeader(amazonMessage(), ['mx.google.com; dkim=fail; spf=pass']),
+      },
+    })
+
+    await gatewayWith(fetchImpl).fetchMails(REQUEST)
+
+    const summary = info.mock.calls
+      .map(([message]) => String(message))
+      .find(m => m.includes('集計'))
+    expect(summary).toContain('smbc_card dkim=pass spf=pass dmarc=pass ×2')
+    expect(summary).toContain('amazon dkim=fail spf=pass dmarc=absent ×1')
     info.mockRestore()
   })
 
@@ -714,8 +741,28 @@ describe('GmailMailFetchGateway（送信認証の判定の記録）', () => {
     vi.restoreAllMocks()
   })
 
+  it('「不合格」ではなく「認証されていない」形のメールも警告に上げる', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const { fetchImpl } = stubGmail({
+      pages: { '': { messages: [{ id: 'msg-card-1' }] } },
+      messages: {
+        // 署名を付けない差出人はこの形で届く。fail だけを警告にすると見たいメールが埋もれる
+        'msg-card-1': withAuthHeader(cardUsageMessage(), ['mx.google.com; spf=softfail']),
+      },
+    })
+
+    await gatewayWith(fetchImpl).fetchMails(REQUEST)
+
+    expect(
+      warn.mock.calls.some(([, record]) => (record as { spf?: string })?.spf === 'softfail'),
+    ).toBe(true)
+    vi.restoreAllMocks()
+  })
+
   it('ヘッダが無いメールも取り込み、判定なしとして記録する', async () => {
-    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(console, 'info').mockImplementation(() => undefined)
     const { fetchImpl } = stubGmail({
       pages: { '': { messages: [{ id: 'msg-card-1' }] } },
       messages: { 'msg-card-1': cardUsageMessage() },
@@ -726,16 +773,40 @@ describe('GmailMailFetchGateway（送信認証の判定の記録）', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.smbcMails).toHaveLength(1)
-    expect(info.mock.calls[0]?.[1]).toMatchObject({
+    expect(warn.mock.calls[0]?.[1]).toMatchObject({
       dkim: 'absent',
       spf: 'absent',
       dmarc: 'absent',
     })
-    info.mockRestore()
+    vi.restoreAllMocks()
+  })
+
+  it('記録に失敗してもメールの取得は続ける（記録は取得の付随処理）', async () => {
+    // 記録で落ちて取得ごと失敗すると、取得済みのメールが丸ごと捨てられ、その期間は
+    // CSV 取込でのやり直しになる
+    vi.spyOn(console, 'info').mockImplementation(() => {
+      throw new Error('ログの書き出しに失敗した')
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { fetchImpl } = stubGmail({
+      pages: { '': { messages: [{ id: 'msg-card-1' }] } },
+      messages: { 'msg-card-1': withAuthHeader(cardUsageMessage(), [ALL_PASS]) },
+    })
+
+    const result = await gatewayWith(fetchImpl).fetchMails(REQUEST)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.smbcMails).toHaveLength(1)
+    expect(warn.mock.calls.some(([message]) => String(message).includes('記録できなかった'))).toBe(
+      true,
+    )
+    vi.restoreAllMocks()
   })
 
   it('記録に件名・本文・差出人アドレスを載せない（そのままログに出るため）', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const { fetchImpl } = stubGmail({
       pages: { '': { messages: [{ id: 'msg-card-1' }] } },
       messages: {
@@ -747,11 +818,13 @@ describe('GmailMailFetchGateway（送信認証の判定の記録）', () => {
 
     await gatewayWith(fetchImpl).fetchMails(REQUEST)
 
-    const logged = JSON.stringify(info.mock.calls)
+    const logged = JSON.stringify([...info.mock.calls, ...warn.mock.calls])
     expect(logged).not.toContain('@')
     expect(logged).not.toContain('2,420')
     expect(logged).not.toContain('ご利用のお知らせ')
-    info.mockRestore()
+    // 本文に載る氏名（fixture の宛名）
+    expect(logged).not.toContain('石川')
+    vi.restoreAllMocks()
   })
 })
 
