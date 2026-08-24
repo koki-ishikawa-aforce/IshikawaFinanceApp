@@ -118,7 +118,7 @@ stale は末尾に「後始末」として載せる。AskUserQuestion で「こ�
 
 - **進めてよい**: PR から `needs-decision` を外す(元 Issue に付いている場合はそちらも外す)。これだけで次のバックログ fire の回収マージが CI green を条件にマージする。**急ぐ場合のみ**このセッションでマージしてよい: `gh pr merge <PR番号> --squash --delete-branch`(PR が Draft のまま残っている場合のみ先に `gh pr ready <PR番号>`)
 - **修正してから**: PR に具体的な修正依頼をコメントし、`needs-decision` は残す(次回セッションで再判断。ラベルが残る限り自動マージされない)
-- **不採用**: 理由をコメントし `gh pr close <PR番号> --delete-branch`。**PR をクローズしただけで終えてはならない** — マージされずにクローズされた PR は `.github/workflows/notify-needs-decision.yml` の `unlock-in-progress-on-pr-close` ジョブが元タスク Issue(PR が `Closes #M` で紐づけていた Issue)の `status:in-progress` を自動解除する。`ready-to-implement` は残ったままなので、放置すると**次の毎時 fire が却下したばかりの Issue を再実装して PR を作り直すループ**になる。これを防ぐため、元タスク Issue の後始末をユーザーに確認して実施する(元 Issue 番号は `gh pr view <PR番号> --json closingIssuesReferences` で特定する):
+- **不採用**: 理由をコメントし `gh pr close <PR番号> --delete-branch`。**PR をクローズしただけで終えてはならない** — マージされずにクローズされた PR は `.github/workflows/notify-needs-decision.yml` の `unlock-in-progress-on-pr-close` ジョブが元タスク Issue(PR が `Closes #M` で紐づけていた Issue)の `status:in-progress` を自動解除する。`ready-to-implement` は残ったままなので、放置すると**次の fire が却下したばかりの Issue を再実装して PR を作り直すループ**になる。これを防ぐため、元タスク Issue の後始末をユーザーに確認して実施する(元 Issue 番号は `gh pr view <PR番号> --json closingIssuesReferences` で特定する):
   - **(a) 実装自体をやめる**: `gh issue edit <元Issue番号> --remove-label "ready-to-implement"`(完全に取り下げるなら `gh issue close <元Issue番号> --reason "not planned"`)。次の fire は拾わなくなる
   - **(b) 別のアプローチでやり直す**: 元 Issue の受け入れ条件を却下の理由を織り込んで修正したうえで `ready-to-implement` を維持する(`needs-decision` は付けない)。次の fire が修正後の条件で再実装する
 - **stale**(PR が既に merged / closed): 何も判断することがないため、`needs-decision` を外すだけでよい。判断依頼コメントが元 Issue に残っている場合は経緯を1行コメントして閉じる

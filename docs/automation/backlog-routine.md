@@ -7,7 +7,7 @@
 ```
 人間: Issue に ready-to-implement を付与(着手承認。依存が open でも付与可)
   ↓
-Routine(毎時 fire・fresh session): 無人モードで /issue-work
+Routine(2時間おき fire・fresh session): 無人モードで /issue-work
   ├─ preflight: main の最新 CI が赤 → 何もせず終了(赤い main の上に PR を積み増さない)
   ├─ preflight: ゴミロックを機械的に回収(open PR なし + 2時間以上経過の両方をコマンドで確定)
   │            + Routine 起点 open PR のコンフリクトを先に解消(main をマージ → /verify → push)
@@ -30,7 +30,7 @@ Routine(毎時 fire・fresh session): 無人モードで /issue-work
 
 - **人間の判断タスクは needs-decision に集約する** — 撤退時の確認・レビュー見送りの追認・マージゲートで止まった PR のすべてを `needs-decision` ラベル(Issue または PR)に集約する。判断待ちの全量は [`is:issue is:open label:needs-decision`](https://github.com/koki-ishikawa-aforce/IshikawaFinanceApp/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision) で一覧でき、ラベル付与をトリガーに通知ワークフローがメールを発生させる(後述の「通知」節)。判断依頼の書き方は issue-work スキルのテンプレート(`.claude/skills/issue-work/templates/`)と執筆ルールに従う。消化する側の手順は `/decide` スキル(`.claude/skills/decide/SKILL.md`)に定める
 
-- **1 fire = 最大1 PR = 1 fresh session** — セッションの長時間化によるコンテキスト劣化を避ける。複数件の消化は fire の回数で稼ぐ(毎時 fire なら1日最大〜24件)。ただし撤退・スキップが発生した場合は候補ループで次の Issue へ進み、1件 PR 作成に到達するまで試行する(最大5候補)
+- **1 fire = 最大1 PR = 1 fresh session** — セッションの長時間化によるコンテキスト劣化を避ける。複数件の消化は fire の回数で稼ぐ(2時間おき fire なら1日最大〜12件)。ただし撤退・スキップが発生した場合は候補ループで次の Issue へ進み、1件 PR 作成に到達するまで試行する(最大5候補)
 - **人間の承認は「着手前のラベル付け」1点に集約する** — `ready-to-implement` を付ける行為が着手承認であり、**無人運用における唯一の人間ゲート**。無人モードは承認済みの Issue にしか触れない。承認済みのものをマージまで進める判断は、機械的なマージゲートに委ねる
 - **「完了」は PR がマージされ `main` の CI が green であること** — 1 fire は PR 作成では終わらない。作成した PR の CI(統合テストを含む)が green になるのを同一 fire 内で確認し、マージゲートを満たしてマージし、`main` の CI も green になって初めて完了とする。`pnpm test` は adapters-postgres の統合テストを含まないため「ローカル `/verify` 全 green」＝「CI green」ではない。CI が赤なら同一 fire 内で修正 → 再 push し、直せなければ(同一エラーで3回失敗)元 Issue に状況を記録して `needs-decision` を付けて撤退する(赤い PR を「完了」として放置しない)。詳細は `.claude/skills/issue-work/SKILL.md` 無人モード手順7
 - **マージまで進める(マージゲートで機械判定)** — PR は通常(non-Draft)で作成し、CI green・コンフリクトなし・`needs-decision` なしなどの条件をすべてコマンド出力で確定させたときだけマージする。ゲートの定義は `.claude/skills/issue-work/SKILL.md`「マージゲート」の**1箇所のみ**で、`/pr-steward` はマージしない(判定を二重に持たない)。個別 PR のマージを止めたいときは、その PR に `needs-decision` を付ける
@@ -62,8 +62,10 @@ gh label create "needs-decision" --color D93F0B --description "人間の判断�
 
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する(Routine はクラウド側で動くため、手元のセッションや PC の状態に依存しない)。
 
+**登録状況**: 2026-08-24 に MCP の `create_trigger` 経由で登録済み(trigger ID `trig_01JQZKerJFi1sDqMxwaGHp5N`、環境 `env_018ngmKEVe8QkAP3P8WtnwdN`)。
+
 - **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。ネットワークポリシーは pnpm install と GitHub 操作が通る設定にする。`gh` CLI が無い環境でも動くよう、スキル側は GitHub MCP ツールへのフォールバックを定めている(issue-work スキルの「実行環境の注意」)
-- **Trigger**: Schedule、毎時。cron は UTC で `1 * * * *`(1本のみ登録。実効ペースは毎時1 fire)。消化ペースを上げたい場合は cron を散らした Routine を追加登録する — 数分差で走らせても CAS ロックが二重着手を弾くだけだが、候補ループの空振りとコンフリクト修復の競合(`/pr-steward` 手順2c)が増えるため、fire 時刻は均等に散らす
+- **Trigger**: Schedule、2時間おき。cron は UTC で `1 */2 * * *`(1本のみ登録。実効ペースは2時間に1 fire)。消化ペースを上げたい場合は cron を散らした Routine を追加登録する — 数分差で走らせても CAS ロックが二重着手を弾くだけだが、候補ループの空振りとコンフリクト修復の競合(`/pr-steward` 手順2c)が増えるため、fire 時刻は均等に散らす
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):
 
@@ -84,9 +86,10 @@ gh label create "needs-decision" --color D93F0B --description "人間の判断�
 | --- | --- | --- |
 | 一覧・cron・プロンプト・モデルの**確認** | できる(`list_triggers`) | できる |
 | 画面で作った Routine の**更新・停止** | **できない** — エージェントが更新できるのは自分が `create_trigger` で作った Routine だけ(`created_via` による制約) | できる |
-| Routine の**新規作成** | 呼び出しは通るが、**リポジトリ(`sources`)も MCP コネクタも引き継がれない**ため fire が空振りする。`connectors` パラメータは組織設定で無効 | できる |
+| MCP で作った Routine の**更新・停止・削除** | できる(`update_trigger` / `delete_trigger`) | できる |
+| Routine の**新規作成** | できる(`create_trigger`。現行の4本はこの経路で登録した)。ただし **MCP コネクタは引き継がれない**警告が返る(`connectors` パラメータは組織設定で無効)ため、fire 先のセッションで `mcp__*` ツールが使えるかは初回 fire で確認する | できる |
 
-つまり**この構成では Routine の作成・更新は画面からしか行えない**。プロンプトに手順を書き込むと、手順を変えるたびに画面での貼り直しが必要になり、「skills は直したのに Routine は古いまま」という乖離が生まれる(2026-08-23 の自動マージ移行で実際に発生した)。プロンプトを薄く保てば、貼り直しが必要になるのは**スキル名・モード・報告言語を変えるときだけ**になる。
+つまり**画面で作った Routine だけは画面からしか直せない**。加えて、プロンプトに手順を書き込むと、手順を変えるたびに Routine 側の貼り直し(または `update_trigger`)が必要になり、「skills は直したのに Routine は古いまま」という乖離が生まれる(2026-08-23 の自動マージ移行で実際に発生した)。プロンプトを薄く保てば、直す必要があるのは**スキル名・モード・報告言語を変えるときだけ**になる。
 
 ## 通知(判断待ちと自動マージをメールで受け取る)
 
@@ -128,9 +131,9 @@ GitHub は**自分自身の操作を通知しない**。Routine はあなたの�
 
 複数の PR が同じファイルを触っていると、1件マージした瞬間に残りの PR がコンフリクト(base の `main` と PR の変更が衝突して自動マージできない状態)になる。これを直す役は `/pr-steward` だが、PR 執事 Routine はバックログ Routine とは別スケジュールのため、コンフリクトが次の巡回まで放置されうる(2026-07-24 の PR #191 で実際に発生)。
 
-これを防ぐため、毎時確実に動くバックログ Routine の preflight に「コンフリクトの先解消」を組み込む(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。各 fire は候補選定の前に、Routine 起点の open PR の mergeable 状態を機械的に確認し、コンフリクトがあれば `main` をマージ → `/verify` → push で先に解消してから新規着手へ進む。これにより:
+これを防ぐため、2時間おきに確実に動くバックログ Routine の preflight に「コンフリクトの先解消」を組み込む(`.claude/skills/issue-work/SKILL.md` 無人モードの preflight)。各 fire は候補選定の前に、Routine 起点の open PR の mergeable 状態を機械的に確認し、コンフリクトがあれば `main` をマージ → `/verify` → push で先に解消してから新規着手へ進む。これにより:
 
-- コンフリクトの放置時間の上限が、最長でも fire 間隔(現在は1時間)に収まる
+- コンフリクトの放置時間の上限が、最長でも fire 間隔(現在は2時間)に収まる
 - 「壊れた PR を放置したまま新しい PR を積み増して衝突を広げる」事態を避けられる(WIP 上限超過で新規着手をスキップする fire でも、コンフリクト修復だけは先に実施する)
 
 mergeable は GitHub が照会して初めて計算するため直後は `unknown`(計算中)が返りうる。preflight・`/pr-steward` とも `unknown` の PR は数秒待って再照会し、確定しないものはコンフリクト判定を保留して報告に残す(誤って「問題なし」と扱わない)。解消時のコンフリクトにドメインロジックの競合など判断が必要なものが含まれる場合は、解消せず `needs-decision` で人間に委ねる。**マージは `/pr-steward` では行わない**(マージゲートの定義を1箇所に保つため。解消して green になった PR は preflight の回収マージが拾う)。
@@ -158,8 +161,8 @@ CI は `.github/workflows/ci.yml` の専用ステップで adapters-postgres の
 | --- | --- | --- |
 | WIP 上限(Routine 起点の open PR 数) | 5 | SKILL.md 無人モード 手順0 |
 | 候補ループ上限(1 fire あたりの最大試行数) | 5 | SKILL.md 無人モード 手順0 |
-| 消化ペース | 1 fire あたり最大1件・毎時1 fire | Routine の cron(現在は `1 * * * *` が1本)。上げるなら cron を散らした Routine を追加登録する |
-| ゴミロック回収の経過時間しきい値 | 約2時間 | SKILL.md 無人モード preflight(fire のセッション寿命より十分長く保つ) |
+| 消化ペース | 1 fire あたり最大1件・2時間に1 fire | Routine の cron(現在は `1 */2 * * *` が1本)。上げるなら cron を散らした Routine を追加登録する |
+| ゴミロック回収の経過時間しきい値 | 約2時間 | SKILL.md 無人モード preflight(**fire 間隔ではなく fire のセッション寿命**より十分長く保つ。fire 間隔と同値のため、PR を作らずに死んだ fire のロックは次の fire ではなくその次の fire で回収されうる) |
 
 自動マージへの移行後、通常は PR が同一 fire でマージされるため WIP 上限に達することは少ない。上限が効くのは「ゲートに落ちた PR・CI が赤い PR が溜まった状態」であり、**壊れた PR を放置したまま新しい PR を積み増さないためのブレーキ**として残している。カウント対象は Routine 起点の open PR のみ(判別基準は `.claude/skills/issue-work/SKILL.md`「マージゲート」条件1と同一)。人間の手動 PR や `/decide` の docs PR はカウントしないため、長寿命の手動 Draft PR があっても無人消化の枠を消費しない。未マージの PR はすべて main 起点のため、溜まるほどマージのたびに他 PR がコンフリクトしやすくなる。
 

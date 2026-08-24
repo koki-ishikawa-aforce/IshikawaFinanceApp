@@ -51,8 +51,10 @@ Routine(週次 fire・fresh session): /retro を実行
 
 [claude.ai](https://claude.ai) の Claude Code → Routines から作成する(Routine はクラウド側で動くため、手元のセッションや PC の状態に依存しない)。
 
+**登録状況**: 2026-08-24 に MCP の `create_trigger` 経由で登録済み(trigger ID `trig_012pUP3cwugfkkhVysLveL38`)。
+
 - **Environment**: このリポジトリ(`koki-ishikawa-aforce/IshikawaFinanceApp`)を含む環境。バックログ Routine と同じ環境を使える。ネットワークポリシーは GitHub 操作が通る設定にする(`gh` CLI が無い環境でも GitHub MCP ツールで動くよう、スキル側にフォールバックを定めている)
-- **Trigger**: Schedule、週次(例: 毎週月曜の朝)。現在は UTC で `0 0 * * 1`(= 月曜 09:00 JST)。バックログ Routine(毎時)より十分に長い間隔にする — 1 週間分の運用データが溜まってから振り返るため
+- **Trigger**: Schedule、週次(例: 毎週月曜の朝)。現在は UTC で `0 0 * * 1`(= 月曜 09:00 JST)。バックログ Routine(2時間おき)より十分に長い間隔にする — 1 週間分の運用データが溜まってから振り返るため
 - **Session**: fire ごとに新規セッション
 - **Prompt**(そのまま貼り付け):
 
@@ -66,9 +68,9 @@ Routine(週次 fire・fresh session): /retro を実行
   - 最終的な報告は日本語を使ってください。
   ```
 
-  プロンプトを変更した場合は、claude.ai 側の Routine に貼り直すまで反映されない。**画面で作成した Routine は Claude からは更新も停止もできない**(理由と経路の一覧は `backlog-routine.md`「プロンプトは薄く保つ」)。この Routine はプロンプトに手順を書いたままなので、手順を変えるたびに貼り直しが要る。バックログ / PR 執事と同じく薄いプロンプトへ移行すれば貼り直しは不要になる(未実施)。
+  プロンプトを変更した場合は、Routine 側を直すまで反映されない。この Routine は MCP の `create_trigger` で作ったため `update_trigger` で直せるが、**画面で作成した Routine は Claude からは更新も停止もできない**(経路の一覧は `backlog-routine.md`「プロンプトは薄く保つ」)。この Routine はプロンプトに手順を書いたままなので、手順を変えるたびに直す必要がある。バックログ / PR 執事と同じく薄いプロンプトへ移行すれば不要になる(未実施)。
 
-  **注意**: Routine の実際の作成(トリガー登録)は claude.ai 側の操作であり、リポジトリの変更(このドキュメントの追加)には含まれない。
+  **注意**: Routine の実際の作成(トリガー登録)はリポジトリの変更(このドキュメントの追加)には含まれない。登録は claude.ai の Routines 画面、または MCP の `create_trigger` で別途行う。
 
 ## 通知(改善案をメールで受け取る)
 
