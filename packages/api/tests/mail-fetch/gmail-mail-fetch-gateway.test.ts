@@ -641,6 +641,120 @@ describe('GmailMailFetchGateway（その他の取得失敗）', () => {
   })
 })
 
+/**
+ * #478 段階1: 送信認証（DKIM / SPF / DMARC）の判定を記録に残す。
+ * 確かめたいのは「記録が残ること」と「記録を根拠に 1 通も弾いていないこと」の 2 点。
+ * この段階で弾くと、正規の通知が思わぬ理由で不合格だったときに利用が丸ごと取り込まれなくなる。
+ */
+describe('GmailMailFetchGateway（送信認証の判定の記録）', () => {
+  const withAuthHeader = (message: unknown, values: readonly string[]): unknown => {
+    const typed = message as { payload: { headers: { name: string; value: string }[] } }
+    return {
+      ...(message as object),
+      payload: {
+        ...typed.payload,
+        headers: [
+          ...values.map(value => ({ name: 'Authentication-Results', value })),
+          ...typed.payload.headers,
+        ],
+      },
+    }
+  }
+
+  it('取り込んだメールごとに、送信元と方式ごとの判定を記録する', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const { fetchImpl } = stubGmail({
+      pages: { '': { messages: [{ id: 'msg-card-1' }, { id: 'msg-amazon-1' }] } },
+      messages: {
+        'msg-card-1': withAuthHeader(cardUsageMessage(), [
+          'mx.google.com; dkim=pass header.i=@vpass.ne.jp; spf=pass; dmarc=pass',
+        ]),
+        'msg-amazon-1': withAuthHeader(amazonMessage(), ['mx.google.com; dkim=pass; spf=none']),
+      },
+    })
+
+    await gatewayWith(fetchImpl).fetchMails(REQUEST)
+
+    const records = info.mock.calls.filter(([, record]) => typeof record === 'object')
+    expect(records).toHaveLength(2)
+    expect(records[0]?.[1]).toEqual({
+      gmailMessageId: 'msg-card-1',
+      sender: 'smbc_card',
+      authServId: 'mx.google.com',
+      dkim: 'pass',
+      spf: 'pass',
+      dmarc: 'pass',
+    })
+    // 送信元ごとに集計できるよう、Amazon 側にも送信元の目印が付く
+    expect(records[1]?.[1]).toMatchObject({ sender: 'amazon', spf: 'none', dmarc: 'absent' })
+    info.mockRestore()
+  })
+
+  it('送信認証に不合格のメールも取り込む（この段階では弾かない）', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const { fetchImpl } = stubGmail({
+      pages: { '': { messages: [{ id: 'msg-card-1' }] } },
+      messages: {
+        'msg-card-1': withAuthHeader(cardUsageMessage(), [
+          'mx.google.com; dkim=fail; spf=fail; dmarc=fail',
+        ]),
+      },
+    })
+
+    const result = await gatewayWith(fetchImpl).fetchMails(REQUEST)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.smbcMails).toHaveLength(1)
+    // 記録に埋もれないよう、不合格は警告として出す
+    expect(
+      warn.mock.calls.some(([, record]) => (record as { dkim?: string })?.dkim === 'fail'),
+    ).toBe(true)
+    vi.restoreAllMocks()
+  })
+
+  it('ヘッダが無いメールも取り込み、判定なしとして記録する', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const { fetchImpl } = stubGmail({
+      pages: { '': { messages: [{ id: 'msg-card-1' }] } },
+      messages: { 'msg-card-1': cardUsageMessage() },
+    })
+
+    const result = await gatewayWith(fetchImpl).fetchMails(REQUEST)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.smbcMails).toHaveLength(1)
+    expect(info.mock.calls[0]?.[1]).toMatchObject({
+      dkim: 'absent',
+      spf: 'absent',
+      dmarc: 'absent',
+    })
+    info.mockRestore()
+  })
+
+  it('記録に件名・本文・差出人アドレスを載せない（そのままログに出るため）', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const { fetchImpl } = stubGmail({
+      pages: { '': { messages: [{ id: 'msg-card-1' }] } },
+      messages: {
+        'msg-card-1': withAuthHeader(cardUsageMessage(), [
+          'mx.google.com; spf=pass (google.com: domain of statement@vpass.ne.jp designates 203.0.113.1 as permitted sender) smtp.mailfrom=statement@vpass.ne.jp',
+        ]),
+      },
+    })
+
+    await gatewayWith(fetchImpl).fetchMails(REQUEST)
+
+    const logged = JSON.stringify(info.mock.calls)
+    expect(logged).not.toContain('@')
+    expect(logged).not.toContain('2,420')
+    expect(logged).not.toContain('ご利用のお知らせ')
+    info.mockRestore()
+  })
+})
+
 describe('createUnconfiguredGmailMailFetchGateway', () => {
   it('未構成でも例外を投げず、やり直しでは直らない失敗として返す', async () => {
     const result = await createUnconfiguredGmailMailFetchGateway().fetchMails(REQUEST)
