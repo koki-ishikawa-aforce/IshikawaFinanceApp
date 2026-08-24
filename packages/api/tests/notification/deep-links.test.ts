@@ -28,14 +28,11 @@ describe('createDeepLinkBuilder', () => {
     expect(withSlash.monthlyReport(month)).toBe('https://example.com/app/reports?month=2026-07')
   })
 
-  it('三井住友カードの明細 URL に対象月を YYYYMM で埋め込む', () => {
-    expect(links.smbcCardStatement(month)).toBe(
-      'https://www.smbc-card.com/memx/web_meisai/top/index.html?p01=202607',
+  it('明細の取得元サイト URL は持たない（#472: ドメインの statementSiteUrl が単一実装）', () => {
+    expect(links).not.toHaveProperty('smbcCardStatement')
+    expect(links).not.toHaveProperty('smbcBankStatement')
+    expect(JSON.stringify(Object.values(links).map(build => build(month)))).not.toContain(
+      'smbc-card.com',
     )
-  })
-
-  it('三井住友銀行の明細 URL には月を埋め込まない（OQ-38: 月をクエリ指定できない）', () => {
-    expect(links.smbcBankStatement()).toBe('https://direct3.smbc.co.jp/sp/web/')
-    expect(links.smbcBankStatement()).not.toContain('2026')
   })
 })

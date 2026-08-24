@@ -2,10 +2,10 @@
 
 import { useId, useState } from 'react'
 import type { StatementFileKind, YearMonth } from '@warimaru/domain'
+import { statementSiteMonthSupported, statementSiteUrl } from '@warimaru/domain'
 import { LuChevronDown, LuExternalLink } from '@/components/ui/icons'
 import { openExternal } from '@/lib/liff'
 import { formatMonthLabel } from '@/lib/month'
-import { statementSiteUrl } from '@/lib/statement-links'
 import ui from '@/components/ui/common.module.css'
 import styles from './StatementGuide.module.css'
 
@@ -26,7 +26,6 @@ interface SourceGuide {
   readonly title: string
   readonly steps: readonly string[]
   readonly linkLabel: string
-  readonly note: (month: YearMonth) => string
 }
 
 const GUIDES: Record<StatementFileKind, SourceGuide> = {
@@ -34,16 +33,26 @@ const GUIDES: Record<StatementFileKind, SourceGuide> = {
     title: '三井住友カード（カード利用明細）',
     steps: CARD_STEPS,
     linkLabel: '三井住友カードの明細ページを開く',
-    note: month => `${formatMonthLabel(month)}分の明細ページが開きます。`,
   },
   bank_statement: {
     title: '三井住友銀行（銀行入出金明細）',
     steps: BANK_STEPS,
     linkLabel: 'SMBC ダイレクトを開く',
-    // 月を指定して開けない制約は、手順の前に伝えないと「開いたのに違う月」に見える。
-    note: month =>
-      `月を指定して開くことはできません。ログイン後に${formatMonthLabel(month)}を表示してからダウンロードしてください。`,
   },
+}
+
+/**
+ * リンクを押すと何が開くのかの案内。
+ *
+ * 月を指定して開けるかどうかはドメインの `statementSiteMonthSupported` に従う。
+ * ここで種別ごとに書き分けると、取得元サイトの仕様が変わったときにリンク先だけが直り、
+ * 案内文が古いまま残る（月を指定して開けない制約は、手順の前に伝えないと
+ * 「開いたのに違う月」に見える）。
+ */
+function guideNote(fileKind: StatementFileKind, month: YearMonth): string {
+  return statementSiteMonthSupported(fileKind)
+    ? `${formatMonthLabel(month)}分の明細ページが開きます。`
+    : `月を指定して開くことはできません。ログイン後に${formatMonthLabel(month)}を表示してからダウンロードしてください。`
 }
 
 interface StatementGuideProps {
@@ -84,7 +93,7 @@ export function StatementGuide({ fileKind, month }: StatementGuideProps) {
       <div id={bodyId} hidden={!expanded} className={styles.body}>
         {/* 月送りでページ遷移なしに差し替わる。読み上げにも変化を届ける（usability §8-4） */}
         <p className={ui.note} role="status">
-          {guide.note(month)}
+          {guideNote(fileKind, month)}
         </p>
         <ol className={styles.steps}>
           {guide.steps.map(step => (
