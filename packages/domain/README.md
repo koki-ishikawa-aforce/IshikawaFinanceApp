@@ -80,7 +80,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 ### master-data（マスタ管理、08h）
 
 - 集約: `CategoryMaster` / `ExpenseTypeMaster`（`default` / `custom`、規定は改名・削除関数なし。名前一意性は save 前に `assertCategoryNameAvailable` / `assertExpenseTypeNameAvailable` で検査。規定の seed 投入は `seedDefaultCategory` / `seedDefaultExpenseType`、規定名の正は `DEFAULT_CATEGORY_NAMES` / `DEFAULT_EXPENSE_TYPE_NAMES`）, `MonthlyLimit`（`capped` / `unlimited`、論点15。seed 投入は `seedMonthlyLimit` + ロール別既定値 `defaultSeedLimitFor`）, `Phase0Config`（3 要素必須）
-- 値オブジェクト: `OwnershipScope`（`assertVisibleTo` で所有スコープの閲覧可否を検証）, `RenameRecord`, `SeedLimit`, `DeletionRequestState`, `CategoryDeletionRequest`, `ExpenseTypeDeletionRequest`, `Allowlist`
+- 値オブジェクト: `OwnershipScope`（`assertVisibleTo` で所有スコープの閲覧可否を検証）, `RenameRecord`, `SeedLimit`, `DeletionRequestState`（完了通知は依頼先コンテキストの部分集合。記録は `appendCompletedRemapContext`、依頼先かの判定は `isRequestedRemapContext`）, `CategoryDeletionRequest`, `ExpenseTypeDeletionRequest`, `Allowlist`
 - Repository I/F: `CategoryMasterRepository`, `ExpenseTypeMasterRepository`, `MonthlyLimitRepository`, `Phase0ConfigRepository`
 - Query I/F: `AllowlistQuery`, `LineChannelConfigQuery`
 - ドメインイベント: `CategorySeedInserted` ほか 17 種

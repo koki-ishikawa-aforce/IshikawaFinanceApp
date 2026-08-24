@@ -6,7 +6,7 @@ import {
   UserIdSchema,
 } from '../../shared/ids'
 import { ExpenseClassSchema } from '../../shared/value-objects/ExpenseClass'
-import { DeletionRequestStateSchema } from './DeletionRequestState'
+import { DeletionRequestStateSchema, appendCompletedRemapContext } from './DeletionRequestState'
 import type {
   CompletedRemapContext,
   DeletionRequestState,
@@ -87,21 +87,20 @@ export function requestCategoryRemap(
 /**
  * 依頼先コンテキストからのリマップ完了通知を1件記録する（remap_requested のまま）。
  * 冪等: 同一コンテキストの通知が再配信されても二重に記録しない（at-least-once 配信対策）。
+ * 依頼していないコンテキストからの完了通知は記録せず捨てる（影響件数に依頼外の申告を混ぜない）。
  */
 export function recordCategoryRemapContextCompletion(
   request: RemapRequestedCategoryDeletionRequest,
   completion: Omit<CompletedRemapContext, 'completedAt'>,
   at: Date,
 ): RemapRequestedCategoryDeletionRequest {
-  if (request.state.completedContexts.some(c => c.context === completion.context)) {
+  const state = appendCompletedRemapContext(request.state, completion, at)
+  if (state === request.state) {
     return request
   }
   return CategoryDeletionRequestSchema.parse({
     ...request,
-    state: {
-      ...request.state,
-      completedContexts: [...request.state.completedContexts, { ...completion, completedAt: at }],
-    },
+    state,
   }) as RemapRequestedCategoryDeletionRequest
 }
 
