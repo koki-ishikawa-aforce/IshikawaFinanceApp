@@ -503,6 +503,7 @@ export async function runDailyMailImportForUser(
       userId: params.userId,
       amazonMails: fetched.amazonMails,
       targetPeriod: batch.common.targetPeriod,
+      importBatchId: batch.common.importBatchId,
       at,
     })
   } catch (e) {

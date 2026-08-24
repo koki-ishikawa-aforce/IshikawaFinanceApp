@@ -41,6 +41,29 @@ export function amazonMatchTimeoutAt(receivedAt: Date): Date {
   return new Date(receivedAt.getTime() + AMAZON_MATCH_TIMEOUT_DAYS * MILLIS_PER_DAY)
 }
 
+/**
+ * 渡した注文すべての突合相手が入りうる発生日時の範囲（各注文の前後 3 日を包む）。
+ *
+ * 呼出し側が「どこまで候補を引けばよいか」を自前で計算すると、期間の解釈がドメインの外に
+ * 散る。注文が 1 件も無ければ引く必要が無いので null を返す。
+ */
+export function amazonMatchWindowOf(
+  orders: readonly AmazonOrderInfo[],
+): { from: Date; to: Date } | null {
+  const times = orders.map(o => o.orderedAt.getTime())
+  if (times.length === 0) return null
+  const span = AMAZON_MATCH_TIMEOUT_DAYS * MILLIS_PER_DAY
+  return { from: new Date(Math.min(...times) - span), to: new Date(Math.max(...times) + span) }
+}
+
+/**
+ * この時刻から見て、発生日時がこれより前なら SMBC 先着タイムアウトに達している境界。
+ * 掃き出し対象を引く上限として使う。
+ */
+export function amazonMatchDeadlineBefore(at: Date): Date {
+  return new Date(at.getTime() - AMAZON_MATCH_TIMEOUT_DAYS * MILLIS_PER_DAY)
+}
+
 /** 突合の結末（08a §2 の `Amazon突合取引候補 OR Amazon突合保留`） */
 export type AmazonOrderMatchOutcome =
   | {
@@ -57,9 +80,16 @@ export interface AmazonOrderMatchInput {
   cardUsageCandidates: readonly NormalTransactionCandidate[]
 }
 
-/** 注文と候補が金額・期間の条件で対になりうるか */
+/** 注文と候補が持ち主・金額・期間の条件で対になりうるか */
 function isMatchable(order: AmazonOrderInfo, candidate: NormalTransactionCandidate): boolean {
+  // 持ち主が違う組み合わせは突合しない。夫婦 2 人ぶんの取込が同じ関数を通るため、ここを
+  // 呼出し側の絞り込みだけに任せると、相手の買い物の商品名が本人の候補に載りうる
+  if (candidate.common.userId !== order.userId) return false
   if (!isAmazonMerchantName(candidate.common.merchantName)) return false
+  // 0 円の注文（ギフト券・ポイントで全額まかなった注文）はカードに請求が起きないため、
+  // 突き合わせる相手が存在しない。同じ 0 円で届くカード利用通知（与信確認）と結び付けると、
+  // 買い物と関係のない通知に商品名が付く
+  if (order.orderTotal === 0) return false
   if (candidate.common.amount !== order.orderTotal) return false
   const lag = Math.abs(candidate.common.occurredAt.getTime() - order.orderedAt.getTime())
   return lag <= AMAZON_MATCH_TIMEOUT_DAYS * MILLIS_PER_DAY
@@ -110,10 +140,19 @@ export function matchAmazonOrders(input: AmazonOrderMatchInput): AmazonOrderMatc
   })
 }
 
-/** 保留のタイムアウト判定（08b §2「Amazon突合タイムアウトを判定する」の Amazon 先着側） */
+/**
+ * タイムアウト判定（08b §2「Amazon突合タイムアウトを判定する」）。
+ *
+ * 判定は 2 方向あり、名前は `TimeoutDirection` の語彙に揃える。取引候補の段階では取引がまだ
+ * 存在しないため、判定そのものは取引取込側に置く（08b は取引ID を前提にしている）。
+ */
 export type AmazonMatchTimeoutJudgment = 'timeout_confirmed' | 'waiting'
 
-export function judgeAmazonMatchTimeout(
+/**
+ * Amazon 先着（注文確認メールが先に届き、カード利用通知が来ない）側の判定。
+ * 確定したら注文情報を破棄する（配送キャンセルの可能性があるため取引候補にしない）。
+ */
+export function judgeAmazonFirstTimeout(
   pending: AmazonMatchPending,
   at: Date,
 ): AmazonMatchTimeoutJudgment {
@@ -121,12 +160,12 @@ export function judgeAmazonMatchTimeout(
 }
 
 /**
- * カード利用通知が先に届いたまま注文確認メールが来ない候補のタイムアウト判定（SMBC 先着側）。
+ * SMBC 先着（カード利用通知が先に届き、注文確認メールが来ない）側の判定。
  *
  * 期限は発生日時から 3 日。確定したら「Amazon 注文不明」として未分類を確定させる（V-2）ため、
  * 呼出し側は `confirmMatchTimeout` で候補を遷移させる。
  */
-export function judgeCardUsageMatchTimeout(
+export function judgeSmbcFirstTimeout(
   candidate: NormalTransactionCandidate,
   at: Date,
 ): AmazonMatchTimeoutJudgment {

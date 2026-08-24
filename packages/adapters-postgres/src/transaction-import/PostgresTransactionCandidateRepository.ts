@@ -7,8 +7,9 @@
  *   save 時の occurred_on 導出と検索時のパラメータ変換に同じ関数を使う
  * - メール重複除外は partial unique が最終保証（violation は InvariantViolationError へ翻訳）
  */
-import { and, asc, eq, gte, isNotNull, lte, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm'
 import type {
+  AmazonOrderId,
   GmailMessageId,
   Money,
   NormalTransactionCandidate,
@@ -18,7 +19,11 @@ import type {
   UploadFileId,
   UserId,
 } from '@warimaru/domain'
-import { InvariantViolationError, TransactionCandidateSchema } from '@warimaru/domain'
+import {
+  AmazonOrderIdSchema,
+  InvariantViolationError,
+  TransactionCandidateSchema,
+} from '@warimaru/domain'
 import type { Db } from '../client'
 import { transactionCandidates } from '../schema'
 import { parsePayload, serializeForPayload } from '../serialize'
@@ -130,9 +135,33 @@ export class PostgresTransactionCandidateRepository implements TransactionCandid
       .from(transactionCandidates)
       .where(and(...conditions))
       .orderBy(asc(transactionCandidates.transactionCandidateId))
-    return rows
-      .map(row => parsePayload(TransactionCandidateSchema, row.payload))
-      .filter((c): c is NormalTransactionCandidate => c.kind === 'normal')
+    return (
+      rows
+        .map(row => parsePayload(TransactionCandidateSchema, row.payload))
+        // 列と payload の持ち主が食い違った行を返さない。突合はこの結果の候補を「別ユーザー由来の
+        // 注文情報で上書き保存する」処理なので、乖離があると相手の明細に商品名が付く
+        .filter(
+          (c): c is NormalTransactionCandidate => c.kind === 'normal' && c.common.userId === userId,
+        )
+    )
+  }
+
+  async findMatchedAmazonOrderIds(
+    userId: UserId,
+    amazonOrderIds: readonly AmazonOrderId[],
+  ): Promise<AmazonOrderId[]> {
+    if (amazonOrderIds.length === 0) return []
+    // amazonOrderId は昇格列を持たないため payload（importSource union の kind='amazon_match'）を
+    // 直接参照する。kind では絞らない — 突合済みの候補が確定済み（confirmed）へ進んでも取込ソースは
+    // amazon_match のまま残り、その注文が消費済みであることに変わりはないため
+    const orderId = sql`${transactionCandidates.payload}->'common'->'importSource'->>'amazonOrderId'`
+    const rows = await this.db
+      .select({ amazonOrderId: orderId })
+      .from(transactionCandidates)
+      .where(and(eq(transactionCandidates.userId, userId), inArray(orderId, [...amazonOrderIds])))
+    return rows.flatMap(row =>
+      typeof row.amazonOrderId === 'string' ? [AmazonOrderIdSchema.parse(row.amazonOrderId)] : [],
+    )
   }
 
   async save(candidate: TransactionCandidate): Promise<void> {

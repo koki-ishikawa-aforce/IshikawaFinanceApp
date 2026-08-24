@@ -12,20 +12,25 @@ import { MoneySchema } from '../../shared/value-objects/Money'
  * 商品カテゴリ（旧 Amazon商品キー）はメールに含まれないことが実メール調査で判明したため、
  * X-1 の取り下げ（2026-08-23 / #391・#572）に伴い削除した。
  */
+/**
+ * 上限は、外部から届くメール本文（1 通あたり最大 256KB）がそのまま取引候補の payload に
+ * 入らないようにするための歯止め。読み取り規則を緩めたときに、本文まるごとが商品名として
+ * 保存されることを防ぐ。超過はスキーマ違反 → パース失敗として件数に出る（取込は止まらない）。
+ */
 export const AmazonProductInfoSchema = z.object({
-  productName: z.string().min(1),
+  productName: z.string().min(1).max(200),
   productAmount: MoneySchema,
 })
 export type AmazonProductInfo = z.infer<typeof AmazonProductInfoSchema>
 
-// 将来の Amazon 突合機能（注文確認メールとカード明細の自動照合）の足場として残している。
-// AmazonProductInfoSchema は TransactionCandidate から参照済み。
+// 注文確認メールとカード利用通知の突合（#391）が使う。パースは
+// parseAmazonOrderConfirmationMail、突合は matchAmazonOrders。
 export const AmazonOrderInfoSchema = z.object({
   amazonOrderId: AmazonOrderIdSchema,
   userId: UserIdSchema,
   gmailMessageId: GmailMessageIdSchema,
   orderedAt: z.date(),
   orderTotal: MoneySchema,
-  products: z.array(AmazonProductInfoSchema).min(1),
+  products: z.array(AmazonProductInfoSchema).min(1).max(100),
 })
 export type AmazonOrderInfo = z.infer<typeof AmazonOrderInfoSchema>

@@ -92,6 +92,7 @@ import type {
   StatementImportJob,
   StatementImportJobRepository,
   Transaction,
+  AmazonOrderId,
   NormalTransactionCandidate,
   TransactionCandidate,
   TransactionCandidateId,
@@ -297,6 +298,16 @@ export function createMockTransactionCandidateRepository(): TransactionCandidate
           jstCalendarDate(c.common.occurredAt) <= jstCalendarDate(range.occurredTo) &&
           (range.occurredFrom === undefined ||
             jstCalendarDate(c.common.occurredAt) >= jstCalendarDate(range.occurredFrom)),
+      )
+    },
+    async findMatchedAmazonOrderIds(userId: UserId, amazonOrderIds: readonly AmazonOrderId[]) {
+      const wanted = new Set<string>(amazonOrderIds)
+      return [...store.values()].flatMap(c =>
+        c.common.userId === userId &&
+        c.common.importSource.kind === 'amazon_match' &&
+        wanted.has(c.common.importSource.amazonOrderId)
+          ? [c.common.importSource.amazonOrderId]
+          : [],
       )
     },
     async save(candidate: TransactionCandidate) {

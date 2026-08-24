@@ -6,7 +6,13 @@
  * findByTripleMatch（発生日 + 金額 + 加盟店名〔NFKC 正規化済み〕、OQ-23 / OQ-7）で
  * 生成前チェックを行う（Phase 5 M-B）。
  */
-import type { TransactionCandidateId, UserId, GmailMessageId, UploadFileId } from '../../shared/ids'
+import type {
+  AmazonOrderId,
+  TransactionCandidateId,
+  UserId,
+  GmailMessageId,
+  UploadFileId,
+} from '../../shared/ids'
 import type { Money } from '../../shared/value-objects/Money'
 import type {
   NormalTransactionCandidate,
@@ -40,5 +46,16 @@ export interface TransactionCandidateRepository {
     userId: UserId,
     range: { occurredFrom?: Date; occurredTo: Date },
   ): Promise<NormalTransactionCandidate[]>
+  /**
+   * 渡した Amazon 注文ID のうち、既にこのユーザーの取引候補へ突合済みのもの。
+   *
+   * 日次取込は過去 5 日ぶんのメールを毎回取り直すため、突合済みの注文確認メールも再び手元に
+   * 来る。これを除かないと、済んだ注文が新しいカード利用通知の突合相手を取り合って「一意に
+   * 決まらない」を作り、正当な突合を潰す。
+   */
+  findMatchedAmazonOrderIds(
+    userId: UserId,
+    amazonOrderIds: readonly AmazonOrderId[],
+  ): Promise<AmazonOrderId[]>
   save(candidate: TransactionCandidate): Promise<void>
 }

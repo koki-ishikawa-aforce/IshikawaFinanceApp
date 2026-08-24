@@ -7,8 +7,9 @@
  * 突合は誤って結び付けないことが要点なので、金額違い・期限外・一意に決まらない組み合わせで
  * 商品名が付かないことを否定形で押さえる。
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
+  AmazonMailParseResultSchema,
   GmailMessageIdSchema,
   GmailOAuthTokenSchema,
   ParameterStorePathSchema,
@@ -19,6 +20,7 @@ import {
 } from '@warimaru/domain'
 import type {
   AmazonOrderConfirmationMailBody,
+  AmazonOrderConfirmationMailParser,
   AmazonOrderSmbcMatched,
   AmazonProductInfoExtracted,
   DomainEvent,
@@ -32,7 +34,11 @@ import type {
   UserId,
 } from '@warimaru/domain'
 import { runDailyMailImportForUser, type DailyMailImportDeps } from '../src/daily-mail-import.js'
-import { createTestApp, VIEWER_ID, type TestApp } from './helpers/test-app.js'
+import { createTestApp, SPOUSE_ID, VIEWER_ID, type TestApp } from './helpers/test-app.js'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 const AT = new Date('2026-07-16T00:00:00+09:00')
 const ORDER_RECEIVED_AT = new Date('2026-07-15T09:53:00+09:00')
@@ -287,6 +293,171 @@ describe('Amazon 注文突合: カード利用通知に商品名を紐付ける'
     expect(parseFailures.map(e => e.gmailMessageId)).toEqual(['gm_amz_6'])
     // カード利用通知の取込は巻き添えにならない
     expect(outcome.importedCount).toBe(1)
+  })
+})
+
+describe('Amazon 注文突合: 再走査（同じメールをもう一度取り直したとき）', () => {
+  it('翌日の再走査で同じ注文確認メールを読み直しても、突合は増えずイベントも二度出ない', async () => {
+    const { t, deps } = await harness({
+      smbcMails: [smbcMail('gm_smbc_rescan')],
+      amazonMails: [amazonMail('gm_amz_rescan', '250-1010101-1010101', 2420)],
+    })
+    const matchedEvents = collect<AmazonOrderSmbcMatched>(t, 'AmazonOrderSmbcMatched')
+    const extractedEvents = collect<AmazonProductInfoExtracted>(t, 'AmazonProductInfoExtracted')
+
+    const first = completed(await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT }))
+    const second = completed(
+      await runDailyMailImportForUser(deps, {
+        userId: VIEWER_ID,
+        at: new Date(AT.getTime() + MILLIS_PER_DAY),
+      }),
+    )
+
+    expect(first.amazonMatch.matchedCount).toBe(1)
+    // 2 回目は突合済みとして読み飛ばす（期限切れ破棄にも保留にも数えない）
+    expect(second.amazonMatch).toMatchObject({
+      matchedCount: 0,
+      alreadyMatchedCount: 1,
+      pendingCount: 0,
+      expiredCount: 0,
+    })
+    // 同じカード利用通知から 2 件目の候補が作られない（同じ支払いの二重計上）
+    expect(second.importedCount).toBe(0)
+    expect(matchedEvents).toHaveLength(1)
+    expect(extractedEvents).toHaveLength(1)
+    const candidate = await candidateOf(t, 'gm_smbc_rescan')
+    expect(candidate.kind).toBe('amazon_matched')
+    if (candidate.kind !== 'amazon_matched') return
+    expect(candidate.products).toEqual([{ productName: 'マスタリングTCP/IP', productAmount: 2420 }])
+  })
+
+  it('突合済みの注文は、翌日に届いた同額の買い物の突合を邪魔しない', async () => {
+    const { t, deps } = await harness({
+      smbcMails: [smbcMail('gm_smbc_day1')],
+      amazonMails: [amazonMail('gm_amz_day1', '250-1212121-1212121', 2420)],
+    })
+    completed(await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT }))
+
+    // 翌日、同じ金額の買い物がもう 1 件。1 日目の注文確認メールも再走査で戻ってくる
+    const nextDay = new Date(AT.getTime() + MILLIS_PER_DAY)
+    const secondDayDeps = {
+      ...deps,
+      gmailMailFetchGateway: gateway(
+        [{ ...smbcMail('gm_smbc_day2'), receivedAt: nextDay }],
+        [
+          amazonMail('gm_amz_day1', '250-1212121-1212121', 2420),
+          amazonMail('gm_amz_day2', '250-1313131-1313131', 2420, { receivedAt: nextDay }),
+        ],
+      ),
+      parseSmbcNotificationMail: cardUsageParser(2420, nextDay),
+    }
+
+    const outcome = completed(
+      await runDailyMailImportForUser(secondDayDeps, { userId: VIEWER_ID, at: nextDay }),
+    )
+
+    expect(outcome.amazonMatch).toMatchObject({ matchedCount: 1, alreadyMatchedCount: 1 })
+    expect((await candidateOf(t, 'gm_smbc_day2')).kind).toBe('amazon_matched')
+  })
+})
+
+describe('Amazon 注文突合: 持ち主の取り違え防止と失敗時のバッチの閉じ方', () => {
+  it('パース結果が別人のものなら突合せず、バッチを失敗として閉じる', async () => {
+    const { t, deps } = await harness({
+      amazonMails: [amazonMail('gm_amz_spouse', '250-2020202-2020202', 2420)],
+    })
+    const spouseParser: AmazonOrderConfirmationMailParser = ({ mail }) =>
+      AmazonMailParseResultSchema.parse({
+        kind: 'order_confirmation',
+        order: {
+          amazonOrderId: '250-2020202-2020202',
+          // メール本文（外部入力）由来で持ち主がすり替わった状況を作る
+          userId: SPOUSE_ID,
+          gmailMessageId: mail.gmailMessageId,
+          orderedAt: ORDER_RECEIVED_AT,
+          orderTotal: money(2420),
+          products: [{ productName: '本', productAmount: money(2420) }],
+        },
+      })
+
+    const outcome = await runDailyMailImportForUser(
+      { ...deps, parseAmazonOrderConfirmationMail: spouseParser },
+      { userId: VIEWER_ID, at: AT },
+    )
+
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      failureKind: 'unexpected_error',
+      // 実装の誤りなのでやり直しても直らない
+      retryable: false,
+    })
+    // 二重起動防止のロックが残らない
+    expect(await t.deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
+  })
+
+  it('突合の途中で落ちても、バッチは取込中のまま残らない（翌日の取込が起動できる）', async () => {
+    const { t, deps } = await harness({ smbcMails: [smbcMail('gm_smbc_boom')] })
+    const failing = {
+      ...t.deps.transactionCandidateRepository,
+      findEmailSourcedNormalCandidates: () => Promise.reject(new Error('injected read failure')),
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const outcome = await runDailyMailImportForUser(
+      { ...deps, transactionCandidateRepository: failing },
+      { userId: VIEWER_ID, at: AT },
+    )
+
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      failureKind: 'unexpected_error',
+      // 一時的な失敗なので翌日の再走査でやり直せる
+      retryable: true,
+    })
+    expect(await t.deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
+  })
+})
+
+describe('Amazon 注文突合: 記録（取りこぼしに気づけるか）', () => {
+  it('取り直した期間がタイムアウト期限より短い実行では、注文不明の確定を見送って警告を出す', async () => {
+    const occurredAt = new Date(AT.getTime() - 10 * MILLIS_PER_DAY)
+    const { t, deps } = await harness({})
+    await seedCardUsageCandidate(t, {
+      id: '01CND000000000000000000006',
+      gmailMessageId: 'gm_smbc_short_period',
+      amount: 2420,
+      occurredAt,
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const outcome = completed(
+      await runDailyMailImportForUser(deps, {
+        userId: VIEWER_ID,
+        at: AT,
+        period: { from: new Date(AT.getTime() - MILLIS_PER_DAY), to: AT },
+      }),
+    )
+
+    expect(outcome.amazonMatch.cardUsageTimedOutCount).toBe(0)
+    expect((await candidateOf(t, 'gm_smbc_short_period')).kind).toBe('normal')
+    const message = warn.mock.calls.map(args => String(args[0])).join('\n')
+    expect(message).toContain('注文不明の確定を見送った')
+  })
+
+  it('読み取れなかった注文確認メールは警告として記録され、本文・商品名は載らない', async () => {
+    const { deps } = await harness({
+      amazonMails: [
+        amazonMail('gm_amz_warn', '250-3030303-3030303', 2420, { body: '注文番号が無い本文' }),
+      ],
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
+
+    const message = warn.mock.calls.map(args => String(args[0])).join('\n')
+    expect(message).toContain('パース失敗=1')
+    expect(message).not.toContain('マスタリングTCP/IP')
+    expect(message).not.toContain('注文番号が無い本文')
   })
 })
 

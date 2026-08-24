@@ -110,21 +110,28 @@ describe('PostgresTransactionCandidateRepository', () => {
   it('findEmailSourcedNormalCandidates はメール由来・通常の候補だけを発生日の範囲で返す', async () => {
     // JST 暦日で 7/10・7/12・7/15 に当たる 3 件（UTC 表記）
     const jul10 = new Date('2026-07-10T03:00:00.000Z')
+    const jul11 = new Date('2026-07-11T03:00:00.000Z')
     const jul12 = new Date('2026-07-12T03:00:00.000Z')
     const jul15 = new Date('2026-07-15T03:00:00.000Z')
     const inRangeEarly = normalCandidate({ occurredAt: jul10, merchantName: 'AMAZON CO JP' })
     const inRangeLate = normalCandidate({ occurredAt: jul12, merchantName: 'AMAZON CO JP' })
     const outOfRange = normalCandidate({ occurredAt: jul15 })
+    const outOfRangeByJst = normalCandidate({
+      // UTC 7/12 15:30 = JST 7/13 00:30 → occurredTo=jul12 の JST 暦日を超える
+      occurredAt: new Date('2026-07-12T15:30:00.000Z'),
+    })
     const otherUser = normalCandidate({ occurredAt: jul10, userId: DARLING_USER_ID })
     // メール由来でない候補（CSV / PDF）と、突合済み・タイムアウト済みの候補は返らない
+    // （非 normal の 2 件は範囲内に置く。範囲外に置くと日付だけで落ちて kind の絞り込みが確認できない）
     const csv = csvCandidate({ occurredAt: jul10 })
     const pdf = pdfCandidate({ occurredAt: jul10 })
-    const matched = amazonMatchedCandidate()
-    const timedOut = matchTimeoutCandidate()
+    const matched = amazonMatchedCandidate({ occurredAt: jul11 })
+    const timedOut = matchTimeoutCandidate({ occurredAt: jul11 })
     for (const candidate of [
       inRangeEarly,
       inRangeLate,
       outOfRange,
+      outOfRangeByJst,
       otherUser,
       csv,
       pdf,
@@ -158,6 +165,33 @@ describe('PostgresTransactionCandidateRepository', () => {
     const ids = found.map(c => c.common.transactionCandidateId)
     expect(ids).toContain(old.common.transactionCandidateId)
     expect(ids).not.toContain(recent.common.transactionCandidateId)
+  })
+
+  it('findMatchedAmazonOrderIds は突合済みの Amazon 注文ID だけを返す（他ユーザーは含めない）', async () => {
+    const mine = amazonMatchedCandidate({ smbcGmailMessageId: 'gm-smbc-mine' })
+    const spouse = amazonMatchedCandidate({
+      userId: DARLING_USER_ID,
+      smbcGmailMessageId: 'gm-smbc-spouse',
+    })
+    const normal = normalCandidate({ gmailMessageId: 'gm-not-matched' })
+    for (const candidate of [mine, spouse, normal]) {
+      await repo.save(candidate)
+    }
+    if (mine.common.importSource.kind !== 'amazon_match')
+      throw new Error('fixture が amazon_match でない')
+    if (spouse.common.importSource.kind !== 'amazon_match')
+      throw new Error('fixture が amazon_match でない')
+    const mineOrderId = mine.common.importSource.amazonOrderId
+    const spouseOrderId = spouse.common.importSource.amazonOrderId
+    const unknownId = '250-0000000-0000000' as never
+
+    const found = await repo.findMatchedAmazonOrderIds(HONEY_USER_ID, [
+      mineOrderId,
+      spouseOrderId,
+      unknownId,
+    ])
+
+    expect(found).toEqual([mineOrderId])
   })
 
   it('confirmed 候補を save → findById で往復できる（kind CHECK 拡張の確認）', async () => {

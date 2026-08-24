@@ -181,6 +181,10 @@ describe('TransactionCandidate: Amazon 突合の状態遷移', () => {
   const at = new Date('2026-07-16T00:00:00+09:00')
   const order = {
     amazonOrderId: '250-1234567-1234567' as never,
+    userId: 'user_honey' as never,
+    gmailMessageId: 'gm_amazon_1' as never,
+    orderedAt: new Date('2026-07-15T09:53:00+09:00'),
+    orderTotal: 2500 as never,
     products: [{ productName: 'マスタリングTCP/IP', productAmount: 2500 as never }],
   }
 
@@ -214,6 +218,12 @@ describe('TransactionCandidate: Amazon 突合の状態遷移', () => {
     expect(matched.common.transactionCandidateId).toBe(candidate.common.transactionCandidateId)
     expect(matched.common.amount).toBe(candidate.common.amount)
     expect(matched.common.occurredAt).toEqual(candidate.common.occurredAt)
+  })
+
+  it('持ち主が違う注文とは突合できない（相手の買い物が本人の候補に載らない）', () => {
+    expect(() =>
+      matchAmazonOrder(normal(), { ...order, userId: 'user_darling' as never }, at),
+    ).toThrow(InvariantViolationError)
   })
 
   it('メール由来でない候補は突合できない（不変条件違反）', () => {

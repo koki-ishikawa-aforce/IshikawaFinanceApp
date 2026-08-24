@@ -78,9 +78,10 @@ describe('parseAmazonOrderConfirmationMail: 注文確認メールから注文情
     expect(result.kind).toBe('order_confirmation')
     if (result.kind !== 'order_confirmation') return
     expect(result.order.orderTotal).toBe(5000)
-    expect(result.order.products.map(p => p.productName)).toEqual([
-      'コーヒー豆 500g',
-      'ドリップスタンド',
+    expect(result.order.products).toEqual([
+      { productName: 'コーヒー豆 500g', productAmount: 1800 },
+      // カンマ区切りの単価がそのまま数値として読めていること
+      { productName: 'ドリップスタンド', productAmount: 3200 },
     ])
   })
 
@@ -204,6 +205,42 @@ describe('parseAmazonOrderConfirmationMail: 注文確認メールから注文情
       kind: 'parse_failure',
       reason: 'missing_required_field',
     })
+  })
+
+  it('商品名が極端に長い本文は取り込まない（メール本文がそのまま家計簿に入らない）', () => {
+    const body = [
+      '注文番号: 250-8888888-8888888',
+      '',
+      `* ${'あ'.repeat(201)}`,
+      '  数量: 1',
+      '  1000 JPY',
+      '',
+      '合計 1000 JPY',
+    ].join('\n')
+
+    expect(parse({ body })).toMatchObject({
+      kind: 'parse_failure',
+      reason: 'missing_required_field',
+    })
+  })
+
+  it('0 円の注文（ギフト券などで全額まかなった注文）はそのまま 0 円として読む', () => {
+    const body = [
+      '注文番号: 250-9999999-9999999',
+      '',
+      '* ギフト券で買った商品',
+      '  数量: 1',
+      '  0 JPY',
+      '',
+      'ご請求額: 0 JPY',
+    ].join('\n')
+
+    const result = parse({ body })
+
+    // 金額を勝手に変えない。カードに請求が起きないため突合の相手にしないのは突合側の判断
+    expect(result.kind).toBe('order_confirmation')
+    if (result.kind !== 'order_confirmation') return
+    expect(result.order.orderTotal).toBe(0)
   })
 
   it('例外を投げず、空の本文でも失敗として返す（1 通の異常で取込を止めない）', () => {

@@ -15,11 +15,11 @@
  */
 import { z } from 'zod'
 import { TransactionCandidateIdSchema, TransactionIdSchema, UserIdSchema } from '../../shared/ids'
-import type { AmazonOrderId, GmailMessageId, TransactionId } from '../../shared/ids'
+import type { GmailMessageId, TransactionId } from '../../shared/ids'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
 import { MoneySchema } from '../../shared/value-objects/Money'
 import { CandidateImportSourceSchema } from '../value-objects/CandidateImportSource'
-import { AmazonProductInfoSchema, type AmazonProductInfo } from '../value-objects/AmazonOrderInfo'
+import { AmazonProductInfoSchema, type AmazonOrderInfo } from '../value-objects/AmazonOrderInfo'
 
 /** タイムアウト方向 */
 export const TimeoutDirectionSchema = z.enum([
@@ -115,10 +115,14 @@ export function emailGmailMessageIdOf(candidate: NormalTransactionCandidate): Gm
  * 突合できるのはメール由来の候補だけ。CSV / PDF 由来の候補には突き合わせる Gmail message ID が
  * 無く、`amazon_match` の取込ソースを組み立てられない（呼出し側の絞り込み漏れを型では防げない
  * ため、ここで不変条件として弾く）。
+ *
+ * 持ち主が違う組み合わせも同じく弾く。夫婦 2 人ぶんの取込が同じ関数を通るため、ここを呼出し側の
+ * 絞り込みだけに任せると、相手の買い物の商品名が本人の候補に載りうる（プライバシー3段階ルールで
+ * 最も避けたい混線）。
  */
 export function matchAmazonOrder(
   candidate: NormalTransactionCandidate,
-  order: { amazonOrderId: AmazonOrderId; products: readonly AmazonProductInfo[] },
+  order: AmazonOrderInfo,
   at: Date,
 ): AmazonMatchedTransactionCandidate {
   const source = candidate.common.importSource
@@ -126,6 +130,9 @@ export function matchAmazonOrder(
     throw new InvariantViolationError(
       'Amazon 突合できるのはメール由来の取引候補だけ（SMBC_Gmail_message_ID が必要）',
     )
+  }
+  if (order.userId !== candidate.common.userId) {
+    throw new InvariantViolationError('Amazon 注文と取引候補の持ち主が一致しない')
   }
   return TransactionCandidateSchema.parse({
     kind: 'amazon_matched',
