@@ -32,7 +32,8 @@
         "gap",
         "row-gap",
         "column-gap",
-        "font-size"
+        "font-size",
+        "line-height"
       ],
       {
         "ignoreValues": [
@@ -43,7 +44,8 @@
           "none",
           "auto",
           "transparent",
-          "currentColor"
+          "currentColor",
+          "normal"
         ],
         "ignoreFunctions": true,
         "disableFix": true,

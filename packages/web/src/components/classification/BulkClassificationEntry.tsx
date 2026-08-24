@@ -168,7 +168,7 @@ export function BulkClassificationEntry({
       )}
       {resumableSession !== null ? (
         <>
-          <p className={styles.note} role="status">
+          <p className={ui.noteLg} role="status">
             まとめて分類が途中のままです。続けると、まだ未分類の取引だけを分類できます。これをおえるか、やめるまで、ほかの月のまとめて分類は始められません。
           </p>
           {resume.error && (

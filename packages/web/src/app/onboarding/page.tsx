@@ -453,7 +453,7 @@ export default function OnboardingPage() {
             <RoleIcon role={avatarRole} className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>ニックネームを設定</span>
-          <p className={styles.note}>アプリ内で表示される呼び名を決めましょう（10文字まで）。</p>
+          <p className={ui.note}>アプリ内で表示される呼び名を決めましょう（10文字まで）。</p>
           <input
             className={ui.input}
             value={nicknameInput}
@@ -485,7 +485,7 @@ export default function OnboardingPage() {
             <LuMessageCircle aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>LINE 公式アカウントを友だち追加</span>
-          <p className={styles.note}>
+          <p className={ui.note}>
             通知の受け取りに使う「わりまる」公式アカウントを LINE
             で友だち追加してください。追加したら「友だち追加を確認する」を押すと、わりまるが LINE
             に問い合わせて確認します。
@@ -499,13 +499,13 @@ export default function OnboardingPage() {
           </button>
           {/* 確認結果は押した場所で差し替わる。読み上げに載せないと結果が伝わらない（使用性 8-4） */}
           {friendCheckResult === 'confirmed' && (
-            <p className={styles.note} role="status">
+            <p className={ui.note} role="status">
               <LuCheck aria-hidden="true" className={ui.iconInline} />{' '}
               友だち追加を確認しました。次の手順へ進みます。
             </p>
           )}
           {friendCheckResult === 'not_friend' && (
-            <p className={styles.note} role="status">
+            <p className={ui.note} role="status">
               <LuTriangleAlert aria-hidden="true" className={ui.iconInline} />{' '}
               友だち追加を確認できませんでした。LINE
               で「わりまる」を友だち追加してから、もう一度お試しください。
@@ -517,7 +517,7 @@ export default function OnboardingPage() {
             </ErrorState>
           )}
           {/* 自己申告（#298 で廃止予定）。確認が通らないあいだの暫定の逃げ道として残す */}
-          <p className={styles.note}>確認がうまくいかないときは、こちらから先へ進めます。</p>
+          <p className={ui.note}>確認がうまくいかないときは、こちらから先へ進めます。</p>
           <button
             className={ui.buttonGhost}
             disabled={recordLineFriend.isPending}
@@ -542,11 +542,11 @@ export default function OnboardingPage() {
             <LuUsers aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>共通トークルームへ参加</span>
-          <p className={styles.note}>
+          <p className={ui.note}>
             ふたりの家計通知が届く共通トークルームに参加してください。ふたりで共有する設定なので、どちらかが参加を記録すればこの手順は完了します。招待リンクは配偶者または公式アカウントのメッセージから開けます。
           </p>
           {talkRoomId === null && (
-            <p className={styles.note}>
+            <p className={ui.note}>
               <LuTriangleAlert aria-hidden="true" className={ui.iconInline} />{' '}
               参加を記録するトークルームを特定できません。共通トークルーム内からこの画面を開き直してください。
             </p>
@@ -577,7 +577,7 @@ export default function OnboardingPage() {
             <LuBell aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>通知の設定</span>
-          <p className={styles.note}>
+          <p className={ui.note}>
             リマインダーやレポート完成の通知を LINE
             で受け取りますか？あとからこの画面で有効化できます。
           </p>
@@ -608,7 +608,7 @@ export default function OnboardingPage() {
             <LuRocket aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>Phase 2 をはじめる</span>
-          <p className={styles.note}>
+          <p className={ui.note}>
             データ連携と初期設定に進みます。Gmail 連携（A）→
             初期残高の登録（B）の順で完了し、カテゴリ・経費種別・月次上限の確認（C・D・E）と過去明細の取込（F）は任意です。
           </p>
@@ -633,7 +633,7 @@ export default function OnboardingPage() {
       {step === 'phase2' && progress !== undefined && (
         <div className={ui.card}>
           <span className={ui.sectionTitle}>Phase 2 の進捗</span>
-          <p className={styles.note}>
+          <p className={ui.note}>
             A → B の順で完了する必要があります。C・D・E の確認と F
             の取込は任意で、済ませていなくても設定は完了できます。
           </p>
@@ -650,7 +650,7 @@ export default function OnboardingPage() {
             </div>
             {progress.sectionA.kind !== 'completed' && (
               <>
-                <p className={styles.note}>
+                <p className={ui.note}>
                   利用明細メールの自動取込に使います。認可は外部ブラウザで行い、完了後にこの画面へ戻って「連携状態を更新」を押してください。
                 </p>
                 <div className={ui.row}>
@@ -689,7 +689,7 @@ export default function OnboardingPage() {
             </div>
             {progress.sectionB.kind !== 'completed' && (
               <>
-                <p className={styles.note}>
+                <p className={ui.note}>
                   口座の現在残高を登録して資産管理を始めます。登録済みの口座（SMBC銀行口座・別銀行貯蓄口座・NISA口座）の残高を、初期残高として記録します。
                 </p>
                 {accountsQuery.isPending && <LoadingState>口座を確認しています...</LoadingState>}
@@ -746,7 +746,7 @@ export default function OnboardingPage() {
                     )}
                     {cardUnregistered && (
                       <>
-                        <p className={styles.note}>
+                        <p className={ui.note}>
                           クレジットカードの利用を取り込むには
                           {ACCOUNT_KIND_LABELS['mitsui_sumitomo_card']}
                           の登録も必要です（この手順の完了には必須ではありません）。
@@ -797,7 +797,7 @@ export default function OnboardingPage() {
                 </div>
                 {kind === 'unconfirmed' && (
                   <>
-                    <p className={styles.note}>{note}</p>
+                    <p className={ui.note}>{note}</p>
                     <div className={ui.row}>
                       <Link href={href} className={`${ui.buttonGhost} ${ui.buttonLink}`}>
                         中身を見る
@@ -826,7 +826,7 @@ export default function OnboardingPage() {
                 {kind !== 'unconfirmed' &&
                   confirmSection.isSuccess &&
                   confirmSection.variables === section && (
-                    <p className={styles.note} role="status">
+                    <p className={ui.note} role="status">
                       <LuCheck aria-hidden="true" className={ui.iconInline} /> {name}
                       を記録しました。
                     </p>
@@ -847,7 +847,7 @@ export default function OnboardingPage() {
             </div>
             {progress.sectionF.kind === 'not_started' && (
               <>
-                <p className={styles.note}>
+                <p className={ui.note}>
                   過去のカード・銀行明細を取り込んで、これまでの家計も見えるようにします（任意）。
                 </p>
                 {/* 取込状況が取れないと「完了にする」が黙って消えるため、Section B と同じ形で状態を出す */}
@@ -947,7 +947,7 @@ export default function OnboardingPage() {
                   <LuPartyPopper aria-hidden="true" className={ui.iconLg} />
                 </div>
                 <span className={ui.sectionTitle}>ふたりの設定が完了しました！</span>
-                <p className={styles.note}>
+                <p className={ui.note}>
                   {nickname !== '' ? `${nickname}さん、` : ''}
                   おつかれさまでした。ダッシュボードから家計管理を始めましょう。
                 </p>
@@ -961,7 +961,7 @@ export default function OnboardingPage() {
                   <LuHourglass aria-hidden="true" className={ui.iconLg} />
                 </div>
                 <span className={ui.sectionTitle}>配偶者の設定完了を待っています</span>
-                <p className={styles.note}>
+                <p className={ui.note}>
                   あなたの設定は完了しています。ふたりとも Phase 2
                   まで完了すると運用が始まります。画面を開き直すと最新の状態を確認します。
                 </p>
@@ -994,7 +994,7 @@ export default function OnboardingPage() {
             <LuPartyPopper aria-hidden="true" className={ui.iconLg} />
           </div>
           <span className={ui.sectionTitle}>運用開始済みです</span>
-          <p className={styles.note}>
+          <p className={ui.note}>
             {nickname !== '' ? `${nickname}さん、` : ''}
             設定はすべて完了しています。ダッシュボードから家計管理を続けましょう。
           </p>

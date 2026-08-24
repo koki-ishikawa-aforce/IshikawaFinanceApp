@@ -2,7 +2,7 @@
   font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: var(--leading-relaxed);
 }
 
 .list {
@@ -41,15 +41,9 @@
   margin-left: auto;
 }
 
-.hint {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
 .result {
   font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: var(--leading-relaxed);
 }

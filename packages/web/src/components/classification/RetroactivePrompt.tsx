@@ -161,7 +161,7 @@ export function RetroactivePrompt({ merchantName, onDone }: RetroactivePromptPro
       {apply.error && <ErrorState>{applyErrorMessage(apply.error)}</ErrorState>}
       {selectedIds.length === 0 && (
         // 3-5: なぜ押せないかを画面上に出す
-        <p className={styles.hint}>変更する取引にチェックを入れると、まとめて変更できます。</p>
+        <p className={ui.noteLg}>変更する取引にチェックを入れると、まとめて変更できます。</p>
       )}
       <button
         className={ui.button}
