@@ -48,3 +48,17 @@
   font-size: min(var(--text-2xl), 16cqi);
   font-weight: 800;
 }
+
+/* 押せるカード（ドリルダウン）。行き先を持つカードだけに付ける */
+.link {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* 手がかりのアイコン。金額の流し込みを乱さないよう右下に重ねる（右上は hero の装飾が入る） */
+.chevron {
+  position: absolute;
+  right: var(--space-1_5);
+  bottom: var(--space-1_5);
+  color: var(--text-on-kpi);
+}

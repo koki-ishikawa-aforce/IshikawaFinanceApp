@@ -15,6 +15,7 @@ import {
 import type {
   Account,
   AccountId,
+  BalanceAxis,
   AccountRepository,
   MitsuiSumitomoUnpaid,
   MitsuiSumitomoUnpaidId,
@@ -629,6 +630,30 @@ export function createMockBalanceHistoryRepository(): BalanceHistoryRepository {
       return sorted(
         [...store.values()].filter(e => e.occurredAt >= from && e.occurredAt < toExclusive),
       )
+    },
+    async findByAccountAxisAndOccurredAtRange(
+      accountId: AccountId,
+      axis: BalanceAxis,
+      from: Date,
+      toExclusive: Date,
+    ) {
+      return sorted(
+        [...store.values()].filter(
+          e =>
+            e.accountId === accountId &&
+            e.axis === axis &&
+            e.occurredAt >= from &&
+            e.occurredAt < toExclusive,
+        ),
+      )
+    },
+    async findLatestForAccountAxisBefore(accountId: AccountId, axis: BalanceAxis, at: Date) {
+      const candidates = sorted(
+        [...store.values()].filter(
+          e => e.accountId === accountId && e.axis === axis && e.occurredAt < at,
+        ),
+      )
+      return candidates.at(-1) ?? null
     },
     async findLatestPerAccountBefore(atExclusive: Date) {
       // PostgreSQL 実装の DISTINCT ON (axis, account_id) と同じく、(軸, 口座) ごとに 1 件

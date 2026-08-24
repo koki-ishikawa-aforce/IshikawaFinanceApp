@@ -8,6 +8,7 @@ import {
 } from '@warimaru/domain'
 import type {
   AccountBalanceQuery,
+  AccountDetailQuery,
   Allowlist,
   AllowlistQuery,
   AppUser,
@@ -75,6 +76,18 @@ export function createMockBalanceTimeSeriesQuery(): BalanceTimeSeriesQuery {
         nisaContribution: [],
         cardUnpaid: [],
       })
+    },
+  }
+}
+
+/**
+ * 口座詳細（#406）のモック。参照先の口座を持たないため常に null（＝404）を返す。
+ * 「口座はあるが中身が空」を返すと、口座を持たない状態と見分けが付かなくなる。
+ */
+export function createMockAccountDetailQuery(): AccountDetailQuery {
+  return {
+    async fetch() {
+      return null
     },
   }
 }

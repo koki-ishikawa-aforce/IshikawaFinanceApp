@@ -41,7 +41,9 @@ export const balanceHistoryEntries = pgTable(
     // 軸で絞らず発生日時だけで範囲を切るため、先頭列は occurred_at にする
     index('idx_balance_history_entries_occurred_at').on(t.occurredAt),
     // 期間の起点になる「(軸, 口座) ごとの直前値」（findLatestPerAccountBefore）の
-    // DISTINCT ON 用。並び順（axis, account_id, occurred_at DESC）に合わせる
+    // DISTINCT ON 用。並び順（axis, account_id, occurred_at DESC）に合わせる。
+    // 口座詳細（#406）の findByAccountAxisAndOccurredAtRange /
+    // findLatestForAccountAxisBefore も先頭列から連続してこの索引を使う
     index('idx_balance_history_entries_axis_account_occurred_at').on(
       t.axis,
       t.accountId,

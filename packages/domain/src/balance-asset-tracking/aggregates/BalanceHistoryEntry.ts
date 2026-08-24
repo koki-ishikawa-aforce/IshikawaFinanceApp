@@ -26,8 +26,10 @@ import {
   type AccountId,
   type BalanceHistoryEntryId,
 } from '../../shared/ids'
-import { MoneySchema, money, type Money } from '../../shared/value-objects/Money'
+import { MoneySchema, money, subtractMoney, type Money } from '../../shared/value-objects/Money'
 import { BalanceAxisSchema, type BalanceAxis } from '../value-objects/BalanceAxis'
+import { ManualEntryMemoSchema, type ManualEntryMemo } from '../value-objects/ManualEntryMemo'
+import { OtherSavingsUpdateSourceSchema } from '../value-objects/OtherSavingsUpdateSource'
 
 export const BalanceHistoryEntrySchema = z.object({
   entryId: BalanceHistoryEntryIdSchema,
@@ -134,4 +136,139 @@ export function latestHouseholdValueOfAxis(
   let total = 0
   for (const v of latestByAccount.values()) total += v
   return money(total)
+}
+
+/** 指定の口座・軸のエントリを発生日時の昇順で取り出す（口座 1 件を読む入口） */
+function historyOfAccountAxis(
+  entries: readonly BalanceHistoryEntry[],
+  accountId: AccountId,
+  axis: BalanceAxis,
+): BalanceHistoryEntry[] {
+  return balanceHistoryOfAxis(entries, axis).filter(e => e.accountId === accountId)
+}
+
+/** 期間の起点として使える値か（口座・軸が一致していること） */
+function openingValueOf(
+  opening: BalanceHistoryEntry | null,
+  accountId: AccountId,
+  axis: BalanceAxis,
+): Money | null {
+  if (opening === null) return null
+  return opening.accountId === accountId && opening.axis === axis ? opening.value : null
+}
+
+/**
+ * 口座 1 件の推移（口座詳細画面 #406 の単線グラフ）。
+ *
+ * 世帯合算（`householdBalanceSeriesOfAxis`）と違い、合計する相手がいないので
+ * 履歴の点をそのまま並べる。違いは期間の起点の扱いで、`opening`（期間より前に
+ * 記録された最後の値）を期間の開始時刻の点として置く。置かないと、期間中に
+ * 一度も動かなかった口座のグラフが「データなし」になり、残高があるのに線が
+ * 消えたように見える。
+ *
+ * 口座IDを受け取って絞るのは、読み出し側の絞り込み漏れがそのまま
+ * 「線が他人の口座の残高を行き来する」になるため（世帯合算と違い、混ざっても
+ * 合計として辻褄が合ってしまい気づけない）。
+ */
+export function accountBalanceSeriesOfAxis(params: {
+  entries: readonly BalanceHistoryEntry[]
+  accountId: AccountId
+  axis: BalanceAxis
+  opening: BalanceHistoryEntry | null
+  windowStart: Date
+}): BalanceSeriesPoint[] {
+  const points = historyOfAccountAxis(params.entries, params.accountId, params.axis).map(e =>
+    BalanceSeriesPointSchema.parse({ occurredAt: e.occurredAt, value: e.value }),
+  )
+  const openingValue = openingValueOf(params.opening, params.accountId, params.axis)
+  if (openingValue === null) return points
+  // 期間の開始ちょうどに記録があると、起点と同じ時刻に点が 2 つ並ぶ（取込由来の
+  // 発生日時は JST 0 時ちょうどになるため実際に起こる）。その場合は起点を置かない
+  if (points[0]?.occurredAt.getTime() === params.windowStart.getTime()) return points
+  return [
+    BalanceSeriesPointSchema.parse({
+      occurredAt: params.windowStart,
+      value: openingValue,
+    }),
+    ...points,
+  ]
+}
+
+/**
+ * 履歴の 1 行に手入力の情報を添えるための最小の形。別銀行貯蓄の手入力記録
+ * （`OtherSavingsManualEntry`）と NISA の手入力記録（`NisaManualEntry`）の
+ * どちらもこの形を満たすため、軸ごとに関数を分けずに済む。
+ *
+ * 種別は更新由来（`OtherSavingsUpdateSource`）の手入力 2 値をそのまま借りる。
+ * 手入力を表す語を軸ごと・レイヤーごとに作り直さないため。
+ */
+export interface ManualEntryAnnotation {
+  kind: ManualBalanceUpdateSource
+  enteredAt: Date
+  memo?: ManualEntryMemo | undefined
+}
+
+/** 更新由来のうち手入力の 2 値（残高変動履歴の行に添える種別） */
+export const ManualBalanceUpdateSourceSchema = OtherSavingsUpdateSourceSchema.extract([
+  'manual_withdrawal',
+  'manual_correction',
+])
+export type ManualBalanceUpdateSource = z.infer<typeof ManualBalanceUpdateSourceSchema>
+
+/**
+ * 口座 1 件の残高変動履歴の 1 行（口座詳細画面 #406 が並べる履歴）。
+ * 自動反映（取込・引落の消込・振込の判別）と手入力が 1 つの並びに混ざる。
+ */
+export const AccountBalanceHistoryRowSchema = z.object({
+  occurredAt: z.date(),
+  /** 変動後の値。積立累計・未払い合計のときもここに入る（履歴エントリと同じ） */
+  valueAfter: MoneySchema,
+  /**
+   * 直前に分かっている値からの増減。マイナスは減少。
+   * 起点が分からない最初の 1 行だけ null（それ以前の値を持たないため差を出せない）。
+   */
+  delta: MoneySchema.nullable(),
+  /** 手入力に由来する行はその種別、それ以外（取込・引落の反映など）は 'auto' */
+  source: z.union([z.literal('auto'), ManualBalanceUpdateSourceSchema]),
+  memo: ManualEntryMemoSchema.optional(),
+})
+export type AccountBalanceHistoryRow = z.infer<typeof AccountBalanceHistoryRowSchema>
+
+/**
+ * behavior 口座 1 件の残高変動履歴を組み立てる（08d §2「口座詳細を読み出す」）。
+ *
+ * 値の正は残高変動履歴（残高が動いた経路すべてが 1 行を残す）で、手入力記録は
+ * 「その行が手入力だったか・メモは何か」を添えるためだけに使う。逆にすると、
+ * 自動反映（取込・引落の消込・振込の判別）が履歴から落ちる。
+ *
+ * 突き合わせは発生日時の一致で行う。手入力の経路は、口座に積む記録の入力日時と
+ * 発行するイベントの発生日時に同じ時刻を渡すため一致する（合わない行は 'auto' に
+ * 落ちるだけで、金額と件数はどちらの経路でも狂わない）。
+ *
+ * 並びは発生日時の昇順。新しい順に見せるかは読み手（画面）が決める。
+ */
+export function accountBalanceHistoryRows(params: {
+  entries: readonly BalanceHistoryEntry[]
+  accountId: AccountId
+  axis: BalanceAxis
+  opening: BalanceHistoryEntry | null
+  manualEntries: readonly ManualEntryAnnotation[]
+}): AccountBalanceHistoryRow[] {
+  const manualByEnteredAt = new Map<number, ManualEntryAnnotation>(
+    params.manualEntries.map(m => [m.enteredAt.getTime(), m]),
+  )
+  let previous: Money | null = openingValueOf(params.opening, params.accountId, params.axis)
+
+  return historyOfAccountAxis(params.entries, params.accountId, params.axis).map(entry => {
+    const manual = manualByEnteredAt.get(entry.occurredAt.getTime())
+    const row = AccountBalanceHistoryRowSchema.parse({
+      occurredAt: entry.occurredAt,
+      valueAfter: entry.value,
+      delta: previous === null ? null : subtractMoney(entry.value, previous),
+      source: manual?.kind ?? 'auto',
+      ...(manual?.memo === undefined ? {} : { memo: manual.memo }),
+    })
+    previous = entry.value
+    return row
+  })
 }

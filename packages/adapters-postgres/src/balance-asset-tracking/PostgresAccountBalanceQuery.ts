@@ -35,8 +35,10 @@ import {
   AccountSchema,
   AssetTotalViewSchema,
   MitsuiSumitomoUnpaidSchema,
+  MITSUI_SUMITOMO_CARD_DISPLAY_NAME,
+  SMBC_BANK_DISPLAY_NAME,
   SPOUSE_TOTAL_VISIBLE_ACCOUNT_KINDS,
-  brokerageNameToDisplay,
+  accountDisplayName,
   canListAccountInBalanceList,
   spouseVisibleAssetTotal,
 } from '@warimaru/domain'
@@ -150,7 +152,8 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
         return {
           kind: 'smbc_bank',
           accountId: account.common.accountId,
-          displayName: '三井住友銀行',
+          // 固定名はドメインの定数を使う（View スキーマがリテラル型で受けるため関数の戻り値では通らない）
+          displayName: SMBC_BANK_DISPLAY_NAME,
           currentBalance: account.balance.currentBalance,
           lastUpdatedAt: account.balance.lastUpdatedAt,
         }
@@ -159,7 +162,7 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
         return {
           kind: 'mitsui_sumitomo_card',
           accountId: account.common.accountId,
-          displayName: '三井住友カード',
+          displayName: MITSUI_SUMITOMO_CARD_DISPLAY_NAME,
           currentMonthUnpaidTotal: unpaid === null ? (0 as Money) : unpaid.currentMonthUnpaidTotal,
           lastSettledAt: unpaid === null ? null : unpaid.lastSettledAt,
         }
@@ -167,7 +170,7 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
         return {
           kind: 'other_savings',
           accountId: account.common.accountId,
-          displayName: account.bankName,
+          displayName: accountDisplayName(account),
           currentBalance: account.balance.currentBalance,
           lastUpdatedAt: account.balance.lastUpdatedAt,
         }
@@ -175,7 +178,7 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
         return {
           kind: 'nisa',
           accountId: account.common.accountId,
-          displayName: brokerageNameToDisplay(account.brokerageName),
+          displayName: accountDisplayName(account),
           currentAccumulated: account.contribution.currentAccumulated,
           lastUpdatedAt: account.contribution.lastUpdatedAt,
         }

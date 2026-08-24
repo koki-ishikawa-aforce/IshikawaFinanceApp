@@ -6,8 +6,13 @@
  * ON CONFLICT DO NOTHING に置く。ハンドラー側で「既にあるか」を先に読むと、
  * 同じイベントを並行して処理したときに検査と挿入の間をすり抜ける。
  */
-import { and, asc, desc, gte, lt } from 'drizzle-orm'
-import type { BalanceHistoryEntry, BalanceHistoryRepository } from '@warimaru/domain'
+import { and, asc, desc, eq, gte, lt } from 'drizzle-orm'
+import type {
+  AccountId,
+  BalanceAxis,
+  BalanceHistoryEntry,
+  BalanceHistoryRepository,
+} from '@warimaru/domain'
 import { BalanceHistoryEntrySchema } from '@warimaru/domain'
 import type { Db } from '../client'
 import { balanceHistoryEntries } from '../schema'
@@ -48,6 +53,50 @@ export class PostgresBalanceHistoryRepository implements BalanceHistoryRepositor
       )
       .orderBy(asc(balanceHistoryEntries.occurredAt), asc(balanceHistoryEntries.entryId))
     return rows.map(row => parsePayload(BalanceHistoryEntrySchema, row.payload))
+  }
+
+  async findByAccountAxisAndOccurredAtRange(
+    accountId: AccountId,
+    axis: BalanceAxis,
+    from: Date,
+    toExclusive: Date,
+  ): Promise<BalanceHistoryEntry[]> {
+    const rows = await this.db
+      .select({ payload: balanceHistoryEntries.payload })
+      .from(balanceHistoryEntries)
+      .where(
+        and(
+          eq(balanceHistoryEntries.axis, axis),
+          eq(balanceHistoryEntries.accountId, accountId),
+          gte(balanceHistoryEntries.occurredAt, from),
+          lt(balanceHistoryEntries.occurredAt, toExclusive),
+        ),
+      )
+      .orderBy(asc(balanceHistoryEntries.occurredAt), asc(balanceHistoryEntries.entryId))
+    return rows.map(row => parsePayload(BalanceHistoryEntrySchema, row.payload))
+  }
+
+  async findLatestForAccountAxisBefore(
+    accountId: AccountId,
+    axis: BalanceAxis,
+    atExclusive: Date,
+  ): Promise<BalanceHistoryEntry | null> {
+    // 1 行だけ取れればよいので DISTINCT ON は要らない。並びは同時刻のときの後勝ちを
+    // findLatestPerAccountBefore と揃える（entry_id = ULID の大きい方）
+    const rows = await this.db
+      .select({ payload: balanceHistoryEntries.payload })
+      .from(balanceHistoryEntries)
+      .where(
+        and(
+          eq(balanceHistoryEntries.axis, axis),
+          eq(balanceHistoryEntries.accountId, accountId),
+          lt(balanceHistoryEntries.occurredAt, atExclusive),
+        ),
+      )
+      .orderBy(desc(balanceHistoryEntries.occurredAt), desc(balanceHistoryEntries.entryId))
+      .limit(1)
+    const row = rows[0]
+    return row === undefined ? null : parsePayload(BalanceHistoryEntrySchema, row.payload)
   }
 
   async findLatestPerAccountBefore(atExclusive: Date): Promise<BalanceHistoryEntry[]> {

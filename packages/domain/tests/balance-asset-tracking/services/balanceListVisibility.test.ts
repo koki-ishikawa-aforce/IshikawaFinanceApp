@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   canListAccountInBalanceList,
+  canViewAccountDetail,
   spouseVisibleAssetTotal,
 } from '../../../src/balance-asset-tracking/services/balanceListVisibility'
 import {
@@ -69,6 +70,21 @@ describe('canListAccountInBalanceList（残高一覧に 1 件として並べて�
     expect(canListAccountInBalanceList(closed(savings(VIEWER, 800_000), VIEWER), VIEWER)).toBe(
       false,
     )
+  })
+})
+
+describe('canViewAccountDetail（口座詳細を見てよいか）', () => {
+  it('本人の口座は見てよい', () => {
+    expect(canViewAccountDetail(smbc(VIEWER, 1_500_000), VIEWER)).toBe(true)
+  })
+
+  it('配偶者の口座は見せない（口座ごとの残高は本人のみ可視 — P2-B5）', () => {
+    expect(canViewAccountDetail(smbc(SPOUSE, 1_500_000), VIEWER)).toBe(false)
+  })
+
+  it('本人の非アクティブな口座は見てよい（一覧に並べないのとは別の話）', () => {
+    // 閉じた口座こそ「いつ閉じたのか・それまでどう動いたのか」を確かめる先が要る
+    expect(canViewAccountDetail(closed(savings(VIEWER, 800_000), VIEWER), VIEWER)).toBe(true)
   })
 })
 

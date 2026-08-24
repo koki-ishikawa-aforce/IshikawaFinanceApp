@@ -90,7 +90,10 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     ),
   )
   app.route('/api/monthly-reports', monthlyReportsRoutes(deps.monthlyReportQuery))
-  app.route('/api/balances', balancesRoutes(deps.accountBalanceQuery, deps.balanceTimeSeriesQuery))
+  app.route(
+    '/api/balances',
+    balancesRoutes(deps.accountBalanceQuery, deps.balanceTimeSeriesQuery, deps.accountDetailQuery),
+  )
   app.route(
     '/api/bank-deposits',
     bankDepositsRoutes({

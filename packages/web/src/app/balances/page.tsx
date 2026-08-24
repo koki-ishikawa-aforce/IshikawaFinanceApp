@@ -1,7 +1,8 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import Link from 'next/link'
 import { apiFetch, describeRequestFailure } from '@/lib/api-client'
 import {
   AccountBalanceListWireSchema,
@@ -18,7 +19,13 @@ import type { Theme } from '@/theme/tokens'
 import { TimeSeriesChart, type ChartSeries } from '@/components/balances/TimeSeriesChart'
 import { FreshnessBadge, useBalanceFreshnessQuery } from '@/components/balances/BalanceFreshness'
 import { RoleIcon } from '@/components/ui/RoleIcon'
-import { LuLandmark, LuCreditCard, LuPiggyBank, LuTrendingUp } from '@/components/ui/icons'
+import {
+  LuLandmark,
+  LuCreditCard,
+  LuPiggyBank,
+  LuTrendingUp,
+  LuChevronRight,
+} from '@/components/ui/icons'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -31,6 +38,22 @@ const RANGE_OPTIONS = [
   { months: 24, label: '2年' },
 ] as const
 
+/**
+ * 口座 1 件の行。押すと口座詳細（#406）へ入る。
+ *
+ * 相手の合計行（`SpouseSharedTotalItem`）は口座 1 件ではないため、こちらを通さない
+ * ＝押せない。口座ごとの中身は本人しか見られないので、行けない先への導線を出さない。
+ */
+function BalanceItemLink({ accountId, children }: { accountId: string; children: ReactNode }) {
+  return (
+    <Link href={`/accounts?id=${accountId}`} className={styles.balanceItemLink}>
+      {children}
+      {/* 押せることの手がかり。相手の合計行（押せない）と見分けが付くようにする */}
+      <LuChevronRight aria-hidden="true" className={`${ui.iconSm} ${styles.itemChevron}`} />
+    </Link>
+  )
+}
+
 function BalanceItem({
   item,
   freshness,
@@ -38,6 +61,12 @@ function BalanceItem({
   item: AccountBalanceItemWire
   freshness?: BalanceFreshnessItemWire
 }) {
+  return (
+    <BalanceItemLink accountId={item.accountId}>{balanceItemBody(item, freshness)}</BalanceItemLink>
+  )
+}
+
+function balanceItemBody(item: AccountBalanceItemWire, freshness?: BalanceFreshnessItemWire) {
   switch (item.kind) {
     case 'smbc_bank':
       return (

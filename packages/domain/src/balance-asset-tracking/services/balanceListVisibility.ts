@@ -20,6 +20,18 @@ export function canListAccountInBalanceList(account: Account, viewerId: UserId):
 }
 
 /**
+ * 口座詳細（#406）を見てよいか。所有者本人のみ。
+ *
+ * 一覧（`canListAccountInBalanceList`）と違い、非アクティブの口座も見てよい。
+ * 閉じた口座こそ「いつ閉じたのか・それまでどう動いたのか」を確かめる先が要る
+ * （再アクティブ化〔#457〕の判断材料でもある）。一覧に並べないのは「いまの資産」の
+ * 話で、履歴を見せない理由にはならない。
+ */
+export function canViewAccountDetail(account: Account, viewerId: UserId): boolean {
+  return account.common.ownerUserId === viewerId
+}
+
+/**
  * 配偶者について閲覧者に見せてよい資産の合計。
  *
  * 対象は配偶者の active な別銀行貯蓄・NISA 口座。対象が 1 件も無ければ null を返し、

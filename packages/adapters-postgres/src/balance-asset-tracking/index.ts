@@ -1,6 +1,7 @@
 export * from './PostgresAccountRepository'
 export * from './PostgresMitsuiSumitomoUnpaidRepository'
 export * from './PostgresAccountBalanceQuery'
+export * from './PostgresAccountDetailQuery'
 export * from './PostgresBalanceTimeSeriesQuery'
 export * from './PostgresBankDepositRepository'
 export * from './PostgresEmployerRemitterDirectoryRepository'
