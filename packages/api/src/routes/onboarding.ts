@@ -7,7 +7,6 @@
  * - 配偶者完了検知は画面ロード時のみ判定（論点19: ポーリング / WebSocket なし）
  * - Gmail OAuth コールバックは LIFF セッション外で到達するため routes/gmail-oauth.ts が担う
  */
-import { createHash } from 'node:crypto'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
@@ -63,6 +62,7 @@ import type {
 } from '@warimaru/domain'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { traceIdOf } from '../trace-id.js'
 import { applyLineFriendAdded, applySharedTalkRoomJoined } from '../line-operation-records.js'
 import { fireOperationStartIfReady, tryFireOperationStart } from '../operation-start.js'
 
@@ -75,14 +75,6 @@ const SectionFBodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('completed'), importJobId: ImportJobIdSchema }),
   z.object({ kind: z.literal('skipped') }),
 ])
-
-/**
- * ログ用の短縮識別子。LINE userID は個人を辿れる識別子（PII）のためそのままは出さず、
- * 復元できない形へ潰したうえで「同時刻の別ユーザーと区別できる」最小限だけを残す。
- */
-function traceIdOf(userId: UserId): string {
-  return createHash('sha256').update(userId).digest('hex').slice(0, 8)
-}
 
 export interface OnboardingRoutesDeps {
   appUserRepository: AppUserRepository
@@ -237,22 +229,19 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const body = RegisterBodySchema.parse(await c.req.json().catch(() => ({})))
     const viewerId = c.get('viewerId')
     const now = new Date()
-    const existing = await deps.appUserRepository.findById(viewerId)
-    // 登録済みでも友だち追加が未記録なら照会し直す（前回の照会が失敗した回をここで回復する）
-    if (existing !== null) {
-      return c.json({ user: (await checkAndRecordFriendAdded(existing, now)).user })
-    }
-
+    // 許可リスト照合は「登録済みかどうか」より前に行う（#533）。この経路は許可リスト照合ガードが
+    // 素通しする唯一の入口のため、既にアプリユーザー行を持つ許可リスト外の利用者を先に弾かないと、
+    // その行があること自体が素通しの切符になる（塞ぐ前に作られた行がまさにこれに当たる）。
     const judgment = judgeRole(viewerId, await deps.allowlistQuery.fetch(), now)
-    await deps.eventBus.publish(
-      RoleJudgedSchema.parse({
-        ...domainEventBase(now),
-        type: 'RoleJudged',
-        lineUserId: viewerId,
-        result: judgment,
-      }),
-    )
     if (judgment.kind === 'rejected') {
+      await deps.eventBus.publish(
+        RoleJudgedSchema.parse({
+          ...domainEventBase(now),
+          type: 'RoleJudged',
+          lineUserId: viewerId,
+          result: judgment,
+        }),
+      )
       await deps.eventBus.publish(
         AccessDeniedSchema.parse({
           ...domainEventBase(now),
@@ -264,6 +253,22 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
       throw new PermissionDeniedError('このアプリは特定ユーザー専用です（許可リスト不一致）')
     }
 
+    const existing = await deps.appUserRepository.findById(viewerId)
+    // 登録済みでも友だち追加が未記録なら照会し直す（前回の照会が失敗した回をここで回復する）
+    if (existing !== null) {
+      return c.json({ user: (await checkAndRecordFriendAdded(existing, now)).user })
+    }
+
+    // 役割確定の記録は新規登録のときだけ残す（冪等呼び出しのたびに発行すると、
+    // これを購読する月次上限の初期投入が毎回動く）
+    await deps.eventBus.publish(
+      RoleJudgedSchema.parse({
+        ...domainEventBase(now),
+        type: 'RoleJudged',
+        lineUserId: viewerId,
+        result: judgment,
+      }),
+    )
     const user = registerAppUser(viewerId, judgment.role, body.nickname, now)
     await deps.appUserRepository.save(user)
     await deps.eventBus.publish(

@@ -133,6 +133,7 @@ import {
   createMockLineMessagingGateway,
 } from './notification/mock.js'
 import { createMockDashboardQuery } from './mock-dashboard-query.js'
+import { createCachingAllowlistQuery } from './caching-allowlist-query.js'
 import {
   createMockTransactionListQuery,
   createMockMonthlyReportQuery,
@@ -176,6 +177,20 @@ import {
   createMockTransactionCandidateRepository,
   createMockTransactionRepository,
 } from './mock-repositories.js'
+
+/**
+ * ローカル開発（DB あり）用の許可リスト。DB seed の開発フィクスチャが投入するアプリユーザー
+ * （`packages/adapters-postgres/scripts/seed/dev-fixtures.ts` の HONEY_ID / DARLING_ID）と
+ * 揃える。ずれると開発中の API が全て「許可リスト不一致」で 403 になる。
+ *
+ * DB を使わないモック合成（`createMockDeps`）の許可リストは別の値（`user-honey-test` /
+ * `user-darling-test`）で、そちらはモックのデータが持つユーザー ID に揃えてある。
+ * どちらのモードで動かしているかで、X-User-Id に渡す値が変わる。
+ */
+const DEV_FIXTURE_ALLOWLIST = AllowlistSchema.parse({
+  honeyLineUserId: 'U_HONEY_DEV',
+  darlingLineUserId: 'U_DARLING_DEV',
+})
 
 export interface AppDeps {
   // ドメインイベントバス (#34): 同期・インプロセス配信。ハンドラー登録は createApp が行う
@@ -562,9 +577,28 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
   const parameterStore = env.AWS_REGION
     ? createSsmParameterStore()
     : createUnconfiguredParameterStore()
-  const allowlistQuery = new PostgresAllowlistQuery(db, {
-    resolveParameterStoreValue: path => parameterStore.read(path),
-  })
+  // 本番は常に実データ（phase0_configs + Parameter Store）を引く。構成漏れがあっても開発用の値へ
+  // 落とさず、許可リスト照合ガード（#533）の fail-closed（503）で気づけるようにする
+  // （開発用フォールバックを本番に持ち込まない方針は createMockDeps と同じ）。
+  //
+  // ローカル開発（#323: 素の PostgreSQL + AWS 未構成）では phase0_configs も Parameter Store も
+  // 用意されないため実データを引けず、そのままだと開発中の API が全て 503 になる。そこで
+  // 「本番ではない、かつ AWS が未構成」のときに限り seed の開発ユーザーを許可リストとして使う。
+  const useDevFixtureAllowlist = !isProduction(env.NODE_ENV) && !env.AWS_REGION
+  if (useDevFixtureAllowlist) {
+    // 黙って切り替わると「実利用者が全員 403」の原因が拒否ログからは読み取れない
+    console.warn(
+      'AWS 未構成のため開発フィクスチャの許可リストを使う（開発ユーザー以外は全て 403 になる） — AWS_REGION を設定する',
+    )
+  }
+  // 許可リストは全要求で照合するため、参照は一定時間使い回す（#533）
+  const allowlistQuery = createCachingAllowlistQuery(
+    useDevFixtureAllowlist
+      ? createMockAllowlistQuery(DEV_FIXTURE_ALLOWLIST)
+      : new PostgresAllowlistQuery(db, {
+          resolveParameterStoreValue: path => parameterStore.read(path),
+        }),
+  )
   const gmailOAuthGateway =
     env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET && env.GOOGLE_OAUTH_REDIRECT_URI
       ? new GoogleGmailOAuthGateway(
