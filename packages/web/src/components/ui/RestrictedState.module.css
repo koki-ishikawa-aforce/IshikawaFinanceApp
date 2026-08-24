@@ -1,0 +1,28 @@
+/*
+ * 空状態(`EmptyState` の `.empty`)と見た目を分けるための面。
+ *
+ * 空状態は背景を持たない中央寄せのテキストなので、面と錠前を足すだけで
+ * 「データが無い」ではなく「意図して伏せている」ことが視覚的にも区別できる。
+ * 背景は相手の個人費(`SpousePersonalNote`)と同じアクセントの淡い面に揃え、
+ * プライバシーで伏せている箇所の見た目を 1 つにまとめる
+ */
+.restricted {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1_5);
+  padding: var(--space-3) var(--space-2_5);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.restricted svg {
+  /* 文言が折り返しても錠前は潰さない */
+  flex-shrink: 0;
+}
+
+.message {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}

@@ -78,7 +78,7 @@
 ### 規範
 
 - **2-1** 権限で明細が見えない値を**黙って空欄・ゼロ・ハイフンにしない**。「合計のみ公開」であることが分かるラベル(例: `(合計のみ)`)または補足を併記する
-- **2-2** 相手の個人明細を開こうとしたとき、**権限による制限であることを文言で伝える**。汎用のエラー・空状態に落とさない
+- **2-2** 相手の個人明細を開こうとしたとき、**権限による制限であることを文言で伝える**。汎用のエラー・空状態に落とさない。文言だけでなく**見た目も空状態と分ける** — 共通部品 `RestrictedState`(`packages/web/src/components/ui/RestrictedState.tsx`)を使う(§6-10)。同じインラインのテキストで出すと「データが無い」と読まれ、相手の取引が消えたと受け取られる
 - **2-3** 経費(会社) は例外。相手の画面に「経費があるが見えない」ことを示唆する表示を出してはならない(合計すら不可視 = 存在を漏らさない)。セクションごと出さない
 - **2-4** 相手の値を表示する箇所は、色だけでなくロール識別アイコン + ニックネームを併記する(`DESIGN.md` §4 ロール識別アイコン)
 - **2-5** プライバシー段階の判定を UI 側で再実装しない。API が返す値(null 等)に従う。判定ロジックはドメイン層の ViewerContext に集約する(`/ddd-review` の観点と重複させないため、UI レビューでは「API の判定結果に従っているか」だけを見る)
@@ -92,8 +92,11 @@
 // 違反(2-2): 権限制限を汎用エラーに落としている
 {tx.amount === null && <ErrorState>データを取得できませんでした</ErrorState>}
 
-// 適合
+// 違反(2-2): 文言は制限を伝えているが、空状態と同じ見た目なので「データが無い」と読まれる
 <EmptyState>配偶者の個人取引のため、詳細の閲覧・編集はできません</EmptyState>
+
+// 適合
+<RestrictedState>配偶者の個人取引のため、詳細の閲覧・編集はできません</RestrictedState>
 ```
 
 ---
@@ -211,6 +214,7 @@ LIFF スマホ縦画面・片手操作が前提(`DESIGN.md` §1)。
 | **6-7 月の切り替え** | 画面上部の月ナビゲーション。日付ピッカーで月を選ばせない |
 | **6-8 補足情報・手順の格納** | カード内の開閉トグル(見出しが `aria-expanded` + `aria-controls` を持つボタンを包む)。主操作の前に読まなくてよい補足はこれで畳む。モーダル・別ページ・常時展開は採用しない |
 | **6-9 2〜3 択の選択** | 共通部品 `SegmentedControl`(`packages/web/src/components/ui/SegmentedControl.tsx`)。中身はラジオで、選択状態が `checked` として伝わる(§4-7)。セレクト・独自のタブ風ボタンは採用しない。選択肢が 4 つ以上になる場合はセレクト(`ui.select`)に戻す。ダッシュボードの世帯/個人切り替え(`components/dashboard/ModeToggle.tsx`)は #366 で本部品へ寄せた。未追随は 2 つ。口座追加の証券会社(3 択、`components/accounts/AccountAddModal.tsx`)はセレクトのままで、次にその画面を触るときに本部品へ寄せる。資産推移の期間切り替え(3 択、`app/balances/page.tsx`)は独自のボタンのままで、寄せるかは #612 で判断待ち |
+| **6-10 プライバシーで伏せている表示** | 共通部品 `RestrictedState`(`packages/web/src/components/ui/RestrictedState.tsx`)。錠前のアイコンとアクセントの淡い面を持ち、空状態(§6-6)とは見た目で区別できる。`*.module.css` に独自のスタイルを定義しない。経費(会社)には使わない — 相手の画面には存在自体を出さないため(§2-3) |
 
 ### 違反例
 
@@ -328,7 +332,7 @@ return <span>{formatMoney(query.data.total)}</span>
 | # | 規範 | 未対応の内容 | 該当箇所 |
 | --- | --- | --- | --- |
 | 1 | 8-3 | `<label>` が `htmlFor` でもラップでも入力に関連付けられていない(`ui.fieldLabel` を使う全箇所が `.field` 内の兄弟要素) | `packages/web/src/app/transactions/page.tsx`、`settings/page.tsx`、`expense-settlement/page.tsx` ほか |
-| 2 | 8-5 | セクション見出しが `<span className={ui.sectionTitle}>` で、`<h2>` が存在しない(見出し階層が `<h1>` のみ) | `expense-settlement/page.tsx:255,317,343,369`、`settings/page.tsx:96,403,610,792,954` ほか |
+| 2 | 8-5 | セクション見出しが `<span className={ui.sectionTitle}>` で、`<h2>` が存在しない(見出し階層が `<h1>` のみ)。ダッシュボード(`app/page.tsx`)は `<h1>` すら無かったが #498 で対応した(見出しの文字を出す場所が無いため、`ui.srOnly` の `<h1>` を置いてカテゴリ内訳を `<h2>` にした)。残るのは下記の画面 | `expense-settlement/page.tsx:255,317,343,369`、`settings/page.tsx:96,403,610,792,954`、`reports/page.tsx:62,87,109,139,158` ほか |
 | 3 | 8-1 | フォーカスの可視スタイルが `.input:focus` にしか無い。`.button` / `.buttonGhost` / `.buttonDanger` / `.select` は `:hover` のみ | `packages/web/src/components/ui/common.module.css` |
 | 4 | 4-3 | 共通の操作部品(`.button` / `.buttonGhost` / `.buttonDanger` / `.select` / `.input`)とモーダルの閉じるボタンは #568(`--tap-target-min` トークンは #463)、ダッシュボードの月送り(`MonthNavigator`)・世帯/個人の切り替え(`ModeToggle`)・カテゴリ内訳の凡例行は #366、一覧の行に並ぶリンク風のボタン(`.textButton`)は #462、画面固有の操作部品は #467 で対応した。宣言は `src/test/tap-target.test.ts`、描画された実寸は `e2e/tap-target.spec.ts` が見張る。残るのは、大きくすると見た目が壊れるため判断待ちの吹き出し 1 件 | 相手の個人費の吹き出し(`SpousePersonalNote` の `.hint`。押すと閉じるが役割は注意書き)。追跡は #611 |
 | 4-2 | 4-4 | 下部ナビ(`AppNav`)の 7 項目が隙間なく並んでいる(各 44px で間隔 0)。`--space-2` の隙間を入れると 356px 必要になり 320px 幅に収まらないため、項目数か見せ方の判断が要る | `packages/web/src/components/ui/AppNav.module.css`。追跡は #614 |

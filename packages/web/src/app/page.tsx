@@ -38,6 +38,15 @@ export default function DashboardPage() {
     <main className={styles.main}>
       <div className={styles.decorations} aria-hidden="true" />
 
+      {/*
+        画面名の見出し(usability 8-5)。この画面は月ナビゲーションから始まり、
+        タイトルの文字を出す場所が無い。見出しが無いと読み上げソフトで画面の構造を
+        たどれないため、見た目は変えずに `<h1>` だけを置く。
+        文言は下部ナビの項目名(`AppNav`)と揃える(同 5-1。「ダッシュボード」は
+        利用者が目にしない呼び方なので使わない)
+      */}
+      <h1 className={ui.srOnly}>ホーム</h1>
+
       <MonthNavigator month={month} onMonthChange={setMonth} />
       <ModeToggle mode={mode} onModeChange={setMode} />
 
@@ -56,9 +65,10 @@ export default function DashboardPage() {
         何のセクションが消えたのか分からなくなるため(usability 1-1)
       */}
       <div className={ui.card}>
-        <span className={ui.sectionTitle}>
+        {/* 見た目は `.sectionTitle` のまま。`<h2>` にして見出しとしてもたどれるようにする(usability 8-5) */}
+        <h2 className={ui.sectionTitle}>
           {mode === 'household' ? '世帯支出（カテゴリ別）' : '個人支出（カテゴリ別）'}
-        </span>
+        </h2>
         {breakdown.isLoading && <LoadingState />}
         {breakdown.error && (
           <ErrorState onRetry={() => void breakdown.refetch()} isRetrying={breakdown.isFetching}>

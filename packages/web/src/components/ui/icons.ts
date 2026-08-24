@@ -25,6 +25,7 @@ export {
   LuChevronDown,
   LuPlus,
   LuExternalLink,
+  LuLock,
 } from 'react-icons/lu'
 
 export type { IconType } from 'react-icons'
