@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import type { MonthlyReport } from '@warimaru/domain'
-import { CategoryIdSchema, MonthlyReportSchema, YearMonthSchema, money } from '@warimaru/domain'
+import {
+  CategoryIdSchema,
+  MonthlyReportSchema,
+  YearMonthSchema,
+  money,
+  statementSiteUrl,
+} from '@warimaru/domain'
 import { createDeepLinkBuilder } from '../../src/notification/deep-links.js'
 import {
   buildCsvImportReminderContent,
@@ -102,6 +108,17 @@ describe('buildCsvImportReminderContent', () => {
       'https://www.smbc-card.com/memx/web_meisai/top/index.html?p01=202607',
     )
     expect(content.textBody).toContain('https://direct3.smbc.co.jp/sp/web/')
+  })
+
+  it('リンク先は取込画面のガイドと同じ取得元（ドメインの statementSiteUrl）から取る（#472）', () => {
+    if (content.kind !== 'plain_text') throw new Error('unreachable')
+    // ラベルとの対で確かめる（種別を取り違えて逆のサイトを載せても気づけるようにする）
+    expect(content.textBody).toContain(
+      `・三井住友カード: ${statementSiteUrl('card_statement', month)}`,
+    )
+    expect(content.textBody).toContain(
+      `・三井住友銀行: ${statementSiteUrl('bank_statement', month)}`,
+    )
   })
 
   it('アップロード先はアプリの取込画面の Deep Link を linkUrl に置く', () => {

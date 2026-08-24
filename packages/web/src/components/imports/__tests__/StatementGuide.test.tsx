@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { StatementFileKindSchema, YearMonthSchema } from '@warimaru/domain'
+import { StatementFileKindSchema, YearMonthSchema, statementSiteUrl } from '@warimaru/domain'
 import { StatementGuide } from '../StatementGuide'
 
 const openExternal = vi.hoisted(() => vi.fn())
@@ -122,6 +122,23 @@ describe('StatementGuide（三井住友銀行）', () => {
     expect(openExternal).toHaveBeenCalledTimes(1)
     expect(openExternal).toHaveBeenCalledWith(BANK_URL)
   })
+})
+
+describe('リンク先の取得元（#472）', () => {
+  // 画面が独自に URL を組み立て直すと、LINE の取込リマインダーと別のページを開きうる。
+  // どちらもドメインの statementSiteUrl を見ていることを、種別ごとに固定する。
+  it.each(StatementFileKindSchema.options)(
+    '%s はドメインが返す取得元サイトをそのまま開く',
+    async kind => {
+      const user = userEvent.setup()
+      render(<StatementGuide fileKind={kind} month={ym('2026-05')} />)
+
+      await user.click(screen.getByRole('button', { name: /取得方法/ }))
+      await user.click(screen.getByRole('button', { name: /開く$/ }))
+
+      expect(openExternal).toHaveBeenCalledWith(statementSiteUrl(kind, ym('2026-05')))
+    },
+  )
 })
 
 describe('取込画面と同じ 2 枚並べたとき', () => {

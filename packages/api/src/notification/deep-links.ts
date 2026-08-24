@@ -19,16 +19,11 @@
  *
  * ドメイン層ではなく api 層に置く理由: URL の形は web のルーティング契約であって
  * 通知配信のドメイン不変条件ではない（08g の `data リンクURL = 文字列` 以上の制約を持たない）。
+ *
+ * 一方、明細の取得元サイト（三井住友カード・SMBC ダイレクト）の URL は本モジュールが持たない。
+ * 取込画面のガイドが同じリンクを出すため、ドメイン層の `statementSiteUrl` を単一実装とした（#472）。
  */
 import type { YearMonth } from '@warimaru/domain'
-
-/** 三井住友カードの明細ダウンロード画面（対象月をクエリで指定できる。spec §10.2） */
-const SMBC_CARD_STATEMENT_URL = 'https://www.smbc-card.com/memx/web_meisai/top/index.html'
-/**
- * 三井住友銀行（SMBC ダイレクト SP サイト）の入口。
- * 月をクエリで指定する手段が無いことは OQ-38 の実調査で確定済みのため、月は埋め込まない。
- */
-const SMBC_BANK_STATEMENT_URL = 'https://direct3.smbc.co.jp/sp/web/'
 
 /** 末尾スラッシュを落として `<base>/<path>` の二重スラッシュを防ぐ */
 function normalizeBaseUrl(baseUrl: string): string {
@@ -40,10 +35,6 @@ export interface DeepLinkBuilder {
   monthlyReport(month: YearMonth): string
   /** CSV 取込画面（OQ-54 ①） */
   csvImport(month: YearMonth): string
-  /** 三井住友カードの明細ダウンロード画面（対象月つき） */
-  smbcCardStatement(month: YearMonth): string
-  /** 三井住友銀行の明細ダウンロード画面（月指定は不可） */
-  smbcBankStatement(): string
 }
 
 /**
@@ -56,7 +47,5 @@ export function createDeepLinkBuilder(baseUrl: string): DeepLinkBuilder {
   return {
     monthlyReport: month => `${base}/reports?month=${month}`,
     csvImport: month => `${base}/imports?month=${month}`,
-    smbcCardStatement: month => `${SMBC_CARD_STATEMENT_URL}?p01=${String(month).replace('-', '')}`,
-    smbcBankStatement: () => SMBC_BANK_STATEMENT_URL,
   }
 }

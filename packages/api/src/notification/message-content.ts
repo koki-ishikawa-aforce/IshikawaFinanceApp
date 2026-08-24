@@ -19,7 +19,12 @@
  * 世帯サマリは共通トークルーム宛で、世帯費用と資産のみを載せる（個人・経費は載せない）。
  */
 import type { DeliveryContent, MonthlyReport, UserRole, YearMonth } from '@warimaru/domain'
-import { DeliveryContentSchema, isIncompleteMonthReport, selfTotalsOf } from '@warimaru/domain'
+import {
+  DeliveryContentSchema,
+  isIncompleteMonthReport,
+  selfTotalsOf,
+  statementSiteUrl,
+} from '@warimaru/domain'
 import type { DeepLinkBuilder } from './deep-links.js'
 
 /**
@@ -125,6 +130,9 @@ function flexBubble(params: {
  * 明細のダウンロード元（カード・銀行）とアップロード先（アプリの取込画面）の両方を載せる。
  * アプリ取込画面の URL だけ `linkUrl` に置くのは、ゲートウェイが本文末尾へ 1 本だけ
  * 連結する契約のため（本文中に重複して書かない）。
+ *
+ * ダウンロード元の URL は取込画面のガイドと同じ `statementSiteUrl`（ドメイン層）から取る。
+ * ここに URL を書き写すと、LINE のリンクと画面のリンクが別のページを開きうる（#472）。
  */
 export function buildCsvImportReminderContent(
   month: YearMonth,
@@ -135,8 +143,8 @@ export function buildCsvImportReminderContent(
     `【割まる】${label}分の明細取込がまだ完了していません📄`,
     '',
     '以下から明細をダウンロードして、割まるにアップロードしてください。',
-    `・三井住友カード: ${links.smbcCardStatement(month)}`,
-    `・三井住友銀行: ${links.smbcBankStatement()}`,
+    `・三井住友カード: ${statementSiteUrl('card_statement', month)}`,
+    `・三井住友銀行: ${statementSiteUrl('bank_statement', month)}`,
     '',
     'アップロードはこちらから👇',
   ].join('\n')
