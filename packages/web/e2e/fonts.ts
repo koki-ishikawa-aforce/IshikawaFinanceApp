@@ -11,6 +11,9 @@ export const DESIGN_FONT_FAMILY = 'Zen Maru Gothic'
 /** 書体ロードを待つ上限。これを超えたら待つのをやめて先へ進む */
 const FONT_LOAD_TIMEOUT_MS = 5000
 
+/** 取得の完了を待つ上限。超えたらテストを落とす(書体と違い、待てなければ撮影は成立しない) */
+const DATA_LOAD_TIMEOUT_MS = 30_000
+
 /**
  * 画面のボタンに使われる書体をロードしてから撮影・検証できるようにする。
  *
@@ -70,5 +73,7 @@ export async function hideDevOverlay(page: Page): Promise<void> {
 export async function waitForDataLoaded(page: Page, response: Response | null): Promise<void> {
   const html = (await response?.text()) ?? ''
   expect(html, '取得中の目印がサーバの返す HTML に含まれている').toContain('data-loading')
-  await expect(page.locator('[data-loading]')).toHaveCount(0)
+  // 既定の 5 秒では、その画面を初めて開く実行(dev サーバのコンパイルを伴う)で足りない。
+  // テスト全体の上限(60 秒)の内側で、取得の完了を待ち切れる長さにする
+  await expect(page.locator('[data-loading]')).toHaveCount(0, { timeout: DATA_LOAD_TIMEOUT_MS })
 }
