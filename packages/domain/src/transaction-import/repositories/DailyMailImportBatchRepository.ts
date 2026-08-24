@@ -11,7 +11,8 @@ export interface DailyMailImportBatchRepository {
   findById(id: ImportBatchId): Promise<DailyMailImportBatch | null>
   findInProgressByUser(userId: UserId): Promise<DailyMailImportBatch | null>
   /**
-   * そのユーザーの直近のバッチ（状態を問わない。起動が最も新しいもの）。
+   * そのユーザーの直近のバッチ（状態を問わない。保存された順で最も新しいもの＝最後に起動した
+   * バッチ。引き継ぎで保存し直しても順序は動かない）。
    * 手動実行のクールダウン判定に使う（#489。`judgeManualMailImportCooldown`）。
    */
   findLatestByUser(userId: UserId): Promise<DailyMailImportBatch | null>

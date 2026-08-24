@@ -54,15 +54,27 @@ describe('PostgresDailyMailImportBatchRepository', () => {
     await expect(repo.save(startedBatch({ userId: DARLING_USER_ID }))).resolves.toBeUndefined()
   })
 
-  it('findLatestByUser は状態を問わず直近に起動したバッチを返す', async () => {
+  it('findLatestByUser は状態を問わず直近に起動したバッチを返す（保存し直しても順序は動かない）', async () => {
     // 手動実行のクールダウン判定は「直近の実行」を状態に関わらず見る（#489）。終端で
     // 終わったバッチしか無いときに null が返ると、完了直後の連打を止められない
-    const older = completedBatch({ userId: HONEY_USER_ID })
+    const older = startedBatch({ userId: HONEY_USER_ID }) as StartedImportBatch
     await repo.save(older)
     expect(await repo.findLatestByUser(HONEY_USER_ID)).toEqual(older)
 
+    const olderCompleted = completeBatch(
+      startBatchImporting(older, new Date('2026-07-07T00:01:00.000Z')),
+      { importedCount: 1, duplicateExcludedCount: 0, failedCount: 0 },
+      new Date('2026-07-07T00:05:00.000Z'),
+    )
+    await repo.save(olderCompleted)
+
     const newer = startedBatch({ userId: HONEY_USER_ID })
     await repo.save(newer)
+    expect(await repo.findLatestByUser(HONEY_USER_ID)).toEqual(newer)
+
+    // 古いバッチを保存し直しても「直近」は入れ替わらない（引き継ぎの進捗保存で順序が
+    // 動くと、走っている実行ではなく前の実行がクールダウンの起点になる）
+    await repo.save(olderCompleted)
     expect(await repo.findLatestByUser(HONEY_USER_ID)).toEqual(newer)
   })
 

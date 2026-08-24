@@ -4,6 +4,7 @@ import {
   DailyMailImportBatchSchema,
   MANUAL_MAIL_IMPORT_COOLDOWN_MS,
   judgeManualMailImportCooldown,
+  resumeBatchImporting,
   startBatchImporting,
   updateBatchImportedCount,
   completeBatch,
@@ -91,6 +92,22 @@ describe('DailyMailImportBatch 集約', () => {
     expect(() => updateBatchImportedCount(importing, 1.5)).toThrow()
   })
 
+  it('取込中の引き継ぎは件数を保ち、取込開始日時だけを進める', () => {
+    const started = DailyMailImportBatchSchema.parse({
+      kind: 'started',
+      common,
+    }) as StartedImportBatch
+    const leftover = updateBatchImportedCount(
+      startBatchImporting(started, new Date('2026-07-06T06:00:00Z')),
+      4,
+    )
+    const resumed = resumeBatchImporting(leftover, new Date('2026-07-06T09:00:00Z'))
+    // 取り込み済みのぶんを 0 に戻すと、完了時に前回ぶんを含まない件数で上書きしてしまう
+    expect(resumed.importedCount).toBe(4)
+    expect(resumed.importStartedAt).toEqual(new Date('2026-07-06T09:00:00Z'))
+    expect(resumed.common).toEqual(leftover.common)
+  })
+
   it('起動済み → 失敗（終端）の遷移', () => {
     const started = DailyMailImportBatchSchema.parse({
       kind: 'started',
@@ -114,16 +131,30 @@ describe('手動実行のクールダウン判定', () => {
     expect(judgeManualMailImportCooldown(null, startedAt)).toEqual({ kind: 'acceptable' })
   })
 
-  it('直前に完了した実行があればクールダウン中として弾き、残り時間を返す', () => {
+  it('直前に完了した実行があればクールダウン中として弾き、残り時間と直近バッチの状態を返す', () => {
     const completed = completeBatch(
       startBatchImporting(started, startedAt),
       { importedCount: 1, duplicateExcludedCount: 0, failedCount: 0 },
       after(startedAt, 60_000),
     )
-    const judgment = judgeManualMailImportCooldown(completed, after(startedAt, 60_000 + 3 * 60_000))
+    // 完了から 3 分後 → 残り 7 分
+    const judgment = judgeManualMailImportCooldown(completed, after(startedAt, 4 * 60_000))
     expect(judgment).toEqual({
       kind: 'cooling_down',
-      retryAfterMs: MANUAL_MAIL_IMPORT_COOLDOWN_MS - 3 * 60_000,
+      retryAfterMs: 420_000,
+      latestBatchKind: 'completed',
+    })
+  })
+
+  it('起動しただけで取込に入る前に落ちたバッチは起動日時が起点', () => {
+    // 起動を保存してから取込中の保存までの間に落ちると、この状態のまま残る
+    expect(judgeManualMailImportCooldown(started, after(startedAt, 3 * 60_000))).toEqual({
+      kind: 'cooling_down',
+      retryAfterMs: 420_000,
+      latestBatchKind: 'started',
+    })
+    expect(judgeManualMailImportCooldown(started, after(startedAt, 10 * 60_000))).toEqual({
+      kind: 'acceptable',
     })
   })
 
@@ -137,23 +168,41 @@ describe('手動実行のクールダウン判定', () => {
         importing,
         after(startedAt, MANUAL_MAIL_IMPORT_COOLDOWN_MS - 1),
       ),
-    ).toEqual({ kind: 'cooling_down', retryAfterMs: 1 })
+    ).toEqual({ kind: 'cooling_down', retryAfterMs: 1, latestBatchKind: 'importing' })
   })
 
   it('取込中バッチの起点は取込を始めた時刻（起動時刻ではない）', () => {
     // 起動から間があいて取込が始まった実行を、起動時刻で測ると早く受け付けてしまう
     const importing = startBatchImporting(started, after(startedAt, 5 * 60_000))
+    // 取込開始から 7 分後 → 残り 3 分（起動時刻起点なら残り 0 で受け付けてしまう）
     expect(judgeManualMailImportCooldown(importing, after(startedAt, 12 * 60_000))).toEqual({
       kind: 'cooling_down',
-      retryAfterMs: MANUAL_MAIL_IMPORT_COOLDOWN_MS - 7 * 60_000,
+      retryAfterMs: 180_000,
+      latestBatchKind: 'importing',
+    })
+  })
+
+  it('引き継いだ取込中バッチは、引き継いだ実行の取込開始時刻が起点になる', () => {
+    // 前の実行が残したバッチをそのまま起点にすると、いま走っている実行の最中の叩き直しを
+    // 止められない（残存バッチの取込開始時刻はとうにクールダウンを過ぎている）
+    const leftover = startBatchImporting(started, startedAt)
+    const resumedAt = after(startedAt, 3 * 60 * 60_000)
+    const resumed = resumeBatchImporting(leftover, resumedAt)
+    expect(judgeManualMailImportCooldown(resumed, after(resumedAt, 60_000))).toEqual({
+      kind: 'cooling_down',
+      retryAfterMs: 540_000,
+      latestBatchKind: 'importing',
     })
   })
 
   it('失敗で終わった実行の直後も弾く（失敗しても叩き直しは間隔を空ける）', () => {
     const failed = failBatch(started, 'Gmail API エラー', after(startedAt, 60_000))
-    expect(judgeManualMailImportCooldown(failed, after(startedAt, 2 * 60_000)).kind).toBe(
-      'cooling_down',
-    )
+    // 失敗から 1 分後 → 残り 9 分（起動日時起点なら残り 8 分になる）
+    expect(judgeManualMailImportCooldown(failed, after(startedAt, 2 * 60_000))).toEqual({
+      kind: 'cooling_down',
+      retryAfterMs: 540_000,
+      latestBatchKind: 'failed',
+    })
   })
 
   it('クールダウンを過ぎた進行中バッチは受け付ける（引き継ぎを止めない）', () => {
@@ -167,7 +216,8 @@ describe('手動実行のクールダウン判定', () => {
     const importing = startBatchImporting(started, after(startedAt, 60_000))
     expect(judgeManualMailImportCooldown(importing, startedAt)).toEqual({
       kind: 'cooling_down',
-      retryAfterMs: MANUAL_MAIL_IMPORT_COOLDOWN_MS,
+      retryAfterMs: 600_000,
+      latestBatchKind: 'importing',
     })
   })
 

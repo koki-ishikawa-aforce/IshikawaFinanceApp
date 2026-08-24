@@ -28,7 +28,8 @@ export const dailyMailImportBatches = pgTable(
       .on(t.userId)
       .where(sql`${t.kind} IN ('started', 'importing')`),
     // 直近バッチの引き当て（手動実行のクールダウン判定 #489）。状態を問わず引くため
-    // partial unique では効かず、ユーザー単位で起動が新しい順に 1 行取れる索引を張る
-    index('idx_mail_batches_user_created_at').on(t.userId, t.createdAt.desc()),
+    // partial unique では効かない。降順の読み出しは後方スキャンで賄えるので、他の索引と
+    // 同じく昇順で宣言する（DESC 宣言だと NULLS 順がクエリ側と食い違い索引順を使えない）
+    index('idx_mail_batches_user_created_at').on(t.userId, t.createdAt, t.importBatchId),
   ],
 )

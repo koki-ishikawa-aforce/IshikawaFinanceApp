@@ -18,6 +18,7 @@ import {
 } from '@warimaru/domain'
 import type {
   AmazonOrderConfirmationMailBody,
+  DailyMailImportBatch,
   DomainEvent,
   DuplicateExcluded,
   GmailOauthRevocationDetected,
@@ -637,6 +638,42 @@ describe('日次メール取込ワーカー: 途中で終わった取込の再�
     expect(launched(first).importBatchId).not.toBe(launched(second).importBatchId)
     expect(second).toMatchObject({ status: 'completed', importedCount: 0, resumed: false })
     expect(await savedCandidates(t, ['gmail-1'])).toHaveLength(1)
+  })
+
+  it('引き継いだら取込開始日時を自分の時刻へ進めて保存する（手動実行のクールダウンの起点）', async () => {
+    // 残存バッチの古い取込開始日時のままだと、この実行が走っている最中に叩き直された
+    // 手動実行を止められない（#489）
+    const { t, deps } = await harness()
+    await t.deps.dailyMailImportBatchRepository.save(leftoverImporting(0))
+    let duringRun: DailyMailImportBatch | null = null
+
+    await runDailyMailImportForUser(
+      {
+        ...deps,
+        gmailMailFetchGateway: {
+          fetchMails: async () => {
+            duringRun = await t.deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)
+            return { ok: true, smbcMails: [], amazonMails: [] }
+          },
+        },
+      },
+      { userId: VIEWER_ID, at: AT },
+    )
+
+    expect(duringRun).toMatchObject({ kind: 'importing', importStartedAt: AT })
+  })
+
+  it('日次の自動起動は直近に完了したバッチがあっても走る（クールダウンは手動実行だけ）', async () => {
+    // 判定をワーカー側へ移すと、日次の再走査が静かに止まる
+    const { deps } = await harness()
+    await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT })
+
+    const second = await runDailyMailImportForUser(deps, {
+      userId: VIEWER_ID,
+      at: new Date(AT.getTime() + 1_000),
+    })
+
+    expect(second.status).toBe('completed')
   })
 
   it('新規起動のときは再開イベントを発行しない', async () => {

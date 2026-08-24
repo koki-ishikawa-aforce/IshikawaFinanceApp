@@ -11,7 +11,10 @@
  *    （Repository.findInProgressByUser で保証、Phase 5 M-B）
  *  - 完了・失敗の終端状態からは遷移しない（終端からの遷移関数を提供しない）
  *  - 取込対象期間は from < to（過去 5 日再走査、OQ-31）
- *  - 手動実行は直前の実行からクールダウンを空ける（#489。`judgeManualMailImportCooldown`）
+ *
+ * 起動の事前条件（集約 1 個の状態だけでは判定できないため不変条件には数えない）:
+ *  - API 経由の手動起動は直前の実行からクールダウンを空ける
+ *    （#489。`judgeManualMailImportCooldown`）
  */
 import { z } from 'zod'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
@@ -87,6 +90,20 @@ export function startBatchImporting(batch: StartedImportBatch, at: Date): Import
 }
 
 /**
+ * 状態遷移: 取込中 → 取込中（前の実行が残したバッチの引き継ぎ）。
+ *
+ * 取込済み件数は引き継ぐが、取込を始めた時刻は引き継いだ実行のものに更新する。この時刻は
+ * 「そのバッチが最後に動き出した時刻」として手動実行のクールダウン判定の起点になるため、
+ * 前の実行の時刻のまま残すと、いま走っている実行の最中に叩き直された手動実行を止められない。
+ */
+export function resumeBatchImporting(batch: ImportingImportBatch, at: Date): ImportingImportBatch {
+  return DailyMailImportBatchSchema.parse({
+    ...batch,
+    importStartedAt: at,
+  }) as ImportingImportBatch
+}
+
+/**
  * 取込中の進捗を更新する（取込中 → 取込中）。
  *
  * 途中でワーカーが落ちたとき、どこまで取り込めていたかが記録に残るようにする
@@ -136,10 +153,17 @@ export function completeBatch(
  */
 export const MANUAL_MAIL_IMPORT_COOLDOWN_MS = 10 * 60 * 1000
 
-/** 手動実行を受け付けてよいかの判定。待つ必要があるときは残り時間を持つ */
+/**
+ * 手動実行を受け付けてよいかの判定。待つ必要があるときは残り時間と、待たせる理由になった
+ * 直近バッチの状態を持つ（呼出し元が「まだ動いている」と「直前に終わった」を言い分けられる）
+ */
 export type ManualMailImportCooldownJudgment =
   | { kind: 'acceptable' }
-  | { kind: 'cooling_down'; retryAfterMs: number }
+  | {
+      kind: 'cooling_down'
+      retryAfterMs: number
+      latestBatchKind: DailyMailImportBatch['kind']
+    }
 
 /**
  * そのバッチが最後に動いた時刻。
@@ -168,6 +192,9 @@ function lastActivityAt(batch: DailyMailImportBatch): Date {
  * `cooldownMs` 未満なら受け付けず、残り時間を返す。クールダウンを過ぎていれば受け付ける
  * — 途中で落ちた取込の引き継ぎ自体は止めない（止めると、落ちた実行の対象期間が二度と
  * 走査されない）。
+ *
+ * 判定系は value-objects / services に置くのが本パッケージの通例だが、この判定が読むのは
+ * バッチ集約の状態と時刻だけなので、状態ごとの最終活動時刻を知る集約側に同居させている。
  */
 export function judgeManualMailImportCooldown(
   latestBatch: DailyMailImportBatch | null,
@@ -180,7 +207,11 @@ export function judgeManualMailImportCooldown(
   if (elapsedMs >= cooldownMs) return { kind: 'acceptable' }
   // 待ち時間はクールダウンを超えない。経過が負のときに引き算をそのまま返すと、時計のずれが
   // そのまま待ち時間に乗って「いつまで待てばよいか」が実際より長く案内される
-  return { kind: 'cooling_down', retryAfterMs: Math.min(cooldownMs, cooldownMs - elapsedMs) }
+  return {
+    kind: 'cooling_down',
+    retryAfterMs: Math.min(cooldownMs, cooldownMs - elapsedMs),
+    latestBatchKind: latestBatch.kind,
+  }
 }
 
 /** 状態遷移: 起動済み/取込中 → 失敗（終端） */

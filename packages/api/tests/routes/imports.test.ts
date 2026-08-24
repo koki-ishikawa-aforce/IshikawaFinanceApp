@@ -605,14 +605,56 @@ describe('POST /api/imports/mail-batch', () => {
     expect(res.status).toBe(429)
     const json = (await res.json()) as { reason?: string; retryAfterSeconds?: number }
     expect(json.reason).toBe('cooling_down')
-    expect(json.retryAfterSeconds).toBeGreaterThan(0)
-    expect(json.retryAfterSeconds).toBeLessThanOrEqual(600)
-    expect(res.headers.get('Retry-After')).toBe(String(json.retryAfterSeconds))
+    // 直前（0 秒前）に終わっているので、待ち時間はクールダウンいっぱいの 10 分
+    expect(json.retryAfterSeconds).toBe(600)
+    expect(res.headers.get('Retry-After')).toBe('600')
     // 弾いた実行は取込を始めない（Gmail を叩かない・新しいバッチ記録を作らない）
     expect(fetchCount).toBe(0)
     expect(await deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
     const latest = await deps.dailyMailImportBatchRepository.findLatestByUser(VIEWER_ID)
     expect(latest?.common.importBatchId).toBe('01BATCH0000000000000000001')
+  })
+
+  it('待ち時間は直前の実行からの経過ぶんだけ短くなる（切り上げ）', async () => {
+    // 定数を返しっぱなしにしたり、切り上げを切り捨てにしたりすると案内が実際より短くなり、
+    // 待ってから叩き直してもまた弾かれる
+    const { app, deps } = await authorizedMailBatchApp([])
+    await deps.dailyMailImportBatchRepository.save(
+      recentBatch('completed', new Date(Date.now() - 90_000)),
+    )
+    const res = await request(app, 'POST', '/api/imports/mail-batch', { body: {} })
+    expect(res.status).toBe(429)
+    expect(((await res.json()) as { retryAfterSeconds: number }).retryAfterSeconds).toBe(510)
+
+    const fresh = await authorizedMailBatchApp([])
+    await fresh.deps.dailyMailImportBatchRepository.save(
+      recentBatch('completed', new Date(Date.now() - 1_500)),
+    )
+    const res2 = await request(fresh.app, 'POST', '/api/imports/mail-batch', { body: {} })
+    expect(((await res2.json()) as { retryAfterSeconds: number }).retryAfterSeconds).toBe(599)
+  })
+
+  it('取込が走っている最中に叩き直すと 429（引き継ぎで走っている実行でも同じ）', async () => {
+    // 前の実行が残したバッチを引き継いだ実行は、引き継いだ時点から新たにクールダウンが効く。
+    // 残存バッチの古い時刻のままだと、走っている最中の叩き直しを止められない
+    const holder: { app?: ReturnType<typeof createTestApp>['app'] } = {}
+    let duringRun: Response | undefined
+    const t = await authorizedMailBatchApp([], {
+      gmailMailFetchGateway: {
+        fetchMails: async () => {
+          duringRun = await request(holder.app!, 'POST', '/api/imports/mail-batch', { body: {} })
+          return { ok: true, smbcMails: [], amazonMails: [] }
+        },
+      },
+    })
+    holder.app = t.app
+    await t.deps.dailyMailImportBatchRepository.save(leftoverImportingBatch())
+
+    const first = await request(t.app, 'POST', '/api/imports/mail-batch', { body: {} })
+
+    expect(first.status).toBe(200)
+    expect(((await first.json()) as { result: { resumed: boolean } }).result.resumed).toBe(true)
+    expect(duringRun?.status).toBe(429)
   })
 
   it('実行中に重ねて叩いても、進行中バッチを引き継がず 429（同じ記録の二重書き換えを防ぐ）', async () => {

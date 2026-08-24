@@ -487,19 +487,30 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
     }
     // 直近の実行からクールダウンを空ける（#489）。判定そのものはドメインが持ち、ここは
     // 直近バッチを引いて結果を HTTP に写すだけにする
-    const cooldown = judgeManualMailImportCooldown(
-      await deps.dailyMailImportBatchRepository.findLatestByUser(viewerId),
-      new Date(),
-    )
+    const latestBatch = await deps.dailyMailImportBatchRepository.findLatestByUser(viewerId)
+    const cooldown = judgeManualMailImportCooldown(latestBatch, new Date())
     if (cooldown.kind === 'cooling_down') {
       // 429（時間をおけば受け付ける）。連携切れの 409 とは違い、利用者に操作は要らない。
       // 秒は切り上げる — Retry-After の秒数を待って叩き直したときに、まだ足りずに
       // もう一度弾かれることがないようにする
       const retryAfterSeconds = Math.ceil(cooldown.retryAfterMs / 1000)
+      const waitMinutes = Math.ceil(retryAfterSeconds / 60)
+      // 進行中と終端で理由が違う。終端のバッチしか無いのに「まだ動いている」と返すと、
+      // 完了サマリを見たあとの利用者には事実と食い違う案内になる
+      const stillRunning =
+        cooldown.latestBatchKind === 'started' || cooldown.latestBatchKind === 'importing'
+      // 弾いたことを運用側にも残す（「取込が動かない」と言われたときに切り分けられるように）。
+      // 出すのはバッチ ID と状態だけで、ユーザーID・メール本文・金額は出さない
+      console.info(
+        '[transaction-import] 手動のメール取込をクールダウンで受け付けなかった' +
+          `（importBatchId=${latestBatch?.common.importBatchId ?? 'unknown'}, ` +
+          `kind=${cooldown.latestBatchKind}, retryAfter=${retryAfterSeconds}s）`,
+      )
       return c.json(
         {
-          error:
-            '直前のメール取込から間隔が空いていない。前の取込がまだ動いている可能性があるため、時間をおいて実行する',
+          error: stillRunning
+            ? `前のメール取込がまだ動いている。約 ${waitMinutes} 分後に実行する`
+            : `直前のメール取込から間隔が空いていない。約 ${waitMinutes} 分後に実行する`,
           reason: 'cooling_down',
           retryAfterSeconds,
         },

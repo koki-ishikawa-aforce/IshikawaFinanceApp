@@ -1,5 +1,5 @@
 {
-  "id": "2fdfbade-09ea-48d4-9ffc-32d9a27c4476",
+  "id": "41a1c43f-8486-4dd6-b6da-60f2696f918c",
   "prevId": "86e45319-a21e-405f-a43e-13bed367d603",
   "version": "7",
   "dialect": "postgresql",
@@ -1604,7 +1604,13 @@
             {
               "expression": "created_at",
               "isExpression": false,
-              "asc": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "import_batch_id",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             }
           ],
