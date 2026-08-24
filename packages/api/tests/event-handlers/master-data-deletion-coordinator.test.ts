@@ -10,7 +10,7 @@
  * （保存の呼び出し回数など）に依存する。ここでは各コンテキストの完了通知イベントを
  * 直接 publish するだけで、揃う / 揃わないの両方を素朴に作れる。
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   CategoryDeletionRequestSchema,
   CategoryDeletionRequestIdSchema,
@@ -146,6 +146,24 @@ async function seedRemapRequestedCategoryDeletion(
   return categoryDeletionRequestId
 }
 
+/**
+ * 家計分析だけへ依頼したカテゴリ削除リクエストを保存する
+ * （依頼していない自動分類からの完了通知を作るため）。
+ */
+async function seedRemapRequestedToHouseholdOnlyCategoryDeletion(
+  h: Harness,
+  targetCategoryId: CategoryId,
+): Promise<CategoryDeletionRequestId> {
+  const categoryDeletionRequestId = CategoryDeletionRequestIdSchema.parse(newUlid())
+  const requested = requestCategoryRemap(
+    pendingCategoryDeletion(categoryDeletionRequestId, targetCategoryId),
+    ['household_analysis'],
+    AT,
+  )
+  await h.deps.categoryDeletionRequestRepository.save(requested)
+  return categoryDeletionRequestId
+}
+
 /** リマップ未依頼のままのカテゴリ削除リクエストを保存する（未依頼への通知を作るため） */
 async function seedPendingRemapCategoryDeletion(
   h: Harness,
@@ -273,6 +291,24 @@ async function seedRemapRequestedExpenseTypeDeletion(
   const requested = requestExpenseTypeRemap(
     pendingExpenseTypeDeletion(expenseTypeDeletionRequestId, targetExpenseTypeId),
     ['expense_settlement', 'auto_classification'],
+    AT,
+  )
+  await h.deps.expenseTypeDeletionRequestRepository.save(requested)
+  return expenseTypeDeletionRequestId
+}
+
+/**
+ * 経費精算だけへ依頼した経費種別削除リクエストを保存する
+ * （依頼していない自動分類からの完了通知を作るため）。
+ */
+async function seedRemapRequestedToSettlementOnlyExpenseTypeDeletion(
+  h: Harness,
+  targetExpenseTypeId: ExpenseTypeId,
+): Promise<ExpenseTypeDeletionRequestId> {
+  const expenseTypeDeletionRequestId = ExpenseTypeDeletionRequestIdSchema.parse(newUlid())
+  const requested = requestExpenseTypeRemap(
+    pendingExpenseTypeDeletion(expenseTypeDeletionRequestId, targetExpenseTypeId),
+    ['expense_settlement'],
     AT,
   )
   await h.deps.expenseTypeDeletionRequestRepository.save(requested)
@@ -472,6 +508,36 @@ describe('registerMasterDataDeletionCoordinator: カテゴリ削除', () => {
     expect((await rereadCategoryDeletion(h, requestId)).state.kind).toBe('pending_remap')
   })
 
+  it('依頼していないコンテキストからの完了通知は記録せず、無言で捨てずにログへ残す', async () => {
+    const h = createHarness()
+    const target = await seedCategoryMaster(h, '推し活')
+    // 家計分析にだけ付け替えを依頼したのに、依頼していない自動分類が完了を申告してくる状況
+    const requestId = await seedRemapRequestedToHouseholdOnlyCategoryDeletion(h, target)
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      await publishCategoryLearningRulesRemapped(h, requestId, 9)
+
+      const reread = await rereadCategoryDeletion(h, requestId)
+      if (reread.state.kind !== 'remap_requested') throw new Error('remap_requested を期待')
+      expect(reread.state.completedContexts).toEqual([])
+      expect(await h.deps.categoryMasterRepository.findById(target)).not.toBeNull()
+      expect(h.categoryCompleted).toHaveLength(0)
+      // 影響件数が実際より小さいだけの完了記録に紛れないよう、申告元が記録に残る
+      expect(errorLog).toHaveBeenCalledTimes(1)
+      expect(String(errorLog.mock.calls[0]?.[0])).toContain('auto_classification')
+
+      // 依頼した家計分析の完了通知は従来どおり記録され、削除まで進む
+      await publishCategoryTransactionsRemapped(h, requestId, 3)
+      expect(await h.deps.categoryMasterRepository.findById(target)).toBeNull()
+      expect(h.categoryCompleted).toHaveLength(1)
+      expect(h.categoryCompleted[0]?.affectedTransactionCount).toBe(3)
+      expect(h.categoryCompleted[0]?.affectedLearningRuleCount).toBe(0)
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
   it('存在しないリクエストへの完了通知は例外にせず無視する', async () => {
     const h = createHarness()
     const unknownId = CategoryDeletionRequestIdSchema.parse(newUlid())
@@ -613,6 +679,36 @@ describe('registerMasterDataDeletionCoordinator: 経費種別削除', () => {
     ).not.toBeNull()
     expect(h.expenseTypeCompleted).toHaveLength(0)
     expect((await rereadExpenseTypeDeletion(h, requestId)).state.kind).toBe('pending_remap')
+  })
+
+  it('依頼していないコンテキストからの完了通知は記録せず、無言で捨てずにログへ残す', async () => {
+    const h = createHarness()
+    const target = await seedExpenseTypeMaster(h, 'セミナー')
+    await seedMonthlyLimit(h, target)
+    // 経費精算にだけ付け替えを依頼したのに、依頼していない自動分類が完了を申告してくる状況
+    const requestId = await seedRemapRequestedToSettlementOnlyExpenseTypeDeletion(h, target)
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      await publishExpenseTypeLearningRulesRemapped(h, requestId, 9)
+
+      const reread = await rereadExpenseTypeDeletion(h, requestId)
+      if (reread.state.kind !== 'remap_requested') throw new Error('remap_requested を期待')
+      expect(reread.state.completedContexts).toEqual([])
+      expect(await h.deps.expenseTypeMasterRepository.findById(target)).not.toBeNull()
+      expect(h.expenseTypeCompleted).toHaveLength(0)
+      expect(errorLog).toHaveBeenCalledTimes(1)
+      expect(String(errorLog.mock.calls[0]?.[0])).toContain('auto_classification')
+
+      // 依頼した経費精算の完了通知は従来どおり記録され、削除まで進む
+      await publishExpenseTypeTransactionsRemapped(h, requestId, 1)
+      expect(await h.deps.expenseTypeMasterRepository.findById(target)).toBeNull()
+      expect(h.expenseTypeCompleted).toHaveLength(1)
+      expect(h.expenseTypeCompleted[0]?.affectedTransactionCount).toBe(1)
+      expect(h.expenseTypeCompleted[0]?.affectedLearningRuleCount).toBe(0)
+    } finally {
+      errorLog.mockRestore()
+    }
   })
 
   it('存在しないリクエストへの完了通知は例外にせず無視する', async () => {

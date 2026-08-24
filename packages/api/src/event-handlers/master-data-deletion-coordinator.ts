@@ -5,6 +5,7 @@ import {
   completeExpenseTypeRemap,
   isCategoryRemapFullyCompleted,
   isExpenseTypeRemapFullyCompleted,
+  isRequestedRemapContext,
   recordCategoryRemapContextCompletion,
   recordExpenseTypeRemapContextCompletion,
 } from '@warimaru/domain'
@@ -24,6 +25,7 @@ import type {
   MonthlyLimitRepository,
   RemapRequestedCategoryDeletionRequest,
   RemapRequestedExpenseTypeDeletionRequest,
+  RemapRequestedState,
 } from '@warimaru/domain'
 import { domainEventBase } from './event-base.js'
 
@@ -38,6 +40,25 @@ export interface MasterDataDeletionCoordinatorDeps {
 type CompletionInput = Omit<CompletedRemapContext, 'completedAt'>
 
 /**
+ * 依頼していないコンテキストからの完了通知を捨てたことの記録。
+ *
+ * この通知が届くのは購読の配線を取り違えたときだけで、放っておくと「影響件数が実際より
+ * 少ないだけの正常な削除完了」として残り、後から真偽を確かめられない。無言で捨てず、
+ * どのリクエストへ誰が申告したかを残す（識別子のみ。取引の内容は含めない）。
+ */
+function unrequestedCompletionLog(
+  deletionRequestId: string,
+  completion: CompletionInput,
+  state: RemapRequestedState,
+): string {
+  return (
+    '依頼していないコンテキストからのリマップ完了通知を無視した' +
+    `（deletionRequestId=${deletionRequestId}, context=${completion.context},` +
+    ` requestedContexts=${state.requestedContexts.join('/')}）`
+  )
+}
+
+/**
  * マスタ削除コーディネーター（#223: 08h §2「リマップ完了を受け取る」）
  *
  * 各コンテキストの「付け替え完了」通知イベントを購読し、削除リクエストへ完了を記録する。
@@ -46,6 +67,10 @@ type CompletionInput = Omit<CompletedRemapContext, 'completedAt'>
  *
  * 冪等: 完了記録は同一コンテキストの再通知を無視し（record 側で保証）、
  * 既に remap_requested でない（完了済み / 失敗済み）リクエストは以降の通知を無視する。
+ *
+ * 依頼していないコンテキストからの完了通知は記録も状態遷移もせず、error ログだけ残して捨てる。
+ * 例外を投げないため remap_failed へは倒れない（削除の進行を止めるほどの事象ではなく、
+ * 起きるとすれば購読の配線ミスであり、実行時に直せるものではないため）。
  *
  * safeSubscribe を使わない: 物理削除の失敗は要請元へ伝播させ remap_failed に倒す。
  */
@@ -63,8 +88,18 @@ export function registerMasterDataDeletionCoordinator(
     if (request === null || request.state.kind !== 'remap_requested') return
     const requested = request as RemapRequestedCategoryDeletionRequest
 
+    if (!isRequestedRemapContext(requested.state, completion.context)) {
+      console.error(
+        unrequestedCompletionLog(categoryDeletionRequestId, completion, requested.state),
+      )
+      return
+    }
+
     const recorded = recordCategoryRemapContextCompletion(requested, completion, at)
-    await deps.categoryDeletionRequestRepository.save(recorded)
+    // 記録しなかった再通知は payload が変わらないため保存もしない（空書き込みを避ける）
+    if (recorded.state.completedContexts.length > requested.state.completedContexts.length) {
+      await deps.categoryDeletionRequestRepository.save(recorded)
+    }
     if (!isCategoryRemapFullyCompleted(recorded)) return
 
     const completed = completeCategoryRemap(recorded, at)
@@ -92,8 +127,18 @@ export function registerMasterDataDeletionCoordinator(
     if (request === null || request.state.kind !== 'remap_requested') return
     const requested = request as RemapRequestedExpenseTypeDeletionRequest
 
+    if (!isRequestedRemapContext(requested.state, completion.context)) {
+      console.error(
+        unrequestedCompletionLog(expenseTypeDeletionRequestId, completion, requested.state),
+      )
+      return
+    }
+
     const recorded = recordExpenseTypeRemapContextCompletion(requested, completion, at)
-    await deps.expenseTypeDeletionRequestRepository.save(recorded)
+    // 記録しなかった再通知は payload が変わらないため保存もしない（空書き込みを避ける）
+    if (recorded.state.completedContexts.length > requested.state.completedContexts.length) {
+      await deps.expenseTypeDeletionRequestRepository.save(recorded)
+    }
     if (!isExpenseTypeRemapFullyCompleted(recorded)) return
 
     const completed = completeExpenseTypeRemap(recorded, at)

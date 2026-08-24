@@ -6,7 +6,7 @@ import {
   UserIdSchema,
 } from '../../shared/ids'
 import { ExpenseClassSchema } from '../../shared/value-objects/ExpenseClass'
-import { DeletionRequestStateSchema } from './DeletionRequestState'
+import { DeletionRequestStateSchema, appendCompletedRemapContext } from './DeletionRequestState'
 import type {
   CompletedRemapContext,
   DeletionRequestState,
@@ -94,18 +94,13 @@ export function recordCategoryRemapContextCompletion(
   completion: Omit<CompletedRemapContext, 'completedAt'>,
   at: Date,
 ): RemapRequestedCategoryDeletionRequest {
-  if (!request.state.requestedContexts.includes(completion.context)) {
-    return request
-  }
-  if (request.state.completedContexts.some(c => c.context === completion.context)) {
+  const state = appendCompletedRemapContext(request.state, completion, at)
+  if (state === request.state) {
     return request
   }
   return CategoryDeletionRequestSchema.parse({
     ...request,
-    state: {
-      ...request.state,
-      completedContexts: [...request.state.completedContexts, { ...completion, completedAt: at }],
-    },
+    state,
   }) as RemapRequestedCategoryDeletionRequest
 }
 

@@ -24,23 +24,35 @@ function pendingRequest(overrides: Record<string, unknown> = {}) {
 
 describe('ExpenseTypeDeletionRequest', () => {
   it('依頼していないコンテキストの完了通知を含む状態は parse できない', () => {
+    const completion = (context: string) => ({
+      context,
+      affectedTransactionCount: 5,
+      affectedLearningRuleCount: 0,
+      completedAt: new Date(),
+    })
+
     expect(() =>
       pendingRequest({
         state: {
           kind: 'remap_requested',
           requestedAt: new Date(),
           requestedContexts: ['expense_settlement'],
-          completedContexts: [
-            {
-              context: 'household_analysis',
-              affectedTransactionCount: 5,
-              affectedLearningRuleCount: 0,
-              completedAt: new Date(),
-            },
-          ],
+          completedContexts: [completion('household_analysis')],
         },
       }),
-    ).toThrow()
+    ).toThrow(/依頼していないコンテキストからの完了通知/)
+
+    // 依頼先の正当な完了通知と並んでいても弾く（先頭だけを見る実装では通ってしまう並び）
+    expect(() =>
+      pendingRequest({
+        state: {
+          kind: 'remap_requested',
+          requestedAt: new Date(),
+          requestedContexts: ['expense_settlement', 'auto_classification'],
+          completedContexts: [completion('expense_settlement'), completion('household_analysis')],
+        },
+      }),
+    ).toThrow(/依頼していないコンテキストからの完了通知/)
   })
 })
 
@@ -128,12 +140,16 @@ describe('ExpenseTypeDeletionRequest 状態遷移', () => {
       { context: 'expense_settlement', affectedTransactionCount: 2, affectedLearningRuleCount: 0 },
       at,
     )
+    expect(isExpenseTypeRemapFullyCompleted(afterSettlement)).toBe(true)
+
     const afterLateUnrequested = recordExpenseTypeRemapContextCompletion(
       afterSettlement,
       { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 9 },
       at,
     )
     expect(afterLateUnrequested.state.completedContexts).toHaveLength(1)
+    // 依頼外の通知は物理削除の前提判定（依頼先が全て揃ったか）を巻き戻さない
+    expect(isExpenseTypeRemapFullyCompleted(afterLateUnrequested)).toBe(true)
 
     // 合算する影響件数に依頼外の申告が混ざらない
     const completed = completeExpenseTypeRemap(afterLateUnrequested, at)

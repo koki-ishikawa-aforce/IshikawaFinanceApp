@@ -4,7 +4,7 @@ import {
   ExpenseTypeIdSchema,
   UserIdSchema,
 } from '../../shared/ids'
-import { DeletionRequestStateSchema } from './DeletionRequestState'
+import { DeletionRequestStateSchema, appendCompletedRemapContext } from './DeletionRequestState'
 import type {
   CompletedRemapContext,
   DeletionRequestState,
@@ -66,18 +66,13 @@ export function recordExpenseTypeRemapContextCompletion(
   completion: Omit<CompletedRemapContext, 'completedAt'>,
   at: Date,
 ): RemapRequestedExpenseTypeDeletionRequest {
-  if (!request.state.requestedContexts.includes(completion.context)) {
-    return request
-  }
-  if (request.state.completedContexts.some(c => c.context === completion.context)) {
+  const state = appendCompletedRemapContext(request.state, completion, at)
+  if (state === request.state) {
     return request
   }
   return ExpenseTypeDeletionRequestSchema.parse({
     ...request,
-    state: {
-      ...request.state,
-      completedContexts: [...request.state.completedContexts, { ...completion, completedAt: at }],
-    },
+    state,
   }) as RemapRequestedExpenseTypeDeletionRequest
 }
 

@@ -60,9 +60,44 @@ export const DeletionRequestStateSchema = z
       if (requested.has(completion.context)) return
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: '依頼していない依頼先コンテキストの完了通知は記録できない',
+        message: '依頼していないコンテキストからの完了通知は記録できない',
         path: ['completedContexts', index, 'context'],
       })
     })
   })
 export type DeletionRequestState = z.infer<typeof DeletionRequestStateSchema>
+
+export type RemapRequestedState = Extract<DeletionRequestState, { kind: 'remap_requested' }>
+
+/**
+ * 完了通知の送り主が依頼先として記録されているか。
+ * 記録されない通知（配線の取り違え）を呼び出し側が観測して記録に残せるよう、判定を公開する。
+ */
+export function isRequestedRemapContext(
+  state: RemapRequestedState,
+  context: RemapTargetContext,
+): boolean {
+  return state.requestedContexts.includes(context)
+}
+
+/**
+ * 完了通知を1件加えたリマップ依頼済み状態を返す。
+ * 次のいずれかに当たる通知は記録せず、受け取った状態をそのまま返す:
+ *  - 依頼していないコンテキストからの通知（影響件数の合算に依頼外の申告を混ぜない）
+ *  - 記録済みコンテキストからの再通知（at-least-once 配信対策の冪等）
+ *
+ * カテゴリ・経費種別の削除リクエストで同じ規則を使うため、判定はここに1箇所だけ置く。
+ * 記録しなかったことは戻り値の参照が同一であることで判別できる。
+ */
+export function appendCompletedRemapContext(
+  state: RemapRequestedState,
+  completion: Omit<CompletedRemapContext, 'completedAt'>,
+  at: Date,
+): RemapRequestedState {
+  if (!isRequestedRemapContext(state, completion.context)) return state
+  if (state.completedContexts.some(c => c.context === completion.context)) return state
+  return {
+    ...state,
+    completedContexts: [...state.completedContexts, { ...completion, completedAt: at }],
+  }
+}
