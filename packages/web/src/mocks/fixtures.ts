@@ -723,7 +723,8 @@ export function currentCycleFixture(yearMonth: YearMonth): unknown {
  * GET /api/expense-settlement
  *
  * 費用区分別の累計は、上限つき（上限に到達した状態）と上限なしの両方を返して
- * 行の見え方を一覧で確認できるようにする。expenseTypeId は
+ * 行の見え方を一覧で確認できるようにする（月次上限と進捗バーが出る行と「上限なし」の
+ * 行が並ぶ。DESIGN.md §1）。expenseTypeId は
  * {@link expenseTypeListFixture} と揃える（揃っていないと画面が名前を解決できず
  * ID がそのまま出る）。日時は JST の暦日が UTC と食い違わないよう 15:00Z より前に置く。
  *
@@ -734,9 +735,6 @@ export function currentCycleFixture(yearMonth: YearMonth): unknown {
  * 累計と按分子取引はどの月を開いても同じ内容を返す（モックは月ごとのデータを持たない）。
  * 直近の確定サイクルだけは表示中の月の前月に合わせる。固定にすると、その月を開いたときに
  * 「集積中のサイクル」と「同じ月が最終確定済み」が同じ画面に並んで矛盾するため。
- *
- * 上限あり経費種別と無制限経費種別の両方を返し、月次上限と進捗バーが出る行と
- * 「上限なし」の行が並んだ見え方を確認できるようにする（DESIGN.md §1）。
  */
 export function expenseSettlementViewFixture(role: UserRole, yearMonth: YearMonth): unknown {
   const userId = role === 'honey' ? 'U_HONEY_MOCK' : 'U_DARLING_MOCK'
