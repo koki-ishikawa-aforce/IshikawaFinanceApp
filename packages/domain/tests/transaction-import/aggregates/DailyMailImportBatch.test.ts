@@ -163,10 +163,12 @@ describe('手動実行のクールダウン判定', () => {
     })
   })
 
-  it('直近バッチの時刻が未来（時計のずれ）なら弾く', () => {
+  it('直近バッチの時刻が未来（時計のずれ）なら弾く。待ち時間はクールダウンを超えない', () => {
     const importing = startBatchImporting(started, after(startedAt, 60_000))
-    const judgment = judgeManualMailImportCooldown(importing, startedAt)
-    expect(judgment.kind).toBe('cooling_down')
+    expect(judgeManualMailImportCooldown(importing, startedAt)).toEqual({
+      kind: 'cooling_down',
+      retryAfterMs: MANUAL_MAIL_IMPORT_COOLDOWN_MS,
+    })
   })
 
   it('クールダウンの長さは呼出し側で指定できる（既定は 10 分）', () => {

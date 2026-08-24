@@ -178,7 +178,9 @@ export function judgeManualMailImportCooldown(
   const elapsedMs = at.getTime() - lastActivityAt(latestBatch).getTime()
   // 経過が負（直近バッチの時刻が未来）になるのは時計のずれ。待たせる側に倒す
   if (elapsedMs >= cooldownMs) return { kind: 'acceptable' }
-  return { kind: 'cooling_down', retryAfterMs: cooldownMs - elapsedMs }
+  // 待ち時間はクールダウンを超えない。経過が負のときに引き算をそのまま返すと、時計のずれが
+  // そのまま待ち時間に乗って「いつまで待てばよいか」が実際より長く案内される
+  return { kind: 'cooling_down', retryAfterMs: Math.min(cooldownMs, cooldownMs - elapsedMs) }
 }
 
 /** 状態遷移: 起動済み/取込中 → 失敗（終端） */
