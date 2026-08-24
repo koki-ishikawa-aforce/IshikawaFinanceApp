@@ -7,6 +7,7 @@ import { ModeToggle } from '@/components/dashboard/ModeToggle'
 import { KpiGrid } from '@/components/dashboard/KpiGrid'
 import { CategoryBreakdown } from '@/components/dashboard/CategoryBreakdown'
 import { SpousePersonalNote } from '@/components/dashboard/SpousePersonalNote'
+import { getCurrentMonth } from '@/lib/month'
 import { useDashboardKpis } from '@/hooks/useDashboardKpis'
 import { useCategoryBreakdown } from '@/hooks/useCategoryBreakdown'
 import { describeRequestFailure } from '@/lib/api-client'
@@ -16,13 +17,6 @@ import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
-
-function getCurrentMonth(): YearMonth {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  return `${y}-${m}` as YearMonth
-}
 
 export default function DashboardPage() {
   const [month, setMonth] = useState<YearMonth>(getCurrentMonth)

@@ -13,6 +13,7 @@ const ym = (value: string) => YearMonthSchema.parse(value)
 describe('getCurrentMonth', () => {
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllEnvs()
   })
 
   it('現在日時を YYYY-MM 形式で返す', () => {
@@ -25,6 +26,17 @@ describe('getCurrentMonth', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-03-01T00:00:00'))
     expect(getCurrentMonth()).toBe('2026-03')
+  })
+
+  // 見た目の自動チェックは「当月」で表示が変わる画面を撮る(#506)。固定日時が
+  // ここまで届かないと、月が替わるたび基準画像がずれる状態に戻る
+  it('モック起動モードの固定日時を当月として扱う', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-24T10:00:00+09:00'))
+    vi.stubEnv('NEXT_PUBLIC_MOCK', '1')
+    vi.stubEnv('NEXT_PUBLIC_MOCK_NOW', '2026-07-24T12:00:00+09:00')
+
+    expect(getCurrentMonth()).toBe('2026-07')
   })
 })
 
