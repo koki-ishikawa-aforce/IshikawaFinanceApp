@@ -1,4 +1,9 @@
-import type { Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
+
+/**
+ * 撮影前に画面を安定させるヘルパー置き場(書体・開発オーバーレイ・取得の完了)。
+ * 土台を 1 本にまとめるかは #574 で判断待ちのため、ここでは置き場を変えない。
+ */
 
 /** globals.css の --font-family 先頭に置かれた設計書体 */
 export const DESIGN_FONT_FAMILY = 'Zen Maru Gothic'
@@ -46,4 +51,18 @@ export async function waitForAppFonts(page: Page): Promise<void> {
  */
 export async function hideDevOverlay(page: Page): Promise<void> {
   await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+}
+
+/**
+ * 画面の取得が終わってから撮影できるようにする。
+ *
+ * モック起動モードでは画面がサーバへ問い合わせないため `networkidle` は即座に成立し、
+ * 取得結果が反映される前に撮影されうる。並列実行で混み合ったときだけ「読み込み中...」の
+ * まま写るという再現しにくい形で現れ、`--update-snapshots` で撮り直すと**読み込み中の
+ * 画面が基準になり**、その画面の中身が以後まったく見張られなくなる。
+ *
+ * 待つのは `LoadingState` の目印(`data-loading`)が画面から消えること。
+ */
+export async function waitForDataLoaded(page: Page): Promise<void> {
+  await expect(page.locator('[data-loading]')).toHaveCount(0)
 }

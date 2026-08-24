@@ -75,6 +75,12 @@
 }
 
 .backLink {
+  /* 「スキップ」など短い文字だけのボタン。文字の大きさでは縦横とも下限に届かない（§4-3） */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
+  min-width: var(--tap-target-min);
   border: none;
   background: none;
   color: var(--text-secondary);

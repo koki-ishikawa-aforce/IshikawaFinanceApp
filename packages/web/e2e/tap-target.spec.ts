@@ -12,8 +12,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
  * 対象は共通の操作部品(`components/ui/common.module.css` の 5 クラスと、それを
  * 使うボタン風リンク)と、共通部品であるモーダルの閉じるボタン・2 択の切り替え
  * (`components/ui/SegmentedControl.tsx`)。これに加えて、画面固有のスタイルを持つ
- * 部品のうち対応済みのもの(ダッシュボードの月送り・世帯/個人の切り替え・カテゴリ行。
- * #366)も測る。未対応の画面固有のボタン(設定のタブ・下部ナビなど)は #467 の対象。
+ * 部品(ダッシュボードの月送り・世帯/個人の切り替え・カテゴリ行は #366、下部ナビ・
+ * 設定のタブ・残高の期間切り替え・精算の小ボタン・チェック行は #467)も測る。
  */
 
 /** 下限の値は `globals.css` の `--tap-target-min` が正。ここに数値を書き写さない */
@@ -152,4 +152,68 @@ test('ダッシュボードの月送り・切り替え・カテゴリ行が下�
   )
   expect(minGap, '--space-2 が px で定義されている').toBeGreaterThan(0)
   expect(gap, '凡例の行どうしの隙間').toBeGreaterThanOrEqual(minGap)
+})
+
+test('下部ナビの項目が下限の大きさを満たす', async ({ page }) => {
+  // 全画面に出る操作部品で、7 項目が横幅を取り合う。1 項目でも下限を割ると隣の画面へ
+  // 飛ぶ誤タップになるため、実寸を全項目ぶん測る(#467)
+  await page.goto('/')
+  const min = await tapTargetMin(page)
+
+  const nav = page.getByRole('navigation')
+  for (const label of ['ホーム', '取引', 'レポート', '残高', '精算', '取込', '設定']) {
+    await expectTapTargetSize(nav.getByRole('link', { name: label }), `下部ナビ（${label}）`, min)
+  }
+})
+
+test('設定のタブとオンボーディングへのリンクが下限の大きさを満たす', async ({ page }) => {
+  await page.goto('/settings')
+  const min = await tapTargetMin(page)
+
+  for (const label of ['プロフィール', '口座', 'カテゴリ', '経費種別', '月次上限', '学習']) {
+    await expectTapTargetSize(
+      page.getByRole('button', { name: label, exact: true }),
+      `設定のタブ（${label}）`,
+      min,
+    )
+  }
+  // `<a>` は既定が inline で下限が効かない。表示形式の指定が崩れると実寸だけが縮む
+  await expectTapTargetSize(
+    page.getByRole('link', { name: /オンボーディング/ }),
+    'オンボーディングを開くリンク',
+    min,
+  )
+})
+
+test('残高の期間切り替えと精算の小ボタンが下限の大きさを満たす', async ({ page }) => {
+  await page.goto('/balances')
+  const min = await tapTargetMin(page)
+
+  for (const label of ['6ヶ月', '1年', '2年']) {
+    await expectTapTargetSize(
+      page.getByRole('button', { name: label, exact: true }),
+      `資産推移の期間（${label}）`,
+      min,
+    )
+  }
+
+  await page.goto('/expense-settlement')
+  await expectTapTargetSize(
+    page.getByRole('button', { name: '入金記録を追加' }),
+    '精算の「入金記録」ボタン',
+    min,
+  )
+})
+
+test('チェック行が下限の大きさを満たす', async ({ page }) => {
+  // チェックボックス本体は 13px ほどしかなく、押せる受け皿は行を包む `<label>` の側。
+  // 行の高さは中の文字で決まるため、宣言が消えると実寸だけが静かに縮む
+  await page.goto('/transactions')
+  const min = await tapTargetMin(page)
+
+  await expectTapTargetSize(
+    page.locator('label').filter({ hasText: '未分類のみ' }),
+    '取引一覧の「未分類のみ」チェック行',
+    min,
+  )
 })

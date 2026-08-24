@@ -144,6 +144,12 @@
 }
 
 .rangeButton {
+  /* 「1年」など 2〜3 文字しか無く、文字とパディングでは縦横とも下限に届かない（§4-3） */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
+  min-width: var(--tap-target-min);
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;

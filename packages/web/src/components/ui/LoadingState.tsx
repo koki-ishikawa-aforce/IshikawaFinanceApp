@@ -31,7 +31,10 @@ export function LoadingState({ children = '読み込み中...', announce = true 
   if (children === null || children === '') return null
 
   return (
-    <div className={styles.loading} role={announce ? 'status' : undefined}>
+    // data-loading は撮影前に「取得が終わったか」を機械的に待つための目印。文言は
+    // 呼び出し側で差し替わり(「未分類の取引を確認中...」等)、role="status" は取得後の
+    // 領域にも使うため、どちらも「読み込み中かどうか」の判定には使えない
+    <div className={styles.loading} data-loading="" role={announce ? 'status' : undefined}>
       {children}
     </div>
   )

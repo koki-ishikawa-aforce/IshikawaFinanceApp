@@ -59,6 +59,8 @@
   align-items: center;
   gap: var(--space-1_5);
   cursor: pointer;
+  /* 取込候補のチェック行。行全体が押せる受け皿になる（§4-3） */
+  min-height: var(--tap-target-min);
   min-width: 0;
 }
 
@@ -96,6 +98,12 @@
 }
 
 .smallGhost {
+  /* 「閉じる」の 3 文字だけで背景も無く、文字の大きさでは縦横とも下限に届かない（§4-3） */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
+  min-width: var(--tap-target-min);
   border: none;
   background: none;
   color: var(--text-secondary);

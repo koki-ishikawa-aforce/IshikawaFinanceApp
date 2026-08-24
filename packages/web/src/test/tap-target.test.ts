@@ -40,7 +40,9 @@ const HEIGHT_AND_WIDTH = ['min-height', 'min-width'] as const
  * 切り替えも #366 でこの共通部品へ寄せたため、独自の宣言は持たない。
  *
  * 共通部品を使わずに自前のスタイルを持つ操作部品も、対応したものからここに載せる
- * (ダッシュボードの月送り・カテゴリ行は #366 で対応)。
+ * (ダッシュボードの月送り・カテゴリ行は #366、残りの画面固有の部品は #467 で対応)。
+ * ここに載っていない画面固有の部品は「未対応」ではなく「走査されない」だけなので、
+ * 自前のスタイルを持つ操作部品を新しく作ったら必ず 1 行足す。
  */
 const CONTROLS: readonly {
   css: string
@@ -63,6 +65,40 @@ const CONTROLS: readonly {
     css: join('components', 'dashboard', 'CategoryBreakdown.module.css'),
     selectors: ['.legendItem'],
   },
+  {
+    // 下部ナビ。7 項目が横に並ぶため、幅も宣言しないと 1 項目が下限を割る
+    css: join('components', 'ui', 'AppNav.module.css'),
+    selectors: ['.item'],
+    properties: HEIGHT_AND_WIDTH,
+  },
+  { css: join('components', 'imports', 'StatementGuide.module.css'), selectors: ['.toggle'] },
+  {
+    // 設定のタブ・上限なしのチェック行・オンボーディングへのリンク
+    css: join('app', 'settings', 'page.module.css'),
+    selectors: ['.tab', '.checkRow', '.onboardingLink'],
+  },
+  {
+    // 資産推移の期間切り替え。「1年」など 2〜3 文字しか無く、文字では幅が稼げない
+    css: join('app', 'balances', 'page.module.css'),
+    selectors: ['.rangeButton'],
+    properties: HEIGHT_AND_WIDTH,
+  },
+  { css: join('app', 'expense-settlement', 'page.module.css'), selectors: ['.smallButton'] },
+  {
+    // 取込候補の「閉じる」は 3 文字だけなので幅も要る。チェック行は行の幅いっぱいに広がる
+    css: join('app', 'imports', 'page.module.css'),
+    selectors: ['.smallGhost'],
+    properties: HEIGHT_AND_WIDTH,
+  },
+  { css: join('app', 'imports', 'page.module.css'), selectors: ['.candidateLabel'] },
+  { css: join('app', 'transactions', 'page.module.css'), selectors: ['.item', '.checkRow'] },
+  {
+    // オンボーディングの「スキップ」。短い文字だけのボタンなので幅も宣言する
+    css: join('app', 'onboarding', 'page.module.css'),
+    selectors: ['.backLink'],
+    properties: HEIGHT_AND_WIDTH,
+  },
+  { css: join('auth', 'LoginScreen.module.css'), selectors: ['.loginButton'] },
 ]
 
 const TAP_TARGET_MIN = 'var(--tap-target-min)'

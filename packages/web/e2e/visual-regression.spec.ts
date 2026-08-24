@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { hideDevOverlay, waitForAppFonts } from './fonts'
+import { hideDevOverlay, waitForAppFonts, waitForDataLoaded } from './fonts'
 import { SCREENS, screenUrl } from './screens'
 
 for (const screen of SCREENS) {
@@ -14,6 +14,7 @@ for (const screen of SCREENS) {
       }
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       await page.waitForLoadState('networkidle')
+      await waitForDataLoaded(page)
       await waitForAppFonts(page)
       await hideDevOverlay(page)
 
