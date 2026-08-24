@@ -54,6 +54,26 @@ describe('CategoryDeletionRequest', () => {
       }),
     ).toThrow()
   })
+
+  it('依頼していないコンテキストの完了通知を含む状態は parse できない', () => {
+    expect(() =>
+      pendingRequest({
+        state: {
+          kind: 'remap_requested',
+          requestedAt: new Date(),
+          requestedContexts: ['household_analysis'],
+          completedContexts: [
+            {
+              context: 'expense_settlement',
+              affectedTransactionCount: 5,
+              affectedLearningRuleCount: 0,
+              completedAt: new Date(),
+            },
+          ],
+        },
+      }),
+    ).toThrow()
+  })
 })
 
 describe('CategoryDeletionRequest 状態遷移', () => {
@@ -121,6 +141,35 @@ describe('CategoryDeletionRequest 状態遷移', () => {
     // 初回の通知が再通知に上書きされていない（3 / 2 のまま）
     expect(completed.state.affectedTransactionCount).toBe(3)
     expect(completed.state.affectedLearningRuleCount).toBe(2)
+  })
+
+  it('依頼していないコンテキストからの完了通知は記録しない', () => {
+    const requested = requestCategoryRemap(pendingRequest(), ['household_analysis'], at)
+
+    const afterUnrequested = recordCategoryRemapContextCompletion(
+      requested,
+      { context: 'expense_settlement', affectedTransactionCount: 7, affectedLearningRuleCount: 0 },
+      at,
+    )
+    expect(afterUnrequested.state.completedContexts).toEqual([])
+    expect(isCategoryRemapFullyCompleted(afterUnrequested)).toBe(false)
+
+    // 依頼先が完了したあとに届いた依頼外の通知も、合算する影響件数に混ざらない
+    const afterHousehold = recordCategoryRemapContextCompletion(
+      afterUnrequested,
+      { context: 'household_analysis', affectedTransactionCount: 3, affectedLearningRuleCount: 0 },
+      at,
+    )
+    const afterLateUnrequested = recordCategoryRemapContextCompletion(
+      afterHousehold,
+      { context: 'auto_classification', affectedTransactionCount: 0, affectedLearningRuleCount: 9 },
+      at,
+    )
+    expect(afterLateUnrequested.state.completedContexts).toHaveLength(1)
+
+    const completed = completeCategoryRemap(afterLateUnrequested, at)
+    expect(completed.state.affectedTransactionCount).toBe(3)
+    expect(completed.state.affectedLearningRuleCount).toBe(0)
   })
 
   it('pending_remap → remap_requested → remap_failed', () => {

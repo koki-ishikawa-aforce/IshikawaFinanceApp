@@ -59,12 +59,16 @@ export function requestExpenseTypeRemap(
 /**
  * 依頼先コンテキストからのリマップ完了通知を1件記録する（remap_requested のまま）。
  * 冪等: 同一コンテキストの通知が再配信されても二重に記録しない（at-least-once 配信対策）。
+ * 依頼していないコンテキストからの完了通知は記録せず捨てる（影響件数に依頼外の申告を混ぜない）。
  */
 export function recordExpenseTypeRemapContextCompletion(
   request: RemapRequestedExpenseTypeDeletionRequest,
   completion: Omit<CompletedRemapContext, 'completedAt'>,
   at: Date,
 ): RemapRequestedExpenseTypeDeletionRequest {
+  if (!request.state.requestedContexts.includes(completion.context)) {
+    return request
+  }
   if (request.state.completedContexts.some(c => c.context === completion.context)) {
     return request
   }
