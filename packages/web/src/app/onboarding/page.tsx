@@ -29,7 +29,7 @@ import { AccountAddModal } from '@/components/accounts/AccountAddModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingState } from '@/components/ui/LoadingState'
-import { getTalkRoomContextId, openExternal } from '@/lib/liff'
+import { openExternal } from '@/lib/liff'
 import { getCurrentMonth } from '@/lib/month'
 import { RoleIcon } from '@/components/ui/RoleIcon'
 import {
@@ -55,13 +55,6 @@ import styles from './page.module.css'
  * 配偶者完了待ちは Phase2 完了後に置く（08f §2: 配偶者完了検知の事前条件は
  * 「ユーザーが Phase2 を完了し、画面ロード」。論点19: 画面ロード時のみ判定）。
  */
-
-/**
- * 共通トークルーム ID の自己申告値（正は join Webhook — onboarding API 側の暫定契約）。
- * LIFF context（グループ内で開いた場合）を優先し、1:1 トーク・外部ブラウザでは
- * 環境変数の運用ルーム ID を使う。どちらも無ければ null（参加記録は送らない）。
- */
-const CONFIGURED_TALK_ROOM_ID = process.env['NEXT_PUBLIC_TALK_ROOM_ID'] ?? null
 
 const EMPTY_LINE_SETTINGS: LineOperationSettingsWire = {
   friendAdd: { kind: 'not_added' },
@@ -234,20 +227,18 @@ export default function OnboardingPage() {
     onSuccess: invalidate,
   })
 
-  const recordLineFriend = useMutation({
-    mutationFn: () =>
-      apiMutate('/api/onboarding/phase1/line-friend', { method: 'POST' }, OnboardingUserWireSchema),
-    onSuccess: invalidate,
-  })
-
-  const recordTalkRoom = useMutation({
-    mutationFn: (talkRoomId: string) =>
-      apiMutate(
-        '/api/onboarding/phase1/talk-room',
-        { method: 'POST', body: { talkRoomId } },
-        OnboardingMeWireSchema,
-      ),
-    onSuccess: invalidate,
+  /**
+   * 共通トークルーム参加の検知状況を取り直す（#298）。
+   * `meQuery`（画面全体の表示可否を決める）を直接 refetch すると、通信が不安定なときに
+   * その失敗がページ全体の読み込み失敗表示に波及し、ステッパーごと消えてしまう。
+   * 専用のミューテーションで取得し、成功時だけキャッシュへ書き込むことで、
+   * 失敗はこのステップ内のインライン表示に留める
+   */
+  const checkTalkRoomJoined = useMutation({
+    mutationFn: () => apiFetch('/api/onboarding/me', OnboardingMeWireSchema),
+    onSuccess: data => {
+      queryClient.setQueryData(['onboarding', 'me'], data)
+    },
   })
 
   const activateNotification = useMutation({
@@ -402,7 +393,6 @@ export default function OnboardingPage() {
   const avatarRole = role === 'honey' ? 'honey' : ('darling' as const)
   const nickname = user?.common.nickname ?? ''
   const spouse = spouseQuery.data
-  const talkRoomId = getTalkRoomContextId() ?? CONFIGURED_TALK_ROOM_ID
   /**
    * 直近の確認結果。確認できた回は友だち追加が記録されて次のステップへ進むため、`confirmed` が
    * 見えるのは再取得が終わるまでの短いあいだだけになる。
@@ -496,7 +486,14 @@ export default function OnboardingPage() {
           >
             {checkLineFriend.isPending ? '確認中...' : '友だち追加を確認する'}
           </button>
-          {/* 確認結果は押した場所で差し替わる。読み上げに載せないと結果が伝わらない（使用性 8-4） */}
+          {/* 確認結果は押した場所で差し替わる。読み上げに載せないと結果が伝わらない（使用性 8-4）。
+              確認中も friendCheckResult は null になるため、案内と「確認中...」が同時に出ないよう
+              確認中はこの分岐から除く */}
+          {friendCheckResult === null && !checkLineFriend.isPending && (
+            <p className={ui.note} role="status">
+              友だち追加の検知を待っています。追加していれば、少し時間をおいてからもう一度確認してください。
+            </p>
+          )}
           {friendCheckResult === 'confirmed' && (
             <p className={ui.note} role="status">
               <LuCheck aria-hidden="true" className={ui.iconInline} />{' '}
@@ -514,23 +511,6 @@ export default function OnboardingPage() {
               LINE に問い合わせできませんでした。通信状況を確かめて、もう一度お試しください。
             </ErrorState>
           )}
-          {/* 自己申告（#298 で廃止予定）。確認が通らないあいだの暫定の逃げ道として残す */}
-          <p className={ui.note}>確認がうまくいかないときは、こちらから先へ進めます。</p>
-          <button
-            className={ui.buttonGhost}
-            disabled={recordLineFriend.isPending}
-            onClick={() => recordLineFriend.mutate()}
-          >
-            {recordLineFriend.isPending ? '記録中...' : '友だち追加しました'}
-          </button>
-          {recordLineFriend.isError && (
-            <ErrorState>
-              {describeRequestFailure(
-                recordLineFriend.error,
-                '友だち追加を記録できませんでした。通信状況を確かめて、もう一度お試しください。',
-              )}
-            </ErrorState>
-          )}
         </div>
       )}
 
@@ -541,29 +521,34 @@ export default function OnboardingPage() {
           </div>
           <span className={ui.sectionTitle}>共通トークルームへ参加</span>
           <p className={ui.note}>
-            ふたりの家計通知が届く共通トークルームに参加してください。ふたりで共有する設定なので、どちらかが参加を記録すればこの手順は完了します。招待リンクは配偶者または公式アカウントのメッセージから開けます。
+            ふたりの家計通知が届く共通トークルームに参加してください。ふたりで共有する設定なので、どちらかが参加すればこの手順は完了します。招待リンクは配偶者または公式アカウントのメッセージから開けます。参加はわりまるが自動で検知します。
           </p>
-          {/* LIFF コンテキストから一度だけ決まる値で、このステップに入った時点で既に確定している
-              (ユーザー操作の結果として変わるものではない)。spouse_wait と同じ理由で announce={false} */}
-          {talkRoomId === null && (
-            <ErrorState announce={false}>
-              トークルームが特定できませんでした。共通トークルーム内からこの画面を開き直してください。
-            </ErrorState>
-          )}
+          {/* 参加の検知は Webhook 由来（自己申告 API は #298 で廃止）。差し替わりを読み上げに
+              載せる必要があるため live region に入れ、ボタンは外に置く（8-4）。ステップに入った
+              時点で checkTalkRoomJoined は未実行のことが多く、spouse_wait のような「取得中」の
+              ワンクッションを挟まないため、この案内はステップ表示と同時に読み上げに載ることがある
+              （意図した挙動） */}
+          <div role="status">
+            {checkTalkRoomJoined.isPending ? (
+              <LoadingState announce={false}>参加状況を確認しています...</LoadingState>
+            ) : (
+              <p className={ui.note}>
+                参加の検知を待っています。参加していれば、少し時間をおいてから最新の状態を確認してください。
+              </p>
+            )}
+          </div>
           <button
             className={ui.buttonGhost}
-            disabled={talkRoomId === null || recordTalkRoom.isPending}
-            onClick={() => {
-              if (talkRoomId !== null) recordTalkRoom.mutate(talkRoomId)
-            }}
+            disabled={checkTalkRoomJoined.isPending}
+            onClick={() => checkTalkRoomJoined.mutate()}
           >
-            {recordTalkRoom.isPending ? '記録中...' : '参加しました'}
+            {checkTalkRoomJoined.isPending ? '確認中...' : '最新の状態を確認'}
           </button>
-          {recordTalkRoom.isError && (
+          {checkTalkRoomJoined.isError && (
             <ErrorState>
               {describeRequestFailure(
-                recordTalkRoom.error,
-                '共通トークルームへの参加を記録できませんでした。通信状況を確かめて、もう一度お試しください。',
+                checkTalkRoomJoined.error,
+                '参加状況を確認できませんでした。通信状況を確かめて、もう一度お試しください。',
               )}
             </ErrorState>
           )}

@@ -92,6 +92,27 @@ async function clickCheck(): Promise<void> {
 }
 
 describe('友だち追加の確認', () => {
+  it('確認する前は検知を待っている旨の案内が出て、自己申告で進む手段は無い（#298）', async () => {
+    renderPage()
+
+    expect(
+      await screen.findByText(/友だち追加の検知を待っています。追加していれば/),
+    ).toBeInTheDocument()
+    // 自己申告 API（廃止済み）に対応するボタンは存在しない
+    expect(screen.queryByRole('button', { name: '友だち追加しました' })).toBeNull()
+  })
+
+  it('確認中は「検知を待っています」の案内を出さない（確認中の表示と競合させない）', async () => {
+    apiMutate.mockImplementation(() => new Promise(() => undefined))
+    renderPage()
+    await screen.findByText(/友だち追加の検知を待っています/)
+
+    await clickCheck()
+
+    expect(await screen.findByRole('button', { name: '確認中...' })).toBeDisabled()
+    expect(screen.queryByText(/友だち追加の検知を待っています/)).toBeNull()
+  })
+
   it('確認を押すと LINE へ問い合わせ直す（登録し直さずに立て直せる）', async () => {
     respondToCheckWith('not_friend')
     renderPage()
