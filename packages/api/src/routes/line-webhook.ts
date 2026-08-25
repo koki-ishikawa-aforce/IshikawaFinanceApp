@@ -22,9 +22,8 @@
  *
  * ログ: LINE userID・共通トークルームIDは個人を辿れる識別子のため出力しない。復元できない
  * 短縮識別子（ハッシュ先頭 8 桁）だけを添えて、複数の警告が同じトークルームのものか
- * 判別できるようにする（`routes/onboarding.ts` の traceIdOf と同じ方針）。
+ * 判別できるようにする（共通の `traceIdOf`）。
  */
-import { createHash } from 'node:crypto'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import type {
@@ -42,6 +41,7 @@ import { readJsonObjectBody } from '../read-json-object-body.js'
 import { LineWebhookRequestSchema, toLineWebhookIntents } from '../line-webhook/events.js'
 import { verifyLineSignature } from '../line-webhook/signature.js'
 import { applyLineFriendAdded, applySharedTalkRoomJoined } from '../line-operation-records.js'
+import { traceIdOf } from '../trace-id.js'
 
 /**
  * 受理する本文の上限。ルートが認証の外にある以上、署名検証には生バイト列が必要で、
@@ -68,11 +68,6 @@ export interface LineWebhookRoutesDeps {
   /** 招待されたトークルームに世帯のユーザーが在籍しているかの照会（#371、OQ-55 ①） */
   lineTalkRoomMembershipGateway: LineTalkRoomMembershipGateway
   eventBus: EventBus
-}
-
-/** ログ用の復元不能な短縮識別子（PII そのものは出さない） */
-function traceIdOf(value: string): string {
-  return createHash('sha256').update(value).digest('hex').slice(0, 8)
 }
 
 /** 世帯は夫婦 2 人固定（OQ-53 ②）。在籍照会の対象はこの 2 役割の登録済みユーザー */

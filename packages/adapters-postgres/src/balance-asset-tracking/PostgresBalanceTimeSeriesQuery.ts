@@ -9,7 +9,8 @@
  *
  * 履歴は口座ごとに残るため、軸ごとに世帯合算してから返す（`householdBalanceSeriesOfAxis`）。
  * 期間より前に最後に動いた口座の残高を持ち越すため、期間の起点も併せて読む。
- * 点が無い月は寄与しない（欠損月として自然に抜ける）挙動は従来どおり。
+ * `windowStart` も渡し、期間中に一度も動きが無い軸でも期間の開始時刻に補助点を
+ * 置いて線が消えないようにする（`isCarriedForward: true`。#538）。
  *
  * 残高は世帯フルオープンのため viewerId で絞らない（絞らないことを明示するために受け取る）。
  */
@@ -43,9 +44,10 @@ export class PostgresBalanceTimeSeriesQuery implements BalanceTimeSeriesQuery {
     ])
 
     const seriesOf = (axis: Parameters<typeof householdBalanceSeriesOfAxis>[1]) =>
-      householdBalanceSeriesOfAxis(entries, axis, opening).map(p => ({
+      householdBalanceSeriesOfAxis(entries, axis, opening, windowStart).map(p => ({
         date: p.occurredAt,
         amount: p.value,
+        isCarriedForward: p.isCarriedForward,
       }))
 
     return BalanceTimeSeriesViewSchema.parse({

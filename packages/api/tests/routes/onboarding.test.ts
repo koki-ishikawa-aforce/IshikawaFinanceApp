@@ -1297,7 +1297,35 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
     }
   })
 
-  it('世帯に登録されていない viewer の検知要求では発火しない（否定形）', async () => {
+  /**
+   * ルート側は「アプリユーザーとして登録済みか」で発火を決める。許可リスト照合ガード（#533）は
+   * 許可リスト外の要求を入口で断つため、この分岐に届くのは「許可リストには載っているが
+   * まだ登録していない」利用者だけになる。その分岐を通すため、相方を未登録のまま検知させる。
+   */
+  it('アプリユーザーとして登録していない viewer の検知要求では発火しない（否定形）', async () => {
+    const t = createTestApp()
+    const log = subscribeOperationEvents(t)
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      await register(t, VIEWER_ID)
+      await request(t.app, 'POST', '/api/onboarding/phase1/line-friend', { viewerId: VIEWER_ID })
+      await completePhase2For(t, VIEWER_ID)
+      await seedJoinedTalkRoom(t)
+
+      // SPOUSE_ID は許可リストには載っているがアプリユーザー未登録（ガードは通過し、ルートに届く）
+      const unregistered = await request(t.app, 'GET', '/api/onboarding/spouse-completion', {
+        viewerId: SPOUSE_ID,
+      })
+      expect(unregistered.status).toBe(200)
+      expect(log.operationStarted).toHaveLength(0)
+      expect(log.notificationActivated).toHaveLength(0)
+      expect(log.testMessageSent).toHaveLength(0)
+    } finally {
+      warned.mockRestore()
+    }
+  })
+
+  it('許可リストに無い viewer の検知要求は入口で断たれ、発火もしない（否定形）', async () => {
     const t = createTestApp()
     const log = subscribeOperationEvents(t)
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -1313,11 +1341,11 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
       await seedJoinedTalkRoom(t)
       expect(log.notificationActivated).toHaveLength(0)
 
-      // 許可リストに無い LINE ユーザー（= アプリユーザー未登録）からの検知要求
+      // 許可リスト照合ガード（#533）が入口で断つため、要求はルートに届かない
       const stranger = await request(t.app, 'GET', '/api/onboarding/spouse-completion', {
         viewerId: UserIdSchema.parse('user-stranger'),
       })
-      expect(stranger.status).toBe(200)
+      expect(stranger.status).toBe(403)
       expect(log.notificationActivated).toHaveLength(0)
       expect(log.testMessageSent).toHaveLength(0)
 

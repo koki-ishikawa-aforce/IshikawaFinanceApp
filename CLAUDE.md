@@ -66,7 +66,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 ブランチ名は `feat/issue-<番号>-<slug>`、PR 本文に `Closes #<番号>` を含める。
 着手中の Issue には `status:in-progress` ラベルを付与する(`/issue-work` が自動で行う)。
 
-バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が毎時 `/issue-work` を無人モードで起動し、1 fire 1件ずつ実装 → PR → CI green → **マージ**まで進める。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える(設計判断が残存する Issue には `needs-decision` を付けて `/decide` に接続する)。無人モードはユーザー確認の代わりに撤退を選び、溜まった `needs-decision` は `/decide` でまとめて消化する。
+バックログの無人消化: `ready-to-implement` ラベル付き Issue は Routine が2時間おきに `/issue-work` を無人モードで起動し、1 fire 1件ずつ実装 → PR → CI green → **マージ**まで進める。ready 化は `/issue-create` が作成時に判定するほか、`/backlog-ready` でまとめて行える(設計判断が残存する Issue には `needs-decision` を付けて `/decide` に接続する)。無人モードはユーザー確認の代わりに撤退を選び、溜まった `needs-decision` は `/decide` でまとめて消化する。
 
 **人間の承認ゲートは `ready-to-implement` の付与(着手承認)1点**。マージ可否は機械的な**マージゲート**(CI green・コンフリクトなし・`needs-decision` なし等をコマンド出力で確定)で判定し、満たせば無人モードがマージする。ゲートの定義は `.claude/skills/issue-work/SKILL.md`「マージゲート」の1箇所のみ。個別 PR の自動マージを止めたいときは、その PR に `needs-decision` を付ける。
 

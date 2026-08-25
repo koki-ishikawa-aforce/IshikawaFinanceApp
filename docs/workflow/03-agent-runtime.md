@@ -83,7 +83,7 @@ claude.ai の Claude Code → Routines から作成する定期実行。**fire �
 
 | Routine | スケジュール(UTC) | 起動するもの | 運用の一次資料 |
 | --- | --- | --- | --- |
-| バックログ自動消化 | `1 * * * *`(毎時) | `/issue-work` 無人モード | [`backlog-routine.md`](../automation/backlog-routine.md) |
+| バックログ自動消化 | `1 */2 * * *`(2時間おき) | `/issue-work` 無人モード | [`backlog-routine.md`](../automation/backlog-routine.md) |
 | PR 執事 | `10 */3 * * *`(3時間ごと) | `/pr-steward` | [`pr-steward-routine.md`](../automation/pr-steward-routine.md) |
 | 振り返り | `0 0 * * 1`(週次・月曜 09:00 JST) | `/retro` | [`retro-routine.md`](../automation/retro-routine.md) |
 | ドキュメント乖離検知 | `0 0 * * 3`(週次・水曜 09:00 JST) | `/docs-drift` | [`docs-drift-routine.md`](../automation/docs-drift-routine.md) |

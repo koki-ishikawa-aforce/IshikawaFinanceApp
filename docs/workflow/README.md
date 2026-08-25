@@ -53,7 +53,7 @@ flowchart TD
     C -->|"満たさない"| E["バックログに滞留<br/>/backlog-ready で再判定"]
     C -->|"満たす"| D["ready-to-implement 付与<br/>【唯一の人間ゲート】"]
     E -.-> C
-    D --> F["Routine 毎時 fire<br/>/issue-work 無人モード"]
+    D --> F["Routine 定期 fire(2時間おき)<br/>/issue-work 無人モード"]
     D --> G["対話セッション<br/>/issue-work"]
     F --> H["実装"]
     G --> H

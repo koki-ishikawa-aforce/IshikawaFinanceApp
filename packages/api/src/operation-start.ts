@@ -30,7 +30,6 @@
  * （配信サービスの `retry_abandoned`）でも記録は書かれる。その回のテストメッセージは本記録では
  * 回復しない（記録の確定を配信の到達まで遅らせるかは配信コンテキストとの結合に触れるため #590）。
  */
-import { createHash } from 'node:crypto'
 import {
   NotificationActivatedSchema,
   OperationStartedSchema,
@@ -46,6 +45,7 @@ import {
   type SharedTalkRoomRepository,
 } from '@warimaru/domain'
 import { domainEventBase } from './event-handlers/index.js'
+import { traceIdOf } from './trace-id.js'
 
 export interface OperationStartDeps {
   appUserRepository: AppUserRepository
@@ -197,13 +197,13 @@ export async function fireOperationStartIfReady(
 /**
  * 友だち追加の欠けを追うための短縮識別子つきの記述。
  * LINE userID は個人を辿れる識別子（PII）のためそのままは出さず、復元できない形へ潰す
- * （`routes/line-webhook.ts` の traceId と同じ方式）。
+ * （共通の `traceIdOf`）。
  */
 function friendAddTraceOf(household: OperationStartedHousehold): string {
   return (['honey', 'darling'] as const)
     .map(role => {
       const user = household[role]
-      const traceId = createHash('sha256').update(user.common.userId).digest('hex').slice(0, 8)
+      const traceId = traceIdOf(user.common.userId)
       return `${role}=${traceId}:${lineOperationSettingsOf(user).friendAdd.kind}`
     })
     .join(', ')
