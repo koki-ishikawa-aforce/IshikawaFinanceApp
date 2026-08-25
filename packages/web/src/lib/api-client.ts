@@ -142,7 +142,8 @@ export async function apiFetch<T>(
 
 /**
  * サーバー(`packages/api` の errorHandler)が返すエラー応答は `{ error: "..." }` の形。
- * `message` は現在どの応答も使わないが、将来の応答形式や外部由来のボディにも備えて残す。
+ * `message` は現在どの応答も使わないが、将来の応答形式や外部由来のボディにも備えて残す
+ * (この備え自体は `__tests__/api-client.test.ts` の「error が無ければ message」ケースで検証する)。
  */
 function extractMessage(body: string): string | null {
   try {
