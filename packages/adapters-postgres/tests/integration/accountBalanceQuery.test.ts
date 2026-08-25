@@ -181,6 +181,19 @@ describe('PostgresAccountBalanceQuery.fetchAssetTotal', () => {
     const view = await query.fetchAssetTotal(DARLING_USER_ID, new Date('2026-07-06T01:00:00.000Z'))
     expect(view.total).toBe(0)
   })
+
+  it('資産合計は世帯フルオープンのため、閲覧者が相手（配偶者）でも同じ View が返る', async () => {
+    await accountRepo.save(smbcAccount({ ownerUserId: HONEY_USER_ID, currentBalance: 1500000 }))
+    await accountRepo.save(
+      otherSavingsAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 800000 }),
+    )
+
+    const asOf = new Date('2026-07-06T01:00:00.000Z')
+    const owner = await query.fetchAssetTotal(DARLING_USER_ID, asOf)
+    const spouse = await query.fetchAssetTotal(HONEY_USER_ID, asOf)
+    expect(spouse).toEqual(owner)
+    expect(spouse.total).toBe(1500000 + 800000)
+  })
 })
 
 // --- #397: 残高の手動操作が残高一覧・資産合計に反映されること ---
