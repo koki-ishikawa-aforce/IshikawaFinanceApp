@@ -115,7 +115,7 @@ Routine のプロンプトには**手順を一切書かない**。書くのは�
 | ワークフロー | 契機 | 役割 | 一次資料 |
 | --- | --- | --- | --- |
 | `ci.yml` | PR / `main` への push | `verify` ジョブ(変更パスでステップを出し分け)+ `main` 失敗時の `needs-decision` 起票 | `docs/review/README.md` §4 |
-| `notify-needs-decision.yml` | Issue の labeled / PR の opened・closed | 判断待ちと PR 作成の**メール通知**、着手中ロックの自動解除 | [02-labels.md](./02-labels.md) §3、`docs/automation/backlog-routine.md` |
+| `notify-needs-decision.yml` | Issue の labeled / PR の opened・closed | 判断待ちと PR 作成の**メール通知**、着手中ロックの自動解除、クローズされた PR に紐づく判断 Issue の自動クローズ | [02-labels.md](./02-labels.md) §3、`docs/automation/backlog-routine.md` |
 | `pr-preview.yml` | `packages/web` を含む PR | モック起動モードの画面を GitHub Pages に配信し、URL を PR にコメント | [`pr-preview.md`](../automation/pr-preview.md) |
 
-`pr-preview` のチェックは**マージを止めない**。配信は画面確認の補助であって検証の関門ではないため、ワークフロー側も `continue-on-error` で扱っている。
+`pr-preview` のチェックは**マージを止めない**。配信は画面確認の補助であって検証の関門ではないため、配信(`deploy`)ジョブは `continue-on-error` で扱い、ブランチ保護の required check にも含めていない(required は `verify` のみ。`docs/review/README.md` §4)。

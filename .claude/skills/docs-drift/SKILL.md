@@ -1,11 +1,11 @@
 ---
 name: docs-drift
-description: docs/domain とコードの乖離検知。読み取り専用で、コードも docs も変更せず、乖離を Issue として起票する。定期検査やドキュメントとコードの整合性確認を依頼されたときに使用する。
+description: docs/domain とコード、docs/workflow の実行基盤一覧と .claude / .github の実体の乖離検知。読み取り専用で、コードも docs も変更せず、乖離を Issue として起票する。定期検査やドキュメントとコードの整合性確認を依頼されたときに使用する。
 ---
 
 # ドキュメント乖離検知(docs-drift)
 
-`docs/domain`(集約定義・ユビキタス言語・公開 API 一覧)とコードの乖離を検知し、Issue として起票する。読み取り専用で、コードも docs も変更しない。
+`docs/domain`(集約定義・ユビキタス言語・公開 API 一覧)とコードの乖離、および `docs/workflow/03-agent-runtime.md`(実行基盤の一覧)と `.claude` / `.github` の実体の乖離を検知し、Issue として起票する。読み取り専用で、コードも docs も変更しない。
 
 運用(週次 Routine のセットアップ)は `docs/automation/docs-drift-routine.md` に定める。このスキルはその手順の本体を担う。
 
@@ -23,13 +23,14 @@ description: docs/domain とコードの乖離検知。読み取り専用で、�
 
 ### 1. 突合対象の確認
 
-以下の 3 つの突合を順に行う:
+以下の 4 つの突合を順に行う:
 
-| #   | 突合           | docs 側                        | コード側                                                                 |
-| --- | -------------- | ------------------------------ | ------------------------------------------------------------------------ |
-| A   | 公開 API 一覧  | `packages/domain/README.md`    | `packages/domain/src/**/index.ts`(barrel export)                         |
-| B   | 集約定義       | `docs/domain/09-aggregates.md` | `packages/domain/src/*/aggregates/`・`value-objects/`・`events/`         |
-| C   | ユビキタス言語 | `docs/domain/08*.md`(08a〜08h) | コード上の命名(集約・値オブジェクト・イベント・リポジトリ・クエリの型名) |
+| #   | 突合           | docs 側                             | コード側                                                                                                                      |
+| --- | -------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| A   | 公開 API 一覧  | `packages/domain/README.md`         | `packages/domain/src/**/index.ts`(barrel export)                                                                              |
+| B   | 集約定義       | `docs/domain/09-aggregates.md`      | `packages/domain/src/*/aggregates/`・`value-objects/`・`events/`                                                              |
+| C   | ユビキタス言語 | `docs/domain/08*.md`(08a〜08h)      | コード上の命名(集約・値オブジェクト・イベント・リポジトリ・クエリの型名)                                                      |
+| D   | 実行基盤の一覧 | `docs/workflow/03-agent-runtime.md` | `.claude/skills/`・`.claude/agents/`・`.claude/hooks/`・`.claude/settings.json`・`.github/workflows/`・`docs/automation/*.md` |
 
 ### 2. 突合 A: 公開 API 一覧 ↔ barrel export
 
@@ -59,7 +60,19 @@ description: docs/domain とコードの乖離検知。読み取り専用で、�
 
    命名の乖離は、UL の英語名とコードの型名/関数名の不一致を対象とする。日本語→英語の翻訳のゆれ(例: 「取引」→ `Transaction` vs `Trade`)は、UL 側に英語名が明記されている場合のみ検出する。
 
-### 5. 乖離の評価と Issue 起票
+### 5. 突合 D: 実行基盤の一覧 ↔ 実体
+
+`docs/workflow/03-agent-runtime.md` は skill・サブエージェント・hooks・Routine・GitHub Actions の一覧を持つ。ハードコードされた名前・件数・設定値を実体と照合する:
+
+1. **skill 一覧**: §1 の表の skill 名 ↔ `.claude/skills/*/SKILL.md` のディレクトリ名(過不足)
+2. **サブエージェント一覧**: §2 の表のエージェント名 ↔ `.claude/agents/*.md`(過不足と、frontmatter の tools 構成)
+3. **hooks 一覧**: §3 の表の hook 名・契機 ↔ `.claude/hooks/*.mjs` の実在と `.claude/settings.json` の登録(過不足・イベント種別)。`guard-bash.mjs` のブロック対象表 ↔ 実装のパターン
+4. **Routine のスケジュール**: §4 の表の cron ↔ `docs/automation/*.md` の「Routine のセットアップ」に記録された cron(Routine の実体は claude.ai の画面からしか確認できないため、リポジトリ内の記録同士の突合に留まる)
+5. **GitHub Actions**: §6 の表のワークフロー名・責務 ↔ `.github/workflows/*.yml` のファイルとジョブ名(`docs/workflow/02-labels.md` §3 が参照するジョブ名も含む)
+
+あわせて `docs/workflow/02-labels.md` §1 のラベル表(名前・色・説明)と、各 SKILL.md に埋め込まれた冪等 `gh label create` コマンドの値の一致も照合する。
+
+### 6. 乖離の評価と Issue 起票
 
 検出した乖離それぞれについて:
 
@@ -90,11 +103,11 @@ description: docs/domain とコードの乖離検知。読み取り専用で、�
    # または --label "docs-drift,needs-decision"
    ```
 
-### 6. 報告
+### 7. 報告
 
 以下を報告する:
 
-- 各突合(A / B / C)の結果サマリ(検査項目数・乖離検出数)
+- 各突合(A / B / C / D)の結果サマリ(検査項目数・乖離検出数)
 - 起票した Issue の一覧(番号・タイトル・付与ラベル)
 - 乖離が無い場合はその旨(「全突合で乖離なし。起票なし」)
 - スキップした乖離があればその旨と理由(既存の open Issue と重複 / not planned でクローズ済みの意図的な差異)
