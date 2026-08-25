@@ -472,10 +472,12 @@ export default function OnboardingPage() {
           >
             {checkLineFriend.isPending ? '確認中...' : '友だち追加を確認する'}
           </button>
-          {/* 確認結果は押した場所で差し替わる。読み上げに載せないと結果が伝わらない（使用性 8-4） */}
-          {friendCheckResult === null && (
+          {/* 確認結果は押した場所で差し替わる。読み上げに載せないと結果が伝わらない（使用性 8-4）。
+              確認中も friendCheckResult は null になるため、案内と「確認中...」が同時に出ないよう
+              確認中はこの分岐から除く */}
+          {friendCheckResult === null && !checkLineFriend.isPending && (
             <p className={ui.note} role="status">
-              まだ検知できていません。友だち追加していれば、少し時間をおいてから確認してください。
+              友だち追加の検知を待っています。追加していれば、少し時間をおいてからもう一度確認してください。
             </p>
           )}
           {friendCheckResult === 'confirmed' && (
@@ -505,16 +507,18 @@ export default function OnboardingPage() {
           </div>
           <span className={ui.sectionTitle}>共通トークルームへ参加</span>
           <p className={ui.note}>
-            ふたりの家計通知が届く共通トークルームに参加してください。ふたりで共有する設定なので、どちらかが参加すればこの手順は完了します。招待リンクは配偶者または公式アカウントのメッセージから開けます。参加はわりまるが自動で検知するため、この画面での操作は不要です。
+            ふたりの家計通知が届く共通トークルームに参加してください。ふたりで共有する設定なので、どちらかが参加すればこの手順は完了します。招待リンクは配偶者または公式アカウントのメッセージから開けます。参加はわりまるが自動で検知します。
           </p>
           {/* 参加の検知は Webhook 由来（自己申告 API は #298 で廃止）。差し替わりを読み上げに
-              載せる必要があるため live region に入れ、ボタンは外に置く（8-4） */}
+              載せる必要があるため live region に入れ、ボタンは外に置く（8-4）。ステップに入った
+              時点で meQuery は解決済みのことが多く、spouse_wait のような「取得中」のワンクッション
+              を挟まないため、この案内はステップ表示と同時に読み上げに載ることがある（意図した挙動） */}
           <div role="status">
             {meQuery.isFetching ? (
               <LoadingState announce={false}>参加状況を確認しています...</LoadingState>
             ) : (
               <p className={ui.note}>
-                まだ検知できていません。参加してから少し時間をおいて、もう一度確認してください。
+                参加の検知を待っています。参加していれば、少し時間をおいてから最新の状態を確認してください。
               </p>
             )}
           </div>
