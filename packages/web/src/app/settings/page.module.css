@@ -42,39 +42,19 @@
 }
 
 .masterList {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0_5);
+  composes: list from '../../components/settings/settingsList.module.css';
 }
 
 .masterRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1_5) 0;
-  border-bottom: 1px solid var(--divider);
-}
-
-.masterRow:last-child {
-  border-bottom: none;
+  composes: row from '../../components/settings/settingsList.module.css';
 }
 
 .masterName {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  composes: name from '../../components/settings/settingsList.module.css';
 }
 
 .rowActions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  white-space: nowrap;
+  composes: rowActions from '../../components/settings/settingsList.module.css';
 }
 
 .roleValue {

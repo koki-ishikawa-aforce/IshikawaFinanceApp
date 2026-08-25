@@ -1,37 +1,17 @@
 .accountList {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0_5);
+  composes: list from './settingsList.module.css';
 }
 
 .accountRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1_5) 0;
-  border-bottom: 1px solid var(--divider);
-}
-
-.accountRow:last-child {
-  border-bottom: none;
+  composes: row from './settingsList.module.css';
 }
 
 .accountName {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  composes: name from './settingsList.module.css';
 }
 
 .rowActions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  white-space: nowrap;
+  composes: rowActions from './settingsList.module.css';
 }
 
 /** 残高・積立累計と銀行名/証券会社名。口座種別名より弱い表示にして主従を付ける */
