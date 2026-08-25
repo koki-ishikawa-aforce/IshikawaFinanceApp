@@ -128,6 +128,10 @@ export async function runAmazonOrderMatching(
   let parseFailedCount = 0
   for (const mail of amazonMails) {
     const parsed = deps.parseAmazonOrderConfirmationMail({ mail, userId, at })
+    // 送信元ドメインだけで絞られているため、発送のお知らせ等の注文確認以外のメールも同じ袋で
+    // 届く（#624）。これらは件数にもイベントにも出さない — 出すと「読めなかった件数」が
+    // 定常的にふくらみ、Amazon が本当に注文確認メールの書式を変えたときに気づけなくなる
+    if (parsed.kind === 'not_order_confirmation') continue
     if (parsed.kind === 'parse_failure') {
       parseFailedCount++
       await deps.eventBus.publish(

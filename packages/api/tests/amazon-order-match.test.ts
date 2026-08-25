@@ -49,6 +49,8 @@ const AMAZON_MERCHANT = 'AMAZON CO JP'
 
 function amazonBody(orderId: string, total: number, productName = 'マスタリングTCP/IP'): string {
   return [
+    'Amazon.co.jp でのご注文ありがとうございます。',
+    '',
     `注文番号: ${orderId}`,
     '',
     `* ${productName}`,
@@ -283,7 +285,10 @@ describe('Amazon 注文突合: カード利用通知に商品名を紐付ける'
     const { t, deps } = await harness({
       smbcMails: [smbcMail('gm_smbc_6')],
       amazonMails: [
-        amazonMail('gm_amz_6', '250-6666666-6666666', 2420, { body: '注文番号が無い本文' }),
+        amazonMail('gm_amz_6', '250-6666666-6666666', 2420, {
+          // 注文確認メールの目印(挨拶文)はあるが注文番号が読めない本文
+          body: 'Amazon.co.jp でのご注文ありがとうございます。\n注文番号が無い本文',
+        }),
       ],
     })
     const parseFailures = collect<MailParseFailed>(t, 'MailParseFailed')
@@ -292,6 +297,28 @@ describe('Amazon 注文突合: カード利用通知に商品名を紐付ける'
 
     expect(outcome.amazonMatch).toMatchObject({ parsedCount: 0, parseFailedCount: 1 })
     expect(parseFailures.map(e => e.gmailMessageId)).toEqual(['gm_amz_6'])
+    // カード利用通知の取込は巻き添えにならない
+    expect(outcome.importedCount).toBe(1)
+  })
+
+  it('注文確認以外の Amazon メール(発送のお知らせ等)は、パース失敗として数えずイベントも出さない（#624）', async () => {
+    const { t, deps } = await harness({
+      smbcMails: [smbcMail('gm_smbc_shipping')],
+      amazonMails: [
+        amazonMail('gm_amz_shipping', '250-9090909-9090909', 2420, {
+          // 注文確認メールの目印(挨拶文)を持たない、発送のお知らせを模した本文
+          body: ['ご注文の商品を発送いたしました。', '', '注文番号: 250-9090909-9090909'].join(
+            '\n',
+          ),
+        }),
+      ],
+    })
+    const parseFailures = collect<MailParseFailed>(t, 'MailParseFailed')
+
+    const outcome = completed(await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT }))
+
+    expect(outcome.amazonMatch).toMatchObject({ parsedCount: 0, parseFailedCount: 0 })
+    expect(parseFailures).toHaveLength(0)
     // カード利用通知の取込は巻き添えにならない
     expect(outcome.importedCount).toBe(1)
   })
@@ -448,7 +475,9 @@ describe('Amazon 注文突合: 記録（取りこぼしに気づけるか）', (
   it('読み取れなかった注文確認メールは警告として記録され、本文・商品名は載らない', async () => {
     const { deps } = await harness({
       amazonMails: [
-        amazonMail('gm_amz_warn', '250-3030303-3030303', 2420, { body: '注文番号が無い本文' }),
+        amazonMail('gm_amz_warn', '250-3030303-3030303', 2420, {
+          body: 'Amazon.co.jp でのご注文ありがとうございます。\n注文番号が無い本文',
+        }),
       ],
     })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
