@@ -20,9 +20,22 @@ gh label create "status:in-progress" --color FBCA04 --description "着手中" 2>
 gh label create "needs-decision" --color D93F0B --description "人間の判断待ち" 2>/dev/null || true
 ```
 
+同じ冪等 create コマンドは、ラベル欠落時に無人実行が落ちないよう各 SKILL.md にも**運用ガード**として埋め込まれている(`grep -r "gh label create" .claude/skills` で一覧できる)。埋め込みは定義ではない — 名前・色・説明を変えるときは本書を正とし、全埋め込み箇所を同時に更新する(ずれは `/docs-drift` の突合 D が検知する)。
+
 旧 `needs-clarification` は `needs-decision` に統合済み。残存する旧ラベル付き Issue は `/decide` 手順1a の取り込みスイープが自動で付け替える。
 
-**ラベルを増やさない。** 個別 PR の自動マージを止めたいときも専用ラベルは作らず `needs-decision` を使う(マージゲート条件2)。状態が増えるほど、どのラベルの組み合わせが正常なのかを機械判定するコストが上がる。
+**状態ラベルを増やさない。** 個別 PR の自動マージを止めたいときも専用ラベルは作らず `needs-decision` を使う(マージゲート条件2)。状態が増えるほど、どのラベルの組み合わせが正常なのかを機械判定するコストが上がる。
+
+### 状態機械の外にある補助ラベル
+
+上の3つはワークフローの**状態**を表すラベルで、本書の規律(増やさない・機械判定の対象)はこの状態ラベルについてのもの。状態を表さない補助ラベルは別に存在する:
+
+| ラベル | 色 | 用途 |
+| --- | --- | --- |
+| `docs-drift` | `C2E0C6` | `/docs-drift` が起票する乖離報告 Issue の識別(重複チェックの検索キー) |
+| `priority:high` 等の優先度ラベル | — | 着手候補選定の優先順位付け(`.claude/skills/issue-work/SKILL.md` の候補選定。対話・無人の両モード) |
+
+補助ラベルは状態遷移を変えない(§2〜§3 の遷移の判定は状態ラベルだけで行う)。`priority:*` は候補を選ぶ順序にのみ影響する。
 
 ## 2. Issue の状態遷移
 
@@ -66,7 +79,7 @@ stateDiagram-v2
 | 9 | `+needs-decision`(新規 Issue) | GitHub Actions | `main` の CI が失敗(`notify-main-failure`) | assign + @メンション → **メール通知**。無人モードは preflight でバックログを止める |
 | 10 | `+needs-decision`(新規 Issue) | 無人 Routine | `/retro` の改善案・`/docs-drift` の乖離報告・レビュー見送りの追認 | 同上。タイトル先頭の種別目印で用途を識別する |
 
-遷移3・9・10が**メール通知を発生させる唯一の経路**。GitHub は自分自身の操作を通知しないため、github-actions bot(別のアクター)が assign と @メンションを行うことで Participating 通知を成立させている。詳細は `docs/automation/backlog-routine.md`「通知」節。
+遷移3・4・9・10が**メール通知を発生させる経路のすべて**。GitHub は自分自身の操作を通知しないため、github-actions bot(別のアクター)が assign と @メンションを行うことで Participating 通知を成立させている。詳細は `docs/automation/backlog-routine.md`「通知」節。
 
 ## 4. PR に付く `needs-decision`
 
