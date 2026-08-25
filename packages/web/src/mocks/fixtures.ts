@@ -458,31 +458,31 @@ export function balanceTimeSeriesFixture(scenario: MockScenario): unknown {
     yearMonthRange: { from: '2026-01', to: '2026-07' },
     smbc: any
       ? [
-          { date: '2026-01-31T00:00:00.000Z', amount: 1200000 },
-          { date: '2026-04-30T00:00:00.000Z', amount: 1350000 },
-          { date: '2026-07-23T00:00:00.000Z', amount: 1500000 },
+          { date: '2026-01-31T00:00:00.000Z', amount: 1200000, isCarriedForward: false },
+          { date: '2026-04-30T00:00:00.000Z', amount: 1350000, isCarriedForward: false },
+          { date: '2026-07-23T00:00:00.000Z', amount: 1500000, isCarriedForward: false },
         ]
       : [],
     // 未登録の口座は推移そのものが存在しない（0 の系列を返すと「0 円で推移した」に読める）
     otherSavings: registered
       ? [
-          { date: '2026-01-31T00:00:00.000Z', amount: 1600000 },
-          { date: '2026-04-30T00:00:00.000Z', amount: 1680000 },
-          { date: '2026-07-20T00:00:00.000Z', amount: 1740000 },
+          { date: '2026-01-31T00:00:00.000Z', amount: 1600000, isCarriedForward: false },
+          { date: '2026-04-30T00:00:00.000Z', amount: 1680000, isCarriedForward: false },
+          { date: '2026-07-20T00:00:00.000Z', amount: 1740000, isCarriedForward: false },
         ]
       : [],
     nisaContribution: registered
       ? [
-          { date: '2026-01-31T00:00:00.000Z', amount: 900000 },
-          { date: '2026-04-30T00:00:00.000Z', amount: 1050000 },
-          { date: '2026-07-01T00:00:00.000Z', amount: 1200000 },
+          { date: '2026-01-31T00:00:00.000Z', amount: 900000, isCarriedForward: false },
+          { date: '2026-04-30T00:00:00.000Z', amount: 1050000, isCarriedForward: false },
+          { date: '2026-07-01T00:00:00.000Z', amount: 1200000, isCarriedForward: false },
         ]
       : [],
     cardUnpaid: any
       ? [
-          { date: '2026-01-31T00:00:00.000Z', amount: 95000 },
-          { date: '2026-04-30T00:00:00.000Z', amount: 110000 },
-          { date: '2026-07-10T00:00:00.000Z', amount: 120000 },
+          { date: '2026-01-31T00:00:00.000Z', amount: 95000, isCarriedForward: false },
+          { date: '2026-04-30T00:00:00.000Z', amount: 110000, isCarriedForward: false },
+          { date: '2026-07-10T00:00:00.000Z', amount: 120000, isCarriedForward: false },
         ]
       : [],
   }
@@ -508,9 +508,9 @@ export function accountDetailFixture(accountId: string, scenario: MockScenario):
       lastUpdatedAt: '2026-07-23T00:00:00.000Z',
       supportsBalanceManualEntry: false,
       series: [
-        { date: '2026-02-01T00:00:00.000Z', amount: 1250000 },
-        { date: '2026-04-30T00:00:00.000Z', amount: 1350000 },
-        { date: '2026-07-23T00:00:00.000Z', amount: 1500000 },
+        { date: '2026-02-01T00:00:00.000Z', amount: 1250000, isCarriedForward: false },
+        { date: '2026-04-30T00:00:00.000Z', amount: 1350000, isCarriedForward: false },
+        { date: '2026-07-23T00:00:00.000Z', amount: 1500000, isCarriedForward: false },
       ],
       history: [
         {
@@ -536,10 +536,10 @@ export function accountDetailFixture(accountId: string, scenario: MockScenario):
       lastUpdatedAt: '2026-06-14T00:00:00.000Z',
       supportsBalanceManualEntry: true,
       series: [
-        { date: '2026-02-01T00:00:00.000Z', amount: 1620000 },
-        { date: '2026-04-18T00:00:00.000Z', amount: 1700000 },
-        { date: '2026-05-06T00:00:00.000Z', amount: 1670000 },
-        { date: '2026-06-14T00:00:00.000Z', amount: 1740000 },
+        { date: '2026-02-01T00:00:00.000Z', amount: 1620000, isCarriedForward: false },
+        { date: '2026-04-18T00:00:00.000Z', amount: 1700000, isCarriedForward: false },
+        { date: '2026-05-06T00:00:00.000Z', amount: 1670000, isCarriedForward: false },
+        { date: '2026-06-14T00:00:00.000Z', amount: 1740000, isCarriedForward: false },
       ],
       history: [
         {

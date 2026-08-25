@@ -245,7 +245,11 @@ export const AssetTotalWireSchema = z.object({
 })
 export type AssetTotalWire = z.infer<typeof AssetTotalWireSchema>
 
-const BalancePointWire = z.object({ date: IsoDate, amount: z.number() })
+const BalancePointWire = z.object({
+  date: IsoDate,
+  amount: z.number(),
+  isCarriedForward: z.boolean(),
+})
 export type BalancePointWire = z.infer<typeof BalancePointWire>
 
 export const BalanceTimeSeriesWireSchema = z.object({

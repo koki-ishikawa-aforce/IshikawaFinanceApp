@@ -30,7 +30,7 @@ async function givenSavingsAccount(ownerUserId: typeof HONEY_USER_ID): Promise<s
 }
 
 describe('PostgresBalanceTimeSeriesQuery', () => {
-  it('残高変動履歴から月範囲の 4 軸を date 昇順で合成する（点が無い月は飛ばす）', async () => {
+  it('残高変動履歴から月範囲の 4 軸を date 昇順で合成する（記録が無い軸は空のまま。期間より前の最後の値は期間開始の補助点になる。#538）', async () => {
     const accountId = await givenAccount()
     // 挿入順を時系列と逆にして、並べ替えが SQL 側で効いていることを確かめる
     await history.append(
@@ -73,7 +73,9 @@ describe('PostgresBalanceTimeSeriesQuery', () => {
 
     const view = await query.fetch(HONEY_USER_ID, ym('2026-04'), ym('2026-06'))
     expect(view.yearMonthRange).toEqual({ from: '2026-04', to: '2026-06' })
-    expect(view.smbc.map(p => p.amount)).toEqual([1500000, 1800000])
+    // 先頭は期間より前の最後の値（100）を期間開始の補助点として持ち越したもの
+    expect(view.smbc.map(p => p.amount)).toEqual([100, 1500000, 1800000])
+    expect(view.smbc.map(p => p.isCarriedForward)).toEqual([true, false, false])
     expect(view.nisaContribution.map(p => p.amount)).toEqual([300000])
     expect(view.otherSavings).toEqual([])
     expect(view.cardUnpaid).toEqual([])
@@ -111,7 +113,7 @@ describe('PostgresBalanceTimeSeriesQuery', () => {
     expect(view.otherSavings.map(p => p.amount)).toEqual([800000, 1000000, 950000])
   })
 
-  it('期間より前に最後に動いた口座の残高も合計に入る（起点を持ち越す）', async () => {
+  it('期間より前に最後に動いた口座の残高も合計に入る（起点を持ち越し、期間開始の補助点も置く。#538）', async () => {
     const mine = await givenSavingsAccount(HONEY_USER_ID)
     const spouse = await givenSavingsAccount(DARLING_USER_ID)
     await history.append(
@@ -132,9 +134,12 @@ describe('PostgresBalanceTimeSeriesQuery', () => {
     )
 
     const view = await query.fetch(HONEY_USER_ID, ym('2026-05'), ym('2026-05'))
-    // 起点そのものは点にしない（期間外の日時に点を打たない）
-    expect(view.otherSavings).toHaveLength(1)
-    expect(view.otherSavings[0]?.amount).toBe(1000000)
+    // 先頭は期間開始の補助点（配偶者の持ち越し分 200000 だけ）、続いて期間内の実際の記録
+    expect(view.otherSavings).toHaveLength(2)
+    expect(view.otherSavings[0]?.amount).toBe(200000)
+    expect(view.otherSavings[0]?.isCarriedForward).toBe(true)
+    expect(view.otherSavings[1]?.amount).toBe(1000000)
+    expect(view.otherSavings[1]?.isCarriedForward).toBe(false)
   })
 
   it('月の境界は JST で切る（JST 深夜帯の変動が隣の月へずれない）', async () => {
@@ -168,6 +173,24 @@ describe('PostgresBalanceTimeSeriesQuery', () => {
     const spouse = await query.fetch(DARLING_USER_ID, ym('2026-05'), ym('2026-05'))
     expect(spouse).toEqual(owner)
     expect(spouse.smbc.map(p => p.amount)).toEqual([1500000])
+  })
+
+  it('期間中に一度も動きが無い軸でも、期間より前の最後の値があれば線が消えない（#538）', async () => {
+    const accountId = await givenSavingsAccount(HONEY_USER_ID)
+    await history.append(
+      balanceHistoryEntry({
+        accountId,
+        axis: 'other_savings_balance',
+        value: 500000,
+        occurredAt: new Date('2026-03-01T00:00:00.000Z'),
+      }),
+    )
+
+    // 2026-05 の間、この口座には一度も動きが無い
+    const view = await query.fetch(HONEY_USER_ID, ym('2026-05'), ym('2026-05'))
+    expect(view.otherSavings).toHaveLength(1)
+    expect(view.otherSavings[0]?.amount).toBe(500000)
+    expect(view.otherSavings[0]?.isCarriedForward).toBe(true)
   })
 
   it('変動が 1 件もない範囲は空の 4 軸を返す', async () => {
