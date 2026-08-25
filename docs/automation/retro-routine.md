@@ -10,7 +10,7 @@ Routine(週次 fire・fresh session): /retro を実行
   ├─ データ収集: マージ済み/クローズ PR・needs-decision Issue・撤退記録・CI 落ち・レビュー指摘
   ├─ 失敗パターンの抽出(2回以上の再発、または再発時の手戻りが大きいもの)
   ├─ 改善案の導出(反映先: skills / CLAUDE.md / .github/ISSUE_TEMPLATE / docs/automation / docs/workflow)
-  ├─ ワークフロー全体の点検(docs/workflow/04-principles.md の原則・未解決課題との突合、改善ループの滞留観測)
+  ├─ ワークフロー全体の点検(docs/workflow/05-criteria.md の基準に照らした評価、04-principles.md の原則・未解決課題との突合、改善ループの滞留観測)
   └─ 改善案あり → needs-decision Issue として起票(1改善 = 1 Issue)
      改善案なし → 何も起票せず報告のみ
   ↓
@@ -48,7 +48,7 @@ Routine(週次 fire・fresh session): /retro を実行
 - **CI 落ちの類型**: どのジョブ(build / typecheck / test / lint / format:check / 統合テスト)が繰り返し落ちているか
 - **レビュー指摘の再発**: 同種の `/ddd-review` must-fix / suggestion が複数 PR に出続けていないか
 
-収集した失敗データは、個別パターンの抽出に加えて**ワークフロー全体の点検**にも使う(SKILL.md 手順5): `docs/workflow/04-principles.md` の原則・未解決課題と突合してワークフロー仕様そのものの改訂案を導出し、`[改善案]` Issue の起票数と消化数の乖離(改善ループの滞留)も観測する。
+収集した失敗データは、個別パターンの抽出に加えて**ワークフロー全体の点検**にも使う(SKILL.md 手順5): `docs/workflow/05-criteria.md` の基準の「測り方」に沿って今期間を観測して現状評価の改訂案を出し、`docs/workflow/04-principles.md` の原則・未解決課題と突合してワークフロー仕様そのものの改訂案を導出し、`[改善案]` Issue の起票数と消化数の乖離(改善ループの滞留)も観測する。
 
 ## Routine のセットアップ
 
