@@ -478,9 +478,12 @@ export function balanceTimeSeriesFixture(scenario: MockScenario): unknown {
           { date: '2026-07-01T00:00:00.000Z', amount: 1200000, isCarriedForward: false },
         ]
       : [],
+    // 先頭の点は期間開始の補助点（#538）。期間より前の最後の値を持ち越したもので、
+    // 実際の記録ではないためドットを描かない(TimeSeriesChart)。モック・VRT で
+    // この状態を再現するため、この軸だけ isCarriedForward: true にしている
     cardUnpaid: any
       ? [
-          { date: '2026-01-31T00:00:00.000Z', amount: 95000, isCarriedForward: false },
+          { date: '2026-01-31T00:00:00.000Z', amount: 95000, isCarriedForward: true },
           { date: '2026-04-30T00:00:00.000Z', amount: 110000, isCarriedForward: false },
           { date: '2026-07-10T00:00:00.000Z', amount: 120000, isCarriedForward: false },
         ]
