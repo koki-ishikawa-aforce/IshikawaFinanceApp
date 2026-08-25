@@ -26,6 +26,7 @@ import { LuRocket } from '@/components/ui/icons'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
+import listStyles from '@/components/settings/settingsList.module.css'
 import styles from './page.module.css'
 
 type Tab = 'profile' | 'accounts' | 'categories' | 'expense-types' | 'limits' | 'classification'
@@ -279,14 +280,14 @@ function CategoriesTab() {
           {describeRequestFailure(categoriesQuery.error, 'カテゴリの取得に失敗しました')}
         </ErrorState>
       )}
-      <ul className={styles.masterList}>
+      <ul className={listStyles.list}>
         {items.map(category => (
-          <li key={category.categoryId} className={styles.masterRow}>
-            <span className={styles.masterName}>{category.name}</span>
+          <li key={category.categoryId} className={listStyles.row}>
+            <span className={listStyles.name}>{category.name}</span>
             {category.kind === 'default' ? (
               <span className={ui.badge}>規定</span>
             ) : (
-              <span className={styles.rowActions}>
+              <span className={listStyles.rowActions}>
                 <button
                   className={ui.textButton}
                   aria-label={`${category.name}を改名`}
@@ -467,14 +468,14 @@ function ExpenseTypesTab() {
           {describeRequestFailure(expenseTypesQuery.error, '経費種別の取得に失敗しました')}
         </ErrorState>
       )}
-      <ul className={styles.masterList}>
+      <ul className={listStyles.list}>
         {items.map(expenseType => (
-          <li key={expenseType.expenseTypeId} className={styles.masterRow}>
-            <span className={styles.masterName}>{expenseType.name}</span>
+          <li key={expenseType.expenseTypeId} className={listStyles.row}>
+            <span className={listStyles.name}>{expenseType.name}</span>
             {expenseType.kind === 'default' ? (
               <span className={ui.badge}>規定</span>
             ) : (
-              <span className={styles.rowActions}>
+              <span className={listStyles.rowActions}>
                 <button
                   className={ui.textButton}
                   aria-label={`${expenseType.name}を改名`}
@@ -641,13 +642,13 @@ function LimitsTab() {
           )}
         </ErrorState>
       )}
-      <ul className={styles.masterList}>
+      <ul className={listStyles.list}>
         {expenseTypes.map(expenseType => {
           const limit = limitsByType.get(expenseType.expenseTypeId) ?? null
           return (
-            <li key={expenseType.expenseTypeId} className={styles.masterRow}>
-              <span className={styles.masterName}>{expenseType.name}</span>
-              <span className={styles.rowActions}>
+            <li key={expenseType.expenseTypeId} className={listStyles.row}>
+              <span className={listStyles.name}>{expenseType.name}</span>
+              <span className={listStyles.rowActions}>
                 <span className={styles.limitValue}>
                   {limit === null
                     ? '未設定'

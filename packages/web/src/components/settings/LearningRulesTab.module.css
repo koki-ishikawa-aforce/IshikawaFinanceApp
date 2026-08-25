@@ -19,26 +19,17 @@
 }
 
 .ruleRow {
+  composes: divider from './settingsList.module.css';
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--divider);
-}
-
-.ruleRow:last-child {
-  border-bottom: none;
 }
 
 /* min-width: 0 が無いと flex 子が縮まず、長い加盟店名がバッジを押し出す(省略記号が出ない) */
 .ruleName {
+  composes: name from './settingsList.module.css';
   min-width: 0;
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .ruleMeta {
