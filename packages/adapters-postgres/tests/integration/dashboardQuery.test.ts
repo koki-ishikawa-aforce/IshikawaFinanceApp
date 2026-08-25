@@ -197,9 +197,9 @@ describe('PostgresDashboardQuery.fetchCategoryBreakdown', () => {
     ])
   })
 
-  it('返金が支出を上回る月は totalAmount が負のまま返る（percentage はクランプ）', async () => {
-    // 食費 +2000、日用品 −5000 → 合計 −3000。素の割合は −66.7% / 166.7% になる。
-    // 画面はこの負の合計を見て円グラフと割合を隠す(#409)ため、集計側で 0 に丸めない
+  it('返金が支出を上回る月は totalAmount が負のまま返り、percentage は null（算出不能）になる', async () => {
+    // 食費 +2000、日用品 −5000 → 合計 −3000。割合の分母がマイナスで意味を持たないため、
+    // 画面はこの負の合計を見て円グラフと割合を隠す(#409)。集計側は 0 や負値へ丸めず null を返す
     await txRepo.save(
       classifiedTransaction({
         amount: 2000,
@@ -217,12 +217,12 @@ describe('PostgresDashboardQuery.fetchCategoryBreakdown', () => {
     const view = await query.fetchCategoryBreakdown(HONEY_USER_ID, JUL, 'household')
     expect(view.totalAmount).toBe(-3000)
     expect(view.items.map(i => ({ categoryId: i.categoryId, percentage: i.percentage }))).toEqual([
-      { categoryId: CATEGORY_FOOD, percentage: 0 },
-      { categoryId: CATEGORY_DAILY, percentage: 100 },
+      { categoryId: CATEGORY_FOOD, percentage: null },
+      { categoryId: CATEGORY_DAILY, percentage: null },
     ])
   })
 
-  it('合計 0 円のときは全カテゴリの percentage が 0（ゼロ除算しない）', async () => {
+  it('合計 0 円のときは全カテゴリの percentage が null になる（ゼロ除算しない）', async () => {
     await txRepo.save(
       classifiedTransaction({
         amount: 1000,
@@ -241,7 +241,7 @@ describe('PostgresDashboardQuery.fetchCategoryBreakdown', () => {
     expect(view.totalAmount).toBe(0)
     expect(view.items).toHaveLength(2)
     for (const item of view.items) {
-      expect(item.percentage).toBe(0)
+      expect(item.percentage).toBeNull()
     }
   })
 

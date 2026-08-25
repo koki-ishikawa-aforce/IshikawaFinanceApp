@@ -148,9 +148,10 @@ export class PostgresDashboardQuery implements DashboardQuery {
         categoryName: names.get(r.categoryId) ?? r.categoryId,
         total: r.total,
         count: r.count,
-        // 返金等の負値で 0–100 を外れうるためクランプ（View schema の range 制約に合わせる）
+        // 合計が 0 円以下(相殺・返金超過)の月は割合が定義できないため null。
+        // それ以外は返金等の負値で 0–100 を外れうるためクランプ（View schema の range 制約に合わせる）
         percentage:
-          totalAmount === 0 ? 0 : Math.min(100, Math.max(0, (r.total / totalAmount) * 100)),
+          totalAmount <= 0 ? null : Math.min(100, Math.max(0, (r.total / totalAmount) * 100)),
       }))
       .sort((a, b) => b.total - a.total)
 

@@ -33,7 +33,7 @@ const emptyData = CategoryBreakdownViewSchema.parse({
   items: [],
 })
 
-// 返金による相殺で合計が 0 円になった月（支出の記録自体はある）
+// 返金による相殺で合計が 0 円になった月（支出の記録自体はある）。割合は算出不能(null)
 const zeroTotalData = CategoryBreakdownViewSchema.parse({
   mode: 'household',
   yearMonth: '2026-05',
@@ -44,19 +44,19 @@ const zeroTotalData = CategoryBreakdownViewSchema.parse({
       categoryName: '食費',
       total: 5000,
       count: 2,
-      percentage: 0,
+      percentage: null,
     },
     {
       categoryId: '01BX5ZZKBKACTAV9WEVGEMMVRZ',
       categoryName: '娯楽',
       total: -5000,
       count: 1,
-      percentage: 0,
+      percentage: null,
     },
   ],
 })
 
-// 返金が支出を上回って合計が負になった月（割合は 0〜100 に丸められ実態と食い違う）
+// 返金が支出を上回って合計が負になった月。割合は算出不能(null)
 const negativeTotalData = CategoryBreakdownViewSchema.parse({
   mode: 'household',
   yearMonth: '2026-04',
@@ -67,14 +67,14 @@ const negativeTotalData = CategoryBreakdownViewSchema.parse({
       categoryName: '食費',
       total: 2000,
       count: 1,
-      percentage: 0,
+      percentage: null,
     },
     {
       categoryId: '01BX5ZZKBKACTAV9WEVGEMMVRZ',
       categoryName: '娯楽',
       total: -5000,
       count: 1,
-      percentage: 100,
+      percentage: null,
     },
   ],
 })
@@ -187,6 +187,39 @@ describe('CategoryBreakdown', () => {
 
     expect(screen.queryByText('0.0%')).not.toBeInTheDocument()
     expect(screen.queryAllByText(/%$/)).toHaveLength(0)
+  })
+
+  // percentage が項目単位で null(算出不能)の場合、凡例はその項目単位の null をそのまま
+  // 見て非表示にする（月全体の合計を再判定して一括で出し分けるのではない）
+  it('percentage が null の項目だけ割合を表示しない', () => {
+    const partiallyNullData = CategoryBreakdownViewSchema.parse({
+      mode: 'household',
+      yearMonth: '2026-07',
+      totalAmount: 100000,
+      items: [
+        {
+          categoryId: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+          categoryName: '食費',
+          total: 60000,
+          count: 12,
+          percentage: 60,
+        },
+        {
+          categoryId: '01BX5ZZKBKACTAV9WEVGEMMVRZ',
+          categoryName: '娯楽',
+          total: 40000,
+          count: 3,
+          percentage: null,
+        },
+      ],
+    })
+
+    render(<CategoryBreakdown data={partiallyNullData} categoryColors={categoryColors} />)
+
+    expect(screen.getByText('60.0%')).toBeInTheDocument()
+    expect(screen.getByText('娯楽')).toBeInTheDocument()
+    expect(screen.getByText('40,000円')).toBeInTheDocument()
+    expect(screen.queryAllByText(/%$/)).toHaveLength(1)
   })
 
   it('合計0円でも支出が1件も無い月は従来どおり空状態の案内を出す（グラフ非表示の案内にしない）', () => {

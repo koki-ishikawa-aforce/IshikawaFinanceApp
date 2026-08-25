@@ -27,17 +27,12 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
   // 支出が 1 件も無い月
   const isEmpty = data.items.length === 0
 
-  // 支出の記録はあるが合計が 0 円以下の月(返金が支出と相殺する / 支出を上回る)。割合が
-  // 定義できないため、0 円なら弧の描けないドーナツと全項目 0.0%、負なら実態と食い違う
-  // 割合の輪になる。どちらもグラフと割合だけを落とし、記録されている金額はそのまま
-  // 見せる(#340 で 0 円、#409 で負の月を同じ扱いに揃えた)
-  const isPercentageMeaningless = !isEmpty && data.totalAmount <= 0
-
-  const segments = data.items.map((item, i) => ({
-    label: item.categoryName,
-    percentage: item.percentage,
-    color: getColor(item.categoryName, i, categoryColors),
-  }))
+  // 支出の記録はあるが割合を算出できない月(返金が支出と相殺する / 支出を上回る)。
+  // 集計側(PostgresDashboardQuery)が合計 0 円以下の月は percentage を null で返すため、
+  // ここでは totalAmount を自分で判定し直さず、その null をそのまま受け取る。
+  // どちらもグラフと割合だけを落とし、記録されている金額はそのまま見せる
+  // (#340 で 0 円、#409 で負の月を同じ扱いに揃えた)
+  const isPercentageMeaningless = !isEmpty && data.items.every(item => item.percentage === null)
 
   return (
     <div className={styles.container}>
@@ -55,7 +50,17 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
             {`この月は返金などで${spendingLabel}の割合を計算できないため、内訳グラフは表示せずカテゴリごとの金額のみ表示しています`}
           </EmptyState>
         ) : (
-          <DonutChart segments={segments} totalAmount={data.totalAmount} />
+          <DonutChart
+            segments={data.items.map((item, i) => ({
+              label: item.categoryName,
+              // percentage は項目単位で null になりうる(スキーマ上の型)。実際の集計
+              // (PostgresDashboardQuery)は月全体で一括して null/非null を返すため
+              // 混在は起きないが、型がそれを保証しないため 0% として安全側にフォールバックする
+              percentage: item.percentage ?? 0,
+              color: getColor(item.categoryName, i, categoryColors),
+            }))}
+            totalAmount={data.totalAmount}
+          />
         )}
       </div>
       {!isEmpty && (
@@ -78,7 +83,7 @@ export function CategoryBreakdown({ data, categoryColors }: CategoryBreakdownPro
                 />
                 <span className={styles.name}>{item.categoryName}</span>
                 <span className={styles.amount}>{formatMoney(item.total)}</span>
-                {!isPercentageMeaningless && (
+                {item.percentage !== null && (
                   <span className={styles.percentage}>{item.percentage.toFixed(1)}%</span>
                 )}
                 <LuChevronRight className={`${ui.iconSm} ${styles.chevron}`} aria-hidden="true" />
