@@ -21,6 +21,7 @@ import { gmailOAuthRoutes } from './routes/gmail-oauth.js'
 import { lineWebhookRoutes } from './routes/line-webhook.js'
 import { lineAuthMiddleware } from './middleware/line-auth.js'
 import { devViewerIdMiddleware } from './middleware/viewer-id.js'
+import { createAllowlistGuardMiddleware } from './middleware/allowlist-guard.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { registerEventHandlers } from './event-handlers/index.js'
 
@@ -39,6 +40,10 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   // （本番の web オリジンは CloudFront のドメインになるためハードコードできない）
   app.use('*', cors({ origin: deps.allowedOrigins }))
   app.use('/api/*', isDev ? devViewerIdMiddleware : lineAuthMiddleware)
+  // 閲覧者が確定した直後に許可リストを照合する（#533）。認証は「LINE の正規利用者か」しか
+  // 見ないため、これが無いと世帯外のユーザーが API を直接呼んで自分名義のデータを作れる。
+  // 環境で有効・無効を切り替えない（dev だけ素通しにすると、素通しの経路がテストされない）。
+  app.use('/api/*', createAllowlistGuardMiddleware({ allowlistQuery: deps.allowlistQuery }))
   app.onError(errorHandler)
 
   app.route('/api/me', meRoutes(deps.resolveViewerRole))

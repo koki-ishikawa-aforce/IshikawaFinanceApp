@@ -1,8 +1,11 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const E2E_HONEY_USER_ID = 'e2e-user-honey'
-export const E2E_DARLING_USER_ID = 'e2e-user-darling'
+// 許可リストガード（#533）が AWS 未構成時に使う開発フィクスチャの許可リスト
+// （packages/api/src/composition-root.ts の DEV_FIXTURE_ALLOWLIST）と揃える。
+// ずれると許可リスト不一致で全 API 要求が 403 になる。
+export const E2E_HONEY_USER_ID = 'U_HONEY_DEV'
+export const E2E_DARLING_USER_ID = 'U_DARLING_DEV'
 
 export default async function globalSetup(): Promise<void> {
   const url = process.env['DATABASE_URL']

@@ -264,3 +264,55 @@ describe('環境変数の読み出し (#416)', () => {
     })
   })
 })
+
+/**
+ * 許可リストの出所の配線 (#533)
+ *
+ * 全ての API 要求が許可リスト照合を通るようになったため、取り違えると
+ * 「本番で実利用者が全員 403」または「開発用の許可リストが本番に紛れ込む」ことになる。
+ */
+describe('許可リストの出所の配線 (#533)', () => {
+  const LOCAL_DB_URL = 'postgresql://user:pass@localhost:5432/warimaru'
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('開発環境で AWS 未構成なら seed の開発ユーザーを許可リストにする（警告ログ付き）', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const deps = await createDeps({ NODE_ENV: 'development', DATABASE_URL: LOCAL_DB_URL })
+
+    // seed の開発フィクスチャ（adapters-postgres の scripts/seed/dev-fixtures.ts）と揃っていること
+    await expect(deps.allowlistQuery.fetch()).resolves.toEqual({
+      honeyLineUserId: 'U_HONEY_DEV',
+      darlingLineUserId: 'U_DARLING_DEV',
+    })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('開発フィクスチャの許可リスト'))
+  })
+
+  it('開発環境でも AWS が構成されていれば開発用の許可リストは使わない', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const deps = await createDeps({
+      NODE_ENV: 'development',
+      DATABASE_URL: LOCAL_DB_URL,
+      AWS_REGION: 'ap-northeast-1',
+    })
+
+    // 実体（phase0_configs + Parameter Store）を引きに行くため、この環境では取得できない
+    await expect(deps.allowlistQuery.fetch()).rejects.toThrow()
+  })
+
+  it('本番環境では AWS 未構成でも開発用の許可リストへ倒さない（取得できないまま断る）', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const deps = await createDeps({
+      NODE_ENV: 'production',
+      DATABASE_URL: LOCAL_DB_URL,
+      CORS_ALLOWED_ORIGINS: 'https://example.cloudfront.net',
+    })
+
+    await expect(deps.allowlistQuery.fetch()).rejects.toThrow()
+  })
+})
