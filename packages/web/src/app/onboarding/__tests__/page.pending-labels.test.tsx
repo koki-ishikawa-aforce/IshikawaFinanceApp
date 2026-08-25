@@ -108,8 +108,12 @@ describe('はじめての設定 各ボタンの進行中の文言', () => {
     const message = await screen.findByText(
       'トークルームが特定できませんでした。共通トークルーム内からこの画面を開き直してください。',
     )
-    // 通信の失敗（unavailable）と同じ共通のエラー表示に揃える（灰色の独自注意書きを廃止）
-    expect(message.closest('[role="alert"]')).not.toBeNull()
+    // 通信の失敗（unavailable）と同じ共通のエラー表示に揃える（灰色の独自注意書きを廃止）。
+    // ただし LIFF コンテキストから一度だけ決まる値で、ステップに入った時点で既に確定しており
+    // ユーザー操作の結果として変わらないため、開いた瞬間に割り込む role="alert" は付けない
+    // （spouse_wait の完了確認と同じ扱い）
+    expect(message.closest('[role="alert"]')).toBeNull()
+    expect(message.closest('[role="status"]')).toBeNull()
     expect(screen.getByRole('button', { name: '参加しました' })).toBeDisabled()
   })
 

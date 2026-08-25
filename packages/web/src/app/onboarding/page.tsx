@@ -543,8 +543,10 @@ export default function OnboardingPage() {
           <p className={ui.note}>
             ふたりの家計通知が届く共通トークルームに参加してください。ふたりで共有する設定なので、どちらかが参加を記録すればこの手順は完了します。招待リンクは配偶者または公式アカウントのメッセージから開けます。
           </p>
+          {/* LIFF コンテキストから一度だけ決まる値で、このステップに入った時点で既に確定している
+              (ユーザー操作の結果として変わるものではない)。spouse_wait と同じ理由で announce={false} */}
           {talkRoomId === null && (
-            <ErrorState>
+            <ErrorState announce={false}>
               トークルームが特定できませんでした。共通トークルーム内からこの画面を開き直してください。
             </ErrorState>
           )}
