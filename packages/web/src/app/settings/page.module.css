@@ -41,22 +41,6 @@
   box-shadow: var(--shadow-sm);
 }
 
-.masterList {
-  composes: list from '../../components/settings/settingsList.module.css';
-}
-
-.masterRow {
-  composes: row from '../../components/settings/settingsList.module.css';
-}
-
-.masterName {
-  composes: name from '../../components/settings/settingsList.module.css';
-}
-
-.rowActions {
-  composes: rowActions from '../../components/settings/settingsList.module.css';
-}
-
 .roleValue {
   font-size: var(--text-base);
   font-weight: 700;

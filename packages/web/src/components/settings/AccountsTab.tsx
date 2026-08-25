@@ -16,6 +16,7 @@ import { LuPlus } from '@/components/ui/icons'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
+import listStyles from './settingsList.module.css'
 import styles from './AccountsTab.module.css'
 
 function AccountRow({ account, onEdit }: { account: OwnAccountWire; onEdit: (() => void) | null }) {
@@ -28,9 +29,9 @@ function AccountRow({ account, onEdit }: { account: OwnAccountWire; onEdit: (() 
           ? `${brokerageNameLabel(account.brokerageName)} / ${formatMoney(account.contribution.currentAccumulated)}`
           : null
   return (
-    <li className={styles.accountRow}>
-      <span className={styles.accountName}>{ACCOUNT_KIND_LABELS[account.kind]}</span>
-      <span className={styles.rowActions}>
+    <li className={listStyles.row}>
+      <span className={listStyles.name}>{ACCOUNT_KIND_LABELS[account.kind]}</span>
+      <span className={listStyles.rowActions}>
         {detail !== null && <span className={styles.accountDetail}>{detail}</span>}
         {onEdit !== null ? (
           <button
@@ -91,7 +92,7 @@ export function AccountsTab() {
         <EmptyState>登録済みの口座はありません。</EmptyState>
       )}
       {items.length > 0 && (
-        <ul className={styles.accountList}>
+        <ul className={listStyles.list}>
           {items.map(account => (
             <AccountRow
               key={account.common.accountId}
