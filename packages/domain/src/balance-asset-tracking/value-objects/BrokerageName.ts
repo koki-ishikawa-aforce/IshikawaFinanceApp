@@ -6,10 +6,15 @@
  */
 import { z } from 'zod'
 
+export const BROKERAGE_CUSTOM_NAME_MAX_LENGTH = 50
+
 export const BrokerageNameSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('sbi') }),
   z.object({ kind: z.literal('rakuten') }),
-  z.object({ kind: z.literal('other'), customName: z.string().min(1).max(50) }),
+  z.object({
+    kind: z.literal('other'),
+    customName: z.string().min(1).max(BROKERAGE_CUSTOM_NAME_MAX_LENGTH),
+  }),
 ])
 export type BrokerageName = z.infer<typeof BrokerageNameSchema>
 

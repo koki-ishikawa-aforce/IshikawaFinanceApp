@@ -13,6 +13,7 @@
  */
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { BANK_NAME_MAX_LENGTH, BROKERAGE_CUSTOM_NAME_MAX_LENGTH } from '@warimaru/domain'
 import { Modal } from '@/components/ui/Modal'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ApiError, apiMutate } from '@/lib/api-client'
@@ -64,7 +65,7 @@ export function BrokerageNameFields({
             id="account-brokerage-custom-name"
             className={ui.input}
             value={value.customName}
-            maxLength={50}
+            maxLength={BROKERAGE_CUSTOM_NAME_MAX_LENGTH}
             onChange={e => onChange({ kind: 'other', customName: e.target.value })}
             placeholder="例: マネックス証券"
           />
@@ -174,7 +175,7 @@ export function AccountAddModal({ kind, onClose }: AccountAddModalProps) {
             id="account-bank-name"
             className={ui.input}
             value={bankName}
-            maxLength={50}
+            maxLength={BANK_NAME_MAX_LENGTH}
             onChange={e => setBankName(e.target.value)}
             placeholder="例: 楽天銀行"
           />
