@@ -29,7 +29,9 @@
  * 書式を変えたときに気づけなくなる。そこで本文に注文確認メールの目印（挨拶文
  * 「Amazon.co.jp でのご注文ありがとうございます。」、実メール観察 2026-07-26 / #391）が
  * 無ければ `not_order_confirmation` として返し、件数にもイベントにも出さない。`parse_failure`
- * は目印はあるのに必須項目が読めなかった場合だけに絞る。
+ * は目印はあるのに必須項目が読めなかった場合だけに絞る。ただし文字化け（デコード破損）だけは
+ * 目印の判定より先に見る — 目印そのものが読めなくなった本物の注文確認メールを、目印不一致で
+ * 静かに握りつぶさないため。
  *
  * **注文日時は本文から読まず、メールの受信日時を使う。** 注文確認メールは注文の直後に届くため
  * （実測: 7/15 09:53 の注文確認 → 同日 14:37 のカード利用通知）、受信日時が注文日時の十分な
@@ -153,12 +155,16 @@ export const parseAmazonOrderConfirmationMail: AmazonOrderConfirmationMailParser
   const raw = input.mail.body
   const text = raw.normalize('NFKC')
 
-  // 目印の判定を最初に行う。目印が無いメールは、その先の構造検査(注文番号・合計・商品)を
-  // 一切行わず not_order_confirmation で返す — 発送のお知らせ等は注文確認と別の構造を持つため、
+  // 文字化けの判定を目印の判定より先に行う。デコード破損は本文全体に及びうるため、目印
+  // （挨拶文）そのものが読めなくなった本物の注文確認メールを、目印不一致で
+  // not_order_confirmation として静かに握りつぶさないようにする — 文字化けは注文確認かどうかに
+  // 関係なく気づけるべき異常であり、握りつぶすと本文構造が壊れた合図を取りこぼす
+  if (raw.includes(REPLACEMENT_CHARACTER)) return failure(input, 'garbled_text')
+
+  // 目印の判定。目印が無いメールは、その先の構造検査(注文番号・合計・商品)を一切行わず
+  // not_order_confirmation で返す — 発送のお知らせ等は注文確認と別の構造を持つため、
   // 検査をかけても意味のある失敗理由にならない
   if (!ORDER_CONFIRMATION_MARKER.test(text)) return notOrderConfirmation(input)
-
-  if (raw.includes(REPLACEMENT_CHARACTER)) return failure(input, 'garbled_text')
 
   const orderIdText = ORDER_ID.exec(text)
   if (orderIdText === null) return failure(input, 'structure_mismatch')

@@ -315,10 +315,37 @@ describe('parseAmazonOrderConfirmationMail: 注文確認以外の Amazon メー�
 
     const result = parse({ body })
 
+    expect(result).toMatchObject({
+      kind: 'not_order_confirmation',
+      gmailMessageId: 'gm_amazon_1',
+      detectedAt: AT,
+    })
+  })
+
+  it('注文確認以外は例外を投げず、注文確認以外として返す', () => {
+    let result: ReturnType<typeof parse> | undefined
+    expect(() => {
+      result = parse({ body: '発送のお知らせ' })
+    }).not.toThrow()
     expect(result).toMatchObject({ kind: 'not_order_confirmation' })
   })
 
-  it('注文確認以外は例外を投げない', () => {
-    expect(() => parse({ body: '発送のお知らせ' })).not.toThrow()
+  it('目印(挨拶文)自体が文字化けした本文は、注文確認以外ではなく文字化けとして失敗する（目印不一致での握りつぶし防止）', () => {
+    // 本物の注文確認メールの挨拶文がデコード破損した状況を模す。目印の正規表現には一致しない
+    const body = [
+      'Amazon.co.jp で�のご注文ありがとうございます。',
+      '',
+      '注文番号: 250-1313131-1313131',
+      '',
+      '* 商品名',
+      '  数量: 1',
+      '  1000 JPY',
+      '',
+      '合計 1000 JPY',
+    ].join('\n')
+
+    const result = parse({ body })
+
+    expect(result).toMatchObject({ kind: 'parse_failure', reason: 'garbled_text' })
   })
 })

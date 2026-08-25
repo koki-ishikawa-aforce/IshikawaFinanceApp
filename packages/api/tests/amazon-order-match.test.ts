@@ -317,10 +317,45 @@ describe('Amazon 注文突合: カード利用通知に商品名を紐付ける'
 
     const outcome = completed(await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT }))
 
-    expect(outcome.amazonMatch).toMatchObject({ parsedCount: 0, parseFailedCount: 0 })
+    expect(outcome.amazonMatch).toMatchObject({
+      parsedCount: 0,
+      parseFailedCount: 0,
+      matchedCount: 0,
+    })
     expect(parseFailures).toHaveLength(0)
+    // 突合の相手にならず、SMBC 側の候補は通常のまま残る（誤って商品名が付かない）
+    expect((await candidateOf(t, 'gm_smbc_shipping')).kind).toBe('normal')
     // カード利用通知の取込は巻き添えにならない
     expect(outcome.importedCount).toBe(1)
+  })
+
+  it('注文確認・注文確認以外・パース失敗が同じ実行に混在しても、それぞれ正しく数えられる', async () => {
+    const { t, deps } = await harness({
+      smbcMails: [smbcMail('gm_smbc_mixed')],
+      amazonMails: [
+        amazonMail('gm_amz_mixed_ok', '250-1111100-1111100', 2420),
+        amazonMail('gm_amz_mixed_shipping', '250-2222200-2222200', 3000, {
+          body: ['ご注文の商品を発送いたしました。', '', '注文番号: 250-2222200-2222200'].join(
+            '\n',
+          ),
+        }),
+        amazonMail('gm_amz_mixed_broken', '250-3333300-3333300', 4000, {
+          body: 'Amazon.co.jp でのご注文ありがとうございます。\n注文番号が無い本文',
+        }),
+      ],
+    })
+    const parseFailures = collect<MailParseFailed>(t, 'MailParseFailed')
+
+    const outcome = completed(await runDailyMailImportForUser(deps, { userId: VIEWER_ID, at: AT }))
+
+    // 読み取れた(=注文確認だった)のは 1 件、パース失敗も 1 件(注文確認以外は数に入らない)
+    expect(outcome.amazonMatch).toMatchObject({
+      parsedCount: 1,
+      parseFailedCount: 1,
+      matchedCount: 1,
+    })
+    expect(parseFailures.map(e => e.gmailMessageId)).toEqual(['gm_amz_mixed_broken'])
+    expect((await candidateOf(t, 'gm_smbc_mixed')).kind).toBe('amazon_matched')
   })
 })
 
