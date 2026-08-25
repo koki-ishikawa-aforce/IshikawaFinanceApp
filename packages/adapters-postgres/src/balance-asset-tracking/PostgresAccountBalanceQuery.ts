@@ -7,15 +7,16 @@
  * NISA 積立累計の合計だけを返す（配偶者の SMBC 残高・カード未払金・銀行名・口座件数は
  * 一切返さない）。
  *
- * 資産合計（fetchAssetTotal）は世帯の合計と 4 つの内訳を出し続けるため閲覧者で絞らず、
- * 両者の全 active 口座を読む（OQ-60 ②。口座数は一桁で全走査に問題なし）。
+ * 資産合計（fetchAssetTotal）は世帯フルオープンなので閲覧者では絞らず、両者の全 active
+ * 口座を読む（OQ-60 ②。口座数は一桁で全走査に問題なし）。閲覧者は「絞らないこと」を
+ * 明示するために受け取るのみで、フィルタ条件には使わない（プライバシー3段階ルール）。
  * inactive 口座は残高一覧・資産合計いずれにも含めない。
  *
  * 別銀行貯蓄口座の残高鮮度（経過日数・鮮度状態）は本 Query では返さない。08d L244 の
  * とおり本コンテキストは最終更新日時のみを供給し、閾値判定は家計分析側
  * （`DashboardQuery.fetchBalanceFreshness`）が担う。
  *
- * fetchAssetTotal(asOf) の asOf は View にエコーされるスナップショット時刻。
+ * fetchAssetTotal(viewerId, asOf) の asOf は View にエコーされるスナップショット時刻。
  * データモデル上、過去時点の残高復元（historical as-of）はサポートしない
  * （過去の推移は残高変動履歴を読む BalanceTimeSeriesQuery が担う — #398）。
  */
@@ -110,7 +111,7 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
     return rows.map(row => parsePayload(AccountSchema, row.payload))
   }
 
-  async fetchAssetTotal(asOf: Date): Promise<AssetTotalView> {
+  async fetchAssetTotal(_viewerId: UserId, asOf: Date): Promise<AssetTotalView> {
     const rows = await this.db
       .select({ payload: accounts.payload })
       .from(accounts)

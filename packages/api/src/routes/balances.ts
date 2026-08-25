@@ -74,7 +74,10 @@ export function balancesRoutes(
 
   app.get('/total', async c => {
     const params = TotalParamsSchema.parse({ asOf: c.req.query('asOf') })
-    const result = await accountBalanceQuery.fetchAssetTotal(params.asOf ?? new Date())
+    const result = await accountBalanceQuery.fetchAssetTotal(
+      c.get('viewerId'),
+      params.asOf ?? new Date(),
+    )
     return c.json(result)
   })
 
