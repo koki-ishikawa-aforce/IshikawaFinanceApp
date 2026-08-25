@@ -129,6 +129,13 @@ textarea {
    * 4.5:1 を満たす（実測 4.98〜9.30:1）。比率は kpi-contrast.test.ts が見張る
    */
   --text-on-kpi: #3d1420;
+  /*
+   * 強調バッジ（.badgeAccent、「確認済み」「完了」等）の背景と文字色（#545）。
+   * だーりんは --accent（#ff7095）のまま白文字だと 2.71:1 までしか出ないため、
+   * 背景は据え置いて文字を濃くする（実測 5.87:1）。比率は badge-accent-contrast.test.ts が見張る
+   */
+  --badge-accent-bg: var(--accent);
+  --badge-accent-text: #3d1420;
   --shadow-color: #ff709520;
   --shadow-strong: #ff709550;
   --deco-opacity: 0.2;
@@ -170,6 +177,12 @@ textarea {
   --text-primary: #1a3868;
   --text-secondary: #2a5098;
   --text-on-kpi: #ffffff;
+  /*
+   * 強調バッジ（#545）。はにーは --accent（#5090d8）のまま白文字だと 3.32:1 までしか
+   * 出ないため、白文字は据え置いて背景を kpi-hero と同じ濃い青にする（実測 7.78:1）
+   */
+  --badge-accent-bg: #2a5098;
+  --badge-accent-text: #ffffff;
   --shadow-color: #5090d820;
   --shadow-strong: #5090d850;
   --deco-opacity: 0.1;
