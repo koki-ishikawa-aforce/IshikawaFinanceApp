@@ -86,6 +86,8 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 
 同じ理由で、金額カードの文字色（`--text-on-kpi`）と背景（`--kpi-*`）のコントラストは `packages/web/src/test/kpi-contrast.test.ts` が両テーマぶん機械的に検出する。トークンの色を動かしただけで 4.5:1 を割ったかどうかは、見た目の差分では判定できないため。
 
+同様に、強調バッジ（`.badgeAccent`、「確認済み」「完了」等に使う）の文字色（`--badge-accent-text`）と背景（`--badge-accent-bg`）のコントラストは `packages/web/src/test/badge-accent-contrast.test.ts` が両テーマぶん機械的に検出する。
+
 ### UI への絵文字使用は禁止
 
 JSX に絵文字（Unicode Emoji）を表示目的で埋め込まない。装飾も情報伝達もすべて react-icons のラインアイコンまたは CSS で表現する。

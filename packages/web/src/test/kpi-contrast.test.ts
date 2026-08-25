@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { colorStops, contrastRatio, type Rgb } from './contrast'
 import { cssRules } from './css-rules'
 import { SRC_DIR, collectSources, isModuleCss } from './sources'
 
@@ -12,11 +13,10 @@ import { SRC_DIR, collectSources, isModuleCss } from './sources'
  * 読めなくなるが、見た目のスクリーンショット差分では「変わったこと」しか分からず、
  * 4.5:1 を割ったかどうかは判定できない。ここで比率そのものを固定する。
  *
- * 守らせるのは 4 つ:
+ * 守らせるのは 3 つ(コントラスト比の計算自体の健全性は `contrast.test.ts` が見る):
  * 1. 文字色が、そのテーマの対応する背景すべてに対して 4.5:1 以上
  * 2. 金額カードの上の文字を半透明にしていない(背景が透けたぶん比率が落ちるため)
  * 3. 金額カードの文字色を、金額カード以外の面に流用していない
- * 4. 比率の計算そのものが壊れていない
  */
 
 /** `docs/design/usability.md` 8-6 / WCAG AA の本文の下限 */
@@ -33,39 +33,6 @@ const TEXT_ON_KPI = '--text-on-kpi'
  * 手書きで列挙すると `--kpi-2` を足したときに黙って対象外になるため、接頭辞で拾う
  */
 const KPI_BACKGROUND = /^--kpi-/
-
-type Rgb = readonly [number, number, number]
-
-function parseHex(hex: string): Rgb {
-  const body = hex.replace('#', '')
-  const full =
-    body.length === 3
-      ? body
-          .split('')
-          .map(c => c + c)
-          .join('')
-      : body
-  return [
-    Number.parseInt(full.slice(0, 2), 16),
-    Number.parseInt(full.slice(2, 4), 16),
-    Number.parseInt(full.slice(4, 6), 16),
-  ]
-}
-
-/** WCAG 2.1 の相対輝度 */
-function luminance([r, g, b]: Rgb): number {
-  const channel = (value: number): number => {
-    const c = value / 255
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-  }
-  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
-}
-
-/** WCAG 2.1 のコントラスト比(1〜21)。丸めずに返す(境界の 4.495 を通さないため) */
-function contrastRatio(a: Rgb, b: Rgb): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
-  return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05)
-}
 
 /** `:root`(だーりん)と `[data-theme='honey']` のトークン定義 */
 function themeBlock(theme: 'darling' | 'honey'): string {
@@ -99,11 +66,6 @@ function tokenNames(theme: 'darling' | 'honey'): string[] {
     [...block.matchAll(/(--[\w-]+)\s*:/g)].map(match => match[1] ?? ''),
   )
   return [...new Set(names)]
-}
-
-/** グラデーションに含まれる色をすべて取り出す。単色ならその 1 色 */
-function colorStops(value: string): Rgb[] {
-  return [...value.matchAll(/#[0-9a-fA-F]{3,6}\b/g)].map(match => parseHex(match[0]))
 }
 
 /**
@@ -178,15 +140,5 @@ describe('金額カードのコントラスト', () => {
       .filter(({ content }) => !/background\s*:\s*var\(\s*--kpi-/.test(content))
       .map(({ path }) => path)
     expect(offenders).toEqual([])
-  })
-
-  it('比率の計算が既知の値と一致する', () => {
-    // 計算そのものが壊れると、上のテストが常に緑になる
-    expect(contrastRatio(parseHex('#ffffff'), parseHex('#000000'))).toBeCloseTo(21, 5)
-    expect(contrastRatio(parseHex('#ffffff'), parseHex('#ffffff'))).toBeCloseTo(1, 5)
-    // 修正前のはにーの金額カード(白文字 × #80a8d0)。下限を割る組み合わせを検出できる
-    expect(contrastRatio(parseHex('#ffffff'), parseHex('#80a8d0'))).toBeLessThan(MIN_CONTRAST)
-    // だーりんの文字色を吹き出し(--text-primary)へ流用した場合。使う側のガードが守る配色
-    expect(contrastRatio(parseHex('#3d1420'), parseHex('#5a2840'))).toBeLessThan(MIN_CONTRAST)
   })
 })
