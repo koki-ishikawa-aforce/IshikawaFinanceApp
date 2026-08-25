@@ -3,7 +3,7 @@
  *
  * この画面は元々「決定して次へ」などを押しても disabled になるだけで文字が変わらず、
  * 「友だち追加を確認する」（→「確認中...」）とだけ書き方が混ざっていた。通信が遅いときに
- * 押せているのか分からず何度も押させる原因になるため、9 個のボタンすべてに進行中の文言を
+ * 押せているのか分からず何度も押させる原因になるため、7 個のボタンすべてに進行中の文言を
  * 揃えたことを、画面の結線として検証する（実装をなぞらず、押している間に何が見えるかを見る）。
  */
 import { render, screen } from '@testing-library/react'
@@ -65,58 +65,6 @@ beforeEach(() => {
 })
 
 describe('はじめての設定 各ボタンの進行中の文言', () => {
-  it('友だち追加しました: 記録中は「記録中...」に変わる', async () => {
-    mockMeAnd({
-      kind: 'phase1_completed',
-      common: {
-        userId: VIEWER_ID,
-        role: 'honey',
-        nickname: 'はにー',
-        firstRegisteredAt: REGISTERED_AT,
-        lineOperationSettings: {
-          friendAdd: { kind: 'not_added' },
-          notificationActivation: { kind: 'not_activated' },
-        },
-      },
-    })
-    neverResolve()
-    renderPage()
-
-    await userEvent.click(await screen.findByRole('button', { name: '友だち追加しました' }))
-
-    const pending = await screen.findByRole('button', { name: '記録中...' })
-    expect(pending).toBeDisabled()
-  })
-
-  it('参加を記録するトークルームを特定できないときは、通信失敗と同じ共通表示で案内する', async () => {
-    // LIFF グループ外・運用ルーム未設定の test 環境では talkRoomId が常に null になる
-    mockMeAnd({
-      kind: 'phase1_completed',
-      common: {
-        userId: VIEWER_ID,
-        role: 'honey',
-        nickname: 'はにー',
-        firstRegisteredAt: REGISTERED_AT,
-        lineOperationSettings: {
-          friendAdd: { kind: 'added' },
-          notificationActivation: { kind: 'not_activated' },
-        },
-      },
-    })
-    renderPage()
-
-    const message = await screen.findByText(
-      'トークルームが特定できませんでした。共通トークルーム内からこの画面を開き直してください。',
-    )
-    // 通信の失敗（unavailable）と同じ共通のエラー表示に揃える（灰色の独自注意書きを廃止）。
-    // ただし LIFF コンテキストから一度だけ決まる値で、ステップに入った時点で既に確定しており
-    // ユーザー操作の結果として変わらないため、開いた瞬間に割り込む role="alert" は付けない
-    // （spouse_wait の完了確認と同じ扱い）
-    expect(message.closest('[role="alert"]')).toBeNull()
-    expect(message.closest('[role="status"]')).toBeNull()
-    expect(screen.getByRole('button', { name: '参加しました' })).toBeDisabled()
-  })
-
   it('通知を受け取る: 記録中は「設定中...」に変わる', async () => {
     mockMeAnd(
       {

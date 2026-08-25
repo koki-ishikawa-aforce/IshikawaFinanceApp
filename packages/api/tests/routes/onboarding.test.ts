@@ -27,6 +27,10 @@ import type {
 } from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, SPOUSE_ID, VIEWER_ID } from '../helpers/test-app.js'
+import {
+  applyLineFriendAdded,
+  applySharedTalkRoomJoined,
+} from '../../src/line-operation-records.js'
 
 interface UserResponse {
   user: {
@@ -84,6 +88,34 @@ async function friendAddKindOf(t: TestApp, userId: UserId = VIEWER_ID): Promise<
   const user = await t.deps.appUserRepository.findById(userId)
   expect(user).not.toBeNull()
   return lineOperationSettingsOf(user!).friendAdd.kind
+}
+
+/**
+ * 友だち追加を記録する（自己申告 API 廃止 #298 後のテスト用セットアップ）。
+ * follow Webhook（routes/line-webhook.ts）が呼ぶのと同じ関数を直接呼び、
+ * 記録・イベント発行・運用開始発火の試行までを含めて Webhook 受信を模す。
+ */
+async function recordFriendAdded(
+  t: TestApp,
+  viewerId: UserId = VIEWER_ID,
+  at: Date = new Date(),
+): Promise<void> {
+  const user = await t.deps.appUserRepository.findById(viewerId)
+  expect(user).not.toBeNull()
+  await applyLineFriendAdded(t.deps, user!, at)
+}
+
+/**
+ * 共通トークルーム参加を記録する（自己申告 API 廃止 #298 後のテスト用セットアップ）。
+ * join Webhook（routes/line-webhook.ts）が呼ぶのと同じ関数を直接呼ぶ。
+ */
+async function recordTalkRoomJoined(
+  t: TestApp,
+  talkRoomId = 'room_test_001',
+  at: Date = new Date(),
+): Promise<void> {
+  const current = await t.deps.sharedTalkRoomRepository.find()
+  await applySharedTalkRoomJoined(t.deps, current, TalkRoomIdSchema.parse(talkRoomId), at)
 }
 
 /** SectionC/D/E の確認が可能な状態（口座 seed → Phase2 開始 → SectionA/B 完了）まで進める */
@@ -569,9 +601,7 @@ describe('POST /api/onboarding/phase1/line-friend/check — 友だち追加の�
       if (calls === 1) return { kind: 'not_friend' }
       // 照会の応答を待っているあいだに Webhook が同じ事実を記録した状況を作る
       if (holder !== null) {
-        await request(holder.app, 'POST', '/api/onboarding/phase1/line-friend', {
-          viewerId: VIEWER_ID,
-        })
+        await recordFriendAdded(holder, VIEWER_ID)
       }
       return { kind: 'friend' }
     })
@@ -669,17 +699,12 @@ describe('PUT /api/onboarding/nickname', () => {
 })
 
 describe('Phase1 ステップの完了記録', () => {
-  it('友だち追加 → トークルーム参加 → 通知有効化の順に記録できる', async () => {
+  it('友だち追加・トークルーム参加が記録されていれば通知有効化できる（記録は Webhook 由来、#298）', async () => {
     const t = createTestApp()
     await register(t)
 
-    const friend = await request(t.app, 'POST', '/api/onboarding/phase1/line-friend')
-    expect(friend.status).toBe(200)
-
-    const room = await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
-      body: { talkRoomId: 'room_test_001' },
-    })
-    expect(room.status).toBe(200)
+    await recordFriendAdded(t)
+    await recordTalkRoomJoined(t)
 
     const notification = await request(t.app, 'POST', '/api/onboarding/phase1/notification')
     expect(notification.status).toBe(200)
@@ -707,7 +732,7 @@ describe('Phase1 ステップの完了記録', () => {
   it('友だち追加済みでも世帯が共通トークルーム未参加なら通知有効化は 409', async () => {
     const t = createTestApp()
     await register(t)
-    expect((await request(t.app, 'POST', '/api/onboarding/phase1/line-friend')).status).toBe(200)
+    await recordFriendAdded(t)
     const res = await request(t.app, 'POST', '/api/onboarding/phase1/notification')
     expect(res.status).toBe(409)
   })
@@ -715,9 +740,7 @@ describe('Phase1 ステップの完了記録', () => {
   it('共通トークルーム参加は世帯で共有される（配偶者の記録が相方にも見える）', async () => {
     const t = createTestApp()
     await register(t)
-    await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
-      body: { talkRoomId: 'room_test_001' },
-    })
+    await recordTalkRoomJoined(t)
 
     // 配偶者（別 viewer）から見ても同じ世帯の参加記録が返る
     const me = await request(t.app, 'GET', '/api/onboarding/me', { viewerId: SPOUSE_ID })
@@ -1080,17 +1103,9 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
   async function completeNotificationPrerequisites(t: TestApp): Promise<void> {
     for (const viewerId of [VIEWER_ID, SPOUSE_ID]) {
       await register(t, viewerId)
-      expect(
-        (await request(t.app, 'POST', '/api/onboarding/phase1/line-friend', { viewerId })).status,
-      ).toBe(200)
+      await recordFriendAdded(t, viewerId)
     }
-    expect(
-      (
-        await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
-          body: { talkRoomId: 'room_test_001' },
-        })
-      ).status,
-    ).toBe(200)
+    await recordTalkRoomJoined(t)
   }
 
   async function userKindOf(t: TestApp, userId: UserId): Promise<string | undefined> {
@@ -1227,7 +1242,7 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
     try {
       for (const viewerId of [VIEWER_ID, SPOUSE_ID]) {
         await register(t, viewerId)
-        await request(t.app, 'POST', '/api/onboarding/phase1/line-friend', { viewerId })
+        await recordFriendAdded(t, viewerId)
       }
       await completePhase2For(t, VIEWER_ID)
       await completePhase2For(t, SPOUSE_ID)
@@ -1235,7 +1250,7 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
       expect(log.notificationActivated).toHaveLength(0)
 
       // 記録は届いたが、その回の発火は行われなかった状況（発火の失敗など）を作る。
-      // 参加記録をリポジトリへ直接置き、API 経由の発火の起点を通さない
+      // 参加記録をリポジトリへ直接置き、発火の起点を通さない
       await seedJoinedTalkRoom(t)
       expect(log.notificationActivated).toHaveLength(0)
 
@@ -1255,17 +1270,15 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
     try {
       // 相方だけ友だち追加済み・共通トークルーム参加済みの状態で運用開始させる
       for (const viewerId of [VIEWER_ID, SPOUSE_ID]) await register(t, viewerId)
-      await request(t.app, 'POST', '/api/onboarding/phase1/line-friend', { viewerId: SPOUSE_ID })
-      await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
-        body: { talkRoomId: 'room_test_001' },
-      })
+      await recordFriendAdded(t, SPOUSE_ID)
+      await recordTalkRoomJoined(t)
       await completePhase2For(t, VIEWER_ID)
       await completePhase2For(t, SPOUSE_ID)
       expect(log.operationStarted).toHaveLength(1)
       expect(log.notificationActivated).toHaveLength(0)
 
       // 運用開始後は web のセットアップ画面を離れるため、LINE 記録の到着が回復の起点になる
-      expect((await request(t.app, 'POST', '/api/onboarding/phase1/line-friend')).status).toBe(200)
+      await recordFriendAdded(t, VIEWER_ID)
       expect(log.notificationActivated).toHaveLength(1)
       expect(log.testMessageSent).toHaveLength(1)
     } finally {
@@ -1280,16 +1293,13 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
     try {
       for (const viewerId of [VIEWER_ID, SPOUSE_ID]) {
         await register(t, viewerId)
-        await request(t.app, 'POST', '/api/onboarding/phase1/line-friend', { viewerId })
+        await recordFriendAdded(t, viewerId)
       }
       await completePhase2For(t, VIEWER_ID)
       await completePhase2For(t, SPOUSE_ID)
       expect(log.notificationActivated).toHaveLength(0)
 
-      const room = await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
-        body: { talkRoomId: 'room_test_001' },
-      })
-      expect(room.status).toBe(200)
+      await recordTalkRoomJoined(t)
       expect(log.notificationActivated).toHaveLength(1)
       expect(log.testMessageSent).toHaveLength(1)
     } finally {
@@ -1308,7 +1318,7 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       await register(t, VIEWER_ID)
-      await request(t.app, 'POST', '/api/onboarding/phase1/line-friend', { viewerId: VIEWER_ID })
+      await recordFriendAdded(t, VIEWER_ID)
       await completePhase2For(t, VIEWER_ID)
       await seedJoinedTalkRoom(t)
 
@@ -1333,11 +1343,11 @@ describe('運用開始発火（OperationStarted / NotificationActivated）', () 
       // 共通トークルーム未参加のまま運用開始させ、通知機能の有効化だけが未了の状態を作る
       for (const viewerId of [VIEWER_ID, SPOUSE_ID]) {
         await register(t, viewerId)
-        await request(t.app, 'POST', '/api/onboarding/phase1/line-friend', { viewerId })
+        await recordFriendAdded(t, viewerId)
       }
       await completePhase2For(t, VIEWER_ID)
       await completePhase2For(t, SPOUSE_ID)
-      // 参加記録はリポジトリへ直接置く（API 経由だとその記録自体が発火の起点になるため）
+      // 参加記録はリポジトリへ直接置く（記録そのものが発火の起点になるため）
       await seedJoinedTalkRoom(t)
       expect(log.notificationActivated).toHaveLength(0)
 

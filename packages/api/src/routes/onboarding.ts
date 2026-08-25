@@ -28,7 +28,6 @@ import {
   SectionFCompletedSchema,
   SectionFSkippedSchema,
   SectionIdentifierSchema,
-  TalkRoomIdSchema,
   activateNotification,
   changeNickname,
   completePhase2,
@@ -63,12 +62,11 @@ import type {
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 import { traceIdOf } from '../trace-id.js'
-import { applyLineFriendAdded, applySharedTalkRoomJoined } from '../line-operation-records.js'
+import { applyLineFriendAdded } from '../line-operation-records.js'
 import { fireOperationStartIfReady, tryFireOperationStart } from '../operation-start.js'
 
 const RegisterBodySchema = z.object({ nickname: NicknameSchema.optional() })
 const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
-const TalkRoomBodySchema = z.object({ talkRoomId: TalkRoomIdSchema })
 const SectionBBodySchema = z.object({ initialBalanceRef: InitialBalanceRegistrationRefSchema })
 const SectionConfirmationBodySchema = z.object({ section: SectionIdentifierSchema })
 const SectionFBodySchema = z.discriminatedUnion('kind', [
@@ -321,35 +319,6 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
     const user = await getUserOr404(viewerId)
     const checked = await checkAndRecordFriendAdded(user, new Date())
     return c.json({ user: checked.user, result: { kind: checked.result } })
-  })
-
-  /** Phase1: LINE 友だち追加の完了記録（冪等。自己申告のため #298 で廃止する） */
-  app.post('/phase1/line-friend', async c => {
-    const viewerId = c.get('viewerId')
-    const user = await getUserOr404(viewerId)
-    const now = new Date()
-    const updated = await applyLineFriendAdded(deps, user, now)
-    return c.json({ user: updated })
-  })
-
-  /**
-   * Phase1: 共通トークルーム参加の完了記録（冪等）。
-   * 暫定: talkRoomId は Web（LIFF context）からの自己申告。共通トークルームID の正は
-   * join Webhook（08f §2）であり、その受信ルート（`/webhook/line`、#296）は実装済み。
-   * 本 API は移行期間の互換のために残しており、廃止は #298 で行う。
-   * Webhook 由来の記録は既存の参加記録を上書きしない（配信先の差し替え防止。routes/line-webhook.ts）
-   * ため、参加先の変更（招待し直し）は現状この LIFF 認証つき経路が担う。
-   * 保存先は世帯レベルの SharedTalkRoom 1 か所（OQ-55 ①）。per-user の LINE 運用設定へは
-   * 書き込まない（二重管理の防止）。
-   */
-  app.post('/phase1/talk-room', async c => {
-    const body = TalkRoomBodySchema.parse(await c.req.json())
-    const viewerId = c.get('viewerId')
-    const user = await getUserOr404(viewerId)
-    const now = new Date()
-    const current = await deps.sharedTalkRoomRepository.find()
-    const updated = await applySharedTalkRoomJoined(deps, current, body.talkRoomId, now)
-    return c.json({ user, sharedTalkRoom: updated })
   })
 
   /**

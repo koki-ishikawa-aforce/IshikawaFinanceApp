@@ -92,6 +92,16 @@ async function clickCheck(): Promise<void> {
 }
 
 describe('友だち追加の確認', () => {
+  it('確認する前は「まだ検知できていません」の案内が出て、自己申告で進む手段は無い（#298）', async () => {
+    renderPage()
+
+    expect(
+      await screen.findByText(/まだ検知できていません。友だち追加していれば/),
+    ).toBeInTheDocument()
+    // 自己申告 API（廃止済み）に対応するボタンは存在しない
+    expect(screen.queryByRole('button', { name: '友だち追加しました' })).toBeNull()
+  })
+
   it('確認を押すと LINE へ問い合わせ直す（登録し直さずに立て直せる）', async () => {
     respondToCheckWith('not_friend')
     renderPage()

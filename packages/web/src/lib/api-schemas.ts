@@ -683,10 +683,7 @@ export const LineFriendCheckWireSchema = z.object({
 })
 export type LineFriendCheckResultWire = z.infer<typeof LineFriendCheckWireSchema>['result']
 
-/**
- * 世帯レベルの共通トークルーム参加状態を併せて返すレスポンス
- * （GET /me と POST /phase1/talk-room）。
- */
+/** 世帯レベルの共通トークルーム参加状態を併せて返すレスポンス（GET /me）。 */
 export const OnboardingMeWireSchema = z.object({
   user: AppUserWireSchema.nullable(),
   sharedTalkRoom: SharedTalkRoomWireSchema,

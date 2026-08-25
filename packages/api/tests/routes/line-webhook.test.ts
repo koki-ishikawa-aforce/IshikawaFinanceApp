@@ -590,21 +590,6 @@ describe('POST /webhook/line — join（共通トークルーム参加）', () =
     expect(log).toHaveLength(1)
   })
 
-  it('参加先の変更は LIFF 認証つきの自己申告 API では引き続き行える', async () => {
-    const t = createTestApp()
-    await register(t)
-    await postWebhook(t, joinPayload(TALK_ROOM_ID))
-
-    const res = await request(t.app, 'POST', '/api/onboarding/phase1/talk-room', {
-      body: { talkRoomId: OTHER_TALK_ROOM_ID },
-    })
-
-    expect(res.status).toBe(200)
-    expect(joinedTalkRoomIdOf(await t.deps.sharedTalkRoomRepository.find())).toBe(
-      OTHER_TALK_ROOM_ID,
-    )
-  })
-
   it('複数人トーク（source.type = room）の join も参加として記録する', async () => {
     const t = createTestApp({
       lineTalkRoomMembershipGateway: membershipGateway({ kind: 'member' }),
