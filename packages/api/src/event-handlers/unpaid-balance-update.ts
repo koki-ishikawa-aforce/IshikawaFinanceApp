@@ -58,6 +58,17 @@ export interface UnpaidBalanceUpdateHandlerDeps {
  * - イベント発行（publish）が例外を投げないこと（= 購読者が safeSubscribe 配下である）
  *   にも依存する。UnpaidSettled の購読者が例外を伝播させると、再実行時は
  *   result === null となり当該イベントは二度と発行されない。
+ * - 同一の transactionId / settlementNoticeId の再発行では、occurredAt も
+ *   （メール本文から決定的に導出し）毎回同じ値にすること（#539）。処理時刻を
+ *   都度採番すると、消込時と残高反映時（再実行で分かれて発火しうる）とで
+ *   occurredAt が食い違い、資産推移グラフの日付が回復処理のタイミングに
+ *   引きずられて静かにずれる。
+ *
+ * 発行するイベントの occurredAt（#539）:
+ * トリガーイベント（CardUsageTransactionImported / SettlementNoticeReceived）の
+ * occurredAt をそのまま引き継ぐ。処理を実行した時刻（バッチの実行日）ではなく、
+ * カードを実際に使った日・引き落とされた日を運ぶための取り決め（資産の推移グラフ・
+ * 月次レポートが「その月にいくら使ったか」を見るため）。
  */
 export function registerUnpaidBalanceUpdateEventHandlers(
   eventBus: EventBus,
@@ -88,7 +99,7 @@ export function registerUnpaidBalanceUpdateEventHandlers(
       await deps.mitsuiSumitomoUnpaidRepository.save(updated)
       await eventBus.publish(
         UnpaidBookkeptSchema.parse({
-          ...domainEventBase(),
+          ...domainEventBase(event.occurredAt),
           type: 'UnpaidBookkept',
           unpaidAggregateId: event.unpaidAggregateId,
           entryId: updated.entries.at(-1)?.entryId,
@@ -121,7 +132,7 @@ export function registerUnpaidBalanceUpdateEventHandlers(
       // 処理は AccountBalanceUpdated を購読すること。
       await eventBus.publish(
         UnpaidSettledSchema.parse({
-          ...domainEventBase(),
+          ...domainEventBase(event.occurredAt),
           type: 'UnpaidSettled',
           unpaidAggregateId: event.unpaidAggregateId,
           settledEntryIds: result.settledEntries.map(e => e.entryId),
@@ -188,7 +199,7 @@ export function registerUnpaidBalanceUpdateEventHandlers(
 
     await eventBus.publish(
       AccountBalanceUpdatedSchema.parse({
-        ...domainEventBase(),
+        ...domainEventBase(event.occurredAt),
         type: 'AccountBalanceUpdated',
         accountId: event.accountId,
         // 符号のルール（消込は減算）はドメイン側の単一ソース。実際の残高差分から導く
