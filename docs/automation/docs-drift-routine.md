@@ -60,15 +60,11 @@ Routine(週次 fire・fresh session): /docs-drift を実行
   ```
   /docs-drift を実行してください。
 
-  - docs/domain(集約定義・ユビキタス言語・公開 API 一覧)と packages/domain のコードの乖離、docs/workflow/03-agent-runtime.md の実行基盤一覧と .claude / .github の実体の乖離を検知してください
-  - 手順は .claude/skills/docs-drift/SKILL.md に従ってください
-  - 検知した乖離はコードも docs も変更せず、乖離内容と修正方針案を記した Issue として起票してください(1 乖離 = 1 Issue)
-  - docs とコードのどちらが正かが自明な場合は ready-to-implement、判断が必要な場合は needs-decision を付けてください
-  - 乖離が見つからなかった場合は、何も起票せず突合結果だけを報告して終了してください
+  - 手順は .claude/skills/docs-drift/SKILL.md に従ってください(突合対象・重複チェック・ラベル判定・起票フォーマットまで、すべてそこが正です)
   - 最終的な報告は日本語を使ってください。
   ```
 
-  プロンプトを変更した場合は、Routine 側を直すまで反映されない。この Routine は MCP の `create_trigger` で作ったため `update_trigger` で直せるが、**画面で作成した Routine は Claude からは更新も停止もできない**(経路の一覧は `backlog-routine.md`「プロンプトは薄く保つ」)。この Routine はプロンプトに手順を書いたままなので、手順を変えるたびに直す必要がある。バックログ / PR 執事と同じく薄いプロンプトへ移行すれば不要になる(未実施)。
+  プロンプトは薄く保っている(2026-08-25 に移行済み)ため、突合対象の変更を含む手順の変更は `SKILL.md` を直せば次の fire から自動で反映される。プロンプト自体を変える場合は Routine 側を直すまで反映されない — この Routine は MCP の `create_trigger` で作ったため `update_trigger` で直せる(**画面で作成した Routine は Claude からは更新も停止もできない**。経路の一覧は `backlog-routine.md`「プロンプトは薄く保つ」)。
 
   **注意**: Routine の実際の作成(トリガー登録)はリポジトリの変更(このドキュメントの追加)には含まれない。登録は claude.ai の Routines 画面、または MCP の `create_trigger` で別途行う。
 

@@ -64,14 +64,11 @@ Routine(週次 fire・fresh session): /retro を実行
   ```
   /retro を実行してください。
 
-  - 直近1週間の無人運用(/issue-work・/pr-steward)の失敗データを収集し、繰り返す失敗パターンから改善案を導出してください
-  - 手順は .claude/skills/retro/SKILL.md に従ってください
-  - 改善案は自動で適用せず、needs-decision ラベル付きの Issue として起票してください(1改善 = 1 Issue、judgment-issue テンプレートと執筆ルールに従う)
-  - 再発パターンが無い場合は、何も起票せず収集結果だけを報告して終了してください
+  - 手順は .claude/skills/retro/SKILL.md に従ってください(収集期間・失敗パターンの抽出・ワークフロー全体の点検・起票の基準とテンプレートまで、すべてそこが正です)
   - 最終的な報告は日本語を使ってください。
   ```
 
-  プロンプトを変更した場合は、Routine 側を直すまで反映されない。この Routine は MCP の `create_trigger` で作ったため `update_trigger` で直せるが、**画面で作成した Routine は Claude からは更新も停止もできない**(経路の一覧は `backlog-routine.md`「プロンプトは薄く保つ」)。この Routine はプロンプトに手順を書いたままなので、手順を変えるたびに直す必要がある。バックログ / PR 執事と同じく薄いプロンプトへ移行すれば不要になる(未実施)。
+  プロンプトは薄く保っている(2026-08-25 に移行済み)ため、手順の変更は `SKILL.md` を直せば次の fire から自動で反映される。プロンプト自体を変える場合は Routine 側を直すまで反映されない — この Routine は MCP の `create_trigger` で作ったため `update_trigger` で直せる(**画面で作成した Routine は Claude からは更新も停止もできない**。経路の一覧は `backlog-routine.md`「プロンプトは薄く保つ」)。
 
   **注意**: Routine の実際の作成(トリガー登録)はリポジトリの変更(このドキュメントの追加)には含まれない。登録は claude.ai の Routines 画面、または MCP の `create_trigger` で別途行う。
 
