@@ -93,4 +93,22 @@ describe('共通トークルームへの参加の確認', () => {
     )
     expect(await screen.findByText('通知の設定')).toBeInTheDocument()
   })
+
+  it('「最新の状態を確認」が失敗しても、ページ全体ではなくこのステップ内にだけエラーを出す', async () => {
+    renderPage()
+    await screen.findByText(/参加の検知を待っています/)
+
+    // 押した回だけ失敗させる。画面全体の表示可否を決める初回取得（meQuery）はそのまま成功済み
+    apiFetch.mockImplementation((path: string, schema: { parse: (input: unknown) => unknown }) => {
+      if (path === '/api/me') return Promise.resolve({ viewerId: 'U_HONEY', role: 'honey' })
+      if (path === '/api/onboarding/me') return Promise.reject(new Error('network error'))
+      return Promise.resolve(schema.parse({}))
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '最新の状態を確認' }))
+
+    expect(await screen.findByText(/参加状況を確認できませんでした/)).toBeInTheDocument()
+    // 画面全体の汎用エラー表示（meQuery.isError の早期リターン）には差し替わらない
+    expect(screen.getByText('共通トークルームへ参加')).toBeInTheDocument()
+    expect(screen.queryByText('読み込みに失敗しました')).toBeNull()
+  })
 })

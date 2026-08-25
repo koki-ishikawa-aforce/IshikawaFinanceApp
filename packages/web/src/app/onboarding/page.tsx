@@ -227,6 +227,20 @@ export default function OnboardingPage() {
     onSuccess: invalidate,
   })
 
+  /**
+   * 共通トークルーム参加の検知状況を取り直す（#298）。
+   * `meQuery`（画面全体の表示可否を決める）を直接 refetch すると、通信が不安定なときに
+   * その失敗がページ全体の読み込み失敗表示に波及し、ステッパーごと消えてしまう。
+   * 専用のミューテーションで取得し、成功時だけキャッシュへ書き込むことで、
+   * 失敗はこのステップ内のインライン表示に留める
+   */
+  const checkTalkRoomJoined = useMutation({
+    mutationFn: () => apiFetch('/api/onboarding/me', OnboardingMeWireSchema),
+    onSuccess: data => {
+      queryClient.setQueryData(['onboarding', 'me'], data)
+    },
+  })
+
   const activateNotification = useMutation({
     mutationFn: () =>
       apiMutate(
@@ -511,10 +525,11 @@ export default function OnboardingPage() {
           </p>
           {/* 参加の検知は Webhook 由来（自己申告 API は #298 で廃止）。差し替わりを読み上げに
               載せる必要があるため live region に入れ、ボタンは外に置く（8-4）。ステップに入った
-              時点で meQuery は解決済みのことが多く、spouse_wait のような「取得中」のワンクッション
-              を挟まないため、この案内はステップ表示と同時に読み上げに載ることがある（意図した挙動） */}
+              時点で checkTalkRoomJoined は未実行のことが多く、spouse_wait のような「取得中」の
+              ワンクッションを挟まないため、この案内はステップ表示と同時に読み上げに載ることがある
+              （意図した挙動） */}
           <div role="status">
-            {meQuery.isFetching ? (
+            {checkTalkRoomJoined.isPending ? (
               <LoadingState announce={false}>参加状況を確認しています...</LoadingState>
             ) : (
               <p className={ui.note}>
@@ -524,11 +539,19 @@ export default function OnboardingPage() {
           </div>
           <button
             className={ui.buttonGhost}
-            disabled={meQuery.isFetching}
-            onClick={() => void meQuery.refetch()}
+            disabled={checkTalkRoomJoined.isPending}
+            onClick={() => checkTalkRoomJoined.mutate()}
           >
-            最新の状態を確認
+            {checkTalkRoomJoined.isPending ? '確認中...' : '最新の状態を確認'}
           </button>
+          {checkTalkRoomJoined.isError && (
+            <ErrorState>
+              {describeRequestFailure(
+                checkTalkRoomJoined.error,
+                '参加状況を確認できませんでした。通信状況を確かめて、もう一度お試しください。',
+              )}
+            </ErrorState>
+          )}
         </div>
       )}
 
