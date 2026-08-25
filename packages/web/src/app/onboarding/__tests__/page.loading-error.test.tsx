@@ -180,6 +180,22 @@ describe('はじめての設定の読み込み中・エラー', () => {
     expect(message.textContent).not.toContain('Internal server error')
   })
 
+  it('決定して次へ: 保存中は「保存中...」に変わる(#556、押しているか分からず連打させない)', async () => {
+    apiFetch.mockImplementation((path: string, schema: { parse: (input: unknown) => unknown }) => {
+      if (path === '/api/me') return Promise.resolve({ viewerId: 'U_HONEY', role: 'honey' })
+      if (path === '/api/onboarding/me') return Promise.resolve(schema.parse(meResponse()))
+      return Promise.resolve(schema.parse({}))
+    })
+    apiMutate.mockImplementation(() => new Promise(() => undefined))
+    renderPage()
+
+    await userEvent.type(await screen.findByPlaceholderText('例: はにー'), 'はにー')
+    await userEvent.click(screen.getByRole('button', { name: '決定して次へ' }))
+
+    const pending = await screen.findByRole('button', { name: '保存中...' })
+    expect(pending).toBeDisabled()
+  })
+
   it('配偶者の完了確認は、取得前に「待っています」と断定せず確認中を出す', async () => {
     const pendingSpouse: { resolve: (() => void) | null } = { resolve: null }
     apiFetch.mockImplementation((path: string, schema: { parse: (input: unknown) => unknown }) => {
