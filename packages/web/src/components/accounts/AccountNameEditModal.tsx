@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { BANK_NAME_MAX_LENGTH } from '@warimaru/domain'
 import { Modal } from '@/components/ui/Modal'
 import { ErrorState } from '@/components/ui/ErrorState'
 import {
@@ -51,7 +52,7 @@ export function BankNameEditModal({
       <input
         className={ui.input}
         value={bankName}
-        maxLength={50}
+        maxLength={BANK_NAME_MAX_LENGTH}
         onChange={e => setBankName(e.target.value)}
       />
       {mutation.error && <ErrorState>{mutation.error.message}</ErrorState>}

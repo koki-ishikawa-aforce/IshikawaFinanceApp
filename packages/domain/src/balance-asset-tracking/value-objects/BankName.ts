@@ -4,5 +4,7 @@
  */
 import { z } from 'zod'
 
-export const BankNameSchema = z.string().min(1).max(50).brand<'BankName'>()
+export const BANK_NAME_MAX_LENGTH = 50
+
+export const BankNameSchema = z.string().min(1).max(BANK_NAME_MAX_LENGTH).brand<'BankName'>()
 export type BankName = z.infer<typeof BankNameSchema>
