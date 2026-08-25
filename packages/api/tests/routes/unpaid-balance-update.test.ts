@@ -69,8 +69,9 @@ describe('カード利用取込 → 未払金計上（イベントチェーン3 
       bookkeptLog.push(e)
     })
 
+    const usedAt = new Date('2026-07-05T12:00:00Z')
     const event: CardUsageTransactionImported = CardUsageTransactionImportedSchema.parse({
-      ...domainEventBase(),
+      ...domainEventBase(usedAt),
       type: 'CardUsageTransactionImported',
       unpaidAggregateId: unpaid.unpaidAggregateId,
       accountId: unpaid.accountId,
@@ -89,6 +90,9 @@ describe('カード利用取込 → 未払金計上（イベントチェーン3 
     expect(bookkeptLog).toHaveLength(1)
     expect(bookkeptLog[0]!.transactionId).toBe(event.transactionId)
     expect(bookkeptLog[0]!.bookedAmount).toBe(5000)
+    // #539: 発行される UnpaidBookkept の occurredAt は処理実行時刻ではなく、
+    // トリガーイベント(実際にカードを使った日)をそのまま引き継ぐ
+    expect(bookkeptLog[0]!.occurredAt).toEqual(usedAt)
   })
 
   it('冪等: 同一 transactionId の二重計上はスキップされる', async () => {
@@ -153,9 +157,10 @@ describe('引落確定通知 → 未払金消込・口座残高更新（イベ�
       balanceLog.push(e)
     })
 
+    const settledAt = new Date('2026-07-26T09:00:00Z')
     const settlementNoticeId = SettlementNoticeIdSchema.parse('sn-2026-07-25-001')
     const event: SettlementNoticeReceived = SettlementNoticeReceivedSchema.parse({
-      ...domainEventBase(),
+      ...domainEventBase(settledAt),
       type: 'SettlementNoticeReceived',
       unpaidAggregateId: unpaidWithEntry.unpaidAggregateId,
       accountId: AccountIdSchema.parse(accountId),
@@ -182,6 +187,10 @@ describe('引落確定通知 → 未払金消込・口座残高更新（イベ�
     expect(balanceLog).toHaveLength(1)
     expect(balanceLog[0]!.delta).toBe(-8000)
     expect(balanceLog[0]!.newBalance).toBe(92000)
+    // #539: UnpaidSettled / AccountBalanceUpdated の occurredAt は処理実行時刻ではなく、
+    // トリガーイベント(実際に引き落とされた日)をそのまま引き継ぐ
+    expect(settledLog[0]!.occurredAt).toEqual(settledAt)
+    expect(balanceLog[0]!.occurredAt).toEqual(settledAt)
   })
 
   it('冪等: 同一 settlementNoticeId の重複消込はスキップされる', async () => {
