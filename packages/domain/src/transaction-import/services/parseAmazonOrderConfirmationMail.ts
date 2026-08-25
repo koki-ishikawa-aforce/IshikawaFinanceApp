@@ -23,6 +23,16 @@
  * 誤った金額を通すより、パース失敗として件数に出るほうが気づける（`parseSmbcNotificationMail`
  * と同じ方針）。
  *
+ * **取得対象は送信元ドメイン（amazon.co.jp）だけで絞られており、発送のお知らせ・お知らせメール・
+ * レビュー依頼なども同じ袋で届く（#624）。** これらは注文確認メールではないので、`parse_failure`
+ * にすると「読めなかった件数」が発送のお知らせで毎日ふくらみ、Amazon が本当に注文確認メールの
+ * 書式を変えたときに気づけなくなる。そこで本文に注文確認メールの目印（挨拶文
+ * 「Amazon.co.jp でのご注文ありがとうございます。」、実メール観察 2026-07-26 / #391）が
+ * 無ければ `not_order_confirmation` として返し、件数にもイベントにも出さない。`parse_failure`
+ * は目印はあるのに必須項目が読めなかった場合だけに絞る。ただし文字化け（デコード破損）だけは
+ * 目印の判定より先に見る — 目印そのものが読めなくなった本物の注文確認メールを、目印不一致で
+ * 静かに握りつぶさないため。
+ *
  * **注文日時は本文から読まず、メールの受信日時を使う。** 注文確認メールは注文の直後に届くため
  * （実測: 7/15 09:53 の注文確認 → 同日 14:37 のカード利用通知）、受信日時が注文日時の十分な
  * 近似になる。本文側の注文日表記は実メールで確認できていないため、確認できていない書式に
@@ -66,6 +76,13 @@ const PRODUCT_AMOUNT = /^[ \t]*([\d,]+)[ \t]*JPY[ \t]*$/m
 
 /** 文字化けの目印。デコードに失敗した本文は置換文字が残る */
 const REPLACEMENT_CHARACTER = '�'
+
+/**
+ * 注文確認メールを名乗る目印（実メール観察 2026-07-26 / #391 の挨拶文）。この文言が無い本文は
+ * 発送のお知らせ・お知らせメール・レビュー依頼など注文確認以外の Amazon メールとみなし、
+ * `not_order_confirmation` として返す（#624）。
+ */
+const ORDER_CONFIRMATION_MARKER = /でのご注文ありがとうございます/
 
 /**
  * `2,420` のようなカンマ区切り金額 → 金額。読めなければ null。
@@ -121,6 +138,14 @@ function failure(
   })
 }
 
+function notOrderConfirmation(input: AmazonOrderConfirmationMailParseInput): AmazonMailParseResult {
+  return AmazonMailParseResultSchema.parse({
+    kind: 'not_order_confirmation',
+    gmailMessageId: input.mail.gmailMessageId,
+    detectedAt: input.at,
+  })
+}
+
 /**
  * 本文を NFKC 正規化してから規則を当てる（`parseSmbcNotificationMail` と同じ理由。全角コロン・
  * 全角数字で届いても同じ規則で読めるようにする）。商品名だけは正規化前の表記を保ちたくなるが、
@@ -128,9 +153,19 @@ function failure(
  */
 export const parseAmazonOrderConfirmationMail: AmazonOrderConfirmationMailParser = input => {
   const raw = input.mail.body
+  const text = raw.normalize('NFKC')
+
+  // 文字化けの判定を目印の判定より先に行う。デコード破損は本文全体に及びうるため、目印
+  // （挨拶文）そのものが読めなくなった本物の注文確認メールを、目印不一致で
+  // not_order_confirmation として静かに握りつぶさないようにする — 文字化けは注文確認かどうかに
+  // 関係なく気づけるべき異常であり、握りつぶすと本文構造が壊れた合図を取りこぼす
   if (raw.includes(REPLACEMENT_CHARACTER)) return failure(input, 'garbled_text')
 
-  const text = raw.normalize('NFKC')
+  // 目印の判定。目印が無いメールは、その先の構造検査(注文番号・合計・商品)を一切行わず
+  // not_order_confirmation で返す — 発送のお知らせ等は注文確認と別の構造を持つため、
+  // 検査をかけても意味のある失敗理由にならない
+  if (!ORDER_CONFIRMATION_MARKER.test(text)) return notOrderConfirmation(input)
+
   const orderIdText = ORDER_ID.exec(text)
   if (orderIdText === null) return failure(input, 'structure_mismatch')
 
