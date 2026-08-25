@@ -61,15 +61,19 @@ export function TimeSeriesChart({ series }: TimeSeriesChartProps) {
           return (
             <g key={s.label} style={{ color: `var(${s.cssColorVar})` }}>
               <path d={path} className={styles.line} />
-              {sorted.map(p => (
-                <circle
-                  key={p.date.getTime()}
-                  cx={x(p.date.getTime())}
-                  cy={y(p.amount)}
-                  r={2.2}
-                  className={styles.dot}
-                />
-              ))}
+              {/* 期間の始まりの補助点（isCarriedForward）は実際の記録ではないため、
+                  線はつなげるがドットは打たない（実際に記録があった点と区別する。#538） */}
+              {sorted
+                .filter(p => !p.isCarriedForward)
+                .map(p => (
+                  <circle
+                    key={p.date.getTime()}
+                    cx={x(p.date.getTime())}
+                    cy={y(p.amount)}
+                    r={2.2}
+                    className={styles.dot}
+                  />
+                ))}
             </g>
           )
         })}

@@ -2,11 +2,17 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { TimeSeriesChart, type ChartSeries } from '../TimeSeriesChart'
 
-function series(points: { date: string; amount: number }[]): ChartSeries {
+function series(
+  points: { date: string; amount: number; isCarriedForward?: boolean }[],
+): ChartSeries {
   return {
     label: '貯蓄残高',
     cssColorVar: '--accent',
-    points: points.map(p => ({ date: new Date(p.date), amount: p.amount })),
+    points: points.map(p => ({
+      date: new Date(p.date),
+      amount: p.amount,
+      isCarriedForward: p.isCarriedForward ?? false,
+    })),
   }
 }
 
@@ -56,5 +62,24 @@ describe('TimeSeriesChart', () => {
     const circle = container.querySelector('circle')
     expect(Number(circle?.getAttribute('cx'))).not.toBeNaN()
     expect(Number(circle?.getAttribute('cy'))).not.toBeNaN()
+  })
+
+  it('期間の始まりの補助点（isCarriedForward）は線には含めるがドットは打たない（実際の記録と区別する。#538）', () => {
+    const { container } = render(
+      <TimeSeriesChart
+        series={[
+          series([
+            { date: '2026-05-01', amount: 100, isCarriedForward: true },
+            { date: '2026-05-20', amount: 100, isCarriedForward: false },
+          ]),
+        ]}
+      />,
+    )
+
+    // 線は補助点も含めて2点分を結ぶ
+    const path = container.querySelector('path')
+    expect(path?.getAttribute('d')).toMatch(/^M [\d.]+ [\d.]+ L [\d.]+ [\d.]+$/)
+    // ドットは実際の記録の1点だけ
+    expect(container.querySelectorAll('circle')).toHaveLength(1)
   })
 })

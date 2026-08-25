@@ -51,8 +51,21 @@ export type BalanceHistoryEntry = z.infer<typeof BalanceHistoryEntrySchema>
 export const BalanceSeriesPointSchema = z.object({
   occurredAt: z.date(),
   value: MoneySchema,
+  /**
+   * 実際の記録（残高変動履歴エントリ）ではなく、期間の始まりに置いた表示のための
+   * 補助点かどうか。true の点は「期間より前の最後の値」を持ち越しただけで、
+   * その日時に実際の変動があったわけではない（#538）。
+   */
+  isCarriedForward: z.boolean(),
 })
 export type BalanceSeriesPoint = z.infer<typeof BalanceSeriesPointSchema>
+
+/** (軸, 口座) ごとの直近値マップの合計 */
+function sumOfLatestValues(latestByAccount: ReadonlyMap<AccountId, Money>): number {
+  let total = 0
+  for (const v of latestByAccount.values()) total += v
+  return total
+}
 
 /**
  * behavior 残高の変動を履歴に記録する（08d §2）
@@ -95,23 +108,45 @@ export function balanceHistoryOfAxis(
  *
  * `opening` は期間より前に記録された (口座ごとの) 最後のエントリ。期間の外で最後に動いた
  * 口座の残高を持ち越すために要る（渡さないと、期間内に動いた口座の分しか合計に入らない）。
- * opening そのものは点として出さない（期間外の日時に点を打たないため）。
+ *
+ * `windowStart` を渡すと、期間中に一度も動きが無い軸でも線が消えないよう、期間の開始時刻に
+ * `opening` の合計を表示のための補助点として先頭へ置く（2026-08-23 判断セッション・#538）。
+ * 補助点は `isCarriedForward: true` で実際の記録と区別する。渡さなければ従来どおり
+ * 期間内の実際の記録だけを返す（`latestHouseholdValueOfAxis` はこちらの挙動に依存する）。
  */
 export function householdBalanceSeriesOfAxis(
   entries: readonly BalanceHistoryEntry[],
   axis: BalanceAxis,
   opening: readonly BalanceHistoryEntry[] = [],
+  windowStart?: Date,
 ): BalanceSeriesPoint[] {
   const latestByAccount = new Map<AccountId, Money>()
   for (const e of balanceHistoryOfAxis(opening, axis)) {
     latestByAccount.set(e.accountId, e.value)
   }
-  return balanceHistoryOfAxis(entries, axis).map(e => {
+  const openingTotal = latestByAccount.size === 0 ? null : sumOfLatestValues(latestByAccount)
+
+  const points = balanceHistoryOfAxis(entries, axis).map(e => {
     latestByAccount.set(e.accountId, e.value)
-    let total = 0
-    for (const v of latestByAccount.values()) total += v
-    return BalanceSeriesPointSchema.parse({ occurredAt: e.occurredAt, value: money(total) })
+    return BalanceSeriesPointSchema.parse({
+      occurredAt: e.occurredAt,
+      value: money(sumOfLatestValues(latestByAccount)),
+      isCarriedForward: false,
+    })
   })
+
+  if (windowStart === undefined || openingTotal === null) return points
+  // 期間の開始ちょうどに記録があると、補助点と同じ時刻に点が 2 つ並ぶため置かない
+  // （accountBalanceSeriesOfAxis と同じ扱い）
+  if (points[0]?.occurredAt.getTime() === windowStart.getTime()) return points
+  return [
+    BalanceSeriesPointSchema.parse({
+      occurredAt: windowStart,
+      value: money(openingTotal),
+      isCarriedForward: true,
+    }),
+    ...points,
+  ]
 }
 
 /**
@@ -133,9 +168,7 @@ export function latestHouseholdValueOfAxis(
   if (openingOfAxis.length === 0) return null
   const latestByAccount = new Map<AccountId, Money>()
   for (const e of openingOfAxis) latestByAccount.set(e.accountId, e.value)
-  let total = 0
-  for (const v of latestByAccount.values()) total += v
-  return money(total)
+  return money(sumOfLatestValues(latestByAccount))
 }
 
 /** 指定の口座・軸のエントリを発生日時の昇順で取り出す（口座 1 件を読む入口） */
@@ -178,7 +211,11 @@ export function accountBalanceSeriesOfAxis(params: {
   windowStart: Date
 }): BalanceSeriesPoint[] {
   const points = historyOfAccountAxis(params.entries, params.accountId, params.axis).map(e =>
-    BalanceSeriesPointSchema.parse({ occurredAt: e.occurredAt, value: e.value }),
+    BalanceSeriesPointSchema.parse({
+      occurredAt: e.occurredAt,
+      value: e.value,
+      isCarriedForward: false,
+    }),
   )
   const openingValue = openingValueOf(params.opening, params.accountId, params.axis)
   if (openingValue === null) return points
@@ -189,6 +226,7 @@ export function accountBalanceSeriesOfAxis(params: {
     BalanceSeriesPointSchema.parse({
       occurredAt: params.windowStart,
       value: openingValue,
+      isCarriedForward: true,
     }),
     ...points,
   ]
