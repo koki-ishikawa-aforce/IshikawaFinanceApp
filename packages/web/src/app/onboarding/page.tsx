@@ -39,7 +39,6 @@ import {
   LuRocket,
   LuPartyPopper,
   LuCheck,
-  LuTriangleAlert,
   LuHourglass,
 } from '@/components/ui/icons'
 import ui from '@/components/ui/common.module.css'
@@ -466,7 +465,7 @@ export default function OnboardingPage() {
             disabled={nicknameInput.trim() === '' || saveNickname.isPending}
             onClick={() => saveNickname.mutate(nicknameInput.trim())}
           >
-            決定して次へ
+            {saveNickname.isPending ? '保存中...' : '決定して次へ'}
           </button>
           {saveNickname.isError && (
             <ErrorState>
@@ -505,11 +504,10 @@ export default function OnboardingPage() {
             </p>
           )}
           {friendCheckResult === 'not_friend' && (
-            <p className={ui.note} role="status">
-              <LuTriangleAlert aria-hidden="true" className={ui.iconInline} />{' '}
-              友だち追加を確認できませんでした。LINE
+            <ErrorState>
+              友だち追加が確認できませんでした。LINE
               で「わりまる」を友だち追加してから、もう一度お試しください。
-            </p>
+            </ErrorState>
           )}
           {friendCheckResult === 'unavailable' && (
             <ErrorState>
@@ -523,7 +521,7 @@ export default function OnboardingPage() {
             disabled={recordLineFriend.isPending}
             onClick={() => recordLineFriend.mutate()}
           >
-            友だち追加しました
+            {recordLineFriend.isPending ? '記録中...' : '友だち追加しました'}
           </button>
           {recordLineFriend.isError && (
             <ErrorState>
@@ -545,11 +543,12 @@ export default function OnboardingPage() {
           <p className={ui.note}>
             ふたりの家計通知が届く共通トークルームに参加してください。ふたりで共有する設定なので、どちらかが参加を記録すればこの手順は完了します。招待リンクは配偶者または公式アカウントのメッセージから開けます。
           </p>
+          {/* LIFF コンテキストから一度だけ決まる値で、このステップに入った時点で既に確定している
+              (ユーザー操作の結果として変わるものではない)。spouse_wait と同じ理由で announce={false} */}
           {talkRoomId === null && (
-            <p className={ui.note}>
-              <LuTriangleAlert aria-hidden="true" className={ui.iconInline} />{' '}
-              参加を記録するトークルームを特定できません。共通トークルーム内からこの画面を開き直してください。
-            </p>
+            <ErrorState announce={false}>
+              トークルームが特定できませんでした。共通トークルーム内からこの画面を開き直してください。
+            </ErrorState>
           )}
           <button
             className={ui.buttonGhost}
@@ -558,7 +557,7 @@ export default function OnboardingPage() {
               if (talkRoomId !== null) recordTalkRoom.mutate(talkRoomId)
             }}
           >
-            参加しました
+            {recordTalkRoom.isPending ? '記録中...' : '参加しました'}
           </button>
           {recordTalkRoom.isError && (
             <ErrorState>
@@ -586,7 +585,7 @@ export default function OnboardingPage() {
             disabled={activateNotification.isPending}
             onClick={() => activateNotification.mutate()}
           >
-            通知を受け取る
+            {activateNotification.isPending ? '設定中...' : '通知を受け取る'}
           </button>
           <button className={ui.buttonGhost} onClick={() => setNotificationsDeferred(true)}>
             あとで設定する
@@ -617,7 +616,7 @@ export default function OnboardingPage() {
             disabled={startPhase2.isPending}
             onClick={() => startPhase2.mutate()}
           >
-            Phase 2 を開始する
+            {startPhase2.isPending ? '開始中...' : 'Phase 2 を開始する'}
           </button>
           {startPhase2.isError && (
             <ErrorState>
@@ -659,7 +658,7 @@ export default function OnboardingPage() {
                     disabled={gmailAuthorize.isPending}
                     onClick={() => gmailAuthorize.mutate()}
                   >
-                    Gmail 連携をはじめる
+                    {gmailAuthorize.isPending ? '連携準備中...' : 'Gmail 連携をはじめる'}
                   </button>
                   <button className={ui.buttonGhost} onClick={() => void invalidate()}>
                     連携状態を更新
@@ -720,9 +719,11 @@ export default function OnboardingPage() {
                         }
                         onClick={() => completeSectionB.mutate(initialBalanceRef)}
                       >
-                        {progress.sectionA.kind === 'completed'
-                          ? '登録済みの口座で確定する'
-                          : 'A の完了後に登録できます'}
+                        {completeSectionB.isPending
+                          ? '確定中...'
+                          : progress.sectionA.kind === 'completed'
+                            ? '登録済みの口座で確定する'
+                            : 'A の完了後に登録できます'}
                       </button>
                     ) : (
                       <>
@@ -885,7 +886,9 @@ export default function OnboardingPage() {
                         })
                       }
                     >
-                      完了にする
+                      {finishSectionF.isPending && finishSectionF.variables?.kind === 'completed'
+                        ? '記録中...'
+                        : '完了にする'}
                     </button>
                   )}
                   <button
@@ -893,7 +896,9 @@ export default function OnboardingPage() {
                     disabled={finishSectionF.isPending}
                     onClick={() => finishSectionF.mutate({ kind: 'skipped' })}
                   >
-                    スキップ
+                    {finishSectionF.isPending && finishSectionF.variables?.kind === 'skipped'
+                      ? '記録中...'
+                      : 'スキップ'}
                   </button>
                 </div>
                 {finishSectionF.isError && (
@@ -915,7 +920,7 @@ export default function OnboardingPage() {
                 disabled={completePhase2.isPending}
                 onClick={() => completePhase2.mutate()}
               >
-                Phase 2 を完了する
+                {completePhase2.isPending ? '完了中...' : 'Phase 2 を完了する'}
               </button>
               {completePhase2.isError && (
                 <ErrorState>

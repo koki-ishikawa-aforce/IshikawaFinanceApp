@@ -120,10 +120,11 @@ describe('友だち追加の確認', () => {
 
     await clickCheck()
 
-    const note = await screen.findByText(/友だち追加を確認できませんでした/)
+    const note = await screen.findByText(/友だち追加が確認できませんでした/)
     expect(note.textContent).toContain('もう一度')
-    // 結果は押した場所で差し替わるため、読み上げに載せる（使用性 8-4）
-    expect(note.closest('[role="status"]')).not.toBeNull()
+    // 結果は押した場所で差し替わる。通信の失敗（unavailable）と同じ共通表示に揃えたため、
+    // 割り込んで読み上げられる role="alert"（使用性 8-4）
+    expect(note.closest('[role="alert"]')).not.toBeNull()
     // 手順は進まない（友だち未追加のまま先へ通さない）
     expect(screen.getByRole('button', { name: '友だち追加を確認する' })).toBeInTheDocument()
   })
@@ -137,7 +138,7 @@ describe('友だち追加の確認', () => {
     const note = await screen.findByText(/LINE に問い合わせできませんでした/)
     expect(note.closest('[role="alert"]')).not.toBeNull()
     // 「友だち追加すればよい」と読める案内を出さない（通信の失敗を利用者の未操作にすり替えない）
-    expect(screen.queryByText(/友だち追加を確認できませんでした/)).toBeNull()
+    expect(screen.queryByText(/友だち追加が確認できませんでした/)).toBeNull()
   })
 
   it('確認の要求そのものが失敗したときも、問い合わせできなかったときと同じ案内を出す', async () => {
@@ -148,20 +149,20 @@ describe('友だち追加の確認', () => {
     await clickCheck()
 
     expect(await screen.findByText(/LINE に問い合わせできませんでした/)).toBeInTheDocument()
-    expect(screen.queryByText(/友だち追加を確認できませんでした/)).toBeNull()
+    expect(screen.queryByText(/友だち追加が確認できませんでした/)).toBeNull()
   })
 
   it('やり直したとき、前回の案内は残らない', async () => {
     respondToCheckWith('not_friend')
     renderPage()
     await clickCheck()
-    await screen.findByText(/友だち追加を確認できませんでした/)
+    await screen.findByText(/友だち追加が確認できませんでした/)
 
     respondToCheckWith('unavailable')
     await clickCheck()
 
     expect(await screen.findByText(/LINE に問い合わせできませんでした/)).toBeInTheDocument()
-    expect(screen.queryByText(/友だち追加を確認できませんでした/)).toBeNull()
+    expect(screen.queryByText(/友だち追加が確認できませんでした/)).toBeNull()
   })
 
   it('確認中はボタンを押せず、進行中であることが分かる', async () => {

@@ -196,8 +196,9 @@ describe('アイコンの大きさ', () => {
     // + 口座詳細へ入れることを示す手がかり（#406）
     expect(detected.get(join('app', 'balances', 'page.tsx'))).toBe(6)
     // #497 でエラー表示を共通部品 ErrorState に寄せ、警告アイコン(LuTriangleAlert)付きの
-    // 独自表示が 1 つ減った後の件数
-    expect(detected.get(join('app', 'onboarding', 'page.tsx'))).toBe(13)
+    // 独自表示が 1 つ減り、#556 で残る 2 つ(友だち追加が確認できなかった旨・トークルームを
+    // 特定できない旨)も ErrorState に寄せて減った後の件数
+    expect(detected.get(join('app', 'onboarding', 'page.tsx'))).toBe(11)
 
     expect(stylesheets.map(({ path }) => path)).toEqual(
       expect.arrayContaining([
