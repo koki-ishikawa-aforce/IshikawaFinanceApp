@@ -116,6 +116,8 @@ describe('PostgresAccountDetailQuery', () => {
     expect(view?.series[0]?.amount).toBe(500000)
     // 起点は期間の開始時刻に置く（JST の 4 月 1 日 = UTC 3/31 15:00）
     expect(view?.series[0]?.date).toEqual(new Date('2026-03-31T15:00:00.000Z'))
+    // 起点は実際の記録ではないため isCarriedForward: true（#538）
+    expect(view?.series[0]?.isCarriedForward).toBe(true)
     // 起点そのものは履歴の行にしない（期間外に起きた変動のため）
     expect(view?.history).toEqual([])
   })

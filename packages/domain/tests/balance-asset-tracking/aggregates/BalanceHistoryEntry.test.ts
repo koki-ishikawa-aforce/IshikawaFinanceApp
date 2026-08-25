@@ -188,6 +188,64 @@ describe('残高変動履歴エントリ（#398）', () => {
       const opening = [entry({ axis: 'nisa_contribution', value: 300000 })]
       expect(householdBalanceSeriesOfAxis([], 'nisa_contribution', opening)).toEqual([])
     })
+
+    it('期間内の実際の記録は isCarriedForward: false で返す', () => {
+      const entries = [entry({ value: 100, occurredAt: new Date('2026-05-01T00:00:00.000Z') })]
+      expect(householdBalanceSeriesOfAxis(entries, 'smbc_balance')).toEqual([
+        { occurredAt: new Date('2026-05-01T00:00:00.000Z'), value: 100, isCarriedForward: false },
+      ])
+    })
+
+    describe('windowStart を渡した場合（#538: 期間中に動きが無い軸でも線を出す）', () => {
+      const WINDOW_START = new Date('2026-05-01T00:00:00.000Z')
+
+      it('期間内に点が無くても opening があれば、期間の開始時刻に世帯合算の補助点を置く', () => {
+        const opening = [
+          entry({
+            axis: 'nisa_contribution',
+            accountId: ACCOUNT_ID,
+            value: 300000,
+            occurredAt: new Date('2026-04-01T00:00:00.000Z'),
+          }),
+          entry({
+            axis: 'nisa_contribution',
+            accountId: SPOUSE_ACCOUNT_ID,
+            value: 100000,
+            occurredAt: new Date('2026-04-10T00:00:00.000Z'),
+          }),
+        ]
+        const series = householdBalanceSeriesOfAxis([], 'nisa_contribution', opening, WINDOW_START)
+        expect(series).toEqual([
+          { occurredAt: WINDOW_START, value: 400000, isCarriedForward: true },
+        ])
+      })
+
+      it('opening が無ければ補助点も置かない（そもそも記録が無い軸で線を描かない）', () => {
+        const series = householdBalanceSeriesOfAxis([], 'nisa_contribution', [], WINDOW_START)
+        expect(series).toEqual([])
+      })
+
+      it('期間の開始ちょうどに記録があれば補助点を置かない（同じ時刻に点が 2 つ並ばない）', () => {
+        const opening = [entry({ value: 900, occurredAt: new Date('2026-04-01T00:00:00.000Z') })]
+        const entries = [entry({ value: 1000, occurredAt: WINDOW_START })]
+        const series = householdBalanceSeriesOfAxis(entries, 'smbc_balance', opening, WINDOW_START)
+        expect(series).toEqual([{ occurredAt: WINDOW_START, value: 1000, isCarriedForward: false }])
+      })
+
+      it('補助点と期間内の点が両方あれば、補助点を先頭に置いてから発生日時の順に並べる', () => {
+        const opening = [entry({ value: 900, occurredAt: new Date('2026-04-01T00:00:00.000Z') })]
+        const entries = [entry({ value: 1000, occurredAt: new Date('2026-05-10T00:00:00.000Z') })]
+        const series = householdBalanceSeriesOfAxis(entries, 'smbc_balance', opening, WINDOW_START)
+        expect(series).toEqual([
+          { occurredAt: WINDOW_START, value: 900, isCarriedForward: true },
+          {
+            occurredAt: new Date('2026-05-10T00:00:00.000Z'),
+            value: 1000,
+            isCarriedForward: false,
+          },
+        ])
+      })
+    })
   })
 
   describe('latestHouseholdValueOfAxis', () => {
@@ -240,8 +298,8 @@ describe('口座 1 件の推移（#406）', () => {
       windowStart: WINDOW_START,
     })
     expect(series).toEqual([
-      { occurredAt: new Date('2026-05-10T00:00:00.000Z'), value: 1000 },
-      { occurredAt: new Date('2026-05-20T00:00:00.000Z'), value: 1200 },
+      { occurredAt: new Date('2026-05-10T00:00:00.000Z'), value: 1000, isCarriedForward: false },
+      { occurredAt: new Date('2026-05-20T00:00:00.000Z'), value: 1200, isCarriedForward: false },
     ])
   })
 
@@ -254,7 +312,7 @@ describe('口座 1 件の推移（#406）', () => {
       opening,
       windowStart: WINDOW_START,
     })
-    expect(series).toEqual([{ occurredAt: WINDOW_START, value: 900 }])
+    expect(series).toEqual([{ occurredAt: WINDOW_START, value: 900, isCarriedForward: true }])
   })
 
   it('起点と期間内の点が両方あれば、起点を先頭に置いてから発生日時の順に並べる', () => {
@@ -266,8 +324,8 @@ describe('口座 1 件の推移（#406）', () => {
       windowStart: WINDOW_START,
     })
     expect(series).toEqual([
-      { occurredAt: WINDOW_START, value: 900 },
-      { occurredAt: new Date('2026-05-10T00:00:00.000Z'), value: 1000 },
+      { occurredAt: WINDOW_START, value: 900, isCarriedForward: true },
+      { occurredAt: new Date('2026-05-10T00:00:00.000Z'), value: 1000, isCarriedForward: false },
     ])
   })
 
@@ -279,7 +337,7 @@ describe('口座 1 件の推移（#406）', () => {
       opening: entry({ value: 900, occurredAt: new Date('2026-03-01T00:00:00.000Z') }),
       windowStart: WINDOW_START,
     })
-    expect(series).toEqual([{ occurredAt: WINDOW_START, value: 1000 }])
+    expect(series).toEqual([{ occurredAt: WINDOW_START, value: 1000, isCarriedForward: false }])
   })
 
   it('起点の軸が違えば持ち越さない', () => {
@@ -308,7 +366,9 @@ describe('口座 1 件の推移（#406）', () => {
       opening: entry({ accountId: SPOUSE_ACCOUNT_ID, value: 4000 }),
       windowStart: WINDOW_START,
     })
-    expect(series).toEqual([{ occurredAt: new Date('2026-05-10T00:00:00.000Z'), value: 1000 }])
+    expect(series).toEqual([
+      { occurredAt: new Date('2026-05-10T00:00:00.000Z'), value: 1000, isCarriedForward: false },
+    ])
   })
 })
 

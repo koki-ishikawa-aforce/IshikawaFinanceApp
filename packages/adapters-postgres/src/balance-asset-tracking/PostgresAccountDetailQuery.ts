@@ -104,7 +104,11 @@ export class PostgresAccountDetailQuery implements AccountDetailQuery {
       supportsBalanceManualEntry: acceptsBalanceManualEntry(account),
       yearMonthRange: { from, to },
       series: accountBalanceSeriesOfAxis({ entries, accountId, axis, opening, windowStart }).map(
-        point => ({ date: point.occurredAt, amount: point.value }),
+        point => ({
+          date: point.occurredAt,
+          amount: point.value,
+          isCarriedForward: point.isCarriedForward,
+        }),
       ),
       // 画面は新しい順に並べる。ドメインは発生日時の昇順で返すため、ここで反転する
       history: accountBalanceHistoryRows({

@@ -50,8 +50,8 @@ function detailResponse(overrides: Record<string, unknown> = {}): unknown {
     supportsBalanceManualEntry: true,
     yearMonthRange: { from: '2026-02', to: '2026-07' },
     series: [
-      { date: '2026-04-18T00:00:00.000Z', amount: 1700000 },
-      { date: '2026-06-14T00:00:00.000Z', amount: 1740000 },
+      { date: '2026-04-18T00:00:00.000Z', amount: 1700000, isCarriedForward: false },
+      { date: '2026-06-14T00:00:00.000Z', amount: 1740000, isCarriedForward: false },
     ],
     history: [
       {
@@ -201,7 +201,7 @@ describe('口座種別ごとの呼び名', () => {
         currentValue: 120000,
         lastUpdatedAt: '2026-07-10T00:00:00.000Z',
         supportsBalanceManualEntry: false,
-        series: [{ date: '2026-07-10T00:00:00.000Z', amount: 120000 }],
+        series: [{ date: '2026-07-10T00:00:00.000Z', amount: 120000, isCarriedForward: false }],
         history: [],
       }),
     )
