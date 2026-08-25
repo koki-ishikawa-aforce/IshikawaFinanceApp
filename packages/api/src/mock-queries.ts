@@ -53,7 +53,7 @@ export function createMockAccountBalanceQuery(): AccountBalanceQuery {
         spouseOtherSavingsAndNisaTotal: null,
       })
     },
-    async fetchAssetTotal(asOf: Date) {
+    async fetchAssetTotal(_viewerId: UserId, asOf: Date) {
       return AssetTotalViewSchema.parse({
         asOf,
         smbcBalance: 0,

@@ -80,6 +80,32 @@ describe('GET /api/balances/total', () => {
     const res = await request(t.app, 'GET', '/api/balances/total?asOf=not-a-date')
     expect(res.status).toBe(400)
   })
+
+  // 資産合計は世帯フルオープンで絞り込まないが、規約どおり閲覧者を Query に渡す
+  // ことは固定する（#541）。渡し忘れて「引数が無いから絞らない」に戻さないため
+  it('リクエストの利用者を閲覧者として Query に渡す', async () => {
+    const fetchAssetTotal = vi.fn<AccountBalanceQuery['fetchAssetTotal']>().mockResolvedValue({
+      asOf: new Date('2026-07-01T00:00:00.000Z'),
+      smbcBalance: 0,
+      otherSavingsBalance: 0,
+      nisaContributionAccumulated: 0,
+      cardUnpaidTotal: 0,
+      total: 0,
+    } as unknown as Awaited<ReturnType<AccountBalanceQuery['fetchAssetTotal']>>)
+    const t = createTestApp({
+      accountBalanceQuery: {
+        fetchBalanceList: vi.fn(),
+        fetchAssetTotal,
+      } as unknown as AccountBalanceQuery,
+    })
+
+    const res = await request(t.app, 'GET', '/api/balances/total?asOf=2026-07-01T00:00:00.000Z', {
+      viewerId: SPOUSE_ID,
+    })
+
+    expect(res.status).toBe(200)
+    expect(fetchAssetTotal).toHaveBeenCalledWith(SPOUSE_ID, new Date('2026-07-01T00:00:00.000Z'))
+  })
 })
 
 describe('GET /api/balances/time-series', () => {

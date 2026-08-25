@@ -30,7 +30,7 @@ const unpaidRepo = new PostgresMitsuiSumitomoUnpaidRepository(db)
 
 const query = new PostgresAccountBalanceQuery(db)
 
-/** fetchAssetTotal(asOf) に渡すスナップショット時刻。テスト内の日付コメントの基準でもある */
+/** fetchAssetTotal(viewerId, asOf) に渡すスナップショット時刻。テスト内の日付コメントの基準でもある */
 const FIXED_NOW = new Date('2026-07-06T00:00:00.000Z')
 
 describe('PostgresAccountBalanceQuery.fetchBalanceList', () => {
@@ -168,7 +168,7 @@ describe('PostgresAccountBalanceQuery.fetchAssetTotal', () => {
     )
 
     const asOf = new Date('2026-07-06T01:00:00.000Z')
-    const view = await query.fetchAssetTotal(asOf)
+    const view = await query.fetchAssetTotal(DARLING_USER_ID, asOf)
     expect(view.asOf).toEqual(asOf)
     expect(view.smbcBalance).toBe(1500000 + 200000)
     expect(view.otherSavingsBalance).toBe(800000)
@@ -178,8 +178,21 @@ describe('PostgresAccountBalanceQuery.fetchAssetTotal', () => {
   })
 
   it('口座 0 件でも 0 円の View を返す', async () => {
-    const view = await query.fetchAssetTotal(new Date('2026-07-06T01:00:00.000Z'))
+    const view = await query.fetchAssetTotal(DARLING_USER_ID, new Date('2026-07-06T01:00:00.000Z'))
     expect(view.total).toBe(0)
+  })
+
+  it('資産合計は世帯フルオープンのため、閲覧者が相手（配偶者）でも同じ View が返る', async () => {
+    await accountRepo.save(smbcAccount({ ownerUserId: HONEY_USER_ID, currentBalance: 1500000 }))
+    await accountRepo.save(
+      otherSavingsAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 800000 }),
+    )
+
+    const asOf = new Date('2026-07-06T01:00:00.000Z')
+    const owner = await query.fetchAssetTotal(DARLING_USER_ID, asOf)
+    const spouse = await query.fetchAssetTotal(HONEY_USER_ID, asOf)
+    expect(spouse).toEqual(owner)
+    expect(spouse.total).toBe(1500000 + 800000)
   })
 })
 
@@ -210,7 +223,7 @@ describe('残高の手動操作の反映', () => {
       expect.objectContaining({ kind: 'nisa', currentAccumulated: 350000 }),
     )
 
-    const total = await query.fetchAssetTotal(new Date('2026-07-06T00:00:00.000Z'))
+    const total = await query.fetchAssetTotal(DARLING_USER_ID, new Date('2026-07-06T00:00:00.000Z'))
     expect(total.otherSavingsBalance).toBe(500000)
     expect(total.nisaContributionAccumulated).toBe(350000)
     expect(total.total).toBe(850000)
@@ -245,7 +258,9 @@ describe('残高の手動操作の反映', () => {
   it('非アクティブ化した口座は残高一覧と資産合計から外れる', async () => {
     const savings = otherSavingsAccount({ ownerUserId: DARLING_USER_ID, currentBalance: 800000 })
     await accountRepo.save(savings)
-    expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(800000)
+    expect((await query.fetchAssetTotal(DARLING_USER_ID, FIXED_NOW)).otherSavingsBalance).toBe(
+      800000,
+    )
 
     await accountRepo.save(
       inactivateAccount(savings, {
@@ -257,7 +272,7 @@ describe('残高の手動操作の反映', () => {
 
     const list = await query.fetchBalanceList(DARLING_USER_ID)
     expect(list.items.some(i => i.kind === 'other_savings')).toBe(false)
-    expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(0)
+    expect((await query.fetchAssetTotal(DARLING_USER_ID, FIXED_NOW)).otherSavingsBalance).toBe(0)
   })
 
   it('再アクティブ化した口座は残高一覧と資産合計に戻る（#457）', async () => {
@@ -270,7 +285,7 @@ describe('残高の手動操作の反映', () => {
         at: new Date('2026-07-05T00:00:00Z'),
       }),
     )
-    expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(0)
+    expect((await query.fetchAssetTotal(DARLING_USER_ID, FIXED_NOW)).otherSavingsBalance).toBe(0)
 
     // 保存済みの版を読み直してから戻す（版数照合。#459）
     const stored = await accountRepo.findById(savings.common.accountId)
@@ -286,7 +301,9 @@ describe('残高の手動操作の反映', () => {
         currentBalance: 800000,
       }),
     )
-    expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(800000)
+    expect((await query.fetchAssetTotal(DARLING_USER_ID, FIXED_NOW)).otherSavingsBalance).toBe(
+      800000,
+    )
 
     // is_active 列だけでなく payload 側も戻っていること。ここがずれると一覧は正しく見えるのに
     // 読み直した集約は非アクティブのままで、以降の残高操作が拒否され続ける
@@ -310,6 +327,8 @@ describe('残高の手動操作の反映', () => {
     expect(list.items).toContainEqual(
       expect.objectContaining({ kind: 'other_savings', currentBalance: 700000 }),
     )
-    expect((await query.fetchAssetTotal(FIXED_NOW)).otherSavingsBalance).toBe(700000)
+    expect((await query.fetchAssetTotal(DARLING_USER_ID, FIXED_NOW)).otherSavingsBalance).toBe(
+      700000,
+    )
   })
 })
