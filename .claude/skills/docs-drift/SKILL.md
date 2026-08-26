@@ -98,7 +98,7 @@ description: docs/domain とコード、docs/workflow の実行基盤一覧と .
    ラベル付与(冪等):
 
    ```bash
-   gh label create "docs-drift" --color C2E0C6 --description "ドキュメントとコードの乖離" 2>/dev/null || true
+   gh label create "docs-drift" --color C2E0C6 --description "/docs-drift が起票する乖離報告 Issue の識別" 2>/dev/null || true
    gh issue create --title "[乖離報告] ..." --body "..." --label "docs-drift,ready-to-implement"
    # または --label "docs-drift,needs-decision"
    ```
