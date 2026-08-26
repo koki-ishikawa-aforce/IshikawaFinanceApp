@@ -3,31 +3,42 @@ import { describe, expect, it } from 'vitest'
 import { SpousePersonalNote } from '../SpousePersonalNote'
 
 describe('SpousePersonalNote', () => {
-  it('darling テーマではパートナー(Honey)のアイコン・ラベル・金額を表示する', () => {
-    const { container } = render(<SpousePersonalNote amount={45000} theme="darling" />)
+  it('darling テーマ・ニックネーム未取得ではロール名(Honey)で表示する', () => {
+    const { container } = render(
+      <SpousePersonalNote amount={45000} theme="darling" partnerNickname={null} />,
+    )
 
     expect(container.querySelector('svg')).toBeInTheDocument()
     expect(screen.getByText(/Honeyの個人費/)).toBeInTheDocument()
     expect(screen.getByText('45,000円')).toBeInTheDocument()
   })
 
-  it('honey テーマではパートナー(Darling)のアイコン・ラベル・金額を表示する', () => {
-    const { container } = render(<SpousePersonalNote amount={64000} theme="honey" />)
+  it('honey テーマ・ニックネーム未取得ではロール名(Darling)で表示する', () => {
+    const { container } = render(
+      <SpousePersonalNote amount={64000} theme="honey" partnerNickname={null} />,
+    )
 
     expect(container.querySelector('svg')).toBeInTheDocument()
     expect(screen.getByText(/Darlingの個人費/)).toBeInTheDocument()
     expect(screen.getByText('64,000円')).toBeInTheDocument()
   })
 
+  it('相手のニックネームが取れていれば、ロール名の代わりにニックネームで表示する(#596)', () => {
+    render(<SpousePersonalNote amount={45000} theme="darling" partnerNickname="ななみ" />)
+
+    expect(screen.getByText(/ななみの個人費/)).toBeInTheDocument()
+    expect(screen.queryByText(/Honeyの個人費/)).not.toBeInTheDocument()
+  })
+
   it('role=note でアクセシブルな説明を提供する', () => {
-    render(<SpousePersonalNote amount={12000} theme="darling" />)
+    render(<SpousePersonalNote amount={12000} theme="darling" partnerNickname={null} />)
 
     const note = screen.getByRole('note')
     expect(note).toHaveAttribute('aria-label', 'Honeyの個人費 合計 12,000円')
   })
 
   it('ロングタップ(contextmenu)でプライバシーヒントを表示する', () => {
-    render(<SpousePersonalNote amount={30000} theme="darling" />)
+    render(<SpousePersonalNote amount={30000} theme="darling" partnerNickname={null} />)
 
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
 
@@ -38,7 +49,7 @@ describe('SpousePersonalNote', () => {
   })
 
   it('ヒントをクリックすると閉じる', () => {
-    render(<SpousePersonalNote amount={30000} theme="honey" />)
+    render(<SpousePersonalNote amount={30000} theme="honey" partnerNickname={null} />)
 
     const container = screen.getByRole('note')
     fireEvent.contextMenu(container)
@@ -49,7 +60,7 @@ describe('SpousePersonalNote', () => {
   })
 
   it('金額 0 のときも正しく表示する', () => {
-    render(<SpousePersonalNote amount={0} theme="darling" />)
+    render(<SpousePersonalNote amount={0} theme="darling" partnerNickname={null} />)
 
     expect(screen.getByText('0円')).toBeInTheDocument()
   })

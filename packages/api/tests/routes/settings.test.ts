@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import type { TestApp } from '../helpers/test-app.js'
-import { createTestApp, request, VIEWER_ID } from '../helpers/test-app.js'
+import { createTestApp, request, VIEWER_ID, SPOUSE_ID } from '../helpers/test-app.js'
 
 interface ProfileResponse {
   profile: { userId: string; role: string; nickname: string | null }
+}
+
+interface SpouseProfileResponse {
+  profile: { nickname: string | null }
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -80,5 +84,47 @@ describe('PUT /api/settings/nickname', () => {
       body: '{ not json',
     })
     expect(res.status).toBe(400)
+  })
+})
+
+describe('GET /api/settings/spouse-profile', () => {
+  it('相手が未登録なら nickname は null', async () => {
+    const t = createTestApp()
+    const res = await request(t.app, 'GET', '/api/settings/spouse-profile')
+    expect(res.status).toBe(200)
+    const { profile } = await json<SpouseProfileResponse>(res)
+    expect(profile.nickname).toBeNull()
+  })
+
+  it('相手が登録済みなら、相手のニックネームを返す', async () => {
+    const t = createTestApp()
+    await request(t.app, 'POST', '/api/onboarding/register', {
+      body: { nickname: 'だーりん' },
+      viewerId: SPOUSE_ID,
+    })
+    const res = await request(t.app, 'GET', '/api/settings/spouse-profile')
+    const { profile } = await json<SpouseProfileResponse>(res)
+    expect(profile.nickname).toBe('だーりん')
+  })
+
+  it('相手から見た自分（VIEWER_ID）のニックネームも同様に返る（対称性）', async () => {
+    const t = createTestApp()
+    await register(t, 'はにー')
+    const res = await request(t.app, 'GET', '/api/settings/spouse-profile', {
+      viewerId: SPOUSE_ID,
+    })
+    const { profile } = await json<SpouseProfileResponse>(res)
+    expect(profile.nickname).toBe('はにー')
+  })
+
+  it('相手の userId など、ニックネーム以外の情報は返さない（相手の識別情報を漏らさない）', async () => {
+    const t = createTestApp()
+    await request(t.app, 'POST', '/api/onboarding/register', {
+      body: { nickname: 'だーりん' },
+      viewerId: SPOUSE_ID,
+    })
+    const res = await request(t.app, 'GET', '/api/settings/spouse-profile')
+    const { profile } = await json<{ profile: Record<string, unknown> }>(res)
+    expect(Object.keys(profile)).toEqual(['nickname'])
   })
 })
