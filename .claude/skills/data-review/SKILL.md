@@ -38,18 +38,29 @@ description: 変更差分をデータ・マイグレーション互換性の観�
 4. レビュー結果を **must-fix** / **suggestion** に分けてユーザーに提示する
 5. must-fix は必ず修正する。**suggestion も原則その場で修正する(デフォルトは対応)**。修正後は `/verify` を再実行して green を確認する。マイグレーション・スキーマ・Query を修正した場合は**統合テスト(`test:integration`)まで green にする**
 6. 例外として、以下のいずれかに該当する suggestion のみ見送ってよい:
-   - 修正範囲が今回の diff を大きく超える(別リファクタリングが必要)
-   - 設計判断の変更を伴い、ユーザーの意思決定が必要
-7. 見送る suggestion は黙って放置せず、理由を添えてユーザーに提示したうえで GitHub Issue 化して追跡する(`needs-decision` を付けて `/decide` に接続する)
+   - **(a) 独立した PR が必要な別リファクタリング相当の規模** — 今回の PR に含めると、受け入れ条件外の変更が diff の主役になる規模を指す。単に diff 外のファイルへ波及する・数ファイルの機械的な修正が要るだけでは見送り理由にならず、その場で修正する
+   - **(b) 以後の実装の前提を変える設計判断で、ユーザーの意思決定が必要** — ドメイン不変条件・公開 API・プライバシー3段階ルール・DB スキーマ・ユーザー向け方針(UI / 文言 / 通知の方針)の変更に限る。実装手段の選択・命名・コードスタイル・軽微な見た目の調整は設計判断扱いにせず、レビュー実施者(無人モードでは Claude)がその場で決めて修正する
+7. 見送る suggestion は黙って放置せず、理由を添えてユーザーに提示する。Issue 化するのは **(b) のみ**(タイトル先頭に `[判断待ち]` を付け、`needs-decision` を付与して `/decide` に接続する)。**(a) は Issue を起票しない** — 見送った内容と理由を PR 本文のレビュー結果節に記録する。同じ指摘が複数の PR で繰り返し見送られた場合に限り、(a) でも Issue 化してよい
 
 ## 特に落とせない指摘
 
-次の4つは、見落とすと家計のデータが失われるか、金額が静かに壊れる。指摘が出た場合は suggestion であっても見送らない:
+次の5つは、見落とすと家計のデータが失われるか、金額が静かに壊れる。指摘が出た場合は suggestion であっても見送らない:
 
 - **既存データがある状態で適用に失敗するマイグレーション**(NOT NULL / 一意制約 / CHECK の追加、型変更)。本番で適用が途中まで走った状態は復旧が難しい
 - **移し替えのない列・テーブルの削除**、および旧形式の jsonb `payload` を読めなくする変更
 - **`db.transaction` の使用**(本番の `neon-http` ドライバでは実行時に throw する。ローカル・統合テストの `node-postgres` では動くため、テストが green でも本番でのみ壊れる)
 - **再実行で二重適用が残るイベントハンドラー**(加算・追記 INSERT・採番)。イベントは at-least-once で、`safeSubscribe` はハンドラー失敗をログに留めて継続する
+- **`domainEventBase()` を引数なしで呼んでいるイベントハンドラー**(`packages/api/src/event-handlers/event-base.ts` の `occurredAt` の既定値は「処理を実行した現在時刻」。トリガー元イベントの `occurredAt` を渡すべき箇所で省略すると「実際に取引が起きた日」が「処理した日」にすり替わり、資産推移・月次サマリの時系列が静かに壊れる — 実例: #539 のレビューで発覚し PR #660 で `unpaid-balance-update.ts` の3箇所を修正)。差分に `domainEventBase()` の引数なし呼び出しが含まれていたら、意図的に「処理した日」を使う設計かを必ず確認し、意図が確認できなければ元イベントの `occurredAt` を引き継がせる
+
+### 横展開: 未確認の `domainEventBase()` 引数省略呼び出し(2026-08-25 時点の棚卸し)
+
+以下は #662 の時点で引数省略のまま残っている呼び出し。バグと断定はできない(意図的に「処理した日」を使う設計の可能性がある)ため、これらのファイルに変更が及んだレビューでは上の観点で個別に確認し、バグか判断が必要なら Issue 化する(`auto-classification.ts:52`・`monthly-limit-seed.ts:68` は #658 で追跡中):
+
+- `packages/api/src/event-handlers/notification-delivery.ts:47`
+- `packages/api/src/event-handlers/monthly-report-csv-confirmation.ts:141`
+- `packages/api/src/event-handlers/monthly-report-finalization.ts:94`
+- `packages/api/src/event-handlers/monthly-report-delivery.ts:151`
+- `packages/api/src/event-handlers/monthly-report-delivery.ts:190`
 
 ## マイグレーションの手書き部分について
 
