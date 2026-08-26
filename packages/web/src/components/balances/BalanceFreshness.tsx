@@ -71,7 +71,7 @@ export function BalanceFreshnessCard() {
                 <li key={item.accountId} className={ui.rowBetween}>
                   <span className={styles.name}>{item.displayName}</span>
                   <span className={styles.meta}>
-                    {formatDateWithYear(item.lastUpdatedAt)}時点
+                    最終更新: {formatDateWithYear(item.lastUpdatedAt)}
                     <FreshnessBadge freshness={item} />
                   </span>
                 </li>

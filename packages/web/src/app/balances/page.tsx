@@ -77,7 +77,9 @@ function balanceItemBody(item: AccountBalanceItemWire, freshness?: BalanceFreshn
             <span className={styles.balanceName}>{item.displayName}</span>
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentBalance)}</span>
-          <span className={styles.balanceMeta}>更新: {formatDateWithYear(item.lastUpdatedAt)}</span>
+          <span className={styles.balanceMeta}>
+            最終更新: {formatDateWithYear(item.lastUpdatedAt)}
+          </span>
         </div>
       )
     case 'mitsui_sumitomo_card':
@@ -106,7 +108,9 @@ function balanceItemBody(item: AccountBalanceItemWire, freshness?: BalanceFreshn
             <FreshnessBadge freshness={freshness} />
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentBalance)}</span>
-          <span className={styles.balanceMeta}>更新: {formatDateWithYear(item.lastUpdatedAt)}</span>
+          <span className={styles.balanceMeta}>
+            最終更新: {formatDateWithYear(item.lastUpdatedAt)}
+          </span>
         </div>
       )
     case 'nisa':
@@ -118,7 +122,7 @@ function balanceItemBody(item: AccountBalanceItemWire, freshness?: BalanceFreshn
           </div>
           <span className={styles.balanceValue}>{formatMoney(item.currentAccumulated)}</span>
           <span className={styles.balanceMeta}>
-            積立累計 ・ 更新: {formatDateWithYear(item.lastUpdatedAt)}
+            積立累計 ・ 最終更新: {formatDateWithYear(item.lastUpdatedAt)}
           </span>
         </div>
       )
