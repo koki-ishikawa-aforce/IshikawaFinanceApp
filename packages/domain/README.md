@@ -26,7 +26,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 - 値オブジェクト: `BalanceFreshness`（残高鮮度評価。`BalanceFreshnessStatus` = `ok` / `alert`、閾値の単一ソース `BALANCE_FRESHNESS_THRESHOLD_DAYS` = 35（OQ-44）、評価関数 `evaluateBalanceFreshness`。根拠の最終更新日時は残高・資産推移管理から借用し、判定は本コンテキストが持つ — 08c / 08d L244）
 - Query I/F: `DashboardQuery`（KPI・カテゴリ内訳に加え、残高鮮度評価リスト `fetchBalanceFreshness` を提供。口座単位の残高情報は本人のみ可視のため `viewerId` を取り、本人所有の別銀行貯蓄口座だけを返す — P2-B5 / AT-404）, `MonthlyReportQuery`, `TransactionListQuery`
 - View 型: `DashboardKpisView`, `CategoryBreakdownView`, `BalanceFreshnessListView`（+ `BalanceFreshnessItem`）, `MonthlyReportView`, `TransactionListItem`
-- プライバシー: `ViewerContext`, `ViewerRole`（`applyPrivacyFilter` 関数群は内部実装、Query 実装層からのみ使用）
+- プライバシー: `ViewerContext`, `ViewerRole`, `toListItems`（プライバシー3段階の適用関数。Query adapter が取引一覧へ適用するため公開 API。それ以外の `applyPrivacyFilter` 内部関数は非公開のまま）
 - ドメインイベント: `MonthlyReportCsvConfirmed`, `MonthlyReportFinalized`, `TransactionDeleted`, `TransactionManuallyClassified`（`ConfirmedClassification` を含む）, `CategoryTransactionsRemapped`（マスタ削除リマップの家計分析完了通知）
 
 ### balance-asset-tracking（残高・資産推移管理）
