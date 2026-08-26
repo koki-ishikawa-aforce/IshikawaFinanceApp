@@ -269,7 +269,10 @@ export function transactionsRoutes(
     }
     // イベント配信は同期・インプロセス（学習ルールへの反映まで完了済み）なので、
     // ここで読み直せば「この分類で次回から自動で分類されるようになったか」を
-    // 画面側の推測なしに返せる（#582: 画面が未分類理由から推測していたのを廃止）
+    // 画面側の推測なしに返せる（#582: 画面が未分類理由から推測していたのを廃止）。
+    // ただし safeSubscribe はハンドラー失敗を握りつぶして継続するため、学習ルール
+    // 反映が失敗した回だけ false を返しうる（at-least-once の帰結で新規の欠陥ではない。
+    // 同じ操作をやり直せば次回配信で true になる）
     const learningRule = await merchantLearningRuleRepository.findByMerchant(
       viewerId,
       transaction.common.merchantName,
