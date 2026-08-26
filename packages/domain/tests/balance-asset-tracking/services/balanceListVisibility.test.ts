@@ -90,39 +90,48 @@ describe('canViewAccountDetail（口座詳細を見てよいか）', () => {
 
 describe('spouseVisibleAssetTotal（配偶者について見せてよい合計）', () => {
   it('配偶者の別銀行貯蓄と NISA 積立累計を合算する', () => {
-    const total = spouseVisibleAssetTotal([savings(SPOUSE, 800_000), nisa(SPOUSE, 300_000)], VIEWER)
+    const total = spouseVisibleAssetTotal([savings(SPOUSE, 800_000), nisa(SPOUSE, 300_000)], SPOUSE)
     expect(total).toBe(1_100_000)
   })
 
   it('配偶者の SMBC 残高・カード未払金は合計に含めない', () => {
     const total = spouseVisibleAssetTotal(
       [smbc(SPOUSE, 1_500_000), card(SPOUSE), savings(SPOUSE, 800_000)],
-      VIEWER,
+      SPOUSE,
     )
     expect(total).toBe(800_000)
   })
 
   it('本人の口座は合計に混ぜない', () => {
-    const total = spouseVisibleAssetTotal([savings(VIEWER, 900_000), nisa(SPOUSE, 300_000)], VIEWER)
+    const total = spouseVisibleAssetTotal([savings(VIEWER, 900_000), nisa(SPOUSE, 300_000)], SPOUSE)
     expect(total).toBe(300_000)
   })
 
   it('配偶者の非アクティブな口座は合計に含めない', () => {
     const total = spouseVisibleAssetTotal(
       [closed(savings(SPOUSE, 800_000), SPOUSE), nisa(SPOUSE, 300_000)],
-      VIEWER,
+      SPOUSE,
     )
     expect(total).toBe(300_000)
   })
 
   it('残高が 0 円でも 0 を返す（口座が無いことにしない）', () => {
     // 取り崩して 0 円になった口座を「持っていない」に倒すと、合計行が黙って消える
-    expect(spouseVisibleAssetTotal([savings(SPOUSE, 0)], VIEWER)).toBe(0)
+    expect(spouseVisibleAssetTotal([savings(SPOUSE, 0)], SPOUSE)).toBe(0)
   })
 
   it('配偶者に別銀行貯蓄も NISA も無ければ null を返す', () => {
     expect(
-      spouseVisibleAssetTotal([smbc(SPOUSE, 1_500_000), savings(VIEWER, 900_000)], VIEWER),
+      spouseVisibleAssetTotal([smbc(SPOUSE, 1_500_000), savings(VIEWER, 900_000)], SPOUSE),
     ).toBeNull()
+  })
+
+  it('許可リストに無い第三者の口座は「本人以外」でも合計に混ぜない（#595）', () => {
+    const outsider = 'user_outsider' as never
+    const total = spouseVisibleAssetTotal(
+      [savings(outsider, 999_999), nisa(SPOUSE, 300_000)],
+      SPOUSE,
+    )
+    expect(total).toBe(300_000)
   })
 })

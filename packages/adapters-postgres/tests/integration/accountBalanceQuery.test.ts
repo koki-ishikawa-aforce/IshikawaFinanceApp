@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
+import type { Allowlist, UserId } from '@warimaru/domain'
 import {
   addNisaContributionBySmbcTransfer,
   addOtherSavingsBySmbcTransfer,
+  AllowlistSchema,
   asNisaAccount,
   asOtherSavingsAccount,
   correctInitialBalance,
@@ -28,7 +30,13 @@ import {
 const accountRepo = new PostgresAccountRepository(db)
 const unpaidRepo = new PostgresMitsuiSumitomoUnpaidRepository(db)
 
-const query = new PostgresAccountBalanceQuery(db)
+const allowlist: Allowlist = AllowlistSchema.parse({
+  honeyLineUserId: HONEY_USER_ID,
+  darlingLineUserId: DARLING_USER_ID,
+})
+const query = new PostgresAccountBalanceQuery(db, {
+  fetchAllowlist: () => Promise.resolve(allowlist),
+})
 
 /** fetchAssetTotal(viewerId, asOf) に渡すスナップショット時刻。テスト内の日付コメントの基準でもある */
 const FIXED_NOW = new Date('2026-07-06T00:00:00.000Z')
@@ -148,6 +156,19 @@ describe('PostgresAccountBalanceQuery.fetchBalanceList', () => {
 
     const view = await query.fetchBalanceList(DARLING_USER_ID)
     expect(view.spouseOtherSavingsAndNisaTotal).toBeNull()
+  })
+
+  it('許可リストに無い持ち主の口座は「自分以外」でも配偶者の合計に混ざらない（#595）', async () => {
+    // 許可リストは HONEY/DARLING の2人のみ。第三者の持ち主の記録が万一残っても
+    // 「自分以外」という否定条件では弾けないため、登録済みの相手に限定して絞り込む
+    const outsider = 'U-outsider-test' as UserId
+    await accountRepo.save(otherSavingsAccount({ ownerUserId: outsider, currentBalance: 999999 }))
+    await accountRepo.save(
+      otherSavingsAccount({ ownerUserId: HONEY_USER_ID, currentBalance: 800000 }),
+    )
+
+    const view = await query.fetchBalanceList(DARLING_USER_ID)
+    expect(view.spouseOtherSavingsAndNisaTotal).toBe(800000)
   })
 })
 
