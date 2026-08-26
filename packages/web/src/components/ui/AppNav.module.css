@@ -15,7 +15,7 @@
   max-width: 100%;
   display: flex;
   justify-content: space-between;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--surface-nav);
   backdrop-filter: blur(8px);
   border-radius: var(--radius-card) var(--radius-card) 0 0;
   padding: var(--space-1_5) var(--space-1) var(--space-2);

@@ -146,7 +146,7 @@
 .rangeToggle {
   display: flex;
   gap: var(--space-0_5);
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--surface-well);
   border-radius: var(--radius-md);
   padding: var(--space-0_5);
 }

@@ -49,7 +49,7 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 - **行間（`--leading-*`）**: 単位なしの倍率で 2 段階。まとまった文章（補足文・注意書き・結果の説明）は `--leading-relaxed`（1.6）、一覧や手順のように短い行を並べる箇所は `--leading-normal`（1.5）。1 行に収まる見出し・ラベルには指定しない
 - **アイコンサイズ（`--icon-*`）**: 小 / 中 / 大の 3 段階。px ではなく隣接するテキストに対する相対値（`em`）で定義し、文字サイズを変えたときにアイコンだけ取り残されないようにする（§4 大きさ）
 - **書体（`--font-family`）**: 丸ゴシック（Zen Maru Gothic）。`html, body` に加えてフォーム要素（`button` / `input` / `select` / `textarea`）にも `globals.css` で継承させているため、**コンポーネント側で `font-family` を再指定しない**（UA スタイルシートの打ち消しはグローバル 1 か所に集約する）
-- **色**: テーマ色（`--accent` / `--bg-gradient` / `--kpi-*` 等）、ロール識別色（`--role-darling` / `--role-honey`、テーマ非依存）、カテゴリ色（`--cat-*`）、意味対応色（`--success` / `--warning` / `--error` 等）、構造色（区切り線の `--divider`、テーマ非依存）
+- **色**: テーマ色（`--accent` / `--bg-gradient` / `--kpi-*` 等）、ロール識別色（`--role-darling` / `--role-honey`、テーマ非依存）、カテゴリ色（`--cat-*`）、意味対応色（`--success` / `--warning` / `--error` 等）、構造色（区切り線の `--divider`、背景に敷く白い半透明の面の `--surface-well` / `--surface-muted` / `--surface-card` / `--surface-banner` / `--surface-strong` / `--surface-strong-border` / `--surface-nav`、いずれもテーマ非依存）。テーマ色を薄く敷く `--surface-track` 系・`--surface-accent-soft` とは別系統(テーマごとに値が変わる)
 - **影（`--shadow-*`）**: 用途別の合成トークン（`--shadow-sm` 〜 `--shadow-modal`）。テーマ依存の `--shadow-color` / `--shadow-strong` を遅延解決する
 
 ### 使用ルール
