@@ -64,9 +64,9 @@ gh issue edit <番号> --add-label "status:in-progress"
 
 ## 5. DDD レビュー・UI レビュー
 
-`/ddd-review` を実行し(ddd-reviewer サブエージェントが main との diff をレビュー)、must-fix と suggestion を修正したら再度 `/verify` を回す。suggestion は原則この場で対応し、見送るのは `/ddd-review` の例外基準に該当する場合のみ(その際は Issue 化して追跡する)。
+`/ddd-review` を実行し(ddd-reviewer サブエージェントが main との diff をレビュー)、must-fix と suggestion を修正したら再度 `/verify` を回す。suggestion は原則この場で対応し、見送るのは `/ddd-review` の例外基準(a)(b)に該当する場合のみ。Issue 化するのは(b)(設計判断)のみで、(a)(別リファクタリング相当の規模)は PR 本文のレビュー結果節に見送った内容と理由を記録するだけでよい。
 
-`packages/web` 配下に変更がある場合は、`/ddd-review` に加えて `/ui-review` も実施する(ui-reviewer サブエージェントが `DESIGN.md` とプレゼンテーション層の観点でレビュー)。指摘の扱いは `/ddd-review` と同じ(must-fix は必須修正、suggestion も原則その場で対応、見送りは例外基準に該当する場合のみ Issue 化)。
+`packages/web` 配下に変更がある場合は、`/ddd-review` に加えて `/ui-review` も実施する(ui-reviewer サブエージェントが `DESIGN.md` とプレゼンテーション層の観点でレビュー)。指摘の扱いは `/ddd-review` と同じ(must-fix は必須修正、suggestion も原則その場で対応、見送りは例外基準(a)(b)に該当する場合のみで Issue 化するのは(b)のみ)。
 
 ## 6. 受け入れシナリオ(`docs/acceptance/`)との照合
 
@@ -187,7 +187,7 @@ Routine のセットアップ手順は `docs/automation/backlog-routine.md`、�
 無人モードでユーザーの判断が必要になったら、種類を問わず **`needs-decision` ラベル付きの Issue** に集約する(チャットの最終報告や PR 本文だけに書いて済ませない)。判断が必要な事象は2種:
 
 1. **撤退時の確認**(受け入れ条件が曖昧・設計判断が分かれる・CI が直せない・マージゲートに落ちた) → 元 Issue に判断依頼コメント + `needs-decision`(既存 Issue のタイトルは変えないため種別目印は付けない)
-2. **見送り追認**(`/ddd-review` suggestion の見送りなど) → 新規 Issue + `needs-decision`(タイトル先頭に `[判断待ち]`)
+2. **見送り追認**(`/ddd-review` 等の suggestion 見送りのうち、設計判断を伴うもの(例外基準(b))) → 新規 Issue + `needs-decision`(タイトル先頭に `[判断待ち]`)。別リファクタリング相当の規模による見送り(例外基準(a))は Issue 化せず PR 本文に記録するのみで、この集約の対象外
 
 マージ判断はこの集約対象ではない。ゲート(後述「マージゲート」)を満たす PR は無人モードがそのままマージし、ゲートに落ちた PR だけが 1.(撤退時の確認)として人間に上がる。
 
@@ -379,7 +379,7 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
   ```
   (`needs-decision` はユーザーが回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外になる)
   撤退してもその fire は終了せず、候補ループの次の Issue へ進む。これにより、1件の撤退で fire 全体が空振りする事態を防ぐ
-- `/ddd-review` の suggestion でユーザーの意思決定が必要なもの(見送り例外に該当)は、既存ルール通り Issue 化する。その Issue はタイトル先頭に `[判断待ち]` を付け、本文は `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする
+- `/ddd-review` の suggestion で設計判断を伴い、ユーザーの意思決定が必要なもの(見送り例外基準(b)に該当)は、既存ルール通り Issue 化する。その Issue はタイトル先頭に `[判断待ち]` を付け、本文は `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする。別リファクタリング相当の規模による見送り(例外基準(a))は Issue 化せず、PR 本文のレビュー結果節に記録するのみでよい
 
 ### 手順4の差分: /verify 行き詰まり時の撤退
 
