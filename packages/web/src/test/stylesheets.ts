@@ -1,18 +1,15 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { collectSources, isModuleCss } from './sources'
 
-const SRC_DIR = join(import.meta.dirname, '..')
+/**
+ * CSS Modules の重複定義を調べるガードテストの共通部分。
+ *
+ * ファイルの集め方(走査規約)は `sources.ts` の `collectSources` に一本化し、
+ * ここでは CSS Modules の重複検出という固有のロジックだけを持つ。
+ */
 
-function walk(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
-    const path = join(dir, entry.name)
-    return entry.isDirectory() ? walk(path) : [path]
-  })
-}
-
-/** `src` 配下の CSS Modules のパス一覧 */
+/** `src` 配下の CSS Modules のパス一覧(`src` からの相対パス) */
 export function listStylesheets(): string[] {
-  return walk(SRC_DIR).filter(path => path.endsWith('.module.css'))
+  return collectSources(isModuleCss).map(({ path }) => path)
 }
 
 /**
@@ -24,9 +21,10 @@ export function listStylesheets(): string[] {
 export function findDuplicateClassDefinitions(className: string, ownerFile: string): string[] {
   // `@media` ブロック内のインデントされた定義も拾う
   const pattern = new RegExp(String.raw`^\s*\.${className}\b`, 'm')
-  return listStylesheets()
-    .filter(path => !path.endsWith(ownerFile))
-    .filter(path => pattern.test(readFileSync(path, 'utf8')))
+  return collectSources(isModuleCss)
+    .filter(({ path }) => !path.endsWith(ownerFile))
+    .filter(({ content }) => pattern.test(content))
+    .map(({ path }) => path)
 }
 
 /**
@@ -37,6 +35,6 @@ export function findDuplicateClassDefinitions(className: string, ownerFile: stri
  */
 export function definesClass(className: string, ownerFile: string): boolean {
   const pattern = new RegExp(String.raw`^\s*\.${className}\b`, 'm')
-  const owner = listStylesheets().find(path => path.endsWith(ownerFile))
-  return owner !== undefined && pattern.test(readFileSync(owner, 'utf8'))
+  const owner = collectSources(isModuleCss).find(({ path }) => path.endsWith(ownerFile))
+  return owner !== undefined && pattern.test(owner.content)
 }
