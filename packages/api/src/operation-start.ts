@@ -20,15 +20,20 @@
  * 冪等性: 判定は現在の状態のみに依存する。両者が運用開始済みなら遷移も発行も行わないため、
  * 何度呼んでも `OperationStarted` は 1 度しか出ない。片方の保存だけが済んだ状態からの再実行は
  * 残り 1 人を遷移させて回復する。通知機能有効化は世帯レベルの記録
- * （`HouseholdNotificationActivation`）が「発行済み」の唯一の根拠であり、**`NotificationActivated`
- * の発行が成功して初めて記録する**（#447）。発行が失敗した回は記録が残らないため、次の発火の
- * 起点でやり直せる（per-user の有効化状態の組み合わせから推測していた従来の作りでは、この回が
- * 「もう送った」と誤認され、テストメッセージが世帯へ二度と届かなかった）。
+ * （`HouseholdNotificationActivation`）が「発行済み」の唯一の根拠だが、**この記録自体は本モジュール
+ * では書かない**。記録するのは配信確定（LINE への送信が成功、または冪等性キーが既に確定済み）を
+ * 検知した `TestMessageSent` の購読側（`household-notification-activation.ts`、#590）で、
+ * `NotificationActivated` の発行が成功しただけでは書かれない。発行が LINE への送信まで至らなかった
+ * 回（発行そのものの失敗・配信サービスの `retry_abandoned`）はいずれも記録が残らない
+ * （per-user の有効化状態の組み合わせから推測していた従来の作りでは、この回が「もう送った」と
+ * 誤認され、テストメッセージが世帯へ二度と届かなかった、#447）。ただし「次の発火の起点でやり直せる」
+ * が実際に機能するのは、本関数の 4 つの起点のうち前提未充足から再度呼ばれるケースに限られる
+ * （運用開始・友だち追加・共通トークルーム参加が全て揃った状態からの再訪はほぼ起きない、#706）。
  *
- * この回復が効くのは**発行そのものが失敗した回に限る**。購読側（テストメッセージ配信）の失敗は
- * `safeSubscribe` が受け止めるため publish は成功し、LINE への送信が最終的に失敗した回
- * （配信サービスの `retry_abandoned`）でも記録は書かれる。その回のテストメッセージは本記録では
- * 回復しない（記録の確定を配信の到達まで遅らせるかは配信コンテキストとの結合に触れるため #590）。
+ * 記録の書き込みが本モジュールの外（イベント購読側）にあるため、`NotificationActivated` は
+ * 前提が揃うたびに（記録が書かれるまで）再発行されうる。実際の LINE 送信は配信サービスの
+ * 冪等性キー（トークルーム × 有効化日時）で 1 回に絞られるため、再発行そのものは実害にならない
+ * （`notification-delivery.ts` 参照）。
  */
 import {
   NotificationActivatedSchema,
@@ -36,7 +41,6 @@ import {
   decideHouseholdNotificationActivation,
   decideOperationStart,
   lineOperationSettingsOf,
-  recordHouseholdNotificationActivated,
   type AppUserRepository,
   type EventBus,
   type HouseholdMembers,
@@ -50,7 +54,7 @@ import { traceIdOf } from './trace-id.js'
 export interface OperationStartDeps {
   appUserRepository: AppUserRepository
   sharedTalkRoomRepository: SharedTalkRoomRepository
-  /** 世帯としての通知機能有効化記録（テストメッセージを依頼済みかの唯一の根拠、#447） */
+  /** 世帯としての通知機能有効化記録（テストメッセージの配信が確定済みかの唯一の根拠、#447 / #590） */
   householdNotificationActivationRepository: HouseholdNotificationActivationRepository
   eventBus: EventBus
 }
@@ -160,9 +164,12 @@ export async function fireOperationStartIfReady(
     activatedAt: activation.activatedAt,
   })
   try {
+    // publish は NotificationActivated の購読チェーン（テストメッセージ配信 → 配信確定なら
+    // 世帯通知有効化記録を書く、#590）を同期的に実行し終えてから返る。購読側の失敗は
+    // safeSubscribe が受け止めるため、ここでの失敗は「発行そのもの」に限られる
     await deps.eventBus.publish(event)
   } catch (e) {
-    // 世帯レベルの有効化記録はまだ書いていないため、次の発火の起点でやり直される（#447）。
+    // 世帯レベルの有効化記録はまだ書かれていないため、次の発火の起点でやり直される（#447）。
     // 自動で回復する失敗であっても握りつぶさず、切り分けのために記録してから呼出し元へ返す
     console.error(
       `[onboarding] 世帯の通知機能有効化イベントの発行に失敗した（${e instanceof Error ? e.name : 'unknown'}, ` +
@@ -171,25 +178,10 @@ export async function fireOperationStartIfReady(
     )
     throw e
   }
-  // 発行が成功して初めて「依頼済み」を記録する（#447）
-  try {
-    await deps.householdNotificationActivationRepository.save(
-      recordHouseholdNotificationActivated(householdActivation, activation.activatedAt),
-    )
-  } catch (e) {
-    // ここまで来た時点でイベントは発行済み（テストメッセージも送信済み）。「発火に失敗した」と
-    // だけ記録されると運用者は「送られていない」と誤読するため、実態を明示してから返す
-    console.error(
-      `[onboarding] 世帯の通知機能有効化の記録に失敗した（${e instanceof Error ? e.name : 'unknown'}, ` +
-        `trigger=${trigger}, event=${event.eventId}, activatedAt=${activation.activatedAt.toISOString()}）— ` +
-        'イベントは発行済み。次の起点で再発行されるが、配信側の冪等性キー（トークルーム × 有効化日時）は' +
-        '変わらないためテストメッセージが二重に届くことはない',
-    )
-    throw e
-  }
   console.info(
-    `[onboarding] 世帯の通知機能を有効化した（trigger=${trigger}, event=${event.eventId}, ` +
-      `activatedAt=${activation.activatedAt.toISOString()}）`,
+    `[onboarding] 世帯の通知機能有効化イベントを発行した（trigger=${trigger}, event=${event.eventId}, ` +
+      `activatedAt=${activation.activatedAt.toISOString()}）— ` +
+      '世帯通知有効化記録は配信確定を検知した購読側が書く（#590）',
   )
   return { operation, notification: 'activated' }
 }
