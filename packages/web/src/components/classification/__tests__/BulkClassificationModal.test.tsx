@@ -107,7 +107,10 @@ beforeEach(() => {
     }
     throw new Error(`unexpected apiFetch: ${path}`)
   })
-  apiMock.apiMutate.mockResolvedValue({})
+  // classify の既定応答は「学習される」（#582）。学習されないケースはテストごとに上書きする
+  apiMock.apiMutate.mockImplementation((path: string) =>
+    Promise.resolve(path.endsWith('/classify') ? { merchantRuleLearned: true } : {}),
+  )
 })
 
 afterEach(() => {
@@ -396,6 +399,7 @@ describe('BulkClassificationModal', () => {
           }),
         )
       }
+      if (path.endsWith('/classify')) return Promise.resolve({ merchantRuleLearned: true })
       return Promise.resolve({})
     })
     renderWithClient(<ModalUnderTest session={session(targets)} onClose={vi.fn()} />)
@@ -433,6 +437,8 @@ describe('BulkClassificationModal', () => {
           }),
         )
       }
+      // #582: 実際に学習されない加盟店では API が false を返す（画面側の推測はしない）
+      if (path.endsWith('/classify')) return Promise.resolve({ merchantRuleLearned: false })
       return Promise.resolve({})
     })
     renderWithClient(<ModalUnderTest session={session(targets)} onClose={vi.fn()} />)

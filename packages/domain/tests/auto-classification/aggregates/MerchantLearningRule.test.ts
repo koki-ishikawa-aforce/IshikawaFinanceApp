@@ -3,6 +3,7 @@ import {
   MerchantLearningRuleSchema,
   applicableClassification,
   disableMerchantLearning,
+  isMerchantRuleApplicable,
   reenableMerchantLearning,
   reflectManualClassification,
   type ActiveMerchantLearningRule,
@@ -279,5 +280,71 @@ describe('applicableClassification（学習済みルールから適用可能な�
         }),
       ),
     ).toThrow(InvariantViolationError)
+  })
+})
+
+describe('isMerchantRuleApplicable（次回から自動で分類されるようになるかの判定、#582）', () => {
+  const userId = 'user_honey' as never
+  const merchantName = 'スターバックス'
+  const categoryA = '01CAT000000000000000000001' as never
+  const expenseTypeX = '01EXT000000000000000000001' as never
+
+  function activeRuleWith(
+    overrides: Partial<ActiveMerchantLearningRule>,
+  ): ActiveMerchantLearningRule {
+    return MerchantLearningRuleSchema.parse({
+      kind: 'active',
+      common: { userId, merchantName },
+      categoryRef: { kind: 'learned', categoryId: categoryA },
+      expenseClassRef: { kind: 'learned', expenseClass: 'household' },
+      expenseTypeRef: { kind: 'unlearned' },
+      lastUpdatedAt: new Date('2026-07-01T00:00:00Z'),
+      ...overrides,
+    }) as ActiveMerchantLearningRule
+  }
+
+  it('ルールが存在しない（null）なら false', () => {
+    expect(isMerchantRuleApplicable(null)).toBe(false)
+  })
+
+  it('学習無効化中のルールは false', () => {
+    const disabled = MerchantLearningRuleSchema.parse({
+      kind: 'disabled',
+      common: { userId, merchantName },
+      disabledAt: new Date('2026-07-01T00:00:00Z'),
+    })
+    expect(isMerchantRuleApplicable(disabled)).toBe(false)
+  })
+
+  it('カテゴリ・費用区分（非経費）が学習済みなら true', () => {
+    expect(isMerchantRuleApplicable(activeRuleWith({}))).toBe(true)
+  })
+
+  it('カテゴリ軸が未学習なら false', () => {
+    expect(isMerchantRuleApplicable(activeRuleWith({ categoryRef: { kind: 'unlearned' } }))).toBe(
+      false,
+    )
+  })
+
+  it('経費（business_expense）は経費種別まで学習済みでなければ false', () => {
+    expect(
+      isMerchantRuleApplicable(
+        activeRuleWith({
+          expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+          expenseTypeRef: { kind: 'unlearned' },
+        }),
+      ),
+    ).toBe(false)
+  })
+
+  it('経費（business_expense）でも経費種別まで学習済みなら true', () => {
+    expect(
+      isMerchantRuleApplicable(
+        activeRuleWith({
+          expenseClassRef: { kind: 'learned', expenseClass: 'business_expense' },
+          expenseTypeRef: { kind: 'learned', expenseTypeId: expenseTypeX },
+        }),
+      ),
+    ).toBe(true)
   })
 })

@@ -7,10 +7,10 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { ApiError, apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   BulkClassificationSessionWireSchema,
+  ClassifyResultWireSchema,
   UnknownResponseSchema,
   type BulkClassificationTargetWire,
   type InProgressBulkClassificationSessionWire,
-  type UnclassifiedReasonWire,
 } from '@/lib/api-schemas'
 import { unclassifiedReasonLabel } from '@/lib/labels'
 import {
@@ -29,15 +29,6 @@ interface MerchantGroup {
   /** グループの代表。加盟店名・未分類理由・既定費用区分はこの取引から採る */
   head: BulkClassificationTargetWire
   targets: BulkClassificationTargetWire[]
-}
-
-/**
- * 加盟店学習ルールが作られる未分類理由か（08b X-1 / M-1）。
- * Amazon 商品キー由来・学習無効化の加盟店は分類しても加盟店ルールにならないため、
- * 「次回から自動で分類される」とは言えない。
- */
-function learnsMerchantRule(reason: UnclassifiedReasonWire): boolean {
-  return reason === 'merchant_rule_unlearned'
 }
 
 /**
@@ -149,13 +140,17 @@ export function BulkClassificationModal({
     mutationFn: async (target: MerchantGroup) => {
       // 同一加盟店の取引を 1 件ずつ確定する（1 件目で学習ルールが登録され、
       // 残りも同じ 3 軸で確定される）。途中で失敗した場合は成功分がそのまま残り、
-      // 再実行すれば残りが確定する（分類の再実行は冪等）
+      // 再実行すれば残りが確定する（分類の再実行は冪等）。
+      // 「次回から自動で分類されるか」は未分類理由からの推測をやめ、API が返す
+      // 実際の学習結果に従う（#582）。同一加盟店の最後の 1 件の結果が最終状態を表す
+      let merchantRuleLearned = false
       for (const item of target.targets) {
-        await apiMutate(
+        const result = await apiMutate(
           `/api/transactions/${item.transactionId}/classify`,
           { method: 'PUT', body: classificationBody(input) },
-          UnknownResponseSchema,
+          ClassifyResultWireSchema,
         )
+        merchantRuleLearned = result.merchantRuleLearned
       }
       // 分類し終えた取引をセッションの進捗として残す。中断して再開したときに
       // 残りだけを出せるようにするため。ここが失敗しても分類そのものは確定済みなので
@@ -176,12 +171,11 @@ export function BulkClassificationModal({
           `[bulk-classification] 進捗を記録できませんでした（session=${sessionId}, ${cause}, ${classifiedIdsRef.current.length} 件）`,
         )
       }
-      return target
+      return { merchantRuleLearned }
     },
-    onSuccess: async () => {
+    onSuccess: async ({ merchantRuleLearned }) => {
       setClassifiedCount(classifiedIdsRef.current.length)
-      const justClassified = groups[index]
-      if (justClassified !== undefined && learnsMerchantRule(justClassified.head.reason)) {
+      if (merchantRuleLearned) {
         setLearnedMerchantCount(prev => prev + 1)
       }
       await queryClient.invalidateQueries({ queryKey: ['transactions'] })

@@ -63,6 +63,15 @@ export const BulkClassificationTargetWireSchema = z.object({
 })
 export type BulkClassificationTargetWire = z.infer<typeof BulkClassificationTargetWireSchema>
 
+/**
+ * `PUT /api/transactions/:id/classify` の応答。`merchantRuleLearned` は
+ * この分類によって加盟店学習ルールが（次回以降を自動分類できるところまで）
+ * 学習済みになったかどうかを表す（#582）。`transaction` の中身は呼び出し側が
+ * 個々に必要な形へ別途パースするため、ここでは検証しない
+ */
+export const ClassifyResultWireSchema = z.object({ merchantRuleLearned: z.boolean() }).passthrough()
+export type ClassifyResultWire = z.infer<typeof ClassifyResultWireSchema>
+
 const BulkClassificationSessionCommonWire = z.object({
   bulkClassificationSessionId: z.string(),
   userId: z.string(),

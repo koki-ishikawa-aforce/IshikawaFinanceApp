@@ -251,9 +251,14 @@ describe('PUT /api/transactions/:id/classify', () => {
       body: { categoryId, expenseClass: 'household' },
     })
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { kind: string; details: { categoryId: string } }
-    expect(body.kind).toBe('classified')
-    expect(body.details.categoryId).toBe(categoryId)
+    const body = (await res.json()) as {
+      transaction: { kind: string; details: { categoryId: string } }
+      merchantRuleLearned: boolean
+    }
+    expect(body.transaction.kind).toBe('classified')
+    expect(body.transaction.details.categoryId).toBe(categoryId)
+    // カテゴリ・費用区分の 2 軸だけで足りる分類なので、この 1 回で次回から自動分類が効くようになる（#582）
+    expect(body.merchantRuleLearned).toBe(true)
   })
 
   it('分類済み取引の再分類で分類が上書きされる', async () => {
@@ -268,10 +273,10 @@ describe('PUT /api/transactions/:id/classify', () => {
     })
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
-      details: { categoryId: string; expenseClass: string }
+      transaction: { details: { categoryId: string; expenseClass: string } }
     }
-    expect(body.details.categoryId).toBe(newCategoryId)
-    expect(body.details.expenseClass).toBe('personal_honey')
+    expect(body.transaction.details.categoryId).toBe(newCategoryId)
+    expect(body.transaction.details.expenseClass).toBe('personal_honey')
   })
 
   it('C#11: 所有者ロールと相反する個人費用区分での分類は 409（honey が personal_darling）', async () => {
@@ -390,11 +395,37 @@ describe('取引分類 → 学習ルール更新チェーン（#34）', () => {
       body: { categoryId: newUlid(), expenseClass: 'household' },
     })
     expect(res.status).toBe(200)
+    // #582: 学習ルールが作られない加盟店は、分類 API も「次回から自動で分類される」と申告しない
+    expect(((await res.json()) as { merchantRuleLearned: boolean }).merchantRuleLearned).toBe(false)
     const rule = await t.deps.merchantLearningRuleRepository.findByMerchant(
       VIEWER_ID,
       'AMAZON.CO.JP',
     )
     expect(rule).toBeNull()
+  })
+
+  it('#582: 経費（business_expense、経費種別ID 込み）の確定で merchantRuleLearned が true になる', async () => {
+    const t = createTestApp()
+    const id = await createUnclassified(t)
+    const res = await request(t.app, 'PUT', `/api/transactions/${id}/classify`, {
+      body: { categoryId: newUlid(), expenseClass: 'business_expense', expenseTypeId: newUlid() },
+    })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { merchantRuleLearned: boolean }).merchantRuleLearned).toBe(true)
+  })
+
+  it('#582: 学習無効化中の加盟店は merchantRuleLearned が false のまま', async () => {
+    const t = createTestApp()
+    await t.deps.merchantLearningRuleRepository.save({
+      kind: 'disabled',
+      common: { userId: VIEWER_ID, merchantName: 'スーパーA' },
+      disabledAt: new Date(),
+    })
+    const id = await createUnclassified(t)
+    const res = await request(t.app, 'PUT', `/api/transactions/${id}/classify`, {
+      body: { categoryId: newUlid(), expenseClass: 'household' },
+    })
+    expect(((await res.json()) as { merchantRuleLearned: boolean }).merchantRuleLearned).toBe(false)
   })
 
   it('M-1: 学習無効化中の加盟店は学習されない', async () => {
