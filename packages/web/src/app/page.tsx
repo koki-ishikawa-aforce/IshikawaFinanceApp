@@ -44,13 +44,22 @@ export default function DashboardPage() {
       <MonthNavigator month={month} onMonthChange={setMonth} />
       <ModeToggle mode={mode} onModeChange={setMode} />
 
-      {kpis.isLoading && <LoadingState />}
-      {kpis.error && (
-        <ErrorState onRetry={() => void kpis.refetch()} isRetrying={kpis.isFetching}>
-          {describeRequestFailure(kpis.error, 'KPI の取得に失敗しました')}
-        </ErrorState>
-      )}
-      {kpis.data && <KpiGrid kpis={kpis.data} />}
+      {/*
+        KPI もカテゴリ内訳と同じ器(白いカード + 見出し)に載せる。読み込み中・失敗の
+        表示だけが背景に直接浮くと他画面と揃わない(#584)。器は取得状態によらず出す —
+        月・モードを切り替えるたびカードごと消えると、何のセクションが消えたのか
+        分からなくなるため(usability 1-1)
+      */}
+      <div className={ui.card}>
+        <h2 className={ui.sectionTitle}>今月の状況</h2>
+        {kpis.isLoading && <LoadingState />}
+        {kpis.error && (
+          <ErrorState onRetry={() => void kpis.refetch()} isRetrying={kpis.isFetching}>
+            {describeRequestFailure(kpis.error, 'KPI の取得に失敗しました')}
+          </ErrorState>
+        )}
+        {kpis.data && <KpiGrid kpis={kpis.data} />}
+      </div>
 
       {/*
         カテゴリ内訳だけカードと見出しの外に置くと、空状態の案内が背景の上に 1 行浮いて

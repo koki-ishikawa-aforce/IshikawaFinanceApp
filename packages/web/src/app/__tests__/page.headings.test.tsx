@@ -50,10 +50,14 @@ describe('ダッシュボードの見出し', () => {
     expect(classNames).not.toContain(ui.pageTitle)
   })
 
-  it('カテゴリ内訳のセクション見出しが h2 として扱われる', () => {
+  it('KPI とカテゴリ内訳、それぞれのセクション見出しが h2 として扱われる', () => {
     renderDashboard()
 
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('世帯支出（カテゴリ別）')
+    const headings = screen.getAllByRole('heading', { level: 2 })
+    expect(headings.map(heading => heading.textContent)).toEqual([
+      '今月の状況',
+      '世帯支出（カテゴリ別）',
+    ])
   })
 
   it('個人モードに切り替えても h2 のまま文言だけが変わる', async () => {
@@ -62,7 +66,11 @@ describe('ダッシュボードの見出し', () => {
 
     await user.click(screen.getByRole('radio', { name: '個人' }))
 
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('個人支出（カテゴリ別）')
+    const headings = screen.getAllByRole('heading', { level: 2 })
+    expect(headings.map(heading => heading.textContent)).toEqual([
+      '今月の状況',
+      '個人支出（カテゴリ別）',
+    ])
   })
 
   it('文書順で見出しの階層を飛ばさない', () => {
