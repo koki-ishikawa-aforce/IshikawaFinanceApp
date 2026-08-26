@@ -735,10 +735,12 @@ export const SettingsProfileWireSchema = z.object({
 })
 export type SettingsProfileWire = z.infer<typeof SettingsProfileWireSchema>
 
-/** 相手（配偶者）のプロフィール。自分の呼び名の根拠にはしない(#596) */
+/**
+ * 相手（配偶者）のニックネーム。相手のロールは呼び出し側が確定済みの自分のロールから
+ * 導出する（#596）
+ */
 export const SpouseProfileWireSchema = z.object({
   profile: z.object({
-    role: z.enum(['honey', 'darling']),
     nickname: z.string().nullable(),
   }),
 })

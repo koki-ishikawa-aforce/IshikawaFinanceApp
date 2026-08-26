@@ -42,8 +42,9 @@ export function settingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
   })
 
   /**
-   * 相手（配偶者）のプロフィール（役割・ニックネーム）。残高画面・ダッシュボードが
-   * 相手の呼び名（ニックネーム、未設定ならロール名フォールバック）を出すために読む(#596)。
+   * 相手（配偶者）のニックネーム。残高画面・ダッシュボードが相手の呼び名（ニックネーム、
+   * 未設定ならロール名フォールバック）を出すために読む(#596)。相手のロールは画面側が
+   * 確定済みの自分のロールから導出できるためここでは返さない（相手の userId も返さない）。
    * 相手が未登録（AppUser 行が無い）なら nickname は null。
    */
   app.get('/spouse-profile', async c => {
@@ -51,9 +52,8 @@ export function settingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
     const allowlist = await deps.fetchAllowlist()
     const spouseUserId = resolveSpouseUserId(viewerId, allowlist)
     const spouseUser = await deps.appUserRepository.findById(spouseUserId)
-    const role = spouseUserId === allowlist.honeyLineUserId ? 'honey' : 'darling'
     return c.json({
-      profile: { role, nickname: spouseUser?.common.nickname ?? null },
+      profile: { nickname: spouseUser?.common.nickname ?? null },
     })
   })
 

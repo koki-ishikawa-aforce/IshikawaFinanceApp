@@ -298,6 +298,11 @@ export default function BalancesPage() {
                         'パートナーの貯蓄・NISA の合計は表示できませんでした',
                       )}
                     </ErrorState>
+                  ) : spouseProfileQuery.isPending ? (
+                    // ニックネーム未取得のうちはロール名で仮描画せず、取得完了後に一度で確定させる
+                    // （役割名フォールバックが正しいのは「未設定と判明した」場合であり、
+                    // 「まだ取得できていない」場合に出すと確定後に名前が差し替わる。usability 7-2）
+                    <LoadingState announce={false} />
                   ) : (
                     <SpouseSharedTotalItem
                       total={listQuery.data.spouseOtherSavingsAndNisaTotal}
