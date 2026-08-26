@@ -136,6 +136,14 @@ textarea {
    */
   --badge-accent-bg: var(--accent);
   --badge-accent-text: #3d1420;
+  /*
+   * 文字だけのボタン（.textButton、「改名」「編集」等）の文字色（#600）。
+   * だーりんは --accent（#ff7095）のまま本文サイズで使うと 2.62:1 までしか出ないため、
+   * 色味は保ったまま濃くする。--bg-gradient の最も濃い停止点に直接載っても 4.5:1 を
+   * 満たす濃さにしている（.card 越しに見える実際の背景はこれより明るく、比率はさらに
+   * 上がる）。比率は accent-text-contrast.test.ts が見張る
+   */
+  --accent-text: #8a2850;
   --shadow-color: #ff709520;
   --shadow-strong: #ff709550;
   --deco-opacity: 0.2;
@@ -183,6 +191,13 @@ textarea {
    */
   --badge-accent-bg: #2a5098;
   --badge-accent-text: #ffffff;
+  /*
+   * 文字だけのボタン（.textButton、「改名」「編集」等）の文字色（#600）。
+   * はにーは --accent（#5090d8）のまま本文サイズで使うと 3.32:1 までしか出ないため、
+   * 色味は保ったまま濃くする。--bg-gradient の最も濃い停止点に直接載っても 4.5:1 を
+   * 満たす濃さにしている（kpi-hero / badge-accent-bg の #2a5098 では届かなかった）
+   */
+  --accent-text: #1f3d78;
   --shadow-color: #5090d820;
   --shadow-strong: #5090d850;
   --deco-opacity: 0.1;
