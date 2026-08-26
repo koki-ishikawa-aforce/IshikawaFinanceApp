@@ -5,7 +5,8 @@
  * 残高一覧（fetchBalanceList）は本人のみ可視（P2-B5 / AT-404 / OQ-60 ①）。閲覧者所有の
  * active 口座だけを並べ、配偶者の口座は 1 件も返さない。配偶者については別銀行貯蓄残高と
  * NISA 積立累計の合計だけを返す（配偶者の SMBC 残高・カード未払金・銀行名・口座件数は
- * 一切返さない）。
+ * 一切返さない）。配偶者は許可リスト（`AllowlistQuery`）で解決した登録済みの相手のみで、
+ * 「閲覧者以外の持ち主」では絞らない（#595）。
  *
  * 資産合計（fetchAssetTotal）は世帯フルオープンなので閲覧者では絞らず、両者の全 active
  * 口座を読む（OQ-60 ②。口座数は一桁で全走査に問題なし）。閲覧者は「絞らないこと」を
@@ -20,12 +21,13 @@
  * データモデル上、過去時点の残高復元（historical as-of）はサポートしない
  * （過去の推移は残高変動履歴を読む BalanceTimeSeriesQuery が担う — #398）。
  */
-import { and, eq, inArray, ne, sum } from 'drizzle-orm'
+import { and, eq, inArray, sum } from 'drizzle-orm'
 import type {
   Account,
   AccountBalanceItem,
   AccountBalanceListView,
   AccountBalanceQuery,
+  Allowlist,
   AssetTotalView,
   MitsuiSumitomoUnpaid,
   Money,
@@ -41,11 +43,17 @@ import {
   SPOUSE_TOTAL_VISIBLE_ACCOUNT_KINDS,
   accountDisplayName,
   canListAccountInBalanceList,
+  resolveSpouseUserId,
   spouseVisibleAssetTotal,
 } from '@warimaru/domain'
 import type { Db } from '../client'
 import { accounts, mitsuiSumitomoUnpaids } from '../schema'
 import { parsePayload } from '../serialize'
+
+export interface PostgresAccountBalanceQueryDeps {
+  /** 配偶者の口座を「自分以外」ではなく登録済みの相手で限定するための許可リスト参照(#595) */
+  fetchAllowlist: () => Promise<Allowlist>
+}
 
 const KIND_ORDER: Record<Account['kind'], number> = {
   smbc_bank: 0,
@@ -55,9 +63,16 @@ const KIND_ORDER: Record<Account['kind'], number> = {
 }
 
 export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    private readonly deps: PostgresAccountBalanceQueryDeps,
+  ) {}
 
   async fetchBalanceList(viewerId: UserId): Promise<AccountBalanceListView> {
+    // 配偶者は許可リストから解決した登録済みの相手のみとする（「自分以外」ではない。
+    // 2人以外の持ち主の記録が万一残っても、その分は合計に混ざらない。#595）
+    const spouseUserId = resolveSpouseUserId(viewerId, await this.deps.fetchAllowlist())
+
     // 本番は 1 文 = 1 往復（neon-http）のため、本人の口座と配偶者の口座は並行に読む
     const [rows, spouseAccounts] = await Promise.all([
       this.db
@@ -65,7 +80,7 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
         .from(accounts)
         .leftJoin(mitsuiSumitomoUnpaids, eq(mitsuiSumitomoUnpaids.accountId, accounts.accountId))
         .where(and(eq(accounts.ownerUserId, viewerId), eq(accounts.isActive, true))),
-      this.fetchSpouseVisibleAccounts(viewerId),
+      this.fetchSpouseVisibleAccounts(spouseUserId),
     ])
 
     const parsed = rows
@@ -89,7 +104,7 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
     return AccountBalanceListViewSchema.parse({
       items,
       // 合計の求め方と「対象口座が無ければ null」の規約はドメイン側が持つ
-      spouseOtherSavingsAndNisaTotal: spouseVisibleAssetTotal(spouseAccounts, viewerId),
+      spouseOtherSavingsAndNisaTotal: spouseVisibleAssetTotal(spouseAccounts, spouseUserId),
     })
   }
 
@@ -97,13 +112,13 @@ export class PostgresAccountBalanceQuery implements AccountBalanceQuery {
    * 配偶者のうち、閲覧者に合計だけを見せてよい口座（P2-B5 の「合計のみ配偶者可視」）。
    * 対象の口座種別はドメインの定義を参照し、絞り込みだけを SQL で行う。
    */
-  private async fetchSpouseVisibleAccounts(viewerId: UserId): Promise<Account[]> {
+  private async fetchSpouseVisibleAccounts(spouseUserId: UserId): Promise<Account[]> {
     const rows = await this.db
       .select({ payload: accounts.payload })
       .from(accounts)
       .where(
         and(
-          ne(accounts.ownerUserId, viewerId),
+          eq(accounts.ownerUserId, spouseUserId),
           eq(accounts.isActive, true),
           inArray(accounts.kind, [...SPOUSE_TOTAL_VISIBLE_ACCOUNT_KINDS]),
         ),

@@ -38,14 +38,18 @@ export function canViewAccountDetail(account: Account, viewerId: UserId): boolea
  * 「合計 0 円」（取り崩して残高が 0 になった状態）と「その口座を持っていない」を
  * 呼び出し側が区別できるようにする。0 円で返すと、口座を持たない配偶者にも
  * 合計 0 円の行が出てしまう。
+ *
+ * 対象は「閲覧者以外」ではなく、許可リストで登録済みの配偶者ユーザーIDに一致する口座に
+ * 限定する。夫婦 2 人以外の持ち主の記録が万一残っても、合計に混ざらないようにするため
+ * （#595）。呼び出し側は `resolveSpouseUserId` で解決した ID を渡す。
  */
 export function spouseVisibleAssetTotal(
   accounts: readonly Account[],
-  viewerId: UserId,
+  spouseUserId: UserId,
 ): Money | null {
   const visible = accounts.filter(
     account =>
-      account.common.ownerUserId !== viewerId &&
+      account.common.ownerUserId === spouseUserId &&
       account.common.activeness.kind === 'active' &&
       (SPOUSE_TOTAL_VISIBLE_ACCOUNT_KINDS as readonly string[]).includes(account.kind),
   )
