@@ -151,9 +151,9 @@ PR が green になったら、PR の URL と受け入れ条件の充足状況�
    - サーバ応答を待ってから、対象画面 × 両テーマの URL(例: `http://localhost:3000/transactions?mockRole=honey`)を開き、`page.screenshot()` で PNG に保存する
    - 撮り終えたらモックサーバを停止する
 
-4. **PR 本文から参照できる形にして添付する**。GitHub の PR 本文はテキストのみで、画像は**リポジトリにコミット済みのファイルの URL 参照**でしか埋め込めない(MCP からのバイナリアップロードは不可)。次の方法で添付する:
+4. **PR 本文から参照できる形にして添付する**。GitHub の PR 本文はテキストのみで、画像は本来**リポジトリにコミット済みのファイルの URL 参照**で埋め込める。ただし**GitHub MCP(`create_pull_request` 等)経由で本文を書き込むと、保存時に本文中の URL が必ずエスケープされ、画像として描画されない**(#560。貼り方の問題ではなく書き込み経路そのものに起因するため、URL の書式を変えても回避できない)。次の方法で添付する:
    - 撮影した PNG を PR ブランチにコミットする。置き場: `docs/pr-screenshots/issue-<番号>/<screen>-<theme>.png`
-   - PR 本文からは絶対 URL `https://github.com/<owner>/<repo>/blob/<headブランチ>/docs/pr-screenshots/issue-<番号>/<screen>-<theme>.png?raw=true` で参照する(認証済みの閲覧者の画面でレンダリングされる。PR 本文中の相対パス画像はレンダリングされない)
+   - PR 本文には画像を埋め込まず、コミットしたファイル名の一覧を書く(読む人は PR の Files changed から直接開く)
    - `templates/pr-body.md` の「画面(スクリーンショット)」節のフォーマットに従って並べる。既存画面の見た目を変える変更では、可能なら変更前(`origin/main` を撮影)も併記する
 
    > これらの PNG は見た目を確認するための添付物であり、マージすると `docs/pr-screenshots/` に残る。マージ/クローズ済み PR の分は `/pr-steward` が削除 PR を作って掃除する(手動で削除してもよい。削除しても機能に影響しない)。
