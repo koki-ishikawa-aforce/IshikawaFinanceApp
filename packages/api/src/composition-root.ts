@@ -698,7 +698,9 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
       resolveViewerRole,
     }),
     monthlyReportQuery: new PostgresMonthlyReportQuery(db, { resolveViewerRole }),
-    accountBalanceQuery: new PostgresAccountBalanceQuery(db),
+    accountBalanceQuery: new PostgresAccountBalanceQuery(db, {
+      fetchAllowlist: () => allowlistQuery.fetch(),
+    }),
     accountDetailQuery: new PostgresAccountDetailQuery(db),
     balanceTimeSeriesQuery: new PostgresBalanceTimeSeriesQuery(db),
     accountRepository: new PostgresAccountRepository(db),

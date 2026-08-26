@@ -11,6 +11,7 @@ import { getCurrentMonth } from '@/lib/month'
 import { useDashboardKpis } from '@/hooks/useDashboardKpis'
 import { useCategoryBreakdown } from '@/hooks/useCategoryBreakdown'
 import { useSpouseProfile } from '@/hooks/useSpouseProfile'
+import { useViewerRole } from '@/hooks/useViewerRole'
 import { describeRequestFailure } from '@/lib/api-client'
 import { useTheme } from '@/theme/ThemeProvider'
 import { getCategoryColors } from '@/theme/tokens'
@@ -27,6 +28,9 @@ export default function DashboardPage() {
   const kpis = useDashboardKpis(month, mode)
   const breakdown = useCategoryBreakdown(month, mode)
   const spouseProfile = useSpouseProfile()
+  // 相手の個人費行の名前は「確定した役割」に限る。テーマ（useTheme）は取得前 darling に
+  // 倒れるため、名前の根拠には使わない（usability.md 7-2。balances/page.tsx と同じ理由）
+  const viewerRoleQuery = useViewerRole()
 
   const categoryColors = getCategoryColors(theme)
 
@@ -85,13 +89,40 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {mode === 'household' && kpis.data && (
-        <SpousePersonalNote
-          amount={kpis.data.spousePersonalTotal}
-          theme={theme}
-          partnerNickname={spouseProfile.data?.profile.nickname ?? null}
-        />
-      )}
+      {mode === 'household' &&
+        kpis.data &&
+        (viewerRoleQuery.isPending ? (
+          // 役割が確定するまでロール名で仮描画しない(usability 7-2)。通常の読み込み中は
+          // まだ失敗していないので、次のエラー分岐とは分けて先に判定する
+          <div className={styles.spouseNoteFallback}>
+            <LoadingState />
+          </div>
+        ) : viewerRoleQuery.data === undefined ? (
+          // 誰の金額かを言えないまま出すと相手を取り違えるため、金額ごと出さない(usability 7-2)
+          <div className={styles.spouseNoteFallback}>
+            <ErrorState
+              onRetry={() => void viewerRoleQuery.refetch()}
+              isRetrying={viewerRoleQuery.isFetching}
+            >
+              {describeRequestFailure(
+                viewerRoleQuery.error,
+                '相手の個人費の合計は表示できませんでした',
+              )}
+            </ErrorState>
+          </div>
+        ) : spouseProfile.isPending ? (
+          // ニックネーム未取得のうちはロール名で仮描画せず、取得完了後に一度で確定させる
+          // （balances/page.tsx の SpouseSharedTotalItem と同じ理由。usability 7-2）
+          <div className={styles.spouseNoteFallback}>
+            <LoadingState />
+          </div>
+        ) : (
+          <SpousePersonalNote
+            amount={kpis.data.spousePersonalTotal}
+            theme={viewerRoleQuery.data.role}
+            partnerNickname={spouseProfile.data?.profile.nickname ?? null}
+          />
+        ))}
     </main>
   )
 }
