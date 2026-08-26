@@ -35,6 +35,7 @@ import {
   retroactiveApplyResultFixture,
   retroactiveCandidatesFixture,
   settingsProfileFixture,
+  spouseProfileFixture,
   transactionListFixture,
   unclassifiedSummaryFixture,
 } from './fixtures'
@@ -117,6 +118,8 @@ export function resolveMock(method: string, path: string): unknown {
         return monthlyReportFixture(parseMonth(params))
       case '/api/settings/profile':
         return settingsProfileFixture(getMockRole())
+      case '/api/settings/spouse-profile':
+        return spouseProfileFixture(getMockRole())
       case '/api/accounts':
         return ownAccountListFixture(getMockRole(), getMockScenario())
       case '/api/monthly-limits':

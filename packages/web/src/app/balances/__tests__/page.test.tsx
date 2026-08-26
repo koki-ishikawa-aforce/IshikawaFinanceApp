@@ -117,12 +117,14 @@ describe('残高画面の口座残高カード', () => {
 })
 
 /**
- * 残高一覧・鮮度・閲覧者の役割の応答をまとめて差し替える。
- * 役割は相手の呼称の根拠になるため、既定では解決済みにする（未解決・失敗は個別に指定）。
+ * 残高一覧・鮮度・閲覧者の役割・相手のニックネームの応答をまとめて差し替える。
+ * 役割・ニックネームは相手の呼称の根拠になるため、既定では解決済みにする
+ * （未解決・失敗は個別に指定）。
  */
 function mockBalanceList(
   list: unknown,
   role: 'honey' | 'darling' | 'pending' | 'error' = 'darling',
+  nickname: string | null | 'pending' = null,
 ): void {
   apiFetch.mockImplementation((path: string) => {
     if (path === '/api/balances') return Promise.resolve(list)
@@ -131,6 +133,10 @@ function mockBalanceList(
       if (role === 'pending') return new Promise(() => {})
       if (role === 'error') return Promise.reject(new Error('boom'))
       return Promise.resolve({ viewerId: 'U_TEST', role })
+    }
+    if (path === '/api/settings/spouse-profile') {
+      if (nickname === 'pending') return new Promise(() => {})
+      return Promise.resolve({ profile: { nickname } })
     }
     return new Promise(() => {})
   })
@@ -168,6 +174,24 @@ describe('相手の貯蓄・NISA の合計行', () => {
     renderPage()
 
     expect(await screen.findByText('Darlingの貯蓄・NISA（合計のみ）')).toBeInTheDocument()
+  })
+
+  it('相手のニックネームが取れていれば、ロール名の代わりにニックネームで表示する(#596)', async () => {
+    mockBalanceList({ items: [], spouseOtherSavingsAndNisaTotal: 260000 }, 'darling', 'ななみ')
+    renderPage()
+
+    expect(await screen.findByText('ななみの貯蓄・NISA（合計のみ）')).toBeInTheDocument()
+    expect(screen.queryByText('Honeyの貯蓄・NISA（合計のみ）')).not.toBeInTheDocument()
+  })
+
+  it('相手のニックネームが確定するまで相手の合計行を描かない(#596)', async () => {
+    // ロール名で仮描画してからニックネームに差し替えると、確定前の既定値を
+    // 出す既存のロール確定ゲートと同じ理由で不適切（usability 7-2）
+    mockBalanceList({ items: [], spouseOtherSavingsAndNisaTotal: 260000 }, 'darling', 'pending')
+    renderPage()
+
+    expect(await within(balanceCard()).findByText('読み込み中...')).toBeInTheDocument()
+    expect(screen.queryByText(/貯蓄・NISA（合計のみ）/)).toBeNull()
   })
 
   it('閲覧者の役割が確定するまで相手の合計行を描かない', async () => {

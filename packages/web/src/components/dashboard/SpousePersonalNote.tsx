@@ -13,13 +13,16 @@ const LONG_PRESS_MS = 500
 interface SpousePersonalNoteProps {
   amount: number
   theme: Theme
+  /** 相手のニックネーム。未設定・未取得なら null（ロール名で表示） */
+  partnerNickname: string | null
 }
 
-export function SpousePersonalNote({ amount, theme }: SpousePersonalNoteProps) {
+export function SpousePersonalNote({ amount, theme, partnerNickname }: SpousePersonalNoteProps) {
   const [showHint, setShowHint] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const partner = partnerOf(theme)
+  const partnerName = partnerNickname ?? partner.name
 
   const handleTouchStart = useCallback(() => {
     timerRef.current = setTimeout(() => setShowHint(true), LONG_PRESS_MS)
@@ -43,13 +46,13 @@ export function SpousePersonalNote({ amount, theme }: SpousePersonalNoteProps) {
       onTouchCancel={handleTouchEnd}
       onContextMenu={handleContextMenu}
       role="note"
-      aria-label={`${partner.name}の個人費 合計 ${formatMoney(amount)}`}
+      aria-label={`${partnerName}の個人費 合計 ${formatMoney(amount)}`}
     >
       <span className={styles.label}>
         <span className={styles.roleMark}>
           <RoleIcon role={partner.role} className={ui.iconSm} />
         </span>
-        {partner.name}の個人費（合計のみ）
+        {partnerName}の個人費（合計のみ）
       </span>
       <span className={styles.amount}>{formatMoney(amount)}</span>
       {showHint && (

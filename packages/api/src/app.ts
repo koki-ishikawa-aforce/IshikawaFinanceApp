@@ -122,6 +122,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     settingsRoutes({
       appUserRepository: deps.appUserRepository,
       resolveViewerRole: deps.resolveViewerRole,
+      fetchAllowlist: () => deps.allowlistQuery.fetch(),
       eventBus: deps.eventBus,
     }),
   )
