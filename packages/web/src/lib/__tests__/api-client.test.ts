@@ -83,10 +83,10 @@ describe('apiFetch', () => {
     expect(init.headers).toEqual({ 'X-User-Id': 'U_DARLING_DEV' })
   })
 
-  it('非 2xx なら ApiError を投げる', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(404, { message: 'not found' }))
+  it('非 2xx なら ApiError を投げる（error フィールドがメッセージまで伝わる）', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(404, { error: 'not found' }))
 
-    await expect(api.apiFetch('/api/test', z.object({}))).rejects.toThrowError(api.ApiError)
+    await expect(api.apiFetch('/api/test', z.object({}))).rejects.toThrow('not found')
   })
 
   it('スキーマ不一致なら ZodError を投げる', async () => {
@@ -146,7 +146,7 @@ describe('apiMutate', () => {
   })
 
   it('非 2xx なら ApiError を投げる', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(409, { message: 'conflict' }))
+    fetchMock.mockResolvedValue(jsonResponse(409, { error: 'conflict' }))
 
     await expect(
       api.apiMutate('/api/test', { method: 'PUT', body: {} }, z.object({})),
@@ -155,10 +155,31 @@ describe('apiMutate', () => {
 })
 
 describe('ApiError', () => {
-  it('JSON ボディの message をエラーメッセージに使う', () => {
-    const error = new api.ApiError(400, JSON.stringify({ message: '入力が不正です' }))
+  it('JSON ボディの error をエラーメッセージに使う（サーバーの errorHandler が返す形）', () => {
+    const error = new api.ApiError(400, JSON.stringify({ error: '入力が不正です' }))
     expect(error.message).toBe('入力が不正です')
     expect(error.status).toBe(400)
+  })
+
+  it('error が無ければ message をエラーメッセージに使う', () => {
+    const error = new api.ApiError(400, JSON.stringify({ message: '入力が不正です' }))
+    expect(error.message).toBe('入力が不正です')
+  })
+
+  it('error と message が両方あれば error を優先する', () => {
+    const error = new api.ApiError(
+      400,
+      JSON.stringify({ error: 'サーバー起因のエラー', message: '無視されるべき文言' }),
+    )
+    expect(error.message).toBe('サーバー起因のエラー')
+  })
+
+  it('error が文字列でなければ message にフォールバックする', () => {
+    const error = new api.ApiError(
+      400,
+      JSON.stringify({ error: 123, message: 'フォールバック文言' }),
+    )
+    expect(error.message).toBe('フォールバック文言')
   })
 
   it('JSON でないボディはそのままメッセージに使う', () => {
@@ -169,6 +190,18 @@ describe('ApiError', () => {
   it('空ボディならステータス入りの既定メッセージを使う', () => {
     const error = new api.ApiError(502, '')
     expect(error.message).toBe('API error 502')
+  })
+
+  it('error / message のどちらも無ければボディ全体を使う', () => {
+    const body = JSON.stringify({ details: 'not found' })
+    const error = new api.ApiError(404, body)
+    expect(error.message).toBe(body)
+  })
+
+  it('error フィールドが文字列でなければボディ全体を使う', () => {
+    const body = JSON.stringify({ error: 123 })
+    const error = new api.ApiError(400, body)
+    expect(error.message).toBe(body)
   })
 
   it('message フィールドが文字列でなければボディ全体を使う', () => {
@@ -330,7 +363,7 @@ describe('通信できないときの扱い', () => {
   })
 
   it('サーバーが返したエラーは NetworkError に変えない', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(500, { message: 'server down' }))
+    fetchMock.mockResolvedValue(jsonResponse(500, { error: 'server down' }))
 
     const error = await api.apiFetch('/api/test', z.object({})).catch((e: unknown) => e)
 

@@ -140,12 +140,21 @@ export async function apiFetch<T>(
   return schema.parse(json)
 }
 
+/**
+ * サーバー(`packages/api` の errorHandler)が返すエラー応答は `{ error: "..." }` の形。
+ * `message` は現在どの応答も使わないが、将来の応答形式や外部由来のボディにも備えて残す
+ * (この備え自体は `__tests__/api-client.test.ts` の「error が無ければ message」ケースで検証する)。
+ */
 function extractMessage(body: string): string | null {
   try {
     const parsed: unknown = JSON.parse(body)
-    if (parsed !== null && typeof parsed === 'object' && 'message' in parsed) {
-      const message = (parsed as { message: unknown }).message
-      if (typeof message === 'string') return message
+    if (parsed !== null && typeof parsed === 'object') {
+      for (const key of ['error', 'message'] as const) {
+        if (key in parsed) {
+          const value = (parsed as Record<string, unknown>)[key]
+          if (typeof value === 'string') return value
+        }
+      }
     }
   } catch {
     // JSON でないボディはそのまま扱う
