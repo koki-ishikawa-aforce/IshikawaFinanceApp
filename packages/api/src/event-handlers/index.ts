@@ -13,6 +13,7 @@ import type { EventBus } from '@warimaru/domain'
 import type { AppDeps } from '../composition-root.js'
 import { createNotificationDeliveryService } from '../notification/delivery-service.js'
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
+import { registerHouseholdNotificationActivationEventHandlers } from './household-notification-activation.js'
 import { registerMasterDataRemapEventHandlers } from './master-data-remap.js'
 import { registerMasterDataDeletionCoordinator } from './master-data-deletion-coordinator.js'
 import { registerMonthlyReportCsvConfirmationEventHandlers } from './monthly-report-csv-confirmation.js'
@@ -94,6 +95,10 @@ export function registerEventHandlers(deps: AppDeps): void {
   // 通知配信 (#36): AppDeps の Repository / Gateway から配信サービスを組み立てて購読する
   const notificationDeliveryService = createNotificationDeliveryService(deps)
   registerNotificationDeliveryEventHandlers(deps.eventBus, { notificationDeliveryService })
+  // テストメッセージの配信確定 → 世帯通知有効化記録を書く（#590）
+  registerHouseholdNotificationActivationEventHandlers(deps.eventBus, {
+    householdNotificationActivationRepository: deps.householdNotificationActivationRepository,
+  })
   // 月次レポートCSV確定 → 世帯サマリ / 個人サマリの LINE 配信 (#389)
   registerMonthlyReportDeliveryEventHandlers(deps.eventBus, {
     notificationDeliveryService,

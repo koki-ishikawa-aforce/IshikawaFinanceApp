@@ -5,7 +5,8 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import {
-  NotificationActivatedSchema,
+  DeliveryContentSchema,
+  DeliveryTargetSchema,
   activateNotification,
   completePhase2,
   completeSectionA,
@@ -24,7 +25,7 @@ import {
   type UserId,
   type UserRole,
 } from '@warimaru/domain'
-import { domainEventBase } from '../src/event-handlers/event-base.js'
+import { createNotificationDeliveryService } from '../src/notification/delivery-service.js'
 import { fireOperationStartIfReady, tryFireOperationStart } from '../src/operation-start.js'
 import type { TestApp } from './helpers/test-app.js'
 import { createTestApp, SPOUSE_ID, VIEWER_ID } from './helpers/test-app.js'
@@ -239,46 +240,55 @@ describe('fireOperationStartIfReady', () => {
     expect(log.notificationActivated[0]?.activatedAt).toEqual(AT)
   })
 
-  it('マイグレーション直後の既存世帯は再発行されるが、テストメッセージは二重に届かない（#447）', async () => {
-    // 世帯記録テーブルは空で新設され backfill を持たない（per-user から埋めると、まさに
-    // #447 のバグ状態＝有効化済み・未送信の世帯が「送信済み」で凍結されるため）。
-    // 既に受け取り済みの世帯は最初の起点で 1 度だけ再発行され、配信側の冪等性キーで止まる
+  it('配信ログだけが既に確定している世帯は、テストメッセージを二重に送らず記録が追いつく（#590）', async () => {
+    // マイグレーション直後や #590 以前からの移行など、「LINE への配信は既に確定しているが
+    // 世帯通知有効化記録がまだ無い」状態を、イベントを介さず配信ログだけ直接作って再現する
+    // （イベント経由だと、その publish 自体が本ハンドラーチェーンを通って記録まで書いてしまう）
     const t = createTestApp()
-    const log = subscribeEvents(t)
     const room = recordSharedTalkRoomJoined(NOT_JOINED_SHARED_TALK_ROOM, TALK_ROOM_ID as never, AT)
     await joinTalkRoom(t)
     await seedUsers(t, [
       activateNotification(startOperation(honeyReady(), AT), room, AT),
       activateNotification(startOperation(darlingReady(), AT), room, AT),
     ])
-    // デプロイ前に配信済みだった 1 通を再現する
-    await t.deps.eventBus.publish(
-      NotificationActivatedSchema.parse({
-        ...domainEventBase(AT),
-        type: 'NotificationActivated',
-        talkRoomId: TALK_ROOM_ID,
-        activatedAt: AT,
-      }),
-    )
-    const deliveredKey = `test_message:${TALK_ROOM_ID}:${AT.toISOString()}`
+    const idempotencyKey = `test_message:${TALK_ROOM_ID}:${AT.toISOString()}`
+    await createNotificationDeliveryService(t.deps).deliver({
+      target: DeliveryTargetSchema.parse({ kind: 'shared_talk_room', talkRoomId: TALK_ROOM_ID }),
+      content: DeliveryContentSchema.parse({ kind: 'plain_text', textBody: '過去の配信の再現' }),
+      purpose: 'test_message',
+      idempotencyKey,
+    })
     expect(
-      await t.deps.lineDeliveryLogRepository.findAllByIdempotencyKey(deliveredKey),
+      await t.deps.lineDeliveryLogRepository.findAllByIdempotencyKey(idempotencyKey),
     ).toHaveLength(1)
+    expect(await t.deps.householdNotificationActivationRepository.find()).toEqual({
+      kind: 'not_activated',
+    })
 
+    const log = subscribeEvents(t)
     const outcome = await fireOperationStartIfReady(t.deps, {
       trigger: 'spouse_completion_check',
       at: new Date('2026-03-02T09:00:00Z'),
     })
     expect(outcome).toEqual({ operation: 'already_started', notification: 'activated' })
-    // 再発行はされるが、配信ログは 1 件のまま（テストメッセージは 2 通目が届かない）
-    expect(log.notificationActivated).toHaveLength(2)
+    expect(log.notificationActivated).toHaveLength(1)
+    // 配信ログは増えない（実際の LINE 送信は再び起きない。冪等性キーで止まる）
     expect(
-      await t.deps.lineDeliveryLogRepository.findAllByIdempotencyKey(deliveredKey),
+      await t.deps.lineDeliveryLogRepository.findAllByIdempotencyKey(idempotencyKey),
     ).toHaveLength(1)
+    // 冪等スキップでも配信確定として TestMessageSent は発行される（#590）
     expect(log.testMessageSent).toHaveLength(1)
+    // これで初めて世帯通知有効化記録が書かれる
+    expect(await t.deps.householdNotificationActivationRepository.find()).toEqual({
+      kind: 'activated',
+      activatedAt: AT,
+    })
   })
 
-  it('記録の保存に失敗しても、次の発火でテストメッセージが二重に届かない（#447）', async () => {
+  it('世帯通知有効化記録の保存に失敗しても、呼出し元には伝播せず次の発火で回復する（#590）', async () => {
+    // 記録の保存は配信確定を検知した購読側（TestMessageSent の safeSubscribe）で行うため、
+    // 失敗してもログに残るだけで fireOperationStartIfReady 自体は失敗しない
+    // （通知配信の送信失敗が呼出し元に伝播しないのと同じ扱い）
     const t = createTestApp()
     await seedUsers(t, [honeyReady(), darlingReady()])
     await joinTalkRoom(t)
@@ -289,14 +299,23 @@ describe('fireOperationStartIfReady', () => {
     t.deps.householdNotificationActivationRepository.save = (): Promise<void> =>
       Promise.reject(new Error('save failed'))
     try {
-      await expect(
-        fireOperationStartIfReady(t.deps, { trigger: 'phase2_complete', at: AT }),
-      ).rejects.toThrow('save failed')
-      expect(logged).toHaveBeenCalledWith(expect.stringContaining('イベントは発行済み'))
+      const outcome = await fireOperationStartIfReady(t.deps, {
+        trigger: 'phase2_complete',
+        at: AT,
+      })
+      expect(outcome).toEqual({ operation: 'started', notification: 'activated' })
+      expect(logged).toHaveBeenCalledWith(
+        expect.stringContaining('TestMessageSent'),
+        expect.anything(),
+      )
     } finally {
       t.deps.householdNotificationActivationRepository.save = save
       logged.mockRestore()
     }
+    // 実際の LINE 送信までは完了しているが、記録はまだ無い
+    expect(await t.deps.householdNotificationActivationRepository.find()).toEqual({
+      kind: 'not_activated',
+    })
 
     const log = subscribeEvents(t)
     await fireOperationStartIfReady(t.deps, {
@@ -304,13 +323,18 @@ describe('fireOperationStartIfReady', () => {
       at: new Date('2026-03-02T09:00:00Z'),
     })
     expect(log.notificationActivated).toHaveLength(1)
-    // 冪等性キーは変わらないため 2 通目は配信されない
-    expect(log.testMessageSent).toHaveLength(0)
+    // 冪等性キーは変わらないため実際の LINE 送信は増えない
     expect(
       await t.deps.lineDeliveryLogRepository.findAllByIdempotencyKey(
         `test_message:${TALK_ROOM_ID}:${AT.toISOString()}`,
       ),
     ).toHaveLength(1)
+    // 冪等スキップでも配信確定として TestMessageSent は再発行され、今度は記録が書かれる
+    expect(log.testMessageSent).toHaveLength(1)
+    expect(await t.deps.householdNotificationActivationRepository.find()).toEqual({
+      kind: 'activated',
+      activatedAt: AT,
+    })
   })
 
   it('発行に成功した世帯は、per-user の状態に関わらず再発行しない（#447）', async () => {

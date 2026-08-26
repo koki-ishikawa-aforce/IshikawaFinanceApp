@@ -7,6 +7,14 @@
  *
  * 冪等性: 配信サービスの冪等性キー（トークルーム × 有効化日時）で担保する。
  * at-least-once なイベント再発行では同一キーの配信ログが既に存在するためスキップされる。
+ *
+ * TestMessageSent は `sent`（今回実際に送った）だけでなく `already_delivered`（冪等性キーが
+ * 既に確定済みでスキップした）でも発行する。オンボーディング・認証はこのイベントを「配信確定」の
+ * 唯一の合図として世帯通知有効化記録を書く（#590）。`NotificationActivated` は前提が揃うたびに
+ * 再発行されうる（08f §2）が、その再発行のたびに配信確定を伝え直さないと、記録が書かれる前に
+ * ちょうど再発行が止まった回だけ記録が永久に欠けたままになる。実際の LINE 送信は冪等性キーで
+ * 1 回しか起きない（`already_delivered` では `deliver` は送信しない）ため、再発行はイベントの
+ * 発行回数を増やすだけで実害はない。
  */
 import type { EventBus, NotificationActivated } from '@warimaru/domain'
 import {
@@ -41,13 +49,14 @@ export function registerNotificationDeliveryEventHandlers(
       purpose: 'test_message',
       idempotencyKey: `test_message:${event.talkRoomId}:${event.activatedAt.toISOString()}`,
     })
-    if (outcome.kind === 'sent') {
+    if (outcome.kind === 'sent' || outcome.kind === 'already_delivered') {
       await eventBus.publish(
         TestMessageSentSchema.parse({
           ...domainEventBase(),
           type: 'TestMessageSent',
-          deliveryMessageId: outcome.message.common.deliveryMessageId,
+          deliveryMessageId: outcome.log.deliveryMessageId,
           talkRoomId: event.talkRoomId,
+          activatedAt: event.activatedAt,
         }),
       )
     }
