@@ -109,15 +109,15 @@ export function RetroactivePrompt({ merchantName, onDone }: RetroactivePromptPro
   if (candidatesQuery.error) {
     return (
       <>
-        <ErrorState>
+        <ErrorState
+          onRetry={() => void candidatesQuery.refetch()}
+          isRetrying={candidatesQuery.isFetching}
+        >
           {describeRequestFailure(
             candidatesQuery.error,
             '過去の未分類取引を確認できませんでした。この取引の分類は保存済みです。',
           )}
         </ErrorState>
-        <button className={ui.buttonGhost} onClick={() => void candidatesQuery.refetch()}>
-          もう一度確認する
-        </button>
         <button className={ui.button} onClick={onDone}>
           閉じる
         </button>
