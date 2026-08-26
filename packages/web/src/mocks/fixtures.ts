@@ -617,6 +617,17 @@ export function settingsProfileFixture(role: UserRole): unknown {
   }
 }
 
+/** GET /api/settings/spouse-profile（閲覧者から見た相手のロール・ニックネーム） */
+export function spouseProfileFixture(viewerRole: UserRole): unknown {
+  const spouseRole: UserRole = viewerRole === 'honey' ? 'darling' : 'honey'
+  return {
+    profile: {
+      role: spouseRole,
+      nickname: spouseRole === 'honey' ? 'はにー' : 'だーりん',
+    },
+  }
+}
+
 /**
  * GET /api/accounts
  *

@@ -170,6 +170,24 @@ describe('相手の貯蓄・NISA の合計行', () => {
     expect(await screen.findByText('Darlingの貯蓄・NISA（合計のみ）')).toBeInTheDocument()
   })
 
+  it('相手のニックネームが取れていれば、ロール名の代わりにニックネームで表示する(#596)', async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path === '/api/balances') {
+        return Promise.resolve({ items: [], spouseOtherSavingsAndNisaTotal: 260000 })
+      }
+      if (path.startsWith('/api/dashboard/balance-freshness')) return Promise.resolve({ items: [] })
+      if (path === '/api/me') return Promise.resolve({ viewerId: 'U_TEST', role: 'darling' })
+      if (path === '/api/settings/spouse-profile') {
+        return Promise.resolve({ profile: { role: 'honey', nickname: 'ななみ' } })
+      }
+      return new Promise(() => {})
+    })
+    renderPage()
+
+    expect(await screen.findByText('ななみの貯蓄・NISA（合計のみ）')).toBeInTheDocument()
+    expect(screen.queryByText('Honeyの貯蓄・NISA（合計のみ）')).not.toBeInTheDocument()
+  })
+
   it('閲覧者の役割が確定するまで相手の合計行を描かない', async () => {
     // 既定値（darling）で描くと、honey の利用者に「Honeyの…」と自分の名前が付いた
     // 相手の金額が一瞬出てから差し替わる（usability.md 7-2）
