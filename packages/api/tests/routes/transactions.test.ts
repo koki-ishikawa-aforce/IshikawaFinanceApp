@@ -150,6 +150,16 @@ describe('POST /api/transactions', () => {
     })
     expect(res.status).toBe(400)
   })
+
+  it('不正な JSON ボディは 400（500 に落ちない、#565）', async () => {
+    const t = createTestApp()
+    const res = await t.app.request('/api/transactions', {
+      method: 'POST',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
+    })
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('PUT /api/transactions/:id', () => {

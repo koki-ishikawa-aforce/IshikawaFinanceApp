@@ -446,6 +446,18 @@ describe('POST /api/bank-deposits/:id/purpose', () => {
       expect(res.status).toBe(404)
     })
 
+    it('不正な JSON ボディは 400（500 に落ちない、#565）', async () => {
+      const res = await t.app.request(
+        `/api/bank-deposits/${BankDepositIdSchema.parse(newUlid())}/purpose`,
+        {
+          method: 'POST',
+          headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+          body: '{ not json',
+        },
+      )
+      expect(res.status).toBe(400)
+    })
+
     it('用途に「用途不明」は指定できない（確定にならない）', async () => {
       const deposit = await seedDeposit(t, { userId: VIEWER_ID, ...AMBIGUOUS })
 

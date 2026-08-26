@@ -27,6 +27,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { readJsonObjectBody } from '../read-json-object-body.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
 
@@ -63,7 +64,7 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
   })
 
   app.post('/', async c => {
-    const body = BodySchema.parse(await c.req.json())
+    const body = BodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     assertExpenseTypeNameAvailable(
       await deps.expenseTypeMasterRepository.findAllVisibleToUser(viewerId),
@@ -84,7 +85,7 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
 
   app.put('/:id', async c => {
     const id = ExpenseTypeIdSchema.parse(c.req.param('id'))
-    const body = BodySchema.parse(await c.req.json())
+    const body = BodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const expenseType = await deps.expenseTypeMasterRepository.findById(id)
     if (expenseType === null) throw new NotFoundError('ExpenseTypeMaster', id)
@@ -106,7 +107,7 @@ export function expenseTypesRoutes(deps: ExpenseTypesRoutesDeps): Hono<AppEnv> {
    */
   app.post('/:id/deletion-requests', async c => {
     const id = ExpenseTypeIdSchema.parse(c.req.param('id'))
-    const body = DeletionRequestBodySchema.parse(await c.req.json())
+    const body = DeletionRequestBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
 
     const target = await deps.expenseTypeMasterRepository.findById(id)

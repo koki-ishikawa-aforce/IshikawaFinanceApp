@@ -30,6 +30,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { readJsonObjectBody } from '../read-json-object-body.js'
 
 const BodySchema = z.object({ name: z.string().min(1) })
 
@@ -73,7 +74,7 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
   })
 
   app.post('/', async c => {
-    const body = BodySchema.parse(await c.req.json())
+    const body = BodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     assertCategoryNameAvailable(
       await deps.categoryMasterRepository.findAllVisibleToUser(viewerId),
@@ -94,7 +95,7 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
 
   app.put('/:id', async c => {
     const id = CategoryIdSchema.parse(c.req.param('id'))
-    const body = BodySchema.parse(await c.req.json())
+    const body = BodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const category = await deps.categoryMasterRepository.findById(id)
     if (category === null) throw new NotFoundError('CategoryMaster', id)
@@ -115,7 +116,7 @@ export function categoriesRoutes(deps: CategoriesRoutesDeps): Hono<AppEnv> {
    */
   app.post('/:id/deletion-requests', async c => {
     const id = CategoryIdSchema.parse(c.req.param('id'))
-    const body = DeletionRequestBodySchema.parse(await c.req.json())
+    const body = DeletionRequestBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
 
     const target = await deps.categoryMasterRepository.findById(id)

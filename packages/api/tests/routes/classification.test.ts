@@ -426,6 +426,16 @@ describe('POST /api/classification/retroactive-candidates/apply', () => {
     expect(res.status).toBe(200)
     expect(events).toHaveLength(0)
   })
+
+  it('不正な JSON ボディは 400（500 に落ちない、#565）', async () => {
+    const t = createTestApp()
+    const res = await t.app.request('/api/classification/retroactive-candidates/apply', {
+      method: 'POST',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
+    })
+    expect(res.status).toBe(400)
+  })
 })
 
 interface MerchantRulesResponse {

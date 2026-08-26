@@ -20,6 +20,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { readJsonObjectBody } from '../read-json-object-body.js'
 
 const ListParamsSchema = z.object({
   month: YearMonthSchema.optional(),
@@ -89,7 +90,7 @@ export function monthlyLimitsRoutes(
   })
 
   app.put('/', async c => {
-    const body = PutBodySchema.parse(await c.req.json())
+    const body = PutBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const now = new Date()
 

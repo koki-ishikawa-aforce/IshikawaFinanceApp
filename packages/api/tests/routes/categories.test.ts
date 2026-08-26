@@ -60,6 +60,16 @@ describe('POST /api/categories', () => {
     expect(res.status).toBe(400)
   })
 
+  it('不正な JSON ボディは 400（500 に落ちない、#565）', async () => {
+    const t = createTestApp()
+    const res = await t.app.request('/api/categories', {
+      method: 'POST',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
+    })
+    expect(res.status).toBe(400)
+  })
+
   it('世帯共有（規定）と同名の作成は 409（名前重複エラー）', async () => {
     const t = createTestApp()
     await seedDefaultCategory(t)

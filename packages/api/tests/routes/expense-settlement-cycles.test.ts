@@ -127,4 +127,14 @@ describe('POST /api/expense-settlement/cycles（手動開始）', () => {
     })
     expect(res.status).toBe(401)
   })
+
+  it('不正な JSON ボディは 400（500 に落ちない、#565）', async () => {
+    const t = createTestApp()
+    const res = await t.app.request('/api/expense-settlement/cycles', {
+      method: 'POST',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
+    })
+    expect(res.status).toBe(400)
+  })
 })

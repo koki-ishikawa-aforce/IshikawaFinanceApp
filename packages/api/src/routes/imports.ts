@@ -46,7 +46,7 @@ import {
   type DailyMailImportDeps,
 } from '../daily-mail-import.js'
 import { parseStatementCsv } from '../parse-statement-csv.js'
-import { readJsonObjectBody } from '../read-json-object-body.js'
+import { readFormBody, readJsonObjectBody } from '../read-json-object-body.js'
 
 const StatusParamsSchema = z.object({
   month: YearMonthSchema,
@@ -124,7 +124,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
 
   /** CSV アップロード・取込開始（multipart/form-data: file, targetMonth, fileKind） */
   app.post('/csv', async c => {
-    const formData = await c.req.parseBody()
+    const formData = await readFormBody(() => c.req.parseBody())
     const fields = UploadFieldsSchema.parse({
       targetMonth: formData['targetMonth'],
       fileKind: formData['fileKind'] === undefined ? undefined : formData['fileKind'],
@@ -227,7 +227,7 @@ export function importsRoutes(deps: ImportsRoutesDeps): Hono<AppEnv> {
 
   /** PDF アップロード・変換・取込開始（multipart/form-data: file, targetMonth, fileKind） */
   app.post('/pdf', async c => {
-    const formData = await c.req.parseBody()
+    const formData = await readFormBody(() => c.req.parseBody())
     const fields = UploadFieldsSchema.parse({
       targetMonth: formData['targetMonth'],
       fileKind: formData['fileKind'] === undefined ? undefined : formData['fileKind'],

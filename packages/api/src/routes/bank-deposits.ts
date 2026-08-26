@@ -23,6 +23,7 @@ import {
   applyDeterminedBankDepositPurpose,
   type BankDepositPurposeServiceDeps,
 } from '../balance/bank-deposit-purpose-service.js'
+import { readJsonObjectBody } from '../read-json-object-body.js'
 
 const ConfirmPurposeBodySchema = z.object({
   purpose: DeterminedDepositPurposeSchema,
@@ -103,7 +104,7 @@ export function bankDepositsRoutes(deps: BankDepositsRoutesDeps): Hono<AppEnv> {
   /** 用途を手動で確定する（本人のみ・用途不明の入金のみ） */
   app.post('/:bankDepositId/purpose', async c => {
     const bankDepositId = BankDepositIdSchema.parse(c.req.param('bankDepositId'))
-    const body = ConfirmPurposeBodySchema.parse(await c.req.json())
+    const body = ConfirmPurposeBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const now = new Date()
 
