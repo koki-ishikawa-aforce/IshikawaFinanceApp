@@ -107,23 +107,38 @@ export function deriveLearnedRefs(
 }
 
 /**
- * 学習済み 3 軸から適用可能な分類を導出する。未学習軸が残るルールは適用不可（T-2）。
- * この不変条件を domain に一元化し、api / adapters 層で再実装しない（CLAUDE.md）。
+ * 学習済み 3 軸から適用可能な分類を導出できるか判定する（T-2）。
  *  - カテゴリ・費用区分のいずれかが未学習 → 適用不可
  *  - 経費(会社) かつ経費種別が未学習 → 適用不可
+ *
+ * `applicableClassificationFromRefs` の可否判定と、次回以降の自動分類が効くかどうかを
+ * 画面へ伝える判定（#582）の両方で使う共通ロジック。
+ */
+export function isRefsApplicable(refs: LearningRefs): refs is LearningRefs & {
+  categoryRef: Extract<CategoryLearningRef, { kind: 'learned' }>
+  expenseClassRef: Extract<ExpenseClassLearningRef, { kind: 'learned' }>
+} {
+  if (refs.categoryRef.kind !== 'learned' || refs.expenseClassRef.kind !== 'learned') return false
+  if (refs.expenseClassRef.expenseClass === 'business_expense') {
+    return refs.expenseTypeRef.kind === 'learned'
+  }
+  return true
+}
+
+/**
+ * 学習済み 3 軸から適用可能な分類を導出する。未学習軸が残るルールは適用不可（T-2）。
+ * 可否判定は `isRefsApplicable` に一元化し、ここでは委譲するだけにする
+ * （判定ロジックが2箇所に分かれて食い違うのを防ぐ）。
  * `label` は不変条件違反メッセージ用の識別子（加盟店名）。
  */
 export function applicableClassificationFromRefs(
   refs: LearningRefs,
   label: string,
 ): LearnedClassificationInput {
-  if (refs.categoryRef.kind !== 'learned' || refs.expenseClassRef.kind !== 'learned') {
+  if (!isRefsApplicable(refs)) {
     throw new InvariantViolationError(`学習が完了していないルールは適用できない: ${label}`)
   }
   const expenseClass = refs.expenseClassRef.expenseClass
-  if (expenseClass === 'business_expense' && refs.expenseTypeRef.kind !== 'learned') {
-    throw new InvariantViolationError(`経費種別が未学習のため適用できない: ${label}`)
-  }
   return {
     categoryId: refs.categoryRef.categoryId,
     expenseClass,

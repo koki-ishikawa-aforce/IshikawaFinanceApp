@@ -102,7 +102,7 @@ test.describe('AT-302: 取込サマリと一括分類セッション', () => {
       })
       expect(res.status()).toBe(200)
       const body = await res.json()
-      expect(body.kind).toBe('classified')
+      expect(body.transaction.kind).toBe('classified')
     }
   })
 

@@ -92,6 +92,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       deps.transactionRepository,
       deps.resolveViewerRole,
       deps.eventBus,
+      deps.merchantLearningRuleRepository,
     ),
   )
   app.route('/api/monthly-reports', monthlyReportsRoutes(deps.monthlyReportQuery))

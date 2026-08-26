@@ -164,7 +164,8 @@ export function resolveMock(method: string, path: string): unknown {
       return bulkClassificationAbortedFixture(getMockRole())
     }
     if (/^\/api\/transactions\/[^/]+\/classify$/.test(pathname)) {
-      return {}
+      // #582: 応答が実データの学習結果を持つようになったため、モックも同じ形にする
+      return { merchantRuleLearned: true }
     }
   }
 

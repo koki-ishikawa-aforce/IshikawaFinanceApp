@@ -36,13 +36,16 @@ test.describe.serial('AT-202: 未分類取引の3軸修正と学習ルール即�
         expenseTypeId: EXPENSE_TYPE_GYM,
       },
     })
-    const classified = await classifyRes.json()
-    expect(classifyRes.status(), `classify response: ${JSON.stringify(classified)}`).toBe(200)
+    const classifyBody = await classifyRes.json()
+    expect(classifyRes.status(), `classify response: ${JSON.stringify(classifyBody)}`).toBe(200)
+    const classified = classifyBody.transaction
     expect(classified.kind).toBe('classified')
     expect(classified.details.categoryId).toBe(CAT_OTHER)
     expect(classified.details.expenseClass).toBe('business_expense')
     expect(classified.details.expenseTypeRef.kind).toBe('business')
     expect(classified.details.expenseTypeRef.expenseTypeId).toBe(EXPENSE_TYPE_GYM)
+    // #582: 分類確定でこの加盟店は次回から自動分類が効くようになる
+    expect(classifyBody.merchantRuleLearned).toBe(true)
   })
 
   test('手順3: 学習ルールが即時登録されている', async ({ request }) => {

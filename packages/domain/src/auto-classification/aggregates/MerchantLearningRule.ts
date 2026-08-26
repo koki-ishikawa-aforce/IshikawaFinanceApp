@@ -24,6 +24,7 @@ import {
   ExpenseTypeLearningRefSchema,
   applicableClassificationFromRefs,
   deriveLearnedRefs,
+  isRefsApplicable,
   type LearningRefs,
 } from '../value-objects/LearningRefs'
 import {
@@ -103,6 +104,18 @@ export function applicableClassification(rule: ActiveMerchantLearningRule): Manu
   return ManualClassificationSchema.parse(
     applicableClassificationFromRefs(rule, rule.common.merchantName),
   )
+}
+
+/**
+ * 次回以降その加盟店の取引が自動で分類されるようになるか判定する（#582）。
+ *
+ * ルールが存在しない・学習無効化中・有効だが3軸が学習完了していない場合は false。
+ * 手動分類確定の直後に画面へ「次回から自動で分類されます」を伝えてよいかどうかの
+ * 唯一の判定点とし、画面側で未分類理由から推測する実装（実態と食い違う）を廃止する。
+ */
+export function isMerchantRuleApplicable(rule: MerchantLearningRule | null): boolean {
+  if (rule === null || rule.kind !== 'active') return false
+  return isRefsApplicable(rule)
 }
 
 export type ReflectManualClassificationResult =
