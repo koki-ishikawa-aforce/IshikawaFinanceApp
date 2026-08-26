@@ -30,11 +30,12 @@ Closes #<Issue番号>
 ## 画面(スクリーンショット)
 
 <!-- `packages/web` に変更がある場合のみ書く(変更が無ければこの節ごと削除する)。
-     SKILL.md「UI 変更時のスクリーンショット添付」に従い、変更に関係する画面を darling / honey 両テーマで載せる。
-     既存画面の見た目を変える変更なら、可能な範囲で変更前後を並べる。
-     画像はコミット済み PNG を絶対 URL で参照する:
-       ![変更後 darling](https://github.com/<owner>/<repo>/blob/<headブランチ>/docs/pr-screenshots/issue-<番号>/<screen>-darling.png?raw=true)
-       ![変更後 honey](https://github.com/<owner>/<repo>/blob/<headブランチ>/docs/pr-screenshots/issue-<番号>/<screen>-honey.png?raw=true)
+     SKILL.md「UI 変更時のスクリーンショット添付」に従い、変更に関係する画面を darling / honey 両テーマで撮影し、
+     PR ブランチにコミットする。GitHub MCP 経由の本文書き込みでは URL が必ずエスケープされ画像として描画されない
+     ため(#560)、埋め込みはせずコミット済みファイル名の一覧を書く(読む人は Files changed から直接開く):
+       - docs/pr-screenshots/issue-<番号>/<screen>-darling.png
+       - docs/pr-screenshots/issue-<番号>/<screen>-honey.png
+     既存画面の見た目を変える変更なら、可能な範囲で変更前後(-before / -after 等)のファイルも並べる。
      撮影できなかった場合は、その旨と理由を1行記す(撮影失敗は PR 作成を止める理由にしない)。
      VRT スナップショットを更新した場合は、更新した画面名と理由(「受け入れ条件に基づく意図した UI 変更」等)をこの節に記す。 -->
 
