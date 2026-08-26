@@ -10,6 +10,11 @@ export const SCREENS = [
   // 設定のタブは初期表示が ?section= で決まる。既定タブ（プロフィール）の撮影では
   // 学習ルールの見た目を押さえられないため、別画面として並べる
   { name: 'settings-classification', path: '/settings?section=classification' },
+  // カテゴリ・経費種別・月次上限タブ(#604)。共通スタイルの文字ボタンを他タブと共有しており、
+  // ここを加えないとその3タブだけの見た目の変化に気づけない
+  { name: 'settings-categories', path: '/settings?section=categories' },
+  { name: 'settings-expense-types', path: '/settings?section=expense-types' },
+  { name: 'settings-limits', path: '/settings?section=limits' },
   // 口座タブの追加ボタンは、その口座種別が未登録の人にだけ出る。既定の fixture は
   // 登録済みの世帯なので、未登録のシナリオを指定して撮る（#425）
   {
