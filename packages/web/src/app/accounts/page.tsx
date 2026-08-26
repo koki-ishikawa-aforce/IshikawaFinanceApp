@@ -49,12 +49,12 @@ const VALUE_LABELS: Record<AccountDetailWire['kind'], string> = {
   nisa: '積立累計',
 }
 
-/** 最終更新日時の呼び名。カードだけは「更新」ではなく前回の精算日 */
+/** 最終更新日時の呼び名。カードだけは「最終更新」ではなく前回の精算日 */
 const UPDATED_LABELS: Record<AccountDetailWire['kind'], string> = {
-  smbc_bank: '更新',
+  smbc_bank: '最終更新',
   mitsui_sumitomo_card: '前回精算',
-  other_savings: '更新',
-  nisa: '更新',
+  other_savings: '最終更新',
+  nisa: '最終更新',
 }
 
 const HISTORY_SOURCE_LABELS: Record<AccountDetailWire['history'][number]['source'], string> = {

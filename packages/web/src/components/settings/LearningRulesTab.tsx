@@ -165,7 +165,7 @@ function MerchantRuleRow({
         <>
           <LearnedAxes refs={rule} masters={masters} />
           <span className={styles.ruleMeta}>
-            最終更新日: {formatDateWithYear(rule.lastUpdatedAt)}
+            最終更新: {formatDateWithYear(rule.lastUpdatedAt)}
           </span>
           <button
             className={`${ui.textButton} ${ui.textButtonDanger}`}

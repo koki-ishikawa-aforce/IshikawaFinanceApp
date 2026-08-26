@@ -156,8 +156,8 @@ describe('LearningRulesTab', () => {
     // 経費種別も ID ではなくマスタ名で表示する(カテゴリ名と取り違えていない)
     expect(within(rowOf('ブックストア 恵比寿')).getByText('書籍代')).toBeInTheDocument()
     expect(screen.queryByText('ET_BOOKS')).not.toBeInTheDocument()
-    // 最終更新日は lastUpdatedAt 由来（disabledAt と取り違えていない）
-    expect(within(rowOf('ライフ 中目黒店')).getByText('最終更新日: 2026/07/18')).toBeInTheDocument()
+    // 最終更新は lastUpdatedAt 由来（disabledAt と取り違えていない）
+    expect(within(rowOf('ライフ 中目黒店')).getByText('最終更新: 2026/07/18')).toBeInTheDocument()
   })
 
   it('軸のラベルと値が対応して並ぶ（未学習の軸だけが「まだ覚えていません」になる）', async () => {
