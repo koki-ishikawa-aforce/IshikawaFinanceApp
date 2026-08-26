@@ -735,6 +735,17 @@ export const SettingsProfileWireSchema = z.object({
 })
 export type SettingsProfileWire = z.infer<typeof SettingsProfileWireSchema>
 
+/**
+ * 相手（配偶者）のニックネーム。相手のロールは呼び出し側が確定済みの自分のロールから
+ * 導出する（#596）
+ */
+export const SpouseProfileWireSchema = z.object({
+  profile: z.object({
+    nickname: z.string().nullable(),
+  }),
+})
+export type SpouseProfileWire = z.infer<typeof SpouseProfileWireSchema>
+
 export const BrokerageNameWireSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('sbi') }),
   z.object({ kind: z.literal('rakuten') }),

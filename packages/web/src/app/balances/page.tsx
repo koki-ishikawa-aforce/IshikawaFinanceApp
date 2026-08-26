@@ -15,6 +15,7 @@ import { formatMoney } from '@/lib/format'
 import { partnerOf } from '@/lib/partner'
 import { formatDateWithYear, getCurrentMonth, shiftMonth } from '@/lib/month'
 import { useViewerRole } from '@/hooks/useViewerRole'
+import { useSpouseProfile } from '@/hooks/useSpouseProfile'
 import type { Theme } from '@/theme/tokens'
 import { TimeSeriesChart, type ChartSeries } from '@/components/balances/TimeSeriesChart'
 import { FreshnessBadge, useBalanceFreshnessQuery } from '@/components/balances/BalanceFreshness'
@@ -135,14 +136,24 @@ function balanceItemBody(item: AccountBalanceItemWire, freshness?: BalanceFreshn
  * 使わない。誰の金額かが唯一の意味を持つ行なので、確定前の既定値で名前を出して
  * あとから差し替えると、一瞬でも他人の名前が相手の金額に付く（usability.md 7-2）。
  */
-function SpouseSharedTotalItem({ total, viewerRole }: { total: number; viewerRole: Theme }) {
+function SpouseSharedTotalItem({
+  total,
+  viewerRole,
+  partnerNickname,
+}: {
+  total: number
+  viewerRole: Theme
+  /** 相手のニックネーム。未設定・未取得なら null（ロール名で表示） */
+  partnerNickname: string | null
+}) {
   const partner = partnerOf(viewerRole)
+  const partnerName = partnerNickname ?? partner.name
   return (
     <div className={`${styles.balanceItem} ${styles.spouseItem}`}>
       <div className={styles.balanceHead}>
         <RoleIcon role={partner.role} className={`${ui.iconSm} ${styles.spouseIcon}`} />
         <span className={`${styles.balanceName} ${styles.spouseText}`}>
-          {partner.name}の貯蓄・NISA（合計のみ）
+          {partnerName}の貯蓄・NISA（合計のみ）
         </span>
       </div>
       <span className={`${styles.balanceValue} ${styles.spouseText}`}>{formatMoney(total)}</span>
@@ -156,6 +167,7 @@ export default function BalancesPage() {
   // 相手の合計行の名前は「確定した役割」に限る。テーマ（useTheme）は取得前 darling に
   // 倒れるため、名前の根拠には使わない（usability.md 7-2）
   const viewerRoleQuery = useViewerRole()
+  const spouseProfileQuery = useSpouseProfile()
 
   const listQuery = useQuery({
     queryKey: ['balances', 'list'],
@@ -286,10 +298,16 @@ export default function BalancesPage() {
                         'パートナーの貯蓄・NISA の合計は表示できませんでした',
                       )}
                     </ErrorState>
+                  ) : spouseProfileQuery.isPending ? (
+                    // ニックネーム未取得のうちはロール名で仮描画せず、取得完了後に一度で確定させる
+                    // （役割名フォールバックが正しいのは「未設定と判明した」場合であり、
+                    // 「まだ取得できていない」場合に出すと確定後に名前が差し替わる。usability 7-2）
+                    <LoadingState announce={false} />
                   ) : (
                     <SpouseSharedTotalItem
                       total={listQuery.data.spouseOtherSavingsAndNisaTotal}
                       viewerRole={viewerRoleQuery.data.role}
+                      partnerNickname={spouseProfileQuery.data?.profile.nickname ?? null}
                     />
                   ))}
               </div>

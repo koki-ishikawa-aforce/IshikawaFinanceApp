@@ -10,6 +10,7 @@ import { SpousePersonalNote } from '@/components/dashboard/SpousePersonalNote'
 import { getCurrentMonth } from '@/lib/month'
 import { useDashboardKpis } from '@/hooks/useDashboardKpis'
 import { useCategoryBreakdown } from '@/hooks/useCategoryBreakdown'
+import { useSpouseProfile } from '@/hooks/useSpouseProfile'
 import { describeRequestFailure } from '@/lib/api-client'
 import { useTheme } from '@/theme/ThemeProvider'
 import { getCategoryColors } from '@/theme/tokens'
@@ -25,6 +26,7 @@ export default function DashboardPage() {
 
   const kpis = useDashboardKpis(month, mode)
   const breakdown = useCategoryBreakdown(month, mode)
+  const spouseProfile = useSpouseProfile()
 
   const categoryColors = getCategoryColors(theme)
 
@@ -84,7 +86,11 @@ export default function DashboardPage() {
       </div>
 
       {mode === 'household' && kpis.data && (
-        <SpousePersonalNote amount={kpis.data.spousePersonalTotal} theme={theme} />
+        <SpousePersonalNote
+          amount={kpis.data.spousePersonalTotal}
+          theme={theme}
+          partnerNickname={spouseProfile.data?.profile.nickname ?? null}
+        />
       )}
     </main>
   )

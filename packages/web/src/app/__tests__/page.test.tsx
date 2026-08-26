@@ -59,6 +59,10 @@ function breakdownResponse(): unknown {
  */
 function respond(options: { kpis?: unknown; breakdown?: unknown }): void {
   apiFetch.mockImplementation((path: string) => {
+    // 相手のニックネーム取得(#596)は本テストの主題ではないため、常に未設定で解決する
+    if (path === '/api/settings/spouse-profile') {
+      return Promise.resolve({ profile: { role: 'honey', nickname: null } })
+    }
     const isKpis = path.includes('/api/dashboard/kpis')
     const value = isKpis ? options.kpis : options.breakdown
     if (value instanceof Error) return Promise.reject(value)
@@ -116,14 +120,15 @@ describe('ダッシュボード', () => {
     renderPage()
 
     expect(await screen.findByText(/カテゴリ内訳の取得に失敗しました/)).toBeInTheDocument()
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2))
+    // kpis / breakdown に加え、相手のニックネーム取得(#596)も初回マウントで走る
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(3))
 
     respond({ kpis: kpisResponse(), breakdown: breakdownResponse() })
     await user.click(screen.getByRole('button', { name: '再読み込み' }))
 
     // 押した直後も、取り直しが終わったあとも、成功している KPI は出たまま
     expect(screen.getByText('2,450,000円')).toBeInTheDocument()
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(4))
     expect(await screen.findByRole('link', { name: /食費/ })).toBeInTheDocument()
     expect(screen.getByText('2,450,000円')).toBeInTheDocument()
     const paths = apiFetch.mock.calls.map(call => String(call[0]))

@@ -12,8 +12,9 @@ import {
   NicknameSchema,
   NotFoundError,
   changeNickname,
+  resolveSpouseUserId,
 } from '@warimaru/domain'
-import type { AppUserRepository, EventBus, UserId, UserRole } from '@warimaru/domain'
+import type { Allowlist, AppUserRepository, EventBus, UserId, UserRole } from '@warimaru/domain'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 import { readJsonObjectBody } from '../read-request-body.js'
@@ -23,6 +24,7 @@ const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
 export interface SettingsRoutesDeps {
   appUserRepository: AppUserRepository
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
+  fetchAllowlist: () => Promise<Allowlist>
   eventBus: EventBus
 }
 
@@ -36,6 +38,22 @@ export function settingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
     const role = user?.common.role ?? (await deps.resolveViewerRole(viewerId))
     return c.json({
       profile: { userId: viewerId, role, nickname: user?.common.nickname ?? null },
+    })
+  })
+
+  /**
+   * 相手（配偶者）のニックネーム。残高画面・ダッシュボードが相手の呼び名（ニックネーム、
+   * 未設定ならロール名フォールバック）を出すために読む(#596)。相手のロールは画面側が
+   * 確定済みの自分のロールから導出できるためここでは返さない（相手の userId も返さない）。
+   * 相手が未登録（AppUser 行が無い）なら nickname は null。
+   */
+  app.get('/spouse-profile', async c => {
+    const viewerId = c.get('viewerId')
+    const allowlist = await deps.fetchAllowlist()
+    const spouseUserId = resolveSpouseUserId(viewerId, allowlist)
+    const spouseUser = await deps.appUserRepository.findById(spouseUserId)
+    return c.json({
+      profile: { nickname: spouseUser?.common.nickname ?? null },
     })
   })
 
