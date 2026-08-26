@@ -128,7 +128,7 @@ export class PostgresTransactionCandidateRepository implements TransactionCandid
     //
     // occurred_on は JST 暦日への丸めなので、範囲の端では時刻ぶんだけ広めに返る。突合と
     // タイムアウトの期限判定は発生日時（時刻まで）で行う必要があるため、絞り込みの最終判定は
-    // 呼出し側のドメイン関数（matchAmazonOrders / judgeCardUsageMatchTimeout）が持つ。
+    // 呼出し側のドメイン関数（matchAmazonOrders / judgeSmbcFirstTimeout）が持つ。
     // ここで暦日に丸めた範囲を返しすぎるぶんには結果は変わらない（取りこぼしだけを避ける）。
     const conditions = [
       eq(transactionCandidates.userId, userId),
