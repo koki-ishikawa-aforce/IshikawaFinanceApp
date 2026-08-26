@@ -11,8 +11,8 @@
  *  - T-2: カテゴリ・費用区分・経費種別を独立した参照として保持
  *  - 有効ルールと学習無効化が同時に存在しない（discriminated union で構造表現）
  *  - 加盟店名「AMAZON.CO.JP」は加盟店学習の対象外。代わりの学習経路だった X-1 Amazon商品キー学習は
- *    取り下げ済み（#572）のため、現状 Amazon の取引はどこにも学習されない。この扱いを続けるか
- *    通常の加盟店学習に戻すかは判断待ち（OQ-18 改訂 / #391）
+ *    取り下げ済み（#572）のため、Amazon の取引はどこにも学習されない。この除外は維持すると決定済み
+ *    （OQ-18 改訂 / #581）
  *
  * 専用 ID は持たない（自然キー = userId + merchantName、09-aggregates.md #4）。
  */
@@ -118,7 +118,7 @@ export type ReflectManualClassificationResult =
  *   費用区分が経費以外へ変わっても学習済み経費種別は保持する（軸独立のため触らない）
  * - F-1: 当該ユーザーのルールのみを入出力とする（検索は Repository 側で userId 必須）
  * - AMAZON.CO.JP は対象外（skipped: amazon_merchant）。X-1 の商品キー学習取り下げ（#572）後も
- *   この除外は残しているため、Amazon の取引は学習されない（OQ-18 改訂で見直し予定 / #391）
+ *   この除外は維持すると決定済み（OQ-18 改訂 / #581）。Amazon の取引はどこにも学習されない
  * - M-1: 学習無効化中の加盟店は学習しない（skipped: learning_disabled）
  */
 export function reflectManualClassification(

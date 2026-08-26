@@ -20,8 +20,8 @@ export interface AutoClassificationHandlerDeps {
  *
  * AMAZON.CO.JP の取引は加盟店学習の対象外（reflectManualClassification が
  * amazon_merchant で skip する）。代わりに学習する経路（X-1 Amazon商品キー学習）は
- * 2026-08-23 に取り下げた（#572）ため、Amazon の取引は現状どこにも学習されない。
- * 除外そのものを続けるかは判断待ち（OQ-18 改訂 / #391）。
+ * 2026-08-23 に取り下げた（#572）ため、Amazon の取引はどこにも学習されない。
+ * 除外は維持すると決定済み（OQ-18 改訂 / #581）。
  *
  * 配信は at-least-once。反映は「値が変わらなければ unchanged」で冪等なため再配信で二重書きしない。
  */
