@@ -1,0 +1,18 @@
+/**
+ * LIFF 認証まわりの全画面表示(ログイン・初期化中・初期化失敗)が共有する土台。
+ *
+ * ログイン画面(LoginScreen)と認証ゲート(AuthGate)の両方が、中央寄せの
+ * 全画面コンテナに同じ見た目のカードを置く構成を取るため、ここに集約する(#577)。
+ */
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  background: var(--bg-gradient);
+}
+
+.card {
+  text-align: center;
+  padding: var(--space-10) var(--space-8);
+}
