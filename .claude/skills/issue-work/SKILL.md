@@ -55,6 +55,8 @@ gh issue edit <番号> --add-label "status:in-progress"
 - 依存の向きに沿って `domain → adapters-postgres → api → web` の順に実装する
 - テストは実装と同時に書く。**集約の状態遷移・不変条件のテストは必須**
 - 命名は `packages/domain/README.md` とユビキタス言語に従う
+- `packages/domain` の公開 API(集約・値オブジェクト・Repository / Query インターフェース・ドメインイベント・エラー型・公開定数など)を追加・変更・改名した場合は、**同じ PR で `packages/domain/README.md` の該当セクションを更新する**(この一覧は手動保守の一次資料で、更新漏れは `/ddd-review` で毎回指摘される。#607)
+- 画面に「読み込み中・エラー・保存結果」のような**ページ遷移を伴わず動的に切り替わる領域**を追加・変更した場合は、`docs/design/usability.md` §8-4(動的更新の通知)を実装時にセルフチェックする — 差し替わる領域に `role="status"`(`aria-live="polite"`)、致命的な通知に `role="alert"` が付いているか。共通部品(`LoadingState` / `EmptyState` / `ErrorState`)を使えば通知が付くため、書き起こさず共通部品を使う(レビューで毎回指摘される抜けの筆頭。#606)
 
 ## 4. 検証ループ(内側ループ)
 
@@ -64,9 +66,9 @@ gh issue edit <番号> --add-label "status:in-progress"
 
 ## 5. DDD レビュー・UI レビュー
 
-`/ddd-review` を実行し(ddd-reviewer サブエージェントが main との diff をレビュー)、must-fix と suggestion を修正したら再度 `/verify` を回す。suggestion は原則この場で対応し、見送るのは `/ddd-review` の例外基準に該当する場合のみ(その際は Issue 化して追跡する)。
+`/ddd-review` を実行し(ddd-reviewer サブエージェントが main との diff をレビュー)、must-fix と suggestion を修正したら再度 `/verify` を回す。suggestion は原則この場で対応し、見送るのは `/ddd-review` の例外基準 (a)(独立した PR が必要な別リファクタリング相当の規模)または (b)(ユーザーの意思決定が必要な設計判断)に該当する場合のみ。**Issue 化するのは (b) のみ**で、(a) は PR 本文のレビュー結果節に見送った内容と理由を記録する(同じ指摘が複数の PR で繰り返し見送られた場合に限り Issue 化してよい)。
 
-`packages/web` 配下に変更がある場合は、`/ddd-review` に加えて `/ui-review` も実施する(ui-reviewer サブエージェントが `DESIGN.md` とプレゼンテーション層の観点でレビュー)。指摘の扱いは `/ddd-review` と同じ(must-fix は必須修正、suggestion も原則その場で対応、見送りは例外基準に該当する場合のみ Issue 化)。
+`packages/web` 配下に変更がある場合は、`/ddd-review` に加えて `/ui-review` も実施する(ui-reviewer サブエージェントが `DESIGN.md` とプレゼンテーション層の観点でレビュー)。指摘の扱いは `/ddd-review` と同じ(must-fix は必須修正、suggestion も原則その場で対応、見送りは例外基準 (a)(b) に該当する場合のみで、Issue 化は (b) のみ)。
 
 ## 6. 受け入れシナリオ(`docs/acceptance/`)との照合
 
@@ -187,7 +189,7 @@ Routine のセットアップ手順は `docs/automation/backlog-routine.md`、�
 無人モードでユーザーの判断が必要になったら、種類を問わず **`needs-decision` ラベル付きの Issue** に集約する(チャットの最終報告や PR 本文だけに書いて済ませない)。判断が必要な事象は2種:
 
 1. **撤退時の確認**(受け入れ条件が曖昧・設計判断が分かれる・CI が直せない・マージゲートに落ちた) → 元 Issue に判断依頼コメント + `needs-decision`(既存 Issue のタイトルは変えないため種別目印は付けない)
-2. **見送り追認**(`/ddd-review` suggestion の見送りなど) → 新規 Issue + `needs-decision`(タイトル先頭に `[判断待ち]`)
+2. **見送り追認**(レビュー suggestion の見送りのうち、各レビュー skill の例外基準 (b) — ユーザーの意思決定が必要な設計判断 — に該当するもの) → 新規 Issue + `needs-decision`(タイトル先頭に `[判断待ち]`)。基準 (a)(別リファクタリング相当の規模)による見送りは **Issue を起票せず**、PR 本文のレビュー結果節への記録のみとする
 
 マージ判断はこの集約対象ではない。ゲート(後述「マージゲート」)を満たす PR は無人モードがそのままマージし、ゲートに落ちた PR だけが 1.(撤退時の確認)として人間に上がる。
 
@@ -379,7 +381,7 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
   ```
   (`needs-decision` はユーザーが回答して `needs-decision` を外し `ready-to-implement` を付け直すまで無人モードの対象外になる)
   撤退してもその fire は終了せず、候補ループの次の Issue へ進む。これにより、1件の撤退で fire 全体が空振りする事態を防ぐ
-- `/ddd-review` の suggestion でユーザーの意思決定が必要なもの(見送り例外に該当)は、既存ルール通り Issue 化する。その Issue はタイトル先頭に `[判断待ち]` を付け、本文は `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする
+- レビュー suggestion の見送りのうち、例外基準 (b)(ユーザーの意思決定が必要な設計判断)に該当するものだけを Issue 化する。その Issue はタイトル先頭に `[判断待ち]` を付け、本文は `templates/judgment-issue.md` のフォーマットで書き、`needs-decision` を付与したうえで、PR 本文の「あなたに判断してほしいこと」からリンクする。基準 (a)(別リファクタリング相当の規模)による見送りは Issue を起票せず、PR 本文のレビュー結果節に記録する
 
 ### 手順4の差分: /verify 行き詰まり時の撤退
 
