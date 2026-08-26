@@ -88,6 +88,8 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 
 同様に、強調バッジ（`.badgeAccent`、「確認済み」「完了」等に使う）の文字色（`--badge-accent-text`）と背景（`--badge-accent-bg`）のコントラストは `packages/web/src/test/badge-accent-contrast.test.ts` が両テーマぶん機械的に検出する。
 
+同様に、文字だけのボタン（`.textButton`、一覧の行に並ぶ「改名」「編集」等）の文字色（`--accent-text`）と背景（`--bg-gradient`）のコントラストは `packages/web/src/test/accent-text-contrast.test.ts` が両テーマぶん機械的に検出する。
+
 ### UI への絵文字使用は禁止
 
 JSX に絵文字（Unicode Emoji）を表示目的で埋め込まない。装飾も情報伝達もすべて react-icons のラインアイコンまたは CSS で表現する。

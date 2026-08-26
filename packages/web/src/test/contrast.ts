@@ -40,3 +40,18 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
 export function colorStops(value: string): Rgb[] {
   return [...value.matchAll(/#[0-9a-fA-F]{3,6}\b/g)].map(match => parseHex(match[0]))
 }
+
+/**
+ * 半透明の面 `fg`(不透明度 `alpha`)を `bg` の上に重ねたときの見た目の色(アルファ合成)。
+ *
+ * 半透明カード(`rgba(255,255,255,0.7)` 等)の下に敷かれた背景が透けて見える実効色を
+ * 求めるのに使う(`docs/design/usability.md` 8-6 の「半透明背景の上に淡色テキストを
+ * 置く場合は実効値で判定する」に対応)。
+ */
+export function alphaComposite(fg: Rgb, alpha: number, bg: Rgb): Rgb {
+  return [
+    fg[0] * alpha + bg[0] * (1 - alpha),
+    fg[1] * alpha + bg[1] * (1 - alpha),
+    fg[2] * alpha + bg[2] * (1 - alpha),
+  ]
+}

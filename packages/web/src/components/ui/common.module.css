@@ -140,6 +140,11 @@
   opacity: 0.85;
 }
 
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -165,6 +170,11 @@
   opacity: 0.7;
 }
 
+.buttonGhost:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .buttonGhost:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -183,6 +193,11 @@
   font-weight: 700;
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
+}
+
+.buttonDanger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .buttonDanger:disabled {
@@ -223,11 +238,16 @@
   min-height: var(--tap-target-min);
   border: none;
   background: none;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--text-sm);
   font-weight: 700;
   cursor: pointer;
   padding: var(--space-0_5);
+}
+
+.textButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /** `.textButton` と併用する色の修飾子。本文サイズのため `--error` ではなく文字用の `--error-text` を使う */
@@ -261,6 +281,11 @@
   padding: var(--space-2) var(--space-2_5);
   font-size: var(--text-base);
   color: var(--text-primary);
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .fieldLabel {
