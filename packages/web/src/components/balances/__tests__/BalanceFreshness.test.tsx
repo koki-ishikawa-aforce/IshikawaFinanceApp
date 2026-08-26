@@ -71,6 +71,8 @@ describe('BalanceFreshnessCard', () => {
     expect(await screen.findByText('40日未更新')).toBeInTheDocument()
     expect(screen.getByText('楽天銀行')).toBeInTheDocument()
     expect(screen.queryByText('4日未更新')).not.toBeInTheDocument()
+    // 「最終更新」の呼称は残高一覧・設定の学習タブと画面間で揃える(#602)
+    expect(screen.getByText('最終更新: 2026/07/20')).toBeInTheDocument()
   })
 
   it('対象口座が 0 件なら、追加すれば埋まることを案内する', async () => {
