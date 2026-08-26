@@ -678,21 +678,15 @@ export default function OnboardingPage() {
                 </p>
                 {accountsQuery.isPending && <LoadingState>口座を確認しています...</LoadingState>}
                 {accountsQuery.isError && (
-                  <>
-                    <ErrorState>
-                      {describeRequestFailure(
-                        accountsQuery.error,
-                        '口座の登録状況を確認できませんでした。通信状況を確かめて「もう一度確認する」を押してください。',
-                      )}
-                    </ErrorState>
-                    <button
-                      className={ui.buttonGhost}
-                      disabled={accountsQuery.isFetching}
-                      onClick={() => void accountsQuery.refetch()}
-                    >
-                      もう一度確認する
-                    </button>
-                  </>
+                  <ErrorState
+                    onRetry={() => void accountsQuery.refetch()}
+                    isRetrying={accountsQuery.isFetching}
+                  >
+                    {describeRequestFailure(
+                      accountsQuery.error,
+                      '口座の登録状況を確認できませんでした。通信状況を確かめてやり直してください。',
+                    )}
+                  </ErrorState>
                 )}
                 {!accountsQuery.isPending && !accountsQuery.isError && (
                   <>
@@ -841,20 +835,15 @@ export default function OnboardingPage() {
                   <LoadingState>今月の取込状況を確認しています...</LoadingState>
                 )}
                 {importStatusQuery.isError && (
-                  <>
-                    <ErrorState>
-                      {describeRequestFailure(
-                        importStatusQuery.error,
-                        '今月の取込状況を取得できませんでした',
-                      )}
-                    </ErrorState>
-                    <button
-                      className={ui.buttonGhost}
-                      onClick={() => void importStatusQuery.refetch()}
-                    >
-                      もう一度確認する
-                    </button>
-                  </>
+                  <ErrorState
+                    onRetry={() => void importStatusQuery.refetch()}
+                    isRetrying={importStatusQuery.isFetching}
+                  >
+                    {describeRequestFailure(
+                      importStatusQuery.error,
+                      '今月の取込状況を取得できませんでした',
+                    )}
+                  </ErrorState>
                 )}
                 <div className={ui.row}>
                   <Link href="/imports" className={`${ui.buttonGhost} ${ui.buttonLink}`}>

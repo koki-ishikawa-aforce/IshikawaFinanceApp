@@ -231,7 +231,7 @@ describe('はじめての設定 Section B（初期残高の登録）', () => {
 
     const error = await screen.findByText(/口座の登録状況を確認できませんでした/)
     expect(error.closest('[role="alert"]')).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'もう一度確認する' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument()
     // 「口座が無い」と読める案内は出さない（通信の失敗を利用者の未操作にすり替えない）
     expect(screen.queryByText(/まだ登録されていません/)).toBeNull()
   })

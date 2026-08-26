@@ -141,7 +141,7 @@ describe('RetroactivePrompt', () => {
     )
     expect(screen.queryByRole('button', { name: /同じ分類にする/ })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'もう一度確認する' }))
+    await user.click(screen.getByRole('button', { name: '再読み込み' }))
 
     // 再取得が成功すれば確認に戻れる
     expect(
