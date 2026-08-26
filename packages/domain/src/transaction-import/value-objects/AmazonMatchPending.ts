@@ -9,7 +9,7 @@
  * 後者は待っても解消しないため、記録を読む人が「様子見でよいか」を判断できる必要がある。
  *
  * タイムアウト期限は「注文の受信日時 + 双方向 3 日」（`AMAZON_MATCH_TIMEOUT_DAYS`）。期限を
- * 過ぎた保留は `judgeAmazonMatchTimeout` が確定させ、注文情報は破棄する（配送キャンセルの
+ * 過ぎた保留は `judgeAmazonFirstTimeout` が確定させ、注文情報は破棄する（配送キャンセルの
  * 可能性があるため取引候補にしない）。
  */
 import { z } from 'zod'
