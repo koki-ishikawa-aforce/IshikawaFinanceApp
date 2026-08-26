@@ -16,7 +16,7 @@ import {
 import type { AppUserRepository, EventBus, UserId, UserRole } from '@warimaru/domain'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
-import { readJsonObjectBody } from '../read-json-object-body.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
 

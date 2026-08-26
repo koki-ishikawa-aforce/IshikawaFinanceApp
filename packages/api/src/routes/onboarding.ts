@@ -64,7 +64,7 @@ import { domainEventBase } from '../event-handlers/index.js'
 import { traceIdOf } from '../trace-id.js'
 import { applyLineFriendAdded } from '../line-operation-records.js'
 import { fireOperationStartIfReady, tryFireOperationStart } from '../operation-start.js'
-import { readJsonObjectBody } from '../read-json-object-body.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const RegisterBodySchema = z.object({ nickname: NicknameSchema.optional() })
 const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })

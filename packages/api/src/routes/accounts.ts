@@ -69,7 +69,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
-import { readJsonObjectBody } from '../read-json-object-body.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const RegisterBodySchema = z.discriminatedUnion('kind', [
   z.object({

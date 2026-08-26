@@ -37,7 +37,7 @@ import type {
 } from '@warimaru/domain'
 import type { LineTalkRoomKind, TalkRoomId, UserId, UserRole } from '@warimaru/domain'
 import { decideSharedTalkRoomJoin, requiresTalkRoomMembershipCheck } from '@warimaru/domain'
-import { readJsonObjectBody } from '../read-json-object-body.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 import { LineWebhookRequestSchema, toLineWebhookIntents } from '../line-webhook/events.js'
 import { verifyLineSignature } from '../line-webhook/signature.js'
 import { applyLineFriendAdded, applySharedTalkRoomJoined } from '../line-operation-records.js'

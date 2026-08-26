@@ -23,7 +23,7 @@ import {
   applyDeterminedBankDepositPurpose,
   type BankDepositPurposeServiceDeps,
 } from '../balance/bank-deposit-purpose-service.js'
-import { readJsonObjectBody } from '../read-json-object-body.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const ConfirmPurposeBodySchema = z.object({
   purpose: DeterminedDepositPurposeSchema,

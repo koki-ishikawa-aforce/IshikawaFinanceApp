@@ -46,7 +46,7 @@ import {
   type DailyMailImportDeps,
 } from '../daily-mail-import.js'
 import { parseStatementCsv } from '../parse-statement-csv.js'
-import { readFormBody, readJsonObjectBody } from '../read-json-object-body.js'
+import { readFormBody, readJsonObjectBody } from '../read-request-body.js'
 
 const StatusParamsSchema = z.object({
   month: YearMonthSchema,

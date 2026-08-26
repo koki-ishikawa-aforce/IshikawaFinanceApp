@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ZodError } from 'zod'
-import { readFormBody, readJsonObjectBody } from '../src/read-json-object-body.js'
+import { readFormBody, readJsonObjectBody } from '../src/read-request-body.js'
 
 describe('readJsonObjectBody', () => {
   it('空ボディは {} として扱う', () => {
