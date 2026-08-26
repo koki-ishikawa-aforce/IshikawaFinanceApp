@@ -7,7 +7,7 @@ import { LoginScreen } from './LoginScreen'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { NETWORK_ERROR_MESSAGE } from '@/lib/api-client'
-import styles from './LoginScreen.module.css'
+import screen from './authScreen.module.css'
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const { initialized, loggedIn, initTimedOut, retryInit } = useAuth()
@@ -20,8 +20,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // 白画面にしないよう、通信できないときの共通文言と再読み込みの手段を出す
   if (initTimedOut) {
     return (
-      <main className={styles.container}>
-        <div className={styles.card}>
+      <main className={screen.container}>
+        <div className={screen.card}>
           <ErrorState onRetry={retryInit}>{NETWORK_ERROR_MESSAGE}</ErrorState>
         </div>
       </main>
@@ -30,9 +30,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (!initialized) {
     return (
-      <main className={styles.container}>
-        <div className={styles.card}>
-          <LoadingState />
+      <main className={screen.container}>
+        <div className={screen.card}>
+          {/* アプリ起動直後の全画面フォールバック。他画面の同種フォールバック
+              (onboarding/accounts/balances 等)と同じく announce しない */}
+          <LoadingState announce={false} />
         </div>
       </main>
     )

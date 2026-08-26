@@ -46,7 +46,7 @@ describe('AuthGate', () => {
 
     renderGate()
 
-    expect(screen.getByRole('status')).toHaveTextContent('読み込み中...')
+    expect(screen.getByText('読み込み中...')).toBeInTheDocument()
     expect(screen.queryByText('protected content')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'LINE でログイン' })).not.toBeInTheDocument()
   })

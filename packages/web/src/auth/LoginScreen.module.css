@@ -1,16 +1,3 @@
-.container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100dvh;
-  background: var(--bg-gradient);
-}
-
-.card {
-  text-align: center;
-  padding: var(--space-10) var(--space-8);
-}
-
 .title {
   font-size: var(--text-3xl);
   font-weight: 700;
