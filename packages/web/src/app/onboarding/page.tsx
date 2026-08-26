@@ -684,7 +684,7 @@ export default function OnboardingPage() {
                   >
                     {describeRequestFailure(
                       accountsQuery.error,
-                      '口座の登録状況を確認できませんでした。通信状況を確かめてやり直してください。',
+                      '口座の登録状況を確認できませんでした。',
                     )}
                   </ErrorState>
                 )}
