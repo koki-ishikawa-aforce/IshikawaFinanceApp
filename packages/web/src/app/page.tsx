@@ -94,22 +94,28 @@ export default function DashboardPage() {
         (viewerRoleQuery.isPending ? (
           // 役割が確定するまでロール名で仮描画しない(usability 7-2)。通常の読み込み中は
           // まだ失敗していないので、次のエラー分岐とは分けて先に判定する
-          <LoadingState />
+          <div className={styles.spouseNoteFallback}>
+            <LoadingState />
+          </div>
         ) : viewerRoleQuery.data === undefined ? (
           // 誰の金額かを言えないまま出すと相手を取り違えるため、金額ごと出さない(usability 7-2)
-          <ErrorState
-            onRetry={() => void viewerRoleQuery.refetch()}
-            isRetrying={viewerRoleQuery.isFetching}
-          >
-            {describeRequestFailure(
-              viewerRoleQuery.error,
-              '相手の個人費の合計は表示できませんでした',
-            )}
-          </ErrorState>
+          <div className={styles.spouseNoteFallback}>
+            <ErrorState
+              onRetry={() => void viewerRoleQuery.refetch()}
+              isRetrying={viewerRoleQuery.isFetching}
+            >
+              {describeRequestFailure(
+                viewerRoleQuery.error,
+                '相手の個人費の合計は表示できませんでした',
+              )}
+            </ErrorState>
+          </div>
         ) : spouseProfile.isPending ? (
           // ニックネーム未取得のうちはロール名で仮描画せず、取得完了後に一度で確定させる
           // （balances/page.tsx の SpouseSharedTotalItem と同じ理由。usability 7-2）
-          <LoadingState />
+          <div className={styles.spouseNoteFallback}>
+            <LoadingState />
+          </div>
         ) : (
           <SpousePersonalNote
             amount={kpis.data.spousePersonalTotal}
