@@ -59,9 +59,13 @@ function breakdownResponse(): unknown {
  */
 function respond(options: { kpis?: unknown; breakdown?: unknown }): void {
   apiFetch.mockImplementation((path: string) => {
-    // 相手のニックネーム取得(#596)は本テストの主題ではないため、常に未設定で解決する
+    // 閲覧者の役割(#597)・相手のニックネーム取得(#596)は本テストの主題ではないため、
+    // 常に解決済みで返す(役割・ニックネームのゲート自体は別の describe で検証する)
+    if (path === '/api/me') {
+      return Promise.resolve({ viewerId: 'U_TEST', role: 'honey' })
+    }
     if (path === '/api/settings/spouse-profile') {
-      return Promise.resolve({ profile: { role: 'honey', nickname: null } })
+      return Promise.resolve({ profile: { nickname: null } })
     }
     const isKpis = path.includes('/api/dashboard/kpis')
     const value = isKpis ? options.kpis : options.breakdown
@@ -120,15 +124,16 @@ describe('ダッシュボード', () => {
     renderPage()
 
     expect(await screen.findByText(/カテゴリ内訳の取得に失敗しました/)).toBeInTheDocument()
-    // kpis / breakdown に加え、相手のニックネーム取得(#596)も初回マウントで走る
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(3))
+    // kpis / breakdown に加え、閲覧者の役割(#597)・相手のニックネーム取得(#596)も
+    // 初回マウントで走る
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(4))
 
     respond({ kpis: kpisResponse(), breakdown: breakdownResponse() })
     await user.click(screen.getByRole('button', { name: '再読み込み' }))
 
     // 押した直後も、取り直しが終わったあとも、成功している KPI は出たまま
     expect(screen.getByText('2,450,000円')).toBeInTheDocument()
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(5))
     expect(await screen.findByRole('link', { name: /食費/ })).toBeInTheDocument()
     expect(screen.getByText('2,450,000円')).toBeInTheDocument()
     const paths = apiFetch.mock.calls.map(call => String(call[0]))
@@ -149,5 +154,87 @@ describe('ダッシュボード', () => {
 
     const hero = await screen.findByText('資産合計')
     expect(within(hero.parentElement as HTMLElement).getByText('2,450,000円')).toBeInTheDocument()
+  })
+})
+
+/**
+ * 閲覧者の役割・相手のニックネームの応答をまとめて差し替える。役割・ニックネームは
+ * 相手の呼称の根拠になるため、既定では解決済みにする(未解決・失敗は個別に指定)。
+ * kpis・breakdown は常に成功で固定し、相手の個人費行の表示だけを見る。
+ */
+function mockDashboard(
+  role: 'honey' | 'darling' | 'pending' | 'error' = 'darling',
+  nickname: string | null | 'pending' = null,
+): void {
+  apiFetch.mockImplementation((path: string) => {
+    if (path === '/api/me') {
+      if (role === 'pending') return new Promise(() => {})
+      if (role === 'error') return Promise.reject(new Error('boom'))
+      return Promise.resolve({ viewerId: 'U_TEST', role })
+    }
+    if (path === '/api/settings/spouse-profile') {
+      if (nickname === 'pending') return new Promise(() => {})
+      return Promise.resolve({ profile: { nickname } })
+    }
+    if (path.includes('/api/dashboard/kpis')) {
+      return Promise.resolve(DashboardKpisViewSchema.parse(kpisResponse()))
+    }
+    if (path.includes('/api/dashboard/category-breakdown')) {
+      return Promise.resolve(CategoryBreakdownViewSchema.parse(breakdownResponse()))
+    }
+    return new Promise(() => {})
+  })
+}
+
+describe('相手の個人費行', () => {
+  it('本人の役割が確定していれば、相手の呼び名で個人費の合計を出す(#597)', async () => {
+    mockDashboard('darling')
+    renderPage()
+
+    expect(await screen.findByText(/Honeyの個人費（合計のみ）/)).toBeInTheDocument()
+  })
+
+  it('honey の画面では相手が Darling になる', async () => {
+    mockDashboard('honey')
+    renderPage()
+
+    expect(await screen.findByText(/Darlingの個人費（合計のみ）/)).toBeInTheDocument()
+  })
+
+  it('相手のニックネームが取れていれば、ロール名の代わりにニックネームで表示する', async () => {
+    mockDashboard('darling', 'ななみ')
+    renderPage()
+
+    expect(await screen.findByText(/ななみの個人費（合計のみ）/)).toBeInTheDocument()
+    expect(screen.queryByText(/Honeyの個人費（合計のみ）/)).not.toBeInTheDocument()
+  })
+
+  it('相手のニックネームが確定するまで相手の個人費行を描かない', async () => {
+    // ロール名で仮描画してからニックネームに差し替えると、確定前の既定値を出す
+    // 役割確定ゲートと同じ理由で不適切(usability 7-2)
+    mockDashboard('darling', 'pending')
+    renderPage()
+
+    await screen.findByText('資産合計')
+    expect(screen.queryByText(/個人費（合計のみ）/)).toBeNull()
+  })
+
+  it('閲覧者の役割が確定するまで相手の個人費行を描かない(#597)', async () => {
+    // 既定値(darling)で描くと、honey の利用者に「Honeyの…」と自分の名前が付いた
+    // 相手の金額が一瞬出てから差し替わる(usability.md 7-2)
+    mockDashboard('pending')
+    renderPage()
+
+    await screen.findByText('資産合計')
+    expect(screen.queryByText(/個人費（合計のみ）/)).toBeNull()
+  })
+
+  it('閲覧者の役割を取れなければ、相手の名前を推測せず再試行を出す(#597)', async () => {
+    mockDashboard('error')
+    renderPage()
+
+    expect(await screen.findByText('相手の個人費の合計は表示できませんでした')).toBeInTheDocument()
+    expect(screen.queryByText(/個人費（合計のみ）/)).toBeNull()
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument()
   })
 })
