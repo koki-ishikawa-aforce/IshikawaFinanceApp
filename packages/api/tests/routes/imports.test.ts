@@ -149,6 +149,19 @@ describe('POST /api/imports/csv', () => {
     expect(res.status).toBe(400)
   })
 
+  it('不正な multipart ボディは 400（500 に落ちない、#565）', async () => {
+    const { app } = createTestApp()
+    const res = await app.request('/api/imports/csv', {
+      method: 'POST',
+      headers: {
+        'X-User-Id': VIEWER_ID,
+        'Content-Type': 'multipart/form-data; boundary=----garbageboundary',
+      },
+      body: 'not really multipart data at all',
+    })
+    expect(res.status).toBe(400)
+  })
+
   it('フォーマット不正は 422 でジョブが format_validation_failed になる', async () => {
     const { app } = createTestApp()
     const res = await request(app, 'POST', '/api/imports/csv', {

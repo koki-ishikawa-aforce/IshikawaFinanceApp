@@ -36,6 +36,7 @@ import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 import { startMonthlyExpenseCycleForUser } from '../monthly-expense-cycle-start.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const QueryParamsSchema = z.object({
   month: YearMonthSchema.optional(),
@@ -132,7 +133,7 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
    * （`monthly-expense-cycle-start.ts`。ここでサイクル生成を組み立て直さない）。
    */
   app.post('/cycles', async c => {
-    const body = CycleCreateBodySchema.parse(await c.req.json())
+    const body = CycleCreateBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const result = await startMonthlyExpenseCycleForUser(
       {
@@ -178,7 +179,7 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
    */
   app.put('/cycles/:id/finalize', async c => {
     const id = MonthlyExpenseCycleIdSchema.parse(c.req.param('id'))
-    const body = FinalizeBodySchema.parse(await c.req.json())
+    const body = FinalizeBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
 
     const cycle = await deps.monthlyExpenseCycleRepository.findById(id)
@@ -262,7 +263,7 @@ export function expenseSettlementRoutes(deps: ExpenseSettlementRoutesDeps): Hono
 
   /** 精算入金の記録（突合待ちとして登録） */
   app.post('/deposits', async c => {
-    const body = DepositBodySchema.parse(await c.req.json())
+    const body = DepositBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const now = new Date()
     const deposit = ExpenseReimbursementDepositSchema.parse({

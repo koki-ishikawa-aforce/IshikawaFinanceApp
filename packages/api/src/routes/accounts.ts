@@ -69,6 +69,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const RegisterBodySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -155,7 +156,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
    * 同じ登録をやり直すと修復される（下の repairInterruptedCardRegistration）。
    */
   app.post('/', async c => {
-    const body = RegisterBodySchema.parse(await c.req.json())
+    const body = RegisterBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const now = new Date()
 
@@ -249,7 +250,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
 
   /** 別銀行貯蓄口座の銀行名変更（所有者本人のみ） */
   app.put('/:accountId/bank-name', async c => {
-    const body = BankNameBodySchema.parse(await c.req.json())
+    const body = BankNameBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const accountId = AccountIdSchema.parse(c.req.param('accountId'))
     const viewerId = c.get('viewerId')
     const found = await getAccountOr404(accountId)
@@ -275,7 +276,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
 
   /** NISA 口座の証券会社名変更（所有者本人のみ） */
   app.put('/:accountId/brokerage-name', async c => {
-    const body = BrokerageNameBodySchema.parse(await c.req.json())
+    const body = BrokerageNameBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const accountId = AccountIdSchema.parse(c.req.param('accountId'))
     const viewerId = c.get('viewerId')
     const found = await getAccountOr404(accountId)
@@ -425,7 +426,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
    * 記録することになるため、ドメイン関数は #390（入金・出金用途判別）からの呼び出しに残す。
    */
   app.post('/:accountId/withdraw', async c => {
-    const body = AmountBodySchema.parse(await c.req.json())
+    const body = AmountBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const { account, viewerId, accountId } = await loadOwnedAccount(c)
     const savings = asOtherSavingsAccount(account, '取り崩しの記録')
     const now = new Date()
@@ -448,7 +449,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
 
   /** 残高の手動補正（別銀行貯蓄。差分ではなく実際の残高へ差し替える） */
   app.put('/:accountId/balance', async c => {
-    const body = BalanceBodySchema.parse(await c.req.json())
+    const body = BalanceBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const { account, viewerId, accountId } = await loadOwnedAccount(c)
     const savings = asOtherSavingsAccount(account, '残高の補正')
     const now = new Date()
@@ -477,7 +478,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
    * 別銀行貯蓄の残高補正（PUT /:accountId/balance）と対になる操作で、対象口座種別だけが違う。
    */
   app.put('/:accountId/contribution', async c => {
-    const body = ContributionBodySchema.parse(await c.req.json())
+    const body = ContributionBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const { account, viewerId, accountId } = await loadOwnedAccount(c)
     const nisa = asNisaAccount(account, '積立累計の補正')
     const now = new Date()
@@ -503,7 +504,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
 
   /** 初期残高の後修正（オンボーディング Phase 2-B の入力ミスを直す。現在残高も同じ差分ずれる） */
   app.put('/:accountId/initial-balance', async c => {
-    const body = InitialBalanceBodySchema.parse(await c.req.json())
+    const body = InitialBalanceBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const { account, viewerId, accountId } = await loadOwnedAccount(c)
     const now = new Date()
     const { account: updated, oldInitialBalance } = correctInitialBalance(account, {
@@ -532,7 +533,7 @@ export function accountsRoutes(deps: AccountsRoutesDeps): Hono<AppEnv> {
    * 押し間違えたときは POST /:accountId/reactivate で元に戻せる（#457）。
    */
   app.post('/:accountId/inactivate', async c => {
-    const body = InactivateBodySchema.parse(await c.req.json())
+    const body = InactivateBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const { account, viewerId, accountId } = await loadOwnedAccount(c)
     const now = new Date()
     const updated = inactivateAccount(account, {

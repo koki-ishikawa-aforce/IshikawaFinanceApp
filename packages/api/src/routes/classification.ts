@@ -39,6 +39,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const RetroactiveParamsSchema = z.object({
   merchantName: z.string().min(1),
@@ -157,7 +158,7 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
 
   /** 遡及適用の実行（学習済み加盟店ルールを過去の未分類取引へ適用） */
   app.post('/retroactive-candidates/apply', async c => {
-    const body = RetroactiveApplyBodySchema.parse(await c.req.json())
+    const body = RetroactiveApplyBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const merchantName = body.merchantName.normalize('NFKC').trim()
 
@@ -221,7 +222,7 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
    * F-1: `findByMerchant` が viewerId 必須のため、他者の学習データには触れない。
    */
   app.post('/merchant-rules/disable', async c => {
-    const body = MerchantRuleActionBodySchema.parse(await c.req.json())
+    const body = MerchantRuleActionBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const merchantName = body.merchantName.normalize('NFKC').trim()
 
@@ -251,7 +252,7 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
    * 改めて学習し直す。F-1: `findByMerchant` が viewerId 必須のため他者に触れない。
    */
   app.post('/merchant-rules/reenable', async c => {
-    const body = MerchantRuleActionBodySchema.parse(await c.req.json())
+    const body = MerchantRuleActionBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const merchantName = body.merchantName.normalize('NFKC').trim()
 
@@ -277,7 +278,7 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
 
   /** 一括分類セッションの開始 */
   app.post('/bulk-sessions', async c => {
-    const body = BulkSessionCreateBodySchema.parse(await c.req.json())
+    const body = BulkSessionCreateBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const existing = await deps.bulkClassificationSessionRepository.findInProgressByUser(viewerId)
     if (existing !== null) {
@@ -349,7 +350,7 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
    */
   app.post('/bulk-sessions/:id/progress', async c => {
     const id = BulkClassificationSessionIdSchema.parse(c.req.param('id'))
-    const body = BulkSessionProgressBodySchema.parse(await c.req.json())
+    const body = BulkSessionProgressBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const session = await loadOwnedInProgressSession(
       deps.bulkClassificationSessionRepository,
       id,

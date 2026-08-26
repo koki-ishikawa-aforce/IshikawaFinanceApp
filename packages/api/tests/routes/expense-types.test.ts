@@ -60,6 +60,16 @@ describe('POST /api/expense-types', () => {
     expect(res.status).toBe(400)
   })
 
+  it('不正な JSON ボディは 400（500 に落ちない、#565）', async () => {
+    const t = createTestApp()
+    const res = await t.app.request('/api/expense-types', {
+      method: 'POST',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
+    })
+    expect(res.status).toBe(400)
+  })
+
   it('世帯共有（規定）・本人の個人別と同名の作成は 409（名前重複エラー）', async () => {
     const t = createTestApp()
     await seedDefaultExpenseType(t)

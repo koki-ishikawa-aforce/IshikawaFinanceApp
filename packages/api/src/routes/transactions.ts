@@ -34,6 +34,7 @@ import type {
 import { newUlid } from '@warimaru/adapters-postgres'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const ListParamsSchema = z.object({
   month: YearMonthSchema,
@@ -159,7 +160,7 @@ export function transactionsRoutes(
   })
 
   app.post('/', async c => {
-    const body = CreateBodySchema.parse(await c.req.json())
+    const body = CreateBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const now = new Date()
     const common = {
@@ -200,7 +201,7 @@ export function transactionsRoutes(
 
   app.put('/:id', async c => {
     const id = TransactionIdSchema.parse(c.req.param('id'))
-    const body = UpdateBodySchema.parse(await c.req.json())
+    const body = UpdateBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const transaction = await transactionRepository.findById(id)
     if (transaction === null) throw new NotFoundError('Transaction', id)
@@ -240,7 +241,7 @@ export function transactionsRoutes(
 
   app.put('/:id/classify', async c => {
     const id = TransactionIdSchema.parse(c.req.param('id'))
-    const input = ClassificationInputSchema.parse(await c.req.json())
+    const input = ClassificationInputSchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const transaction = await transactionRepository.findById(id)
     if (transaction === null) throw new NotFoundError('Transaction', id)

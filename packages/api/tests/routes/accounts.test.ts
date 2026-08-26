@@ -290,6 +290,16 @@ describe('POST /api/accounts', () => {
     })
     expect(res.status).toBe(400)
   })
+
+  it('不正な JSON ボディは 400（500 に落ちない、#565）', async () => {
+    const t = createTestApp()
+    const res = await t.app.request('/api/accounts', {
+      method: 'POST',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
+    })
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('GET /api/accounts', () => {

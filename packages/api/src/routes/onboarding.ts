@@ -64,6 +64,7 @@ import { domainEventBase } from '../event-handlers/index.js'
 import { traceIdOf } from '../trace-id.js'
 import { applyLineFriendAdded } from '../line-operation-records.js'
 import { fireOperationStartIfReady, tryFireOperationStart } from '../operation-start.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const RegisterBodySchema = z.object({ nickname: NicknameSchema.optional() })
 const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
@@ -224,7 +225,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
    * 新規登録の瞬間だけには限定しない）。
    */
   app.post('/register', async c => {
-    const body = RegisterBodySchema.parse(await c.req.json().catch(() => ({})))
+    const body = RegisterBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const now = new Date()
     // 許可リスト照合は「登録済みかどうか」より前に行う（#533）。この経路は許可リスト照合ガードが
@@ -284,7 +285,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
 
   /** ニックネームの設定（本人のみ変更可。null で未設定 = ロール名表示に戻す） */
   app.put('/nickname', async c => {
-    const body = NicknameBodySchema.parse(await c.req.json())
+    const body = NicknameBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const user = await getUserOr404(viewerId)
     const now = new Date()
@@ -376,7 +377,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
    * SectionA の完了は Gmail OAuth コールバック（routes/gmail-oauth.ts）が記録する。
    */
   app.put('/phase2/section-b', async c => {
-    const body = SectionBBodySchema.parse(await c.req.json())
+    const body = SectionBBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const user = asPhase2InProgress(await getUserOr404(viewerId))
     const now = new Date()
@@ -404,7 +405,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
    * 成功する。ここは進捗の記録だけを担い、Phase2 完了の可否には関与しない。
    */
   app.put('/phase2/section-confirmation', async c => {
-    const body = SectionConfirmationBodySchema.parse(await c.req.json())
+    const body = SectionConfirmationBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const user = asPhase2InProgress(await getUserOr404(viewerId))
     const now = new Date()
@@ -427,7 +428,7 @@ export function onboardingRoutes(deps: OnboardingRoutesDeps): Hono<AppEnv> {
 
   /** Phase2 SectionF（過去明細取込）の完了またはスキップ */
   app.put('/phase2/section-f', async c => {
-    const body = SectionFBodySchema.parse(await c.req.json())
+    const body = SectionFBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const user = asPhase2InProgress(await getUserOr404(viewerId))
     const now = new Date()

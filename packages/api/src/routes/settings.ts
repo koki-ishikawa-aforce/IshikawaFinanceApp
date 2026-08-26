@@ -16,6 +16,7 @@ import {
 import type { AppUserRepository, EventBus, UserId, UserRole } from '@warimaru/domain'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
+import { readJsonObjectBody } from '../read-request-body.js'
 
 const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
 
@@ -40,7 +41,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
 
   /** ニックネームの変更（本人のみ。null で未設定に戻す = ロール名フォールバック表示） */
   app.put('/nickname', async c => {
-    const body = NicknameBodySchema.parse(await c.req.json())
+    const body = NicknameBodySchema.parse(readJsonObjectBody(await c.req.text()))
     const viewerId = c.get('viewerId')
     const user = await deps.appUserRepository.findById(viewerId)
     if (user === null) throw new NotFoundError('AppUser', viewerId)

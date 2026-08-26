@@ -258,6 +258,25 @@ describe('POST /api/onboarding/register', () => {
     const res = await register(t, UserIdSchema.parse('user-stranger'))
     expect(res.status).toBe(403)
   })
+
+  it('ボディ無しのリクエストは空ボディとして登録できる（#565）', async () => {
+    const t = createTestApp()
+    const res = await t.app.request('/api/onboarding/register', {
+      method: 'POST',
+      headers: { 'X-User-Id': VIEWER_ID },
+    })
+    expect(res.status).toBe(201)
+  })
+
+  it('不正な JSON ボディは 400（以前は黙って空ボディ扱いされていた、#565）', async () => {
+    const t = createTestApp()
+    const res = await t.app.request('/api/onboarding/register', {
+      method: 'POST',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
+    })
+    expect(res.status).toBe(400)
+  })
 })
 
 /**
@@ -685,6 +704,17 @@ describe('PUT /api/onboarding/nickname', () => {
     await register(t)
     const res = await request(t.app, 'PUT', '/api/onboarding/nickname', {
       body: { nickname: 'あいうえおかきくけこさ' },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('不正な JSON ボディは 400（500 に落ちない、#565）', async () => {
+    const t = createTestApp()
+    await register(t)
+    const res = await t.app.request('/api/onboarding/nickname', {
+      method: 'PUT',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
     })
     expect(res.status).toBe(400)
   })

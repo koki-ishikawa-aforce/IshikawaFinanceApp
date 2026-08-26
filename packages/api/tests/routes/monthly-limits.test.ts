@@ -29,6 +29,16 @@ describe('PUT /api/monthly-limits', () => {
     })
     expect(res.status).toBe(403)
   })
+
+  it('不正な JSON ボディは 400（500 に落ちない、#565）', async () => {
+    const t = createTestApp()
+    const res = await t.app.request('/api/monthly-limits', {
+      method: 'PUT',
+      headers: { 'X-User-Id': VIEWER_ID, 'Content-Type': 'application/json' },
+      body: '{ not json',
+    })
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('GET /api/monthly-limits?month=', () => {
