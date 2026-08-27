@@ -7,6 +7,7 @@ import {
   CategoryIdSchema,
   ImportJobIdSchema,
   YearMonthSchema,
+  jstCalendarParts,
   type YearMonth,
 } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
@@ -43,10 +44,8 @@ import styles from './page.module.css'
 type ClassFilter = ExpenseClassWire | 'all'
 
 function toDateInputValue(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  const { year, month, day } = jstCalendarParts(date)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
 /** 発生日の初期値。表示中の月が当月なら今日、それ以外の月なら 1 日 */

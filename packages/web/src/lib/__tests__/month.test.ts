@@ -59,6 +59,16 @@ describe('getCurrentMonth', () => {
 
     expect(getCurrentMonth()).toBe('2026-07')
   })
+
+  // 端末の時間帯設定によらず「今月」は JST で決まる(#639)。端末時間帯まかせだと、
+  // この瞬間はロサンゼルス(UTC-7/8)では 7/31 のままで、当月判定が 1 か月ずれる
+  it('端末の時間帯設定によらず JST で当月を判定する', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-31T15:00:00.000Z'))
+    vi.stubEnv('TZ', 'America/Los_Angeles')
+
+    expect(getCurrentMonth()).toBe('2026-08')
+  })
 })
 
 describe('shiftMonth', () => {
@@ -120,5 +130,14 @@ describe('formatDate / formatDateWithYear', () => {
 
   it('JST で年をまたぐ時刻は翌年の日付になる', () => {
     expect(formatDateWithYear(new Date('2025-12-31T15:00:00.000Z'))).toBe('2026/01/01')
+  })
+
+  // 端末の時間帯が JST でなくても、表示は常に JST の暦日にする(#639)。
+  // 端末時間帯まかせだと、この時刻はロサンゼルス(UTC-7/8)では 7/18 のままになる
+  it('端末の時間帯設定によらず JST の暦日で整形する', () => {
+    vi.stubEnv('TZ', 'America/Los_Angeles')
+
+    expect(formatDate(new Date('2026-07-18T15:00:00.000Z'))).toBe('7/19')
+    expect(formatDateWithYear(new Date('2026-07-18T15:00:00.000Z'))).toBe('2026/07/19')
   })
 })

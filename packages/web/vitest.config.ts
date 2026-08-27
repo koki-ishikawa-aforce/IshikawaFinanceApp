@@ -12,9 +12,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    // 画面の日付は JST で出す(usability 5-4)。日付整形はローカル時刻で日を決めるため、
-    // 実行環境のタイムゾーン次第で「UTC の日付が出ていても気づけない」テストになる。
-    // CI も手元も JST に固定して、JST の日付を期待値として書けるようにする
+    // 画面の日付は端末の時間帯によらず JST で出す(usability 5-4、#639)。実装自体は
+    // TZ に依存しないが、CI も手元も JST に固定しておくと JST の日付をそのまま期待値に書ける
     env: { TZ: 'Asia/Tokyo' },
     // vi.stubEnv した環境変数をテストごとに戻す。戻し忘れると、モック起動モードの
     // 分岐(NEXT_PUBLIC_MOCK)を読む後続のテストが別のテストの指定で動く
