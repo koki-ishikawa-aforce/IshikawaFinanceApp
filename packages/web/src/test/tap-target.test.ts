@@ -66,16 +66,16 @@ const CONTROLS: readonly {
     selectors: ['.legendItem'],
   },
   {
-    // 下部ナビ。7 項目が横に並ぶため、幅も宣言しないと 1 項目が下限を割る
+    // 下部ナビ。5 項目が横に並ぶため、幅も宣言しないと 1 項目が下限を割る
     css: join('components', 'ui', 'AppNav.module.css'),
     selectors: ['.item'],
     properties: HEIGHT_AND_WIDTH,
   },
   { css: join('components', 'imports', 'StatementGuide.module.css'), selectors: ['.toggle'] },
   {
-    // 設定のタブ・上限なしのチェック行・オンボーディングへのリンク
+    // 設定のタブ・上限なしのチェック行・他画面への入り口リンク(精算・取込・オンボーディング)
     css: join('app', 'settings', 'page.module.css'),
-    selectors: ['.tab', '.checkRow', '.onboardingLink'],
+    selectors: ['.tab', '.checkRow', '.entryLink'],
   },
   {
     // 口座詳細の「残高一覧へ戻る」。文字だけの導線なので高さを宣言する（期間切替は

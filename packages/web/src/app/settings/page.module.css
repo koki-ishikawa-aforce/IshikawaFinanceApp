@@ -76,8 +76,9 @@
   cursor: pointer;
 }
 
-.onboardingLink {
-  /* `<a>` の既定は inline で下限が効かないため、受け皿になる表示形式を明示する（§4-3） */
+/* 他画面への入り口リンク(オンボーディング・精算・取込)に共通の見た目。`<a>` の既定は
+   inline で下限が効かないため、受け皿になる表示形式を明示する（§4-3） */
+.entryLink {
   display: flex;
   align-items: center;
   justify-content: center;
