@@ -4,7 +4,7 @@
 
 目的は2つある。
 
-1. **工程の通し仕様を1箇所に置く** — 手順の本体は 16 の skill に分かれており、レビュー観点・Routine 運用も別資料にある。それらを貫く「どのフェーズで誰が何を決めるか」がどこにも無かった
+1. **工程の通し仕様を1箇所に置く** — 手順の本体は 17 の skill に分かれており、レビュー観点・Routine 運用も別資料にある。それらを貫く「どのフェーズで誰が何を決めるか」がどこにも無かった
 2. **AI 駆動開発のベストプラクティスを研究・改訂する土台にする** — 「何をしているか」だけでなく **「なぜその形なのか」「どの失敗から来た形なのか」「まだ解けていない問題は何か」** を残す。何をもって良いワークフローとするかの基準と現状評価は [05-criteria.md](./05-criteria.md)、そこから抽出した原則は [04-principles.md](./04-principles.md) にあり、`/retro` と `/decide` の出力をそこへ還元していく
 
 ## このドキュメント群の位置づけ
@@ -23,6 +23,7 @@
 | ライフサイクル全体の網羅性(SWEBOK 18 KA との突合) | [06-lifecycle-coverage.md](./06-lifecycle-coverage.md) |
 | 各工程の**手順の本体** | `.claude/skills/<スキル名>/SKILL.md` |
 | **マージゲートの条件** | `.claude/skills/issue-work/SKILL.md`「マージゲート」(唯一の定義) |
+| 軽量設計工程・設計ノートの置き場と命名規約 | `.claude/skills/feature-design/SKILL.md`、[`docs/design-notes/`](../design-notes/) |
 | レビュー観点の体系・変更パス → 起動するレビュー・CI の担保範囲・ブランチ保護 | [`docs/review/README.md`](../review/README.md) |
 | Routine の運用設定(cron・プロンプト・止め方・トラブル対応) | [`docs/automation/`](../automation/) |
 | 受入テストのシナリオと実施規約 | [`docs/acceptance/README.md`](../acceptance/README.md) |

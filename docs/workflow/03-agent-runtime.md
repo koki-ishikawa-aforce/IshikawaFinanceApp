@@ -6,7 +6,7 @@
 
 | 層 | 実体 | 役割 | 更新経路 |
 | --- | --- | --- | --- |
-| **手順** | `.claude/skills/*/SKILL.md`(16) | 何をどの順でやるか | リポジトリ(PR 経由) |
+| **手順** | `.claude/skills/*/SKILL.md`(17) | 何をどの順でやるか | リポジトリ(PR 経由) |
 | **実行者** | `.claude/agents/*.md`(7) | レビューを読み取り専用で実行する | リポジトリ(PR 経由) |
 | **ガード** | `.claude/settings.json` + `.claude/hooks/*.mjs`(3) | 規約違反を実行時に不可能にする | リポジトリ(PR 経由) |
 | **起動** | Routine(4) | いつ誰が起動するか | **claude.ai の画面のみ**(§5) |
@@ -17,6 +17,7 @@
 
 | 種別 | skill | 起動者 | 役割 |
 | --- | --- | --- | --- |
+| 工程 | `/feature-design` | 人間 | 複数 Issue にまたがる機能の設計判断を対話でヒアリングし、設計ノート(`docs/design-notes/`)として残す。対話専用(無人モード無し) |
 | 工程 | `/issue-create` | 人間 | 要件をヒアリングして Issue 化。作成時に ready 判定まで行う |
 | 工程 | `/backlog-ready` | 人間 | open Issue をまとめて ready 判定し、承認ラベルを付ける |
 | 工程 | `/issue-work` | 人間 / **Routine(無人)** | Issue 起点の実装 → PR → CI → マージ。**マージゲートの唯一の定義**を持つ |
