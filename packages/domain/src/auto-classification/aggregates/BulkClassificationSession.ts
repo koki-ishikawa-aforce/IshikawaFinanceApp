@@ -13,6 +13,8 @@
  *  - N-1: 同一加盟店の複数取引へのルールは 1 件に集約される（behavior で保証、Phase 5 M-B）
  *  - 進行中の 分類済み取引 は対象取引の部分集合で重複を持たない
  *  - 進行中の 残件数 = 対象取引数 - 分類済み取引数（進捗と残件数が食い違わない）
+ *  - 読み出してから保存するまでに他の処理が同じセッションを更新していたら書き込まない
+ *    （#609。版数 `common.version` を Repository.save が照合する。口座 #459 と同じ形）
  */
 import { z } from 'zod'
 import {
@@ -59,6 +61,16 @@ export const CommonBulkClassificationSessionAttrsSchema = z.object({
   userId: UserIdSchema,
   trigger: BulkClassificationTriggerSchema,
   targets: z.array(BulkClassificationTargetSchema),
+  /**
+   * 版数（楽観ロックのトークン。#609、口座 #459 と同じ形）。読み出したセッションが
+   * 「いつの状態か」を表し、Repository.save はこの値が保存先の現在の版と一致するときだけ
+   * 書き込む（不一致は `ConcurrentUpdateError`）。書き込みに成功した保存先の版は 1 進む。
+   *
+   * ドメイン関数はこの値を触らない。同じ版のまま新しい状態を返し、書き込み時に
+   * 「読んだときから変わっていないこと」を照合するのが役割だから。
+   * 既存データ（この項目を持たない payload・版数列が無かった頃の行）は 0 として読み出される。
+   */
+  version: z.number().int().nonnegative().default(0),
 })
 export type CommonBulkClassificationSessionAttrs = z.infer<
   typeof CommonBulkClassificationSessionAttrsSchema

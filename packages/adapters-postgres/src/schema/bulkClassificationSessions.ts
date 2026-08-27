@@ -4,8 +4,12 @@
  *
  * 進行中セッションの二重起動防止は partial unique (user_id) WHERE kind = 'in_progress'
  * が最終保証（§2.2）。完了・中断行は複数残ってよい。
+ *
+ * version: 楽観ロックのトークン（#609、口座 accounts.version #459 と同じ形）。
+ * Repository.save は「読み出したときの版と一致する行だけを更新する」形で書き込み、
+ * 更新できた行が無ければ ConcurrentUpdateError とみなす。既存行は NOT NULL DEFAULT 0 で埋める。
  */
-import { pgTable, text, timestamp, jsonb, check, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, timestamp, jsonb, check, uniqueIndex } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 export const bulkClassificationSessions = pgTable(
@@ -14,6 +18,7 @@ export const bulkClassificationSessions = pgTable(
     bulkClassificationSessionId: text('bulk_classification_session_id').primaryKey(),
     userId: text('user_id').notNull(),
     kind: text('kind').notNull(),
+    version: integer('version').notNull().default(0),
     payload: jsonb('payload').$type<unknown>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),

@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import type {
+  BulkClassificationSession,
   BulkClassificationSessionId,
   InProgressBulkClassificationSession,
 } from '@warimaru/domain'
 import {
   completeBulkClassificationSession,
+  ConcurrentUpdateError,
   InvariantViolationError,
   advanceBulkClassificationSession,
 } from '@warimaru/domain'
@@ -24,6 +26,14 @@ function soleTargetId(session: InProgressBulkClassificationSession) {
   return target.transactionId
 }
 
+/** 版数だけを差し替えたセッションを返す（upsert 後の期待値を組み立てるヘルパー） */
+function withVersion(
+  session: BulkClassificationSession,
+  version: number,
+): BulkClassificationSession {
+  return { ...session, common: { ...session.common, version } }
+}
+
 describe('PostgresBulkClassificationSessionRepository', () => {
   it('save → findById の往復同一性（in_progress / completed / aborted 全変種）', async () => {
     const inProgress = inProgressSession() as InProgressBulkClassificationSession
@@ -36,7 +46,10 @@ describe('PostgresBulkClassificationSessionRepository', () => {
       new Date('2026-07-01T02:00:00.000Z'),
     )
     await repo.save(completed)
-    expect(await repo.findById(inProgress.common.bulkClassificationSessionId)).toEqual(completed)
+    // 同一行への 2 回目の保存で版数が 1 進む（completed 自体は common をそのまま引き継ぐため版数 0 のまま）
+    expect(await repo.findById(inProgress.common.bulkClassificationSessionId)).toEqual(
+      withVersion(completed, 1),
+    )
 
     const aborted = abortedSession({ userId: DARLING_USER_ID })
     await repo.save(aborted)
@@ -51,7 +64,7 @@ describe('PostgresBulkClassificationSessionRepository', () => {
     await repo.save(advanced)
 
     const found = await repo.findById(inProgress.common.bulkClassificationSessionId)
-    expect(found).toEqual(advanced)
+    expect(found).toEqual(withVersion(advanced, 1))
     expect(found?.kind === 'in_progress' && found.remainingCount).toBe(0)
   })
 
@@ -121,5 +134,82 @@ describe('PostgresBulkClassificationSessionRepository', () => {
       completeBulkClassificationSession(first, 1, new Date('2026-07-01T02:00:00.000Z')),
     )
     await expect(repo.save(inProgressSession({ userId: HONEY_USER_ID }))).resolves.toBeUndefined()
+  })
+
+  // --- #609: 進捗記録の並行更新競合（楽観ロック） ---
+
+  it('版数は保存のたびに 1 進む（既存行への上書き）', async () => {
+    const inProgress = inProgressSession() as InProgressBulkClassificationSession
+    await repo.save(inProgress)
+    // 新規 insert 後は版数 0
+    const v0 = await repo.findById(inProgress.common.bulkClassificationSessionId)
+    expect(v0?.common.version).toBe(0)
+    // 1 回進めると版数 1
+    const advanced = advanceBulkClassificationSession(v0 as InProgressBulkClassificationSession, [
+      soleTargetId(inProgress),
+    ])
+    await repo.save(advanced)
+    const v1 = await repo.findById(inProgress.common.bulkClassificationSessionId)
+    expect(v1?.common.version).toBe(1)
+  })
+
+  it('古い版で保存し直すと ConcurrentUpdateError（同時更新の後勝ちを防ぐ）', async () => {
+    const session = inProgressSession({
+      userId: HONEY_USER_ID,
+    }) as InProgressBulkClassificationSession
+    await repo.save(session)
+
+    // 2 台の端末が同じ版（0）を読み出す
+    const readA = (await repo.findById(
+      session.common.bulkClassificationSessionId,
+    )) as InProgressBulkClassificationSession
+    const readB = (await repo.findById(
+      session.common.bulkClassificationSessionId,
+    )) as InProgressBulkClassificationSession
+    expect(readA.common.version).toBe(0)
+    expect(readB.common.version).toBe(0)
+
+    // A が先に進捗を保存 → 版数 1 へ
+    const a = advanceBulkClassificationSession(readA, [soleTargetId(session)])
+    await repo.save(a)
+
+    // B は読んだときの版（0）のまま保存しようとする → 拒否（A の更新を消さない）
+    const b = advanceBulkClassificationSession(readB, [soleTargetId(session)])
+    await expect(repo.save(b)).rejects.toThrow(ConcurrentUpdateError)
+
+    // A の更新だけが残る（B は上書きしていない）
+    const reloaded = (await repo.findById(
+      session.common.bulkClassificationSessionId,
+    )) as InProgressBulkClassificationSession
+    expect(reloaded.remainingCount).toBe(0)
+    expect(reloaded.common.version).toBe(1)
+
+    // B は最新版を読み直せばやり直せる（一時的な競合であることの確認）
+    await expect(repo.save(advanceBulkClassificationSession(reloaded, []))).resolves.toBeUndefined()
+    const final = (await repo.findById(
+      session.common.bulkClassificationSessionId,
+    )) as InProgressBulkClassificationSession
+    expect(final.common.version).toBe(2)
+  })
+
+  it('版数列を持たない既存行は版数 0 として読み出せる（後方互換）', async () => {
+    const legacy = inProgressSession({
+      userId: HONEY_USER_ID,
+    }) as InProgressBulkClassificationSession
+    // version 列を明示せずに INSERT する（DEFAULT 0 で埋まることを確認する）
+    await db.insert(bulkClassificationSessions).values({
+      bulkClassificationSessionId: legacy.common.bulkClassificationSessionId,
+      userId: legacy.common.userId,
+      kind: legacy.kind,
+      payload: serializeForPayload(legacy),
+    })
+
+    const found = await repo.findById(legacy.common.bulkClassificationSessionId)
+    expect(found?.common.version).toBe(0)
+
+    // 版数 0 のまま保存し直せる（読み書きの両方が成立する）
+    await expect(repo.save(legacy)).resolves.toBeUndefined()
+    const reloaded = await repo.findById(legacy.common.bulkClassificationSessionId)
+    expect(reloaded?.common.version).toBe(1)
   })
 })

@@ -399,19 +399,37 @@ export function createMockMerchantLearningRuleRepository(): MerchantLearningRule
 }
 
 export function createMockBulkClassificationSessionRepository(): BulkClassificationSessionRepository {
-  const store = new Map<string, BulkClassificationSession>()
+  // 版数（#609）は列で持つ PostgreSQL 実装に合わせ、payload とは別に保持して読み出し時に写す。
+  const store = new Map<string, { session: BulkClassificationSession; version: number }>()
+  const withVersion = (
+    session: BulkClassificationSession,
+    version: number,
+  ): BulkClassificationSession => ({ ...session, common: { ...session.common, version } })
   return {
     async findById(id: BulkClassificationSessionId) {
-      return store.get(id) ?? null
+      const row = store.get(id)
+      return row === undefined ? null : withVersion(row.session, row.version)
     },
     async findInProgressByUser(userId: UserId) {
-      return (
-        [...store.values()].find(s => s.common.userId === userId && s.kind === 'in_progress') ??
-        null
+      const row = [...store.values()].find(
+        r => r.session.common.userId === userId && r.session.kind === 'in_progress',
       )
+      return row === undefined ? null : withVersion(row.session, row.version)
     },
     async save(session: BulkClassificationSession) {
-      store.set(session.common.bulkClassificationSessionId, session)
+      // 版数照合（#609）: 既存行は読み出したときの版と一致するときだけ書き込む
+      const existing = store.get(session.common.bulkClassificationSessionId)
+      const expectedVersion = session.common.version
+      if (existing !== undefined && existing.version !== expectedVersion) {
+        throw new ConcurrentUpdateError(
+          `一括分類セッション（${session.common.bulkClassificationSessionId}）は読み出し後に別の更新が入ったため保存できない（版数 ${expectedVersion} で照合）。もう一度お試しください。`,
+        )
+      }
+      const nextVersion = existing === undefined ? expectedVersion : expectedVersion + 1
+      store.set(session.common.bulkClassificationSessionId, {
+        session: withVersion(session, nextVersion),
+        version: nextVersion,
+      })
     },
   }
 }
