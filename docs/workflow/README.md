@@ -25,6 +25,7 @@
 | レビュー観点の体系・変更パス → 起動するレビュー・CI の担保範囲・ブランチ保護 | [`docs/review/README.md`](../review/README.md) |
 | Routine の運用設定(cron・プロンプト・止め方・トラブル対応) | [`docs/automation/`](../automation/) |
 | 受入テストのシナリオと実施規約 | [`docs/acceptance/README.md`](../acceptance/README.md) |
+| 外部レビュー・知識体系調査の記録(日付つき) | [`research/`](./research/) |
 | ドメイン設計(集約・ユビキタス言語・コンテキスト) | [`docs/domain/`](../domain/) |
 | 見た目の規約 / 使用性の規範 | [`DESIGN.md`](../../DESIGN.md) / [`docs/design/usability.md`](../design/usability.md) |
 
