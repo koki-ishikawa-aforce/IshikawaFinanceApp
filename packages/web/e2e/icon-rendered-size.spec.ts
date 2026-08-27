@@ -12,6 +12,9 @@ import { expect, test, type Locator } from '@playwright/test'
  *
  * ここではタップターゲット下限の実測（`tap-target.spec.ts`）と同じ二段構えの考え方で、
  * 実際にブラウザで描画させ、同じ役目のアイコンの実寸(px)が一致することを固定する（#633）。
+ *
+ * 対象アイコンの基準 font-size に幅依存のメディアクエリは無いため、`tap-target.spec.ts` と
+ * 異なり viewport は既定（Desktop Chrome）のままでよい。
  */
 
 async function iconRenderedSize(
@@ -44,7 +47,9 @@ test('追加ボタンのプラスアイコンが画面をまたいで同じ実�
     '設定「別銀行貯蓄口座を追加」ボタンのアイコン',
   )
 
-  await page.goto('/expense-settlement')
+  // mockScenario はタブ単位で sessionStorage に保持され続けるため(query-state.ts)、
+  // 前の遷移で指定した accounts-unregistered が残らないよう明示的に既定へ戻す
+  await page.goto('/expense-settlement?mockScenario=default')
   const depositAddIcon = page.getByRole('button', { name: '入金記録を追加' }).locator('svg')
   const depositSize = await iconRenderedSize(
     depositAddIcon,
@@ -66,10 +71,14 @@ test('残高一覧の口座種別アイコンと相手の役割アイコンが�
     .first()
   const smbcSize = await iconRenderedSize(smbcIcon, '残高一覧「三井住友銀行」のアイコン')
 
-  // 相手の合計行は押せないため <div> のまま(押せる行と見た目で区別する意図。page.tsx 参照)
+  // 相手の合計行は押せないため <div> のまま(押せる行と見た目で区別する意図。page.tsx 参照)。
+  // `div` を `hasText` で絞ると、口座一覧全体を包む祖先の <div> も同じ文字列を含んでしまい
+  // （テキストは子孫まで連結されて判定される）、`.first()` が無関係な口座のアイコンを拾う。
+  // 名前を示す <span> の直接の親（アイコンと名前だけを持つ .balanceHead）に絞って取り違えを防ぐ
   const spouseIcon = page
-    .locator('div')
-    .filter({ hasText: /の貯蓄・NISA（合計のみ）/ })
+    .getByText(/の貯蓄・NISA（合計のみ）/)
+    .first()
+    .locator('xpath=..')
     .locator('svg')
     .first()
   const spouseSize = await iconRenderedSize(spouseIcon, '残高一覧の相手ロールアイコン')
@@ -85,4 +94,30 @@ test('残高一覧の口座種別アイコンと相手の役割アイコンが�
     const size = await iconRenderedSize(icon, `残高一覧「${label}」のアイコン`)
     expectSameRenderedSize(size, smbcSize, `「${label}」のアイコン`)
   }
+})
+
+test('実寸の食い違いを検出できる（自己検証）', async ({ page }) => {
+  // このテスト自身の検出力を確認する。相手ロールアイコンの基準 font-size を意図的にずらし、
+  // expectSameRenderedSize が不一致として検出することを固定する。無くても他のテストは通るが、
+  // 対象アイコンの取り違え（`div` + `hasText` が無関係な祖先要素を拾う等）によって実質何も
+  // 検証していない状態に陥っても気づけないため、他画面の実装に依存しないここで固定する
+  await page.goto('/balances')
+  const smbcIcon = page
+    .getByRole('link', { name: /三井住友銀行/ })
+    .locator('svg')
+    .first()
+  const smbcSize = await iconRenderedSize(smbcIcon, '残高一覧「三井住友銀行」のアイコン')
+
+  const spouseIcon = page
+    .getByText(/の貯蓄・NISA（合計のみ）/)
+    .first()
+    .locator('xpath=..')
+    .locator('svg')
+    .first()
+  await spouseIcon.evaluate(svg => {
+    svg.setAttribute('style', 'width: 30px; height: 30px')
+  })
+  const brokenSize = await iconRenderedSize(spouseIcon, '基準をずらした相手ロールアイコン')
+
+  expect(() => expectSameRenderedSize(brokenSize, smbcSize, '相手ロールアイコン')).toThrow()
 })
