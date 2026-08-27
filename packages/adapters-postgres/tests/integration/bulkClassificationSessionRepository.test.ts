@@ -196,12 +196,17 @@ describe('PostgresBulkClassificationSessionRepository', () => {
     const legacy = inProgressSession({
       userId: HONEY_USER_ID,
     }) as InProgressBulkClassificationSession
+    // payload に version キー自体を含めない（この項目を持たない本物の既存行の形）。
+    // common.version は既定値 0 を持つため、payload に残したまま INSERT すると
+    // 「版数列ではなく payload 側を読んでいる」実装のリグレッションを検出できない。
+    const payload = serializeForPayload(legacy) as { common: Record<string, unknown> }
+    delete payload.common.version
     // version 列を明示せずに INSERT する（DEFAULT 0 で埋まることを確認する）
     await db.insert(bulkClassificationSessions).values({
       bulkClassificationSessionId: legacy.common.bulkClassificationSessionId,
       userId: legacy.common.userId,
       kind: legacy.kind,
-      payload: serializeForPayload(legacy),
+      payload,
     })
 
     const found = await repo.findById(legacy.common.bulkClassificationSessionId)
