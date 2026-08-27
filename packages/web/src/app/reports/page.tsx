@@ -187,22 +187,27 @@ function ReportsPageContent() {
       <h1 className={ui.pageTitle}>月次レポート</h1>
       <MonthNavigator month={month} onMonthChange={setMonth} />
 
-      {reportQuery.isLoading && <LoadingState />}
-      {reportQuery.error && (
-        <ErrorState>
-          {describeRequestFailure(reportQuery.error, 'レポートの取得に失敗しました')}
-        </ErrorState>
-      )}
-      {reportQuery.data === null && (
-        <div className={ui.card}>
-          <EmptyState>
-            この月のレポートはまだ作成されていません。
-            <br />
-            CSV 取込の完了後に作成されます。
-          </EmptyState>
-        </div>
-      )}
-      {reportQuery.data != null && <ReportDetail report={reportQuery.data} />}
+      {/* 月切り替えで入れ替わる領域(docs/design/usability.md 8-4)。ページ遷移を伴わないため
+          role="status" をこの器に常設する。入れ替わる側は announce={false} で live region
+          の入れ子を避ける */}
+      <div role="status" className={styles.liveRegion}>
+        {reportQuery.isLoading && <LoadingState announce={false} />}
+        {reportQuery.error && (
+          <ErrorState announce={false}>
+            {describeRequestFailure(reportQuery.error, 'レポートの取得に失敗しました')}
+          </ErrorState>
+        )}
+        {reportQuery.data === null && (
+          <div className={ui.card}>
+            <EmptyState announce={false}>
+              この月のレポートはまだ作成されていません。
+              <br />
+              CSV 取込の完了後に作成されます。
+            </EmptyState>
+          </div>
+        )}
+        {reportQuery.data != null && <ReportDetail report={reportQuery.data} />}
+      </div>
     </main>
   )
 }

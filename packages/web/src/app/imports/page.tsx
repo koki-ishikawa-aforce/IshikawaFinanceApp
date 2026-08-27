@@ -370,30 +370,36 @@ function ImportsPageContent() {
         <h2 id="import-status-title" className={ui.sectionTitle}>
           この月の取込状況
         </h2>
-        {statusQuery.isLoading && <LoadingState />}
-        {statusQuery.error && (
-          <ErrorState
-            onRetry={() => void statusQuery.refetch()}
-            isRetrying={statusQuery.isFetching}
-          >
-            {describeRequestFailure(statusQuery.error, '取込状況の取得に失敗しました')}
-          </ErrorState>
-        )}
-        {statusQuery.data &&
-          (completion !== null ? (
-            <div className={styles.statusDone}>
-              <LuCircleCheck
-                aria-hidden="true"
-                className={`${ui.iconSm} ${styles.statusDoneIcon}`}
-              />
-              取込完了（{formatDateWithYear(completion.completedAt)}）
-            </div>
-          ) : (
-            <EmptyState>
-              この月の明細取込はまだ完了していません。下のアップロードから CSV か明細 PDF
-              を取り込んでください。
-            </EmptyState>
-          ))}
+        {/* 月切り替えで入れ替わる領域(docs/design/usability.md 8-4)。ページ遷移を伴わないため
+            role="status" をこの器に常設する。入れ替わる側は announce={false} で live region
+            の入れ子を避ける */}
+        <div role="status">
+          {statusQuery.isLoading && <LoadingState announce={false} />}
+          {statusQuery.error && (
+            <ErrorState
+              announce={false}
+              onRetry={() => void statusQuery.refetch()}
+              isRetrying={statusQuery.isFetching}
+            >
+              {describeRequestFailure(statusQuery.error, '取込状況の取得に失敗しました')}
+            </ErrorState>
+          )}
+          {statusQuery.data &&
+            (completion !== null ? (
+              <div className={styles.statusDone}>
+                <LuCircleCheck
+                  aria-hidden="true"
+                  className={`${ui.iconSm} ${styles.statusDoneIcon}`}
+                />
+                取込完了（{formatDateWithYear(completion.completedAt)}）
+              </div>
+            ) : (
+              <EmptyState announce={false}>
+                この月の明細取込はまだ完了していません。下のアップロードから CSV か明細 PDF
+                を取り込んでください。
+              </EmptyState>
+            ))}
+        </div>
       </section>
 
       {FILE_KIND_OPTIONS.map(({ value: kind }) => (

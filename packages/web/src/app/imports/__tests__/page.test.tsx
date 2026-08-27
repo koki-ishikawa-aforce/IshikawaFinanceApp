@@ -335,7 +335,10 @@ describe('通信できないときのアップロード', () => {
     apiFetch.mockRejectedValue(new NetworkError('unreachable'))
     renderPage()
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(NETWORK_ERROR_MESSAGE)
+    expect(await screen.findByText(NETWORK_ERROR_MESSAGE)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument()
+    // この月の取込状況カードは常時マウントの role="status" で包む(docs/design/usability.md
+    // 8-4)ため、中のエラーは alert を作らず polite で通知される
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
