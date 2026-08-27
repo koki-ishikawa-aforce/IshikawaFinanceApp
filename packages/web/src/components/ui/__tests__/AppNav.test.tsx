@@ -23,23 +23,28 @@ vi.mock('next/link', () => ({
 }))
 
 describe('AppNav', () => {
-  it('7つのナビ項目を表示する', () => {
+  it('5つのナビ項目を表示する', () => {
     render(<AppNav />)
 
     expect(screen.getByText('ホーム')).toBeInTheDocument()
     expect(screen.getByText('取引')).toBeInTheDocument()
     expect(screen.getByText('レポート')).toBeInTheDocument()
     expect(screen.getByText('残高')).toBeInTheDocument()
-    expect(screen.getByText('精算')).toBeInTheDocument()
-    expect(screen.getByText('取込')).toBeInTheDocument()
     expect(screen.getByText('設定')).toBeInTheDocument()
+  })
+
+  it('使う頻度の低い精算・取込は含まない(#614。設定画面の入り口リンクへ移した)', () => {
+    render(<AppNav />)
+
+    expect(screen.queryByText('精算')).not.toBeInTheDocument()
+    expect(screen.queryByText('取込')).not.toBeInTheDocument()
   })
 
   it('アイコンは絵文字ではなくSVGで描画される', () => {
     const { container } = render(<AppNav />)
 
     const svgs = container.querySelectorAll('svg')
-    expect(svgs).toHaveLength(7)
+    expect(svgs).toHaveLength(5)
   })
 
   it('アイコンにaria-hidden属性が付与されている', () => {

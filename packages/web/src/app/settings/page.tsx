@@ -22,7 +22,7 @@ import {
 import { EXPENSE_CLASS_LABELS } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
 import { RoleIcon } from '@/components/ui/RoleIcon'
-import { LuRocket } from '@/components/ui/icons'
+import { LuRocket, LuReceipt, LuDownload } from '@/components/ui/icons'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import ui from '@/components/ui/common.module.css'
@@ -725,7 +725,17 @@ function SettingsPageContent() {
       {tab === 'limits' && <LimitsTab />}
       {tab === 'classification' && <LearningRulesTab />}
 
-      <Link href="/onboarding" className={styles.onboardingLink}>
+      {/*
+        精算・取込は #614 で下部ナビから外した2画面への入り口。押しやすさの下限(§4-3)を
+        満たす受け皿はオンボーディングへのリンクと同じ共通クラス(entryLink)で確保する
+      */}
+      <Link href="/expense-settlement" className={styles.entryLink}>
+        <LuReceipt aria-hidden="true" className={ui.iconInline} /> 経費精算を開く
+      </Link>
+      <Link href="/imports" className={styles.entryLink}>
+        <LuDownload aria-hidden="true" className={ui.iconInline} /> 取込画面を開く
+      </Link>
+      <Link href="/onboarding" className={styles.entryLink}>
         <LuRocket aria-hidden="true" className={ui.iconInline} />{' '}
         はじめての設定（オンボーディング）を開く
       </Link>

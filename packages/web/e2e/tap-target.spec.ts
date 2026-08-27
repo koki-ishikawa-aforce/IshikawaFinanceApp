@@ -178,18 +178,18 @@ test('相手の個人費の吹き出しの閉じるボタンが下限の大き�
 })
 
 test('下部ナビの項目が下限の大きさを満たす', async ({ page }) => {
-  // 全画面に出る操作部品で、7 項目が横幅を取り合う。1 項目でも下限を割ると隣の画面へ
-  // 飛ぶ誤タップになるため、実寸を全項目ぶん測る(#467)
+  // 全画面に出る操作部品で、5 項目が横幅を取り合う。1 項目でも下限を割ると隣の画面へ
+  // 飛ぶ誤タップになるため、実寸を全項目ぶん測る(#467。精算・取込は #614 で除外)
   await page.goto('/')
   const min = await tapTargetMin(page)
 
   const nav = page.getByRole('navigation')
-  for (const label of ['ホーム', '取引', 'レポート', '残高', '精算', '取込', '設定']) {
+  for (const label of ['ホーム', '取引', 'レポート', '残高', '設定']) {
     await expectTapTargetSize(nav.getByRole('link', { name: label }), `下部ナビ（${label}）`, min)
   }
 })
 
-test('設定のタブとオンボーディングへのリンクが下限の大きさを満たす', async ({ page }) => {
+test('設定のタブと他画面への入り口リンクが下限の大きさを満たす', async ({ page }) => {
   await page.goto('/settings')
   const min = await tapTargetMin(page)
 
@@ -201,11 +201,13 @@ test('設定のタブとオンボーディングへのリンクが下限の大�
     )
   }
   // `<a>` は既定が inline で下限が効かない。表示形式の指定が崩れると実寸だけが縮む
-  await expectTapTargetSize(
-    page.getByRole('link', { name: /オンボーディング/ }),
-    'オンボーディングを開くリンク',
-    min,
-  )
+  for (const [pattern, name] of [
+    [/経費精算/, '経費精算を開くリンク'],
+    [/取込画面/, '取込画面を開くリンク'],
+    [/オンボーディング/, 'オンボーディングを開くリンク'],
+  ] as const) {
+    await expectTapTargetSize(page.getByRole('link', { name: pattern }), name, min)
+  }
 })
 
 test('残高の期間切り替えと精算の小ボタンが下限の大きさを満たす', async ({ page }) => {

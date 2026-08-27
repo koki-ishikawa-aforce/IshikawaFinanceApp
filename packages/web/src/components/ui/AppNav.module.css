@@ -4,17 +4,16 @@
   left: 50%;
   transform: translateX(-50%);
   /*
-   * 項目それぞれがタップ下限（44px、usability §4-3）の幅を確保できるよう、
-   * 幅は項目数ぶんの下限に合わせて伸ばす（従来は 300px 固定で 7 項目が 41px まで痩せていた）。
-   * その結果ナビは約 316px（44px × 7 + 左右の余白）になり、本文カラム（各画面の .main は
-   * 300px）より左右へ張り出す。position: fixed なので max-width の基準はビューポートで、
-   * 画面幅が 316px を下回るときだけ頭打ちになる（項目の min-width は縮まないため、
-   * それより狭い端末では横に溢れる。実機の縦幅 360px 以上では起きない）。
+   * 項目それぞれがタップ下限（44px、usability §4-3）の幅を確保しつつ、隣接タップ間隔の
+   * 下限（--space-2、同 §4-4）も空ける。5 項目 × 44px + 隙間 4 か所 × 8px ＝ 252px で、
+   * 320px 幅の端末にも収まる（7 項目だと隙間込みで 356px 必要になり収まらないため、
+   * 精算・取込を設定画面の入り口リンクへ移して 5 項目に減らした。Issue #614）。
+   * position: fixed なので max-width の基準はビューポート。
    */
   width: fit-content;
   max-width: 100%;
   display: flex;
-  justify-content: space-between;
+  gap: var(--space-2);
   background: var(--surface-nav);
   backdrop-filter: blur(8px);
   border-radius: var(--radius-card) var(--radius-card) 0 0;
