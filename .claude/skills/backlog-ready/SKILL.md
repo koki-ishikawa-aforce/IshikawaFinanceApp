@@ -56,7 +56,7 @@ ready が複数ある場合、Routine は優先順(`priority:high` → 古い順
 
 見送り理由が「設計判断が残存」または「受け入れ条件が曖昧」の Issue は、判断への導線が途切れないよう GitHub 上に痕跡を残す:
 
-1. `.claude/skills/issue-work/templates/judgment-issue.md` の形式で判断依頼コメントを投稿する。選択肢は見送り理由に応じて構成する(例: 「設計判断が残存」なら分岐している設計方針の選択肢、「受け入れ条件が曖昧」なら条件を明確化するための質問)。ここで `needs-decision` を付けるのは既存 Issue(タイトルは変えない)であり、@メンション文面は種別目印が無いため共通文にフォールバックする(目印の規約は `templates/judgment-issue.md`「タイトルの種別目印」を正とする)
+1. `.claude/skills/issue-work/templates/judgment-issue.md` の形式で判断依頼コメントを投稿する。選択肢は見送り理由に応じて構成する(例: 「設計判断が残存」なら分岐している設計方針の選択肢、「受け入れ条件が曖昧」なら条件を明確化するための質問)。ここで `needs-decision` を付けるのは既存 Issue(タイトルは変えない)であり、@メンション文面は種別目印が無いため共通文にフォールバックする(目印の規約は `templates/judgment-issue.md`「タイトルの種別目印」を正とする)。見送り理由が「設計判断が残存」で、かつ複数 Issue にまたがる分解や画面レイアウトの方針決めを伴う場合は、判断依頼コメントに `/feature-design`(軽量設計工程。`.claude/skills/feature-design/SKILL.md`)での設計ノート作成を選択肢の一つとして添える
 2. `needs-decision` ラベルを付与する(通知ワークフローがメール通知を発生させる):
    ```bash
    gh label create "needs-decision" --color D93F0B --description "人間の判断待ち" 2>/dev/null || true

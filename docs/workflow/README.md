@@ -23,6 +23,7 @@
 | ライフサイクル全体の網羅性(SWEBOK 18 KA との突合) | [06-lifecycle-coverage.md](./06-lifecycle-coverage.md) |
 | 各工程の**手順の本体** | `.claude/skills/<スキル名>/SKILL.md` |
 | **マージゲートの条件** | `.claude/skills/issue-work/SKILL.md`「マージゲート」(唯一の定義) |
+| 軽量設計工程・設計ノートの置き場と命名規約 | `.claude/skills/feature-design/SKILL.md`、[`docs/design-notes/`](../design-notes/) |
 | レビュー観点の体系・変更パス → 起動するレビュー・CI の担保範囲・ブランチ保護 | [`docs/review/README.md`](../review/README.md) |
 | Routine の運用設定(cron・プロンプト・止め方・トラブル対応) | [`docs/automation/`](../automation/) |
 | 受入テストのシナリオと実施規約 | [`docs/acceptance/README.md`](../acceptance/README.md) |

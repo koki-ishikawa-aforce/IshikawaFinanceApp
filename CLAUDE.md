@@ -50,6 +50,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 
 タスク管理は GitHub Issue 起点。全体像は `docs/workflow/README.md`、どの差分でどのレビューを回すかは `docs/review/README.md` のトリガー表に従う。
 
+0. 軽量設計(複数 Issue にまたがる機能・新規画面のレイアウト方針を先に固めたいとき、任意): `/feature-design` — 設計ノートを `docs/design-notes/` に残し、`/issue-create` の分解が参照する
 1. 要件の Issue 化: `/issue-create`
 2. Issue の実装〜PR 作成: `/issue-work`
 3. 検証ループ: `/verify` — コード変更を完了と報告する前に必ず全 green にする
