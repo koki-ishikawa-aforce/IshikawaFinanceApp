@@ -56,6 +56,7 @@ gh issue edit <番号> --add-label "status:in-progress"
 - テストは実装と同時に書く。**集約の状態遷移・不変条件のテストは必須**
 - 命名は `packages/domain/README.md` とユビキタス言語に従う
 - `packages/domain` の公開 API(集約・値オブジェクト・Repository / Query インターフェース・ドメインイベント・エラー型・公開定数など)を追加・変更・改名した場合は、**同じ PR で `packages/domain/README.md` の該当セクションを更新する**(この一覧は手動保守の一次資料で、更新漏れは `/ddd-review` で毎回指摘される。#607)
+- **新しい集約・ユビキタス言語の用語を導入する場合は、同じ PR 内で `docs/domain/09-aggregates.md`・該当するユビキタス言語資料(`docs/domain/08a`〜`08h`)を実装より先に(または同時に)更新する**(design-first 規約。docs が実装より古い期間を作らない。根拠は `docs/workflow/04-principles.md` 原則12)
 - 画面に「読み込み中・エラー・保存結果」のような**ページ遷移を伴わず動的に切り替わる領域**を追加・変更した場合は、`docs/design/usability.md` §8-4(動的更新の通知)を実装時にセルフチェックする — 差し替わる領域に `role="status"`(`aria-live="polite"`)、致命的な通知に `role="alert"` が付いているか。共通部品(`LoadingState` / `EmptyState` / `ErrorState`)を使えば通知が付くため、書き起こさず共通部品を使う(レビューで毎回指摘される抜けの筆頭。#606)
 
 ## 4. 検証ループ(内側ループ)
