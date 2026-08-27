@@ -68,8 +68,15 @@ jobs:
         env:
           NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}/${{ env.PREVIEW_DIR }}
         run: |
+          set -euo pipefail
+          # 見た目の自動チェック(VRT)が撮影中に固定する「今」(#506)と揃える(#640)。
+          # ここが実時刻のままだと、見出し(実際の今月)とサンプルデータの中身(2026年7月)が
+          # 食い違ったプレビューになる。値は clock.ts を直接読み取り、別の場所に
+          # ハードコードして値がずれる事故を防ぐ。
+          MOCK_NOW="$(grep -oP "(?<=export const MOCK_NOW = ')[^']+" packages/web/src/mocks/clock.ts)"
+          MOCK_TIMEZONE="$(grep -oP "(?<=export const MOCK_TIMEZONE = ')[^']+" packages/web/src/mocks/clock.ts)"
           pnpm --filter @warimaru/domain build
-          pnpm --filter @warimaru/web build:mock
+          NEXT_PUBLIC_MOCK_NOW="${MOCK_NOW}" TZ="${MOCK_TIMEZONE}" pnpm --filter @warimaru/web build:mock
 
       # 置き場所ブランチの現状を取得し、この PR 分のディレクトリだけを差し替える
       # (クローズ時は削除する)。認証情報はディスクに残さず、都度ヘッダで渡す。
