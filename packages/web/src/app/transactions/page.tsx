@@ -7,7 +7,6 @@ import {
   CategoryIdSchema,
   ImportJobIdSchema,
   YearMonthSchema,
-  jstCalendarParts,
   type YearMonth,
 } from '@warimaru/domain'
 import { MonthNavigator } from '@/components/dashboard/MonthNavigator'
@@ -33,7 +32,7 @@ import {
 } from '@/lib/api-schemas'
 import { EXPENSE_CLASS_LABELS, expenseClassLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
-import { formatDate, formatMonthLabel, getCurrentMonth } from '@/lib/month'
+import { formatDate, formatMonthLabel, getCurrentMonth, toDateInputValue } from '@/lib/month'
 import { now } from '@/lib/now'
 import { LuPlus } from '@/components/ui/icons'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -42,11 +41,6 @@ import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
 type ClassFilter = ExpenseClassWire | 'all'
-
-function toDateInputValue(date: Date): string {
-  const { year, month, day } = jstCalendarParts(date)
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-}
 
 /** 発生日の初期値。表示中の月が当月なら今日、それ以外の月なら 1 日 */
 function defaultOccurredAt(month: YearMonth): string {

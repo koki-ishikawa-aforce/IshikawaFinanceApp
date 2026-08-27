@@ -6,6 +6,7 @@ import {
   formatMonthLabel,
   getCurrentMonth,
   shiftMonth,
+  toDateInputValue,
 } from '../month'
 import { now } from '../now'
 
@@ -133,11 +134,39 @@ describe('formatDate / formatDateWithYear', () => {
   })
 
   // 端末の時間帯が JST でなくても、表示は常に JST の暦日にする(#639)。
-  // 端末時間帯まかせだと、この時刻はロサンゼルス(UTC-7/8)では 7/18 のままになる
-  it('端末の時間帯設定によらず JST の暦日で整形する', () => {
+  // 端末時間帯まかせだと、この時刻はロサンゼルス(UTC-7/8、JST より遅れた時間帯)では
+  // 7/18 のままになる
+  it('端末の時間帯設定(JST より遅れた時間帯)によらず JST の暦日で整形する', () => {
     vi.stubEnv('TZ', 'America/Los_Angeles')
 
     expect(formatDate(new Date('2026-07-18T15:00:00.000Z'))).toBe('7/19')
     expect(formatDateWithYear(new Date('2026-07-18T15:00:00.000Z'))).toBe('2026/07/19')
+  })
+
+  // JST より進んだ時間帯(キリバス、UTC+14)でも同じ JST の暦日になることを確認する。
+  // 端末時間帯まかせだと、この時刻はキリバスでは日付が 1 日進んで 7/19 になる
+  it('端末の時間帯設定(JST より進んだ時間帯)によらず JST の暦日で整形する', () => {
+    vi.stubEnv('TZ', 'Pacific/Kiritimati')
+
+    expect(formatDate(new Date('2026-07-18T14:00:00.000Z'))).toBe('7/18')
+    expect(formatDateWithYear(new Date('2026-07-18T14:00:00.000Z'))).toBe('2026/07/18')
+  })
+})
+
+describe('toDateInputValue', () => {
+  it('<input type="date"> 用に YYYY-MM-DD 形式で整形する', () => {
+    expect(toDateInputValue(new Date(2026, 6, 22))).toBe('2026-07-22')
+  })
+
+  it('1 桁の月・日をゼロ埋めする', () => {
+    expect(toDateInputValue(new Date(2026, 0, 5))).toBe('2026-01-05')
+  })
+
+  // 端末の時間帯設定によらず JST の暦日で整形する(#639)。MOCK_NOW と同じ状況で、
+  // 端末時間帯まかせだとロサンゼルス(UTC-7)ではまだ 7/23 のままになる
+  it('端末の時間帯設定によらず JST の暦日で整形する', () => {
+    vi.stubEnv('TZ', 'America/Los_Angeles')
+
+    expect(toDateInputValue(new Date('2026-07-24T03:00:00.000Z'))).toBe('2026-07-24')
   })
 })

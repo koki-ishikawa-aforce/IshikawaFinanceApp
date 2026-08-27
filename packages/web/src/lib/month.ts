@@ -40,3 +40,9 @@ export function formatDateWithYear(date: Date): string {
   const { year, month, day } = jstCalendarParts(date)
   return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`
 }
+
+/** `<input type="date">` 用(`YYYY-MM-DD`)。JST の暦日で決める(usability 5-4) */
+export function toDateInputValue(date: Date): string {
+  const { year, month, day } = jstCalendarParts(date)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
