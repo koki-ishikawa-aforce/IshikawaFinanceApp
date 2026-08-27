@@ -2,7 +2,7 @@
   font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text-primary);
-  line-height: var(--leading-relaxed);
+  line-height: var(--leading);
 }
 
 .list {
@@ -45,5 +45,5 @@
   font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text-primary);
-  line-height: var(--leading-relaxed);
+  line-height: var(--leading);
 }
