@@ -20,6 +20,7 @@
 | skill / サブエージェント / hooks / Routine の一覧と責務 | [03-agent-runtime.md](./03-agent-runtime.md) |
 | なぜこの形なのか(AI 駆動開発の原則) | [04-principles.md](./04-principles.md) |
 | 何をもって良いワークフローとするか(基準と現状評価) | [05-criteria.md](./05-criteria.md) |
+| ライフサイクル全体の網羅性(SWEBOK 18 KA との突合) | [06-lifecycle-coverage.md](./06-lifecycle-coverage.md) |
 | 各工程の**手順の本体** | `.claude/skills/<スキル名>/SKILL.md` |
 | **マージゲートの条件** | `.claude/skills/issue-work/SKILL.md`「マージゲート」(唯一の定義) |
 | レビュー観点の体系・変更パス → 起動するレビュー・CI の担保範囲・ブランチ保護 | [`docs/review/README.md`](../review/README.md) |
