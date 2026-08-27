@@ -33,8 +33,10 @@ export default defineConfig({
   retries: process.env['CI'] ? 1 : 0,
   reporter: 'list',
   snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
+  // 0.01 は #620・#634 の見た目変更(数ピクセル〜1画面全体の1行ぶん)を見逃していた(#638)。
+  // CI の描画環境で実測しながら段階的に狭める方針の1段目としてまず半分にする。
   expect: {
-    toHaveScreenshot: { maxDiffPixelRatio: 0.01 },
+    toHaveScreenshot: { maxDiffPixelRatio: 0.005 },
   },
   use: {
     baseURL: `http://localhost:${PORT}`,
