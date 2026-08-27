@@ -45,11 +45,44 @@
   color: var(--white);
   background: var(--text-primary);
   padding: var(--space-1) var(--space-2_5);
+  /*
+   * 閉じるボタン(.hintClose)の可視アイコンぶんの逃げ。ボタンは right: 0 で右端を揃え、
+   * 幅 var(--tap-target-min) の中央にアイコン(font-size: var(--text-base) を基準に解決)を
+   * 置くため、右端からアイコン左端までの距離は (tap-target-min + text-base) / 2 になる。
+   * そこに軽い隙間(--space-1)を足した値。この数値どおりに描画されているかは
+   * e2e/tap-target.spec.ts の実測が担保する
+   */
+  padding-right: calc((var(--tap-target-min) + var(--text-base)) / 2 + var(--space-1));
   border-radius: var(--radius-sm);
   pointer-events: auto;
-  cursor: pointer;
   z-index: 10;
   animation: fadeIn 0.15s ease-out;
+}
+
+/*
+ * 閉じるボタン。吹き出し自体は注意書き(role="tooltip")のまま 1 行ぶんの薄さを保ち(見た目は
+ * 変えない)、押せる受け皿だけをタップ下限(usability §4-3)まで広げる(#611 選択肢B)。
+ * `.hint` が `position: absolute` で作る包含ブロックに対して自身も絶対配置にすることで、
+ * 通常フローから外れて `.hint` の高さに影響を与えないまま、見た目の × アイコンより
+ * 大きい受け皿を上下・左にはみ出させて確保する(右端は `.hint` の右端に揃える)
+ */
+.hintClose {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
+  min-width: var(--tap-target-min);
+  border: none;
+  background: none;
+  /* 中身はアイコンのみ。アイコンの大きさ（--icon-sm）はこの font-size を基準に解決される
+   * （DESIGN.md §4）。明示しないと親 .hint の --text-xs を継承し、9px まで縮んでしまう */
+  font-size: var(--text-base);
+  color: inherit;
+  cursor: pointer;
 }
 
 @keyframes fadeIn {

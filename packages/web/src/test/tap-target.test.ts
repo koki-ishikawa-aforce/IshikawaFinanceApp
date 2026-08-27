@@ -121,6 +121,13 @@ const CONTROLS: readonly {
     properties: HEIGHT_AND_WIDTH,
   },
   { css: join('auth', 'LoginScreen.module.css'), selectors: ['.loginButton'] },
+  {
+    // 相手の個人費の吹き出しの閉じるボタン。中身はアイコンだけで文字では幅が稼げない。
+    // 吹き出し自体の見た目は変えないため、絶対配置で受け皿だけを下限まで広げている(#611)
+    css: join('components', 'dashboard', 'SpousePersonalNote.module.css'),
+    selectors: ['.hintClose'],
+    properties: HEIGHT_AND_WIDTH,
+  },
 ]
 
 const TAP_TARGET_MIN = 'var(--tap-target-min)'

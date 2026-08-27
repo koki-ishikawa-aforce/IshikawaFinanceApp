@@ -48,14 +48,35 @@ describe('SpousePersonalNote', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('明細はパートナーのみ閲覧可')
   })
 
-  it('ヒントをクリックすると閉じる', () => {
+  it('ヒント内の閉じるボタンを押すと閉じる(#611)', () => {
     render(<SpousePersonalNote amount={30000} theme="honey" partnerNickname={null} />)
 
     const container = screen.getByRole('note')
     fireEvent.contextMenu(container)
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }))
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('ヒントの本文をクリックしても閉じない(閉じる操作はボタンに分離。#611)', () => {
+    render(<SpousePersonalNote amount={30000} theme="honey" partnerNickname={null} />)
+
+    const container = screen.getByRole('note')
+    fireEvent.contextMenu(container)
+
     fireEvent.click(screen.getByRole('tooltip'))
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+  })
+
+  it('ヒント表示中に Escape キーで閉じる', () => {
+    render(<SpousePersonalNote amount={30000} theme="honey" partnerNickname={null} />)
+
+    const container = screen.getByRole('note')
+    fireEvent.contextMenu(container)
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '閉じる' }), { key: 'Escape' })
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
