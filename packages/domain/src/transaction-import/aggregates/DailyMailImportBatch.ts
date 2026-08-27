@@ -13,8 +13,8 @@
  *  - 取込対象期間は from < to（過去 5 日再走査、OQ-31）
  *
  * 起動の事前条件（集約 1 個の状態だけでは判定できないため不変条件には数えない）:
- *  - API 経由の手動起動は直前の実行からクールダウンを空ける
- *    （#489。`judgeManualMailImportCooldown`）
+ *  - API 経由の手動起動は直前の実行からクールダウンを空ける。ただし直前の実行が失敗（終端）
+ *    なら短縮した下限まで待てばよい（#489 / #628。`judgeManualMailImportCooldown`）
  */
 import { z } from 'zod'
 import { InvariantViolationError } from '../../shared/errors/DomainError'
@@ -154,6 +154,18 @@ export function completeBatch(
 export const MANUAL_MAIL_IMPORT_COOLDOWN_MS = 10 * 60 * 1000
 
 /**
+ * 直近の実行が失敗（終端）で終わっている場合に適用する、短縮したクールダウン（#628 の決定）。
+ *
+ * 失敗直後は「もう動いていない」ことが確定しているため、二重起動を避ける狙いの通常クールダウン
+ * （`MANUAL_MAIL_IMPORT_COOLDOWN_MS`）を待たせる理由は無い。ただし間隔を完全に無くすと、Gmail
+ * API 自体がレート制限（429・5xx。`GmailMailFetchGateway` の `other_fetch_failure` に含まれる）
+ * で失敗しているときに、バックオフ無しで即座に叩き直せてしまい、失敗が失敗を呼ぶ連打を止める
+ * 手立てが無くなる。数十秒程度の下限を残すことで、人が「今すぐやり直したい」という要求は満たし
+ * つつ、機械的な連打（ブラウザの多重クリック・スクリプトからの即時リトライ）だけは間引く。
+ */
+export const FAILED_MANUAL_MAIL_IMPORT_RETRY_FLOOR_MS = 30 * 1000
+
+/**
  * 手動実行を受け付けてよいかの判定。待つ必要があるときは残り時間と、待たせる理由になった
  * 直近バッチの状態を持つ（呼出し元が「まだ動いている」と「直前に終わった」を言い分けられる）
  */
@@ -186,12 +198,15 @@ function lastActivityAt(batch: DailyMailImportBatch): Date {
 }
 
 /**
- * 手動実行を受け付けてよいかを判定する（#489 の決定）。
+ * 手動実行を受け付けてよいかを判定する（#489 の決定、失敗直後の扱いは #628 の決定）。
  *
- * `latestBatch` はそのユーザーの直近のバッチ（状態を問わない。無ければ null）。直近の実行から
- * `cooldownMs` 未満なら受け付けず、残り時間を返す。クールダウンを過ぎていれば受け付ける
- * — 途中で落ちた取込の引き継ぎ自体は止めない（止めると、落ちた実行の対象期間が二度と
- * 走査されない）。
+ * `latestBatch` はそのユーザーの直近のバッチ（状態を問わない。無ければ null）。直近バッチが
+ * `failed`（終端。もう動いていないことが確定している）なら、通常のクールダウンではなく短縮した
+ * `failedRetryFloorMs` を適用する — 二重起動を避ける狙いは失敗した実行には当てはまらないが、
+ * 外部 API（Gmail）のレート制限中の連打を防ぐ下限は残す（`FAILED_MANUAL_MAIL_IMPORT_RETRY_FLOOR_MS`
+ * の JSDoc 参照）。それ以外の状態では `cooldownMs` を適用する。適用したクールダウンの長さ未満
+ * なら受け付けず残り時間を返す。過ぎていれば受け付ける — 途中で落ちた取込の引き継ぎ自体は
+ * 止めない（止めると、落ちた実行の対象期間が二度と走査されない）。
  *
  * 判定系は value-objects / services に置くのが本パッケージの通例だが、この判定が読むのは
  * バッチ集約の状態と時刻だけなので、状態ごとの最終活動時刻を知る集約側に同居させている。
@@ -200,16 +215,18 @@ export function judgeManualMailImportCooldown(
   latestBatch: DailyMailImportBatch | null,
   at: Date,
   cooldownMs: number = MANUAL_MAIL_IMPORT_COOLDOWN_MS,
+  failedRetryFloorMs: number = FAILED_MANUAL_MAIL_IMPORT_RETRY_FLOOR_MS,
 ): ManualMailImportCooldownJudgment {
   if (latestBatch === null) return { kind: 'acceptable' }
+  const effectiveCooldownMs = latestBatch.kind === 'failed' ? failedRetryFloorMs : cooldownMs
   const elapsedMs = at.getTime() - lastActivityAt(latestBatch).getTime()
   // 経過が負（直近バッチの時刻が未来）になるのは時計のずれ。待たせる側に倒す
-  if (elapsedMs >= cooldownMs) return { kind: 'acceptable' }
+  if (elapsedMs >= effectiveCooldownMs) return { kind: 'acceptable' }
   // 待ち時間はクールダウンを超えない。経過が負のときに引き算をそのまま返すと、時計のずれが
   // そのまま待ち時間に乗って「いつまで待てばよいか」が実際より長く案内される
   return {
     kind: 'cooling_down',
-    retryAfterMs: Math.min(cooldownMs, cooldownMs - elapsedMs),
+    retryAfterMs: Math.min(effectiveCooldownMs, effectiveCooldownMs - elapsedMs),
     latestBatchKind: latestBatch.kind,
   }
 }
