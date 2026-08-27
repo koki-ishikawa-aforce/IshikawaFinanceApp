@@ -68,7 +68,7 @@ stateDiagram-v2
 
 | # | 遷移 | 主体 | トリガー | 副作用 |
 | --- | --- | --- | --- | --- |
-| 1 | `+ready-to-implement` | 人間 / `/backlog-ready` / `/issue-create` | 5基準を満たすと判定 | 無人 Routine の候補に入る |
+| 1 | `+ready-to-implement` | 人間 / `/backlog-ready` / `/issue-create` | 6基準を満たすと判定 | 無人 Routine の候補に入る |
 | 2 | `+status:in-progress` | 無人モード / 対話モード | 着手(無人モードは CAS ロックとして取得) | 他の fire がこの Issue を選定しなくなる |
 | 3 | `+needs-decision` `-ready-to-implement` `-status:in-progress` | 無人モード | 撤退(条件が曖昧・設計判断・`/verify` 3回失敗・CI が直せない・ゲート落ち) | `notify-judgment-issue` が assign + @メンション → **メール通知**。無人モードの対象外になる |
 | 4 | (PR 作成) | 無人モード / 対話モード | `Closes #<番号>` 付きで PR を open | `notify-pr-opened` が assign → **メール通知**(自動マージされる変更を事後に把握する主要導線) |
