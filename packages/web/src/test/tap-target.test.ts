@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { cssRules } from './css-rules'
-import { SRC_DIR, collectSources, isModuleCss, type Source } from './sources'
+import { SRC_DIR, collectSources, isModuleCss, isTsx, type Source } from './sources'
 
 /**
  * タップターゲットの下限(`docs/design/usability.md` §4-3)を機械的に守るガード(#568)。
@@ -110,6 +110,33 @@ const CONTROLS: readonly {
     selectors: ['.hintClose'],
     properties: HEIGHT_AND_WIDTH,
   },
+  {
+    // モーダルの閉じるボタン。中身はアイコンだけで文字では幅が稼げない
+    css: join('components', 'ui', 'Modal.module.css'),
+    selectors: ['.close'],
+    properties: HEIGHT_AND_WIDTH,
+  },
+]
+
+/**
+ * ボタンに乗るが、それ自身は下限を左右しない CSS モジュールのクラス(#613)。
+ *
+ * 常に CONTROLS 側の(下限を宣言する)クラスと組み合わせて使う装飾・色の修飾子で、
+ * 単独では押す受け皿の大きさを決めない。下の「登録漏れ」検査がここにも
+ * CONTROLS にも無いクラスを見つけたら、CONTROLS へ登録するか、理由つきでここへ足す。
+ */
+const TAP_TARGET_MODIFIER_ONLY: readonly { css: string; selectors: readonly string[] }[] = [
+  {
+    // .card は汎用の器の見た目、.iconLabel はアイコン+文字の並びだけを決める。
+    // .textButtonDanger は .textButton と併用する色の修飾子。大きさはどれも併用クラス側が持つ
+    css: COMMON_CSS,
+    selectors: ['.card', '.iconLabel', '.textButtonDanger'],
+  },
+  {
+    // 設定タブの選択中を示す色の修飾子。大きさは常に併用する .tab 側が決める
+    css: join('app', 'settings', 'page.module.css'),
+    selectors: ['.tabActive'],
+  },
 ]
 
 const TAP_TARGET_MIN = 'var(--tap-target-min)'
@@ -179,6 +206,105 @@ function findHardcodedTapTargets(stylesheets: readonly Source[]): string[] {
       )
       .map(({ selector }) => `${path}:${selector}`),
   )
+}
+
+/** `<button` の開始位置から、対応する `>` までの属性テキストを取り出す */
+const BUTTON_TAG = /<button(?=[\s/>])/g
+
+/**
+ * ボタンの開始タグの属性部分を取り出す。
+ *
+ * `icon-size-scale.test.ts` の `iconElements` と同じ理由(属性にアロー関数や比較演算子が
+ * 入りうるため、正規表現だけでタグの終わりを決め打ちできない)で、引用符と波括弧の深さを
+ * 見ながらタグの終わりまで読む。
+ */
+function buttonPropsList(content: string): string[] {
+  return [...content.matchAll(BUTTON_TAG)].map(match => {
+    const start = (match.index ?? 0) + match[0].length
+    let depth = 0
+    let quote: string | null = null
+    let end = start
+    for (; end < content.length; end++) {
+      const char = content[end]
+      if (quote !== null) {
+        if (char === quote) quote = null
+        continue
+      }
+      if (char === '"' || char === "'" || char === '`') quote = char
+      else if (char === '{') depth++
+      else if (char === '}') depth--
+      else if (char === '>' && depth === 0) break
+    }
+    return content.slice(start, end)
+  })
+}
+
+/** `className` 属性の値を取り出す(文字列リテラル・式のどちらも)。無ければ null */
+function classNameValue(props: string): string | null {
+  const attr = props.match(/className\s*=/)
+  if (!attr) return null
+  let i = (attr.index ?? 0) + attr[0].length
+  while (/\s/.test(props[i] ?? '')) i++
+  const opening = props[i]
+  if (opening === '"' || opening === "'") {
+    return props.slice(i + 1, props.indexOf(opening, i + 1))
+  }
+  if (opening === '{') {
+    let depth = 0
+    let end = i
+    for (; end < props.length; end++) {
+      if (props[end] === '{') depth++
+      else if (props[end] === '}' && --depth === 0) break
+    }
+    return props.slice(i + 1, end)
+  }
+  return null
+}
+
+/** `alias.prop` の形の参照(`styles.close` 等)を取り出す */
+const CLASS_REF = /\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\b/g
+
+/** そのソースが import している `*.module.css` の別名 → `src` からの相対パス */
+function cssModuleImports(path: string, content: string): Map<string, string> {
+  const dir = dirname(join(SRC_DIR, path))
+  const map = new Map<string, string>()
+  for (const match of content.matchAll(/import\s+(\w+)\s+from\s+['"]([^'"]+\.module\.css)['"]/g)) {
+    const [, alias, specifier] = match
+    const target = specifier?.startsWith('@/')
+      ? join(SRC_DIR, specifier.slice(2))
+      : resolve(dir, specifier ?? '')
+    map.set(alias ?? '', relative(SRC_DIR, target))
+  }
+  return map
+}
+
+/**
+ * ボタンに使っている CSS モジュールのクラスのうち、CONTROLS にも
+ * TAP_TARGET_MODIFIER_ONLY にも登録されていないものを返す(`ファイル:CSS:セレクタ` 形式)。
+ *
+ * 新しく作った画面固有のボタンを CONTROLS への登録なしに残すと、この検査が拾う(#613)。
+ * className の無いボタンは、下限を宣言する手段そのものが無いとみなして違反にする。
+ */
+function findUnregisteredButtonClasses(sources: readonly Source[]): string[] {
+  const known = new Set(
+    [...CONTROLS, ...TAP_TARGET_MODIFIER_ONLY].flatMap(({ css, selectors }) =>
+      selectors.map(selector => `${css}::${selector}`),
+    ),
+  )
+  return sources.flatMap(({ path, content }) => {
+    const imports = cssModuleImports(path, content)
+    return buttonPropsList(content).flatMap(props => {
+      const value = classNameValue(props)
+      if (value === null) return [`${path}:<button> に className が無い`]
+      const refs = [...value.matchAll(CLASS_REF)].flatMap(([, alias, name]) => {
+        const css = imports.get(alias ?? '')
+        return css ? [{ css, selector: `.${name}` }] : []
+      })
+      return refs
+        .filter(({ css, selector }) => !known.has(`${css}::${selector}`))
+        .map(({ css, selector }) => `${path}:${css}:${selector}`)
+    })
+  })
 }
 
 describe('タップターゲットの下限', () => {
@@ -297,5 +423,53 @@ describe('タップターゲットの下限', () => {
       '.button {\n  min-height: 0;\n}',
     ].join('\n')
     expect(findControlsWithoutMin(overridden, ['.button'])).toEqual(['.button:min-height'])
+  })
+})
+
+describe('タップターゲットの検査対象の登録漏れ(#613)', () => {
+  it('画面に置かれたボタンのクラスがすべて CONTROLS か除外一覧に登録されている', () => {
+    // ここが緑でも「対象の操作部品が下限をトークンで宣言している」が保証するわけではない。
+    // このテストは「見られているか」だけを保証し、「守っているか」は上のテストが見る
+    expect(findUnregisteredButtonClasses(collectSources(isTsx))).toEqual([])
+  })
+
+  it('登録漏れを検出できる', () => {
+    // 検出ロジック自体が壊れると 0 件のまま緑になるため、既知の違反例で固定する
+    const offending: Source[] = [
+      {
+        path: 'offender.tsx',
+        content: [
+          "import ui from '@/components/ui/common.module.css'",
+          "import styles from './offender.module.css'",
+          '<button className={styles.mystery}>OK</button>',
+          '<button className={`${ui.card} ${styles.unregistered}`}>OK</button>',
+          '<button>ラベルだけ</button>',
+        ].join('\n'),
+      },
+    ]
+    expect(findUnregisteredButtonClasses(offending)).toEqual([
+      'offender.tsx:offender.module.css:.mystery',
+      'offender.tsx:offender.module.css:.unregistered',
+      'offender.tsx:<button> に className が無い',
+    ])
+  })
+
+  it('登録済み・除外済みのクラスの組み合わせを違反と誤判定しない', () => {
+    const valid: Source[] = [
+      {
+        path: 'valid.tsx',
+        content: [
+          "import ui from '@/components/ui/common.module.css'",
+          "import styles from '@/app/settings/page.module.css'",
+          // 登録済みのクラス単体
+          '<button className={ui.button}>保存</button>',
+          // 登録済み(.tab) + 除外(.tabActive)の組み合わせ(選択中の色の修飾子)
+          '<button className={active ? `${styles.tab} ${styles.tabActive}` : styles.tab}>設定</button>',
+          // 除外(.card / .iconLabel)は単独では登録済みとみなさないが、.button と併用すれば通る
+          '<button className={`${ui.button} ${ui.card} ${ui.iconLabel}`}>詳細</button>',
+        ].join('\n'),
+      },
+    ]
+    expect(findUnregisteredButtonClasses(valid)).toEqual([])
   })
 })
