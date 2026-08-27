@@ -52,7 +52,7 @@
 ```mermaid
 flowchart TD
     A["要件"] --> B["/issue-create<br/>Issue 起票"]
-    B --> C{"ready 判定<br/>5基準"}
+    B --> C{"ready 判定<br/>6基準"}
     C -->|"満たさない"| E["バックログに滞留<br/>/backlog-ready で再判定"]
     C -->|"満たす"| D["ready-to-implement 付与<br/>【唯一の人間ゲート】"]
     E -.-> C
