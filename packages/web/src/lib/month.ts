@@ -1,11 +1,8 @@
-import type { YearMonth } from '@warimaru/domain'
+import { jstCalendarParts, jstYearMonthOf, type YearMonth } from '@warimaru/domain'
 import { now } from './now'
 
 export function getCurrentMonth(): YearMonth {
-  const nowAt = now()
-  const y = nowAt.getFullYear()
-  const m = String(nowAt.getMonth() + 1).padStart(2, '0')
-  return `${y}-${m}` as YearMonth
+  return jstYearMonthOf(now())
 }
 
 export function shiftMonth(ym: YearMonth, delta: number): YearMonth {
@@ -29,7 +26,8 @@ export function formatMonthLabel(ym: YearMonth | string): string {
 }
 
 export function formatDate(date: Date): string {
-  return `${date.getMonth() + 1}/${date.getDate()}`
+  const { month, day } = jstCalendarParts(date)
+  return `${month}/${day}`
 }
 
 /**
@@ -39,7 +37,12 @@ export function formatDate(date: Date): string {
  * 月・日はゼロ埋めする。桁数が揃わないと縦に並んだ日付の位置がずれて読みにくい
  */
 export function formatDateWithYear(date: Date): string {
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}/${m}/${d}`
+  const { year, month, day } = jstCalendarParts(date)
+  return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`
+}
+
+/** `<input type="date">` 用(`YYYY-MM-DD`)。JST の暦日で決める(usability 5-4) */
+export function toDateInputValue(date: Date): string {
+  const { year, month, day } = jstCalendarParts(date)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }

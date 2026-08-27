@@ -89,4 +89,15 @@ describe('取引を追加するときの発生日の初期値', () => {
 
     expect(within(dialog).getByDisplayValue('2026-05-01')).toBeInTheDocument()
   })
+
+  // 端末の時間帯設定によらず「今日」は JST の暦日で決まる(#639)。MOCK_NOW(JST 7/24 12:00)は
+  // ロサンゼルス(UTC-7)では 7/23 のままなので、端末時間帯まかせだと日付が 1 日ずれる
+  it('端末の時間帯設定によらず JST の今日が入る', async () => {
+    vi.stubEnv('TZ', 'America/Los_Angeles')
+    search.query = 'month=2026-07'
+
+    const dialog = await openCreateModal()
+
+    expect(within(dialog).getByDisplayValue('2026-07-24')).toBeInTheDocument()
+  })
 })

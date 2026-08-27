@@ -32,7 +32,7 @@ import {
 } from '@/lib/api-schemas'
 import { EXPENSE_CLASS_LABELS, expenseClassLabel } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
-import { formatDate, formatMonthLabel, getCurrentMonth } from '@/lib/month'
+import { formatDate, formatMonthLabel, getCurrentMonth, toDateInputValue } from '@/lib/month'
 import { now } from '@/lib/now'
 import { LuPlus } from '@/components/ui/icons'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -41,13 +41,6 @@ import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
 type ClassFilter = ExpenseClassWire | 'all'
-
-function toDateInputValue(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
 
 /** 発生日の初期値。表示中の月が当月なら今日、それ以外の月なら 1 日 */
 function defaultOccurredAt(month: YearMonth): string {
