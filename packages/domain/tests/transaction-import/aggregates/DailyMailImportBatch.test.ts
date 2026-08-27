@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { InvariantViolationError } from '../../../src/shared/errors/DomainError'
 import {
   DailyMailImportBatchSchema,
+  FAILED_MANUAL_MAIL_IMPORT_RETRY_FLOOR_MS,
   MANUAL_MAIL_IMPORT_COOLDOWN_MS,
   judgeManualMailImportCooldown,
   resumeBatchImporting,
@@ -195,12 +196,32 @@ describe('手動実行のクールダウン判定', () => {
     })
   })
 
-  it('失敗で終わった実行の直後は待たせない（もう動いていないことが確定しているため。#628）', () => {
-    const failed = failBatch(started, 'Gmail API エラー', after(startedAt, 60_000))
-    // 失敗の直後（0ms 後）でも受け付ける
-    expect(judgeManualMailImportCooldown(failed, after(startedAt, 60_000))).toEqual({
-      kind: 'acceptable',
+  it('失敗で終わった実行は、通常より短い下限まで待てば受け付ける（もう動いていないため。#628）', () => {
+    const failedAt = after(startedAt, 60_000)
+    const failed = failBatch(started, 'Gmail API エラー', failedAt)
+    // 失敗から 10 分待たなくても、短縮した下限（既定 30 秒）を過ぎれば受け付ける
+    expect(
+      judgeManualMailImportCooldown(
+        failed,
+        after(failedAt, FAILED_MANUAL_MAIL_IMPORT_RETRY_FLOOR_MS),
+      ),
+    ).toEqual({ kind: 'acceptable' })
+  })
+
+  it('失敗直後は下限に達するまで弾く（連打・外部APIのレート制限中のリトライストームを防ぐ。#628）', () => {
+    const failedAt = after(startedAt, 60_000)
+    const failed = failBatch(started, 'Gmail API エラー', failedAt)
+    expect(judgeManualMailImportCooldown(failed, failedAt)).toEqual({
+      kind: 'cooling_down',
+      retryAfterMs: FAILED_MANUAL_MAIL_IMPORT_RETRY_FLOOR_MS,
+      latestBatchKind: 'failed',
     })
+    expect(
+      judgeManualMailImportCooldown(
+        failed,
+        after(failedAt, FAILED_MANUAL_MAIL_IMPORT_RETRY_FLOOR_MS - 1),
+      ),
+    ).toEqual({ kind: 'cooling_down', retryAfterMs: 1, latestBatchKind: 'failed' })
   })
 
   it('クールダウンを過ぎた進行中バッチは受け付ける（引き継ぎを止めない）', () => {
@@ -225,5 +246,19 @@ describe('手動実行のクールダウン判定', () => {
     expect(judgeManualMailImportCooldown(importing, after(startedAt, 60_000), 30_000)).toEqual({
       kind: 'acceptable',
     })
+  })
+
+  it('失敗直後の下限も呼出し側で指定できる（既定は 30 秒）', () => {
+    expect(FAILED_MANUAL_MAIL_IMPORT_RETRY_FLOOR_MS).toBe(30 * 1000)
+    const failedAt = after(startedAt, 60_000)
+    const failed = failBatch(started, 'Gmail API エラー', failedAt)
+    expect(
+      judgeManualMailImportCooldown(
+        failed,
+        after(failedAt, 1_000),
+        MANUAL_MAIL_IMPORT_COOLDOWN_MS,
+        500,
+      ),
+    ).toEqual({ kind: 'acceptable' })
   })
 })
