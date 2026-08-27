@@ -186,12 +186,14 @@ function lastActivityAt(batch: DailyMailImportBatch): Date {
 }
 
 /**
- * 手動実行を受け付けてよいかを判定する（#489 の決定）。
+ * 手動実行を受け付けてよいかを判定する（#489 の決定、失敗直後の扱いは #628 の決定）。
  *
- * `latestBatch` はそのユーザーの直近のバッチ（状態を問わない。無ければ null）。直近の実行から
- * `cooldownMs` 未満なら受け付けず、残り時間を返す。クールダウンを過ぎていれば受け付ける
- * — 途中で落ちた取込の引き継ぎ自体は止めない（止めると、落ちた実行の対象期間が二度と
- * 走査されない）。
+ * `latestBatch` はそのユーザーの直近のバッチ（状態を問わない。無ければ null）。直近バッチが
+ * `failed`（終端。もう動いていないことが確定している）なら即座に受け付ける — クールダウンの
+ * 狙い（実行中バッチとの二重起動を避ける）は、失敗した実行には当てはまらない。それ以外の状態
+ * では直近の実行から `cooldownMs` 未満なら受け付けず、残り時間を返す。クールダウンを過ぎて
+ * いれば受け付ける — 途中で落ちた取込の引き継ぎ自体は止めない（止めると、落ちた実行の対象
+ * 期間が二度と走査されない）。
  *
  * 判定系は value-objects / services に置くのが本パッケージの通例だが、この判定が読むのは
  * バッチ集約の状態と時刻だけなので、状態ごとの最終活動時刻を知る集約側に同居させている。
@@ -202,6 +204,7 @@ export function judgeManualMailImportCooldown(
   cooldownMs: number = MANUAL_MAIL_IMPORT_COOLDOWN_MS,
 ): ManualMailImportCooldownJudgment {
   if (latestBatch === null) return { kind: 'acceptable' }
+  if (latestBatch.kind === 'failed') return { kind: 'acceptable' }
   const elapsedMs = at.getTime() - lastActivityAt(latestBatch).getTime()
   // 経過が負（直近バッチの時刻が未来）になるのは時計のずれ。待たせる側に倒す
   if (elapsedMs >= cooldownMs) return { kind: 'acceptable' }

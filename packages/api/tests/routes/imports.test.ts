@@ -46,7 +46,7 @@ function leftoverImportingBatch() {
 }
 
 /** クールダウン検証用のバッチ。時刻は「いま」に寄せる（ルートは実時刻でクールダウンを測る） */
-function recentBatch(kind: 'completed' | 'importing', now: Date = new Date()) {
+function recentBatch(kind: 'completed' | 'importing' | 'failed', now: Date = new Date()) {
   const common = {
     importBatchId: '01BATCH0000000000000000001',
     userId: VIEWER_ID,
@@ -66,7 +66,9 @@ function recentBatch(kind: 'completed' | 'importing', now: Date = new Date()) {
           duplicateExcludedCount: 0,
           failedCount: 0,
         }
-      : { kind: 'importing', common, importStartedAt: now, importedCount: 0 },
+      : kind === 'failed'
+        ? { kind: 'failed', common, failedAt: now, failureDetail: 'Gmail API エラー' }
+        : { kind: 'importing', common, importStartedAt: now, importedCount: 0 },
   )
 }
 
@@ -626,6 +628,15 @@ describe('POST /api/imports/mail-batch', () => {
     expect(await deps.dailyMailImportBatchRepository.findInProgressByUser(VIEWER_ID)).toBeNull()
     const latest = await deps.dailyMailImportBatchRepository.findLatestByUser(VIEWER_ID)
     expect(latest?.common.importBatchId).toBe('01BATCH0000000000000000001')
+  })
+
+  it('直前の実行が失敗で終わっていれば待たせずに受け付ける（#628）', async () => {
+    const { app, deps } = await authorizedMailBatchApp([])
+    await deps.dailyMailImportBatchRepository.save(recentBatch('failed'))
+
+    const res = await request(app, 'POST', '/api/imports/mail-batch', { body: {} })
+
+    expect(res.status).toBe(200)
   })
 
   it('待ち時間は直前の実行からの経過ぶんだけ短くなる（切り上げ）', async () => {

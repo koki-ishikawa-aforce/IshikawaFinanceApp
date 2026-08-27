@@ -195,13 +195,11 @@ describe('手動実行のクールダウン判定', () => {
     })
   })
 
-  it('失敗で終わった実行の直後も弾く（失敗しても叩き直しは間隔を空ける）', () => {
+  it('失敗で終わった実行の直後は待たせない（もう動いていないことが確定しているため。#628）', () => {
     const failed = failBatch(started, 'Gmail API エラー', after(startedAt, 60_000))
-    // 失敗から 1 分後 → 残り 9 分（起動日時起点なら残り 8 分になる）
-    expect(judgeManualMailImportCooldown(failed, after(startedAt, 2 * 60_000))).toEqual({
-      kind: 'cooling_down',
-      retryAfterMs: 540_000,
-      latestBatchKind: 'failed',
+    // 失敗の直後（0ms 後）でも受け付ける
+    expect(judgeManualMailImportCooldown(failed, after(startedAt, 60_000))).toEqual({
+      kind: 'acceptable',
     })
   })
 
