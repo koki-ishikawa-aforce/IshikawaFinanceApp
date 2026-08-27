@@ -160,6 +160,22 @@ export function categoryBreakdownFixture(mode: DashboardMode, yearMonth: string)
   }
 }
 
+/**
+ * 相手(darling)の個人取引。プライバシー適用で honey には行ごと非表示になる
+ * (`applyPrivacyFilter` の `isListVisible` — 個人費は所有者本人のみ掲載)。
+ * 本番の一覧に相手の明細が伏せ字で並ぶことはないため、honey のときはこの行自体を含めない
+ */
+const SPOUSE_PERSONAL_TRANSACTION = {
+  transactionId: 'TXN_MOCK_003',
+  occurredAt: '2026-07-15T09:00:00.000Z',
+  expenseClass: 'personal_darling',
+  categoryId: null,
+  categoryName: null,
+  merchantName: 'Amazon',
+  amount: 3980,
+  isUnclassified: true,
+}
+
 /** GET /api/transactions */
 export function transactionListFixture(role: UserRole): unknown {
   const isHoney = role === 'honey'
@@ -184,16 +200,7 @@ export function transactionListFixture(role: UserRole): unknown {
       amount: 4200,
       isUnclassified: false,
     },
-    {
-      transactionId: 'TXN_MOCK_003',
-      occurredAt: '2026-07-15T09:00:00.000Z',
-      expenseClass: 'personal_darling',
-      categoryId: null,
-      categoryName: null,
-      merchantName: isHoney ? null : 'Amazon',
-      amount: isHoney ? null : 3980,
-      isUnclassified: !isHoney,
-    },
+    ...(isHoney ? [] : [SPOUSE_PERSONAL_TRANSACTION]),
     // 未分類の自分の取引。どちらのロールでも「まとめて分類」の導線と
     // 一括分類セッション（加盟店 2 件）が両テーマで確認できるように置く
     {
