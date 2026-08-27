@@ -62,6 +62,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
    - 信頼性・可観測性レビュー: `/reliability-review`(ドメインイベント・イベントハンドラー・通知配信・外部 API 呼び出しに変更がある場合、`/ddd-review` に加えて実施)— 外部呼び出しの失敗時挙動・失敗の握りつぶし・イベント再実行の回復性・障害に気づけるかの観点でレビュー。冪等性のうち「データに二重適用が残らないか」はデータレビューの担当なので重複させない。指摘の扱いは `/ddd-review` と同じ
 5. 判断待ちの消化: `/decide` — 各スキルが `needs-decision` に集約した判断依頼を対話で消化し、決定を Issue と docs(ドメインは `docs/domain/03-open-questions.md`、ワークフローの原則は `docs/workflow/04-principles.md`)に反映する
 6. 無人運用の振り返り: `/retro` — 無人モード(`/issue-work`・`/pr-steward`)の失敗データを週次で振り返り、繰り返す失敗パターンとワークフロー全体の点検から skills / CLAUDE.md / Issue テンプレート / `docs/workflow`(原則)の改善案を `needs-decision` Issue として起票する(読み取り専用。判断は `/decide`)
+7. 体系駆動の四半期レビュー: `/workflow-review` — `/retro`(失敗データ駆動)が構造的に検出できない「動いていない工程の欠落」(CD・監視・設計工程など)を、ライフサイクル網羅表(`docs/workflow/06-lifecycle-coverage.md`)と外部知識体系ポートフォリオ(SWEBOK v4 / DORA / AWS Well-Architected / OWASP SAMM)を物差しに四半期で監査し、`[改善案]` + `needs-decision` Issue として起票する(読み取り専用。実施記録の追加を除く。判断は `/decide`)
 
 ブランチ名は `feat/issue-<番号>-<slug>`、PR 本文に `Closes #<番号>` を含める。
 着手中の Issue には `status:in-progress` ラベルを付与する(`/issue-work` が自動で行う)。
@@ -72,7 +73,7 @@ TypeScript 5.4 / ESM / pnpm 9 workspace モノレポ。Node >= 20。
 
 PR の保守(CI 修復・コンフリクト解消・重複検知): `/pr-steward` が Routine 起点の open PR を巡回して green に戻す(マージはしない。green にした PR は次のバックログ fire の回収マージが拾う)。
 
-無人運用の全体像 — Routine 4本(バックログ / PR 執事 / 振り返り / 乖離検知)、ラベルの状態遷移、hooks による実行時ガード、PR プレビュー配信、設計原則 — は `docs/workflow/README.md` を参照。各運用のセットアップと止め方は `docs/automation/` にある。
+無人運用の全体像 — Routine 4本(バックログ / PR 執事 / 振り返り / 乖離検知。ほかに `/workflow-review` の四半期 Routine が手順書整備済み・登録待ち)、ラベルの状態遷移、hooks による実行時ガード、PR プレビュー配信、設計原則 — は `docs/workflow/README.md` を参照。各運用のセットアップと止め方は `docs/automation/` にある。
 
 ## してはいけないこと
 
