@@ -103,9 +103,9 @@
 }
 
 .progressTrack {
-  height: 6px;
+  height: var(--space-1_5);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--surface-track);
   overflow: hidden;
 }
 
