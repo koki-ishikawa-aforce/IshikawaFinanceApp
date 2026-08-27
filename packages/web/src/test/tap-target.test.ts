@@ -78,24 +78,12 @@ const CONTROLS: readonly {
     selectors: ['.tab', '.checkRow', '.onboardingLink'],
   },
   {
-    // 資産推移の期間切り替え。「1年」など 2〜3 文字しか無く、文字では幅が稼げない
-    css: join('app', 'balances', 'page.module.css'),
-    selectors: ['.rangeButton'],
-    properties: HEIGHT_AND_WIDTH,
-  },
-  {
     // 口座詳細の「残高一覧へ戻る」。文字だけの導線なので高さを宣言する（期間切替は
     // 共通部品 SegmentedControl 側で下限を満たす）
     css: join('app', 'accounts', 'page.module.css'),
     selectors: ['.back'],
   },
   { css: join('app', 'expense-settlement', 'page.module.css'), selectors: ['.smallButton'] },
-  {
-    // 取込候補の「閉じる」は 3 文字だけなので幅も要る。チェック行は行の幅いっぱいに広がる
-    css: join('app', 'imports', 'page.module.css'),
-    selectors: ['.smallGhost'],
-    properties: HEIGHT_AND_WIDTH,
-  },
   { css: join('app', 'imports', 'page.module.css'), selectors: ['.candidateLabel'] },
   { css: join('app', 'transactions', 'page.module.css'), selectors: ['.item', '.checkRow'] },
   {
@@ -113,12 +101,6 @@ const CONTROLS: readonly {
     // さかのぼり再分類のチェック行
     css: join('components', 'classification', 'RetroactivePrompt.module.css'),
     selectors: ['.row'],
-  },
-  {
-    // オンボーディングの「スキップ」。短い文字だけのボタンなので幅も宣言する
-    css: join('app', 'onboarding', 'page.module.css'),
-    selectors: ['.backLink'],
-    properties: HEIGHT_AND_WIDTH,
   },
   { css: join('auth', 'LoginScreen.module.css'), selectors: ['.loginButton'] },
   {

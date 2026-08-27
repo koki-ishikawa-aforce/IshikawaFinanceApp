@@ -149,7 +149,7 @@ function CandidatesPanel({ importJobId, month, onDone }: CandidatesPanelProps) {
         <h2 id="import-candidates-title" className={ui.sectionTitle}>
           取込候補の確認
         </h2>
-        <button className={styles.smallGhost} onClick={onDone}>
+        <button className={ui.textButton} onClick={onDone}>
           閉じる
         </button>
       </div>

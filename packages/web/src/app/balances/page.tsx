@@ -30,14 +30,17 @@ import {
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
+import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/SegmentedControl'
 import ui from '@/components/ui/common.module.css'
 import styles from './page.module.css'
 
-const RANGE_OPTIONS = [
-  { months: 6, label: '6ヶ月' },
-  { months: 12, label: '1年' },
-  { months: 24, label: '2年' },
-] as const
+type RangeMonths = '6' | '12' | '24'
+
+const RANGE_OPTIONS: readonly SegmentedControlOption<RangeMonths>[] = [
+  { value: '6', label: '6ヶ月' },
+  { value: '12', label: '1年' },
+  { value: '24', label: '2年' },
+]
 
 /**
  * 口座 1 件の行。押すと口座詳細（#406）へ入る。
@@ -167,7 +170,7 @@ function SpouseSharedTotalItem({
 }
 
 export default function BalancesPage() {
-  const [rangeMonths, setRangeMonths] = useState<number>(6)
+  const [rangeMonths, setRangeMonths] = useState<RangeMonths>('6')
   // 相手の合計行の名前は「確定した役割」に限る。テーマ（useTheme）は取得前 darling に
   // 倒れるため、名前の根拠には使わない（usability.md 7-2）
   const viewerRoleQuery = useViewerRole()
@@ -195,7 +198,7 @@ export default function BalancesPage() {
     listQuery.data !== undefined && !freshnessQuery.isPending && !viewerRoleQuery.isPending
 
   const to = getCurrentMonth()
-  const from = shiftMonth(to, -(rangeMonths - 1))
+  const from = shiftMonth(to, -(Number(rangeMonths) - 1))
   const seriesQuery = useQuery({
     queryKey: ['balances', 'time-series', from, to],
     queryFn: () =>
@@ -320,26 +323,13 @@ export default function BalancesPage() {
       </div>
 
       <div className={ui.card}>
-        <div className={ui.rowBetween}>
-          <span className={ui.sectionTitle}>資産推移</span>
-          <div className={styles.rangeToggle}>
-            {RANGE_OPTIONS.map(option => (
-              <button
-                key={option.months}
-                className={
-                  rangeMonths === option.months
-                    ? `${styles.rangeButton} ${styles.rangeActive}`
-                    : styles.rangeButton
-                }
-                // 選択中は塗りの違いだけで伝えており、色に頼らない識別が要る（DESIGN.md §6）
-                aria-pressed={rangeMonths === option.months}
-                onClick={() => setRangeMonths(option.months)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <span className={ui.sectionTitle}>資産推移</span>
+        <SegmentedControl
+          label="期間"
+          options={RANGE_OPTIONS}
+          value={rangeMonths}
+          onChange={setRangeMonths}
+        />
         {seriesQuery.isLoading && <LoadingState />}
         {seriesQuery.error && (
           <ErrorState>
