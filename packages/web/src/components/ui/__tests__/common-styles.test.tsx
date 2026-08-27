@@ -117,4 +117,34 @@ describe('行間のトークン', () => {
     )
     expect(redefined.map(({ path }) => path)).toEqual([])
   })
+
+  // #618 で統合前に使っていた旧トークン名が var() の参照側に紛れ込むと、globals.css に
+  // 定義が無いため静かに未指定(line-height: normal 相当)へフォールバックする。stylelint も
+  // 上のガードも「未定義の var() 参照」までは見ないため、旧名そのものの残存をここで止める。
+  it('統合前の --leading-normal / --leading-relaxed が残っていない', () => {
+    const globals = readFileSync(join(SRC_DIR, 'app', 'globals.css'), 'utf8')
+    const stale = [
+      { path: 'app/globals.css', content: globals },
+      ...collectSources(isModuleCss),
+    ].filter(({ content }) => /--leading-(normal|relaxed)\b/.test(content))
+    expect(stale.map(({ path }) => path)).toEqual([])
+  })
+})
+
+/**
+ * 取込ガイド(`StatementGuide`)の手順一覧の行間を固定する(#618)。
+ *
+ * `--leading-normal`(1.5)/ `--leading-relaxed`(1.6)を単一の `--leading`(1.6)に
+ * 統合したとき、実際に値が変わったのはこの `.step` だけ(他は元々 1.6)。この画面の
+ * パネルは既定で折りたたまれており(`hidden` 属性)、VRT は既定状態しか撮影しないため
+ * 見た目の自動チェックでは検出できない。ここで宣言をリテラルに固定する。
+ */
+describe('取込ガイドの手順一覧', () => {
+  it('.step の行間は共通トークンを使う', () => {
+    const statementGuide = readFileSync(
+      join(SRC_DIR, 'components', 'imports', 'StatementGuide.module.css'),
+      'utf8',
+    )
+    expect(ruleOf(statementGuide, 'step')).toEqual(['line-height: var(--leading)'])
+  })
 })
