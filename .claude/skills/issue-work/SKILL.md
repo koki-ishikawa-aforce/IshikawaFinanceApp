@@ -432,9 +432,9 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
 
 ### 手順8: fire 終了時の記録(tracking Issue への定型レコード)
 
-`/retro` は撤退・CI リトライ・マージゲート落ちの記録を毎回 PR 本文・Issue コメントから発掘し直しており(基準6「可観測性」△の直接原因)、この手順はその発掘を「記録の集計」に変えるための記録元を残す。無人モードは fire を終える前に、その fire で起きた出来事を機械可読の記録として**固定の tracking Issue** に残す。手順0〜7のどこで fire を終えた場合(マージ完了・PR open のまま終了・撤退・候補なし/使い切りでのスキップ)でも、最後にこの手順を実行してから終了する。
+`/retro` は撤退・CI リトライ・マージゲート落ちの記録を毎回 PR 本文・Issue コメントから発掘し直しており(基準6「可観測性」△の直接原因)、この手順はその発掘を「記録の集計」に変えるための記録元を残す。無人モードは fire を終える前に、その fire で起きた出来事を機械可読の記録として**固定の tracking Issue** に残す。手順0〜7のどこで fire を終えた場合(マージ完了・PR open のまま終了・撤退・候補なし/使い切りでのスキップ)でも、最後にこの手順を実行してから終了する。**上の各手順・各差分にある「撤退する」「次候補へ進む」「fire を終了する」という記述は、個別に手順8への言及がなくてもこの総則が適用される**(逐次的に読んでいて記録漏れが起きないよう、ここで一括して宣言する)。
 
-1. **tracking Issue の特定(冪等)**: 本文にマーカー `<!-- fire-record-tracking -->` を含む open Issue を検索する(`gh issue list --search "fire-record-tracking" --state open --json number,body` で取得して本文にマーカー文字列があるものを選ぶ、または GitHub MCP `search_issues`)。見つかればその Issue 番号を使う。見つからなければ、下記の本文でそのまま新規作成する(タイトル: `運用ログ: 無人モード fire の定型記録`。ラベルは付けない。ラベルの状態機械の対象外であり、`ready-to-implement` 等の3ラベルとは無関係)。**この Issue はワークフローの永続的な記録装置であり、クローズしない**(本文にもその旨を明記して作成する)。
+1. **tracking Issue の特定(冪等)**: 本文にマーカー `<!-- fire-record-tracking -->` を含む open Issue を検索する(`gh issue list --search "fire-record-tracking" --state open --json number,body` で取得して本文にマーカー文字列があるものを選ぶ、または GitHub MCP `search_issues`)。**検索でヒットしなかった場合**(GitHub の検索インデックス反映遅延等)は、作成前に `notify-main-failure` ジョブ(`.github/workflows/ci.yml`)と同じ方式でフォールバックする: 全 open Issue を列挙し(`gh issue list --state open --json number,body` 等)、本文にマーカー文字列 `<!-- fire-record-tracking -->` を含むものをローカルで探す。それでも見つからない場合にのみ新規作成する(タイトル: `運用ログ: 無人モード fire の定型記録`。ラベルは付けない。ラベルの状態機械の対象外であり、`ready-to-implement` 等の3ラベルとは無関係)。この2段構えの探索は、検索の取りこぼしによる tracking Issue の複数化(記録の分裂)を防ぐためのもの。**この Issue はワークフローの永続的な記録装置であり、クローズしない**(本文にもその旨を明記して作成する)。
 
    <details>
    <summary>初回作成時の本文(そのまま使う。以後この本文がレコード形式の唯一の定義になる)</summary>
@@ -448,16 +448,16 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
 
    各コメントは、その fire で発生した出来事1件につき1行の JSON を持つ(1 fire = 1コメント。同じ fire 内で複数件の出来事があれば、同じコメント内に複数行の JSON を改行区切りで並べる。JSON Lines 形式)。
 
-   | フィールド             | 型             | 説明                                                                       |
-   | ---------------------- | -------------- | -------------------------------------------------------------------------- |
-   | `kind`                 | string         | `"issue-work"` \| `"pr-steward"`                                           |
-   | `at`                   | string         | ISO 8601 UTC(例: `2026-08-27T12:00:00Z`。`date -u +%Y-%m-%dT%H:%M:%SZ`)    |
-   | `issue`                | number \| null | 対象 Issue 番号(Issue に紐付かない出来事は null)                           |
-   | `result`               | string         | `"merged"` \| `"pr-open"` \| `"撤退"` \| `"スキップ"` \| `"空振り"`        |
-   | `reason_code`          | string \| null | 撤退・スキップの理由コード(下記コード表)。無ければ null                    |
-   | `ci_retries`           | number         | この出来事で行った CI 修正リトライ回数(無ければ 0)                         |
-   | `gate_fail_conditions` | array \| null  | マージゲートで落ちた条件番号の配列(例: `["4","6"]`)。落ちていなければ null |
-   | `filed_issues`         | array          | この出来事の結果として起票した判断待ち Issue 番号の一覧(無ければ `[]`)     |
+   | フィールド             | 型                      | 説明                                                                               |
+   | ---------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
+   | `kind`                 | string                  | `"issue-work"` \| `"pr-steward"`                                                   |
+   | `at`                   | string                  | ISO 8601 UTC(例: `2026-08-27T12:00:00Z`。`date -u +%Y-%m-%dT%H:%M:%SZ`)            |
+   | `issue`                | number \| null          | 対象 Issue 番号(Issue に紐付かない出来事は null)                                   |
+   | `result`               | string                  | `"merged"` \| `"pr-open"` \| `"撤退"` \| `"スキップ"` \| `"空振り"`                |
+   | `reason_code`          | string \| null          | 撤退・スキップの理由コード(下記コード表)。無ければ null                            |
+   | `ci_retries`           | number                  | この出来事で行った CI 修正リトライ回数(無ければ 0)                                 |
+   | `gate_fail_conditions` | array\<string\> \| null | マージゲートで落ちた条件番号(文字列)の配列(例: `["4","6"]`)。落ちていなければ null |
+   | `filed_issues`         | array                   | この出来事の結果として起票した判断待ち Issue 番号の一覧(無ければ `[]`)             |
 
    ### `reason_code` コード表
 
@@ -474,6 +474,8 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
    | `wip-limit`            | WIP 上限(Routine 起点 open PR 5件以上)のためスキップ        |
    | `main-red`             | `main` の CI が赤のため新規着手・マージを見送った           |
    | `at-review`            | 受入シナリオ照合(手順6)で判断がつかない                     |
+   | `lock-race`            | 候補ループの CAS ロック取得で並行 fire に競り負けてスキップ |
+   | `prereq-not-planned`   | 先行 Issue が `not_planned` でクローズされたための撤退      |
    | `other`                | 上記に当てはまらない(コメント本文の他の箇所に理由を書く)    |
 
    ### 例
@@ -486,4 +488,4 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
 
    </details>
 
-2. **レコードの投稿**: fire 内で発生した出来事(候補ループでのスキップ・撤退・PR 作成・マージ・マージゲート落ちなど)ごとに1行の JSON を組み立て、fire の終わりにまとめて1コメントとして tracking Issue へ投稿する(`gh issue comment <tracking Issue番号> --body <JSON Lines文字列>`、または GitHub MCP `add_issue_comment`)。候補なしで即終了した fire も `result: "空振り"` の1行を投稿する(空振り自体が基準9・10の測定対象のため、記録を省かない)。
+2. **レコードの投稿**: fire 内で発生した出来事(候補ループでのスキップ・撤退・PR 作成・マージ・マージゲート落ちなど)ごとに1行の JSON を組み立て、fire の終わりにまとめて1コメントとして tracking Issue へ投稿する(`gh issue comment <tracking Issue番号> --body <JSON Lines文字列>`、または GitHub MCP `add_issue_comment`)。候補なしで即終了した fire も `result: "空振り"` の1行を投稿する(空振り自体が基準10「資源効率」の測定対象のため、記録を省かない)。
