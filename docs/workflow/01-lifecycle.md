@@ -7,7 +7,7 @@
 | # | フェーズ | 入力 | 担い手 | 出力 | 完了条件 | 手順の一次資料 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 起票 | 要件・不具合・改善案 | 人間 + 対話セッション | GitHub Issue(背景 / 検証可能な受け入れ条件 / 対象コンテキスト / 依存) | 受け入れ条件がチェックボックスで検証可能な形になっている | `.claude/skills/issue-create/SKILL.md`、`.github/ISSUE_TEMPLATE/task.md` |
-| 1.5 | 設計(任意) | 複数 Issue にまたがる要件・新規画面を含む要件 | 人間 + 対話セッション | `docs/design-notes/` の設計ノート(決定事項 / 触れる集約と BC / レイアウト方針 / Issue 分解と依存順) | 設計ノートが `main` にマージされ、分解後の Issue から参照できる | `.claude/skills/feature-design/SKILL.md` |
+| 1.5 | 設計(任意) | 複数 Issue にまたがる要件・新規画面を含む要件(起票前でも、フェーズ2の着手承認で設計判断残存を理由に見送られた既存 Issue からでも入れる) | 人間 + 対話セッション | `docs/design-notes/` の設計ノート(決定事項 / 触れる集約と BC / レイアウト方針 / Issue 分解と依存順) | 設計ノートが `main` にマージされ、分解後の Issue から参照できる | `.claude/skills/feature-design/SKILL.md` |
 | 2 | **着手承認** | open Issue | **人間のみ**(`/backlog-ready` は判定補助) | `ready-to-implement` ラベル | 5基準(リポジトリ内で完結 / 受け入れ条件が検証可能 / 依存解決済み / 設計判断なし / 1 PR 粒度)をすべて満たす | `.claude/skills/backlog-ready/SKILL.md` |
 | 3 | 着手 | 承認済み Issue | 対話セッション or 無人 Routine | `feat/issue-<番号>-<slug>` ブランチ + `status:in-progress` ラベル | ブランチが最新 `main` から切られ、排他ロックが取れている | `.claude/skills/issue-work/SKILL.md` 手順0-2 |
 | 4 | 実装 | Issue の受け入れ条件 + ドメイン資料 | Claude | コード + テスト | 受け入れ条件を満たし、依存の向き(`domain → adapters-postgres → api / web`)に沿っている | `.claude/skills/issue-work/SKILL.md` 手順3 |
