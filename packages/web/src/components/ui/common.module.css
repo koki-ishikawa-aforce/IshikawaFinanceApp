@@ -17,12 +17,12 @@
 /**
  * 本文に添える補足文（操作の説明・保存結果など）。読まなくても操作できる情報に使う。
  *
- * 補足文は数行にわたる説明が多いため、行間は詰めない側（`--leading-relaxed`）を既定にする。
+ * 補足文は数行にわたる説明が多いため、行間は `--leading` を既定にする。
  */
 .note {
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  line-height: var(--leading-relaxed);
+  line-height: var(--leading);
 }
 
 /**
@@ -42,7 +42,7 @@
 .warning {
   font-size: var(--text-xs);
   color: var(--error-text);
-  line-height: var(--leading-relaxed);
+  line-height: var(--leading);
   background: var(--surface-muted);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-2_5);

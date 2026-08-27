@@ -79,11 +79,11 @@ describe('共通スタイルの重複定義の禁止', () => {
 describe('補足文の共通クラス', () => {
   const common = (): string => readFileSync(join(SRC_DIR, COMMON_CSS_PATH), 'utf8')
 
-  it('.note は極小の文字・補助色で、行間はゆとりのある側を使う', () => {
+  it('.note は極小の文字・補助色で、行間は共通トークンを使う', () => {
     expect(ruleOf(common(), 'note')).toEqual([
       'color: var(--text-secondary)',
       'font-size: var(--text-xs)',
-      'line-height: var(--leading-relaxed)',
+      'line-height: var(--leading)',
     ])
   })
 
@@ -99,19 +99,21 @@ describe('補足文の共通クラス', () => {
 })
 
 /**
- * 行間のスケールを globals.css の 1 か所に閉じ込める(#473)。
+ * 行間のトークンを globals.css の 1 か所に閉じ込める(#473・#618)。
  *
  * stylelint は直値(`line-height: 1.5`)を止めるが、`var(--*)` の中身は見ない。
  * トークンを画面側で定義し直す迂回はここで止める(`icon-size-scale` と同じ形)。
+ *
+ * #618: `--leading-normal`(1.5)/ `--leading-relaxed`(1.6)の 2 段階は差が小さく
+ * 使い分けが決めにくいという指摘を受け、`--leading`(1.6)の 1 種類に統一した。
  */
-describe('行間のスケール', () => {
+describe('行間のトークン', () => {
   it('globals.css の 1 か所に定義されている', () => {
     const globals = readFileSync(join(SRC_DIR, 'app', 'globals.css'), 'utf8')
-    expect(globals).toMatch(/--leading-normal:\s*1\.5;/)
-    expect(globals).toMatch(/--leading-relaxed:\s*1\.6;/)
+    expect(globals).toMatch(/--leading:\s*1\.6;/)
 
     const redefined = collectSources(isModuleCss).filter(({ content }) =>
-      /--leading-[a-z]+\s*:/.test(content),
+      /--leading\s*:/.test(content),
     )
     expect(redefined.map(({ path }) => path)).toEqual([])
   })

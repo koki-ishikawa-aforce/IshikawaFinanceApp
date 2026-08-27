@@ -29,5 +29,5 @@
 }
 
 .message {
-  line-height: var(--leading-relaxed);
+  line-height: var(--leading);
 }

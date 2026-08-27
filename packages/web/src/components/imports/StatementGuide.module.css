@@ -55,7 +55,7 @@
 }
 
 .step {
-  line-height: var(--leading-normal);
+  line-height: var(--leading);
 }
 
 .linkIcon {
