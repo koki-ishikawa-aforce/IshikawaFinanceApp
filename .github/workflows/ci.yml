@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # バックログが静かな週は push/PR が発生せず、新しい advisory で
+  # `pnpm audit` が落ちる状態などに次の PR まで気づけない。週1回 main を
+  # 検証し、既存の notify-main-failure をそのまま検知網として使う。
+  # cron は UTC 表記(月曜 06:00 JST 相当)。
+  schedule:
+    - cron: '0 21 * * 0'
 
 # 同じ PR に push が続いたとき、追い越された run を捨てて実行枠の空費を防ぐ。
 #
@@ -13,6 +19,12 @@ on:
 # 後から来た run に捨てられる(この設定が守るのは実行中の run だけ、という
 # GitHub の仕様)。実績として #494 / #500 / #503 のマージ後 CI が連続マージで
 # 全て cancelled になり、main が赤いことに約 11 時間気づけなかった。
+#
+# schedule も同じ sha キーの分岐に乗る(pull_request 以外は github.sha)。
+# schedule 実行時の github.sha は main の最新 commit と一致するため、直近の
+# push run と同じグループ名になりうるが、両者が同時に走ることはなく
+# (schedule は週1回、push は commit ごと)、キャンセルではなく前の run の
+# 完了待ちで済む。ref 共有時の「取りこぼし」問題はここには生じない。
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -62,7 +74,8 @@ jobs:
             exit 0
           }
 
-          # push(main へのマージ)は常に全部。マージ結果そのものの検証は省かない。
+          # push(main へのマージ)・schedule(週次の定期検証)は常に全部。
+          # main の状態そのものの検証は省かない。
           [ "${GITHUB_EVENT_NAME}" = 'pull_request' ] || run_all 'pull_request 以外のイベント'
 
           # checkout は深さ 1 のため、比較の基点だけを追加で取得する。
@@ -221,7 +234,7 @@ jobs:
   # 気づく最後の砦」なので、needs-decision を付けて /decide のアジェンダにも載せる。
   notify-main-failure:
     needs: verify
-    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: failure() && (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -233,8 +246,12 @@ jobs:
             const MARKER = '<!-- main-ci-failure -->';
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const shortSha = context.sha.slice(0, 8);
-            const subject = (context.payload.head_commit?.message ?? '').split('\n')[0];
+            // schedule には head_commit が無いため、push とは別に起因を明示する。
+            const trigger = context.eventName === 'schedule' ? '週次の定期実行' : 'push';
+            const subject =
+              context.eventName === 'push' ? (context.payload.head_commit?.message ?? '').split('\n')[0] : '';
             const detail = [
+              `- 起因: ${trigger}`,
               `- コミット: ${shortSha} ${subject}`.trimEnd(),
               `- 失敗した run: ${runUrl}`,
             ].join('\n');
@@ -264,10 +281,10 @@ jobs:
             const { data: created } = await github.rest.issues.create({
               owner,
               repo,
-              title: `[main 赤] マージ後の CI が失敗しています (${shortSha})`,
+              title: `[main 赤] main の CI が失敗しています (${shortSha})`,
               body: [
                 MARKER,
-                'main への push で CI が失敗しました。CI は「main と合体させた状態」を検証するため、',
+                `main に対する CI(${trigger})が失敗しました。CI は「main と合体させた状態」を検証するため、`,
                 '**この状態が続く限り以降の全ての PR が同じ失敗で赤くなります**。優先して直してください。',
                 '',
                 '## 失敗した run',

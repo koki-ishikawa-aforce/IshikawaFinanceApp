@@ -112,6 +112,8 @@ ISO/IEC 25010 の品質特性を下敷きに、割まるで意味のある 6 特
 
 `main` への push(マージ後の検証)は変更パスによらず全ステップを実行する。同じ PR に push が続いたときは追い越された run をキャンセルするが、`main` への push は commit ごとに独立した `concurrency` グループへ入れて取りこぼさない。グループを ref で共有すると、連続マージのときに**待機中の run が後続の run に捨てられる**(`cancel-in-progress: false` が守るのは実行中の run だけ、という GitHub の仕様)。
 
+push/PR が無い週でも新しい advisory で `pnpm audit` が落ちる状態などに気づけるよう、`schedule` トリガー(週1回、月曜 06:00 JST 相当)で `main` に対して push と同じ全ステップを実行する。失敗時の検知網(`notify-main-failure`)は push と共通。
+
 マージ後の検証が失敗したときは `notify-main-failure` ジョブが Issue を立て、オーナーを assign して @メンションする(メール通知)。CI は「`main` と合体させた状態」を検証するため、**`main` が赤いままだと以降の全ての PR が同じ失敗で赤くなる**。気づくのが遅れるほど巻き添えが増えるので、`main` の赤は最優先で直す。
 
 ### `main` のブランチ保護
