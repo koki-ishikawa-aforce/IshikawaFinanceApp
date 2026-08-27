@@ -8,6 +8,18 @@
   min-height: 100dvh;
 }
 
+/*
+ * 月切り替えで入れ替わる領域(page.tsx の role="status")の器。ReportDetail は
+ * 複数のカードを兄弟として返すため、.main と同じ縦積み + 間隔を保たないと
+ * カードが詰まって見える(role="status" を追加する前は .main の直接の子として
+ * 間隔を得ていた)。
+ */
+.liveRegion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2_5);
+}
+
 .statusDates {
   display: flex;
   flex-direction: column;

@@ -8,6 +8,17 @@
   min-height: 100dvh;
 }
 
+/*
+ * 月切り替えで入れ替わる領域(page.tsx の role="status")の器。中の要素は元々 .card の
+ * flex 縦積み + 間隔を直接の子として得ていたため、role="status" を追加する前と同じ見た目を
+ * 保つよう、この器自身にも同じ縦積み + 間隔(.card と同じ var(--space-2))を持たせる。
+ */
+.liveRegion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .cycleActions {
   display: flex;
   flex-direction: column;

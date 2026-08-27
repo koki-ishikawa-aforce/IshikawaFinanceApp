@@ -267,60 +267,65 @@ export default function ExpenseSettlementPage() {
             </span>
           )}
         </div>
-        {cycleQuery.isLoading && <LoadingState />}
-        {cycleQuery.error && (
-          <ErrorState>
-            {describeRequestFailure(cycleQuery.error, 'サイクルの取得に失敗しました')}
-          </ErrorState>
-        )}
-        {!cycleQuery.isLoading && !cycleQuery.error && cycle === null && (
-          <>
-            <EmptyState>この月のサイクルは未開始です</EmptyState>
-            <button
-              className={ui.button}
-              disabled={startCycle.isPending}
-              onClick={() => startCycle.mutate()}
-            >
-              {startCycle.isPending ? '開始中...' : 'サイクルを開始'}
-            </button>
-          </>
-        )}
-        {cycle !== null && (
-          <div className={styles.cycleActions}>
-            <span className={styles.cycleMeta}>
-              開始: {formatDateWithYear(cycle.common.cycleStartedAt)}
-            </span>
-            {cycle.kind === 'accumulating' && (
-              <>
-                <button
-                  className={ui.buttonGhost}
-                  disabled={prorate.isPending}
-                  onClick={() => prorate.mutate()}
-                >
-                  {prorate.isPending ? '生成中...' : '按分子取引を生成'}
-                </button>
-                <button
-                  className={ui.button}
-                  disabled={confirmCsv.isPending}
-                  onClick={() => {
-                    if (
-                      window.confirm('CSV 確定するとこの月の集積を締め切ります。よろしいですか？')
-                    ) {
-                      confirmCsv.mutate()
-                    }
-                  }}
-                >
-                  {confirmCsv.isPending ? '確定中...' : 'CSV 確定'}
-                </button>
-              </>
-            )}
-            {cycle.kind === 'csv_confirmed' && (
-              <button className={ui.button} onClick={() => setFinalizeModal(true)}>
-                最終確定（入金突合）
+        {/* 月切り替えで入れ替わる領域(docs/design/usability.md 8-4)。ページ遷移を伴わないため
+            role="status" をこの器に常設する。入れ替わる側は announce={false} で live region
+            の入れ子を避ける */}
+        <div role="status" className={styles.liveRegion}>
+          {cycleQuery.isLoading && <LoadingState announce={false} />}
+          {cycleQuery.error && (
+            <ErrorState announce={false}>
+              {describeRequestFailure(cycleQuery.error, 'サイクルの取得に失敗しました')}
+            </ErrorState>
+          )}
+          {!cycleQuery.isLoading && !cycleQuery.error && cycle === null && (
+            <>
+              <EmptyState announce={false}>この月のサイクルは未開始です</EmptyState>
+              <button
+                className={ui.button}
+                disabled={startCycle.isPending}
+                onClick={() => startCycle.mutate()}
+              >
+                {startCycle.isPending ? '開始中...' : 'サイクルを開始'}
               </button>
-            )}
-          </div>
-        )}
+            </>
+          )}
+          {cycle !== null && (
+            <div className={styles.cycleActions}>
+              <span className={styles.cycleMeta}>
+                開始: {formatDateWithYear(cycle.common.cycleStartedAt)}
+              </span>
+              {cycle.kind === 'accumulating' && (
+                <>
+                  <button
+                    className={ui.buttonGhost}
+                    disabled={prorate.isPending}
+                    onClick={() => prorate.mutate()}
+                  >
+                    {prorate.isPending ? '生成中...' : '按分子取引を生成'}
+                  </button>
+                  <button
+                    className={ui.button}
+                    disabled={confirmCsv.isPending}
+                    onClick={() => {
+                      if (
+                        window.confirm('CSV 確定するとこの月の集積を締め切ります。よろしいですか？')
+                      ) {
+                        confirmCsv.mutate()
+                      }
+                    }}
+                  >
+                    {confirmCsv.isPending ? '確定中...' : 'CSV 確定'}
+                  </button>
+                </>
+              )}
+              {cycle.kind === 'csv_confirmed' && (
+                <button className={ui.button} onClick={() => setFinalizeModal(true)}>
+                  最終確定（入金突合）
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         {actionError && <ErrorState>{actionError.message}</ErrorState>}
       </div>
 
@@ -340,60 +345,71 @@ export default function ExpenseSettlementPage() {
             入金記録
           </button>
         </div>
-        {viewQuery.isLoading && <LoadingState />}
-        {viewQuery.error && (
-          <ErrorState>
-            {describeRequestFailure(viewQuery.error, '精算情報の取得に失敗しました')}
-          </ErrorState>
-        )}
-        {view &&
-          (view.currentAccumulations.length === 0 ? (
-            <EmptyState>当月の経費累計はまだありません</EmptyState>
-          ) : (
-            <div className={styles.accumulationList}>
-              {view.currentAccumulations.map(accumulation => (
-                <AccumulationCard
-                  key={accumulation.accumulationId}
-                  accumulation={accumulation}
-                  expenseTypeName={
-                    expenseTypeNames.get(accumulation.expenseTypeId) ?? accumulation.expenseTypeId
-                  }
-                />
-              ))}
-            </div>
-          ))}
+        {/* 月切り替えで入れ替わる領域(docs/design/usability.md 8-4)。ページ遷移を伴わないため
+            role="status" をこの器に常設する。入れ替わる側は announce={false} で live region
+            の入れ子を避ける */}
+        <div role="status" className={styles.liveRegion}>
+          {viewQuery.isLoading && <LoadingState announce={false} />}
+          {viewQuery.error && (
+            <ErrorState announce={false}>
+              {describeRequestFailure(viewQuery.error, '精算情報の取得に失敗しました')}
+            </ErrorState>
+          )}
+          {view &&
+            (view.currentAccumulations.length === 0 ? (
+              <EmptyState announce={false}>当月の経費累計はまだありません</EmptyState>
+            ) : (
+              <div className={styles.accumulationList}>
+                {view.currentAccumulations.map(accumulation => (
+                  <AccumulationCard
+                    key={accumulation.accumulationId}
+                    accumulation={accumulation}
+                    expenseTypeName={
+                      expenseTypeNames.get(accumulation.expenseTypeId) ?? accumulation.expenseTypeId
+                    }
+                  />
+                ))}
+              </div>
+            ))}
+        </div>
       </div>
 
       <div className={ui.card}>
         <span className={ui.sectionTitle}>按分子取引</span>
-        {/* 直上の「費用区分別の累計」と同じ 3 状態を出す(同一画面で扱いを混在させない) */}
-        {viewQuery.isLoading && <LoadingState />}
-        {viewQuery.error && (
-          <ErrorState>
-            {describeRequestFailure(viewQuery.error, '精算情報の取得に失敗しました')}
-          </ErrorState>
-        )}
-        {view &&
-          (view.currentChildTransactions.length === 0 ? (
-            <EmptyState>当月の按分子取引はありません</EmptyState>
-          ) : (
-            <ul className={styles.childList}>
-              {view.currentChildTransactions.map(child => (
-                <li key={child.childTransactionId} className={ui.rowBetween}>
-                  <div className={styles.childLeft}>
-                    <span className={styles.childDate}>{formatDate(child.derivedAt)}</span>
-                    <span className={styles.childTarget}>
-                      {child.personalExpenseClass === 'personal_honey'
-                        ? '個人(Honey)'
-                        : '個人(Darling)'}
-                      へ按分
-                    </span>
-                  </div>
-                  <span className={styles.childAmount}>{formatMoney(child.personalAmount)}</span>
-                </li>
-              ))}
-            </ul>
-          ))}
+        {/* 直上の「費用区分別の累計」と同じ 3 状態・同じ viewQuery を出す(同一画面で扱いを
+            混在させない)。通知(role="status")は直上の器が同じ viewQuery の状態変化を
+            既に読み上げるため、ここでは重ねない(同一文言が二重に読み上げられるのを避ける。
+            docs/design/usability.md 8-4)。見た目の入れ替わりは変わらず announce={false} で
+            揃える */}
+        <div className={styles.liveRegion}>
+          {viewQuery.isLoading && <LoadingState announce={false} />}
+          {viewQuery.error && (
+            <ErrorState announce={false}>
+              {describeRequestFailure(viewQuery.error, '精算情報の取得に失敗しました')}
+            </ErrorState>
+          )}
+          {view &&
+            (view.currentChildTransactions.length === 0 ? (
+              <EmptyState announce={false}>当月の按分子取引はありません</EmptyState>
+            ) : (
+              <ul className={styles.childList}>
+                {view.currentChildTransactions.map(child => (
+                  <li key={child.childTransactionId} className={ui.rowBetween}>
+                    <div className={styles.childLeft}>
+                      <span className={styles.childDate}>{formatDate(child.derivedAt)}</span>
+                      <span className={styles.childTarget}>
+                        {child.personalExpenseClass === 'personal_honey'
+                          ? '個人(Honey)'
+                          : '個人(Darling)'}
+                        へ按分
+                      </span>
+                    </div>
+                    <span className={styles.childAmount}>{formatMoney(child.personalAmount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ))}
+        </div>
       </div>
 
       {view?.latestFinalizedCycle && (
