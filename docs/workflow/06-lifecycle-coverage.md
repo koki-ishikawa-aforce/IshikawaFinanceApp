@@ -26,7 +26,7 @@
 | --- | --- | --- | --- | --- |
 | KA1 | Software Requirements(要件) | skill: `/issue-create`・`/backlog-ready`(ready 判定基準) | ✅ | 要件の起票から着手承認までが1つの skill 対で完結している([01-lifecycle.md](./01-lifecycle.md)) |
 | KA2 | Software Architecture(アーキテクチャ) | docs: `docs/domain/07-bounded-contexts.md`・`09-aggregates.md`、`CLAUDE.md`(ヘキサゴナルの依存方向)<br>レビュー: `/ddd-review`(依存の向き・集約境界) | ⚠️ | **既知の欠落(c) 設計工程不在**: アーキテクチャ資料は実装後に整える順序になっており、要件と実装の間に設計工程が無い。対策として軽量設計工程 `/feature-design`(#736)・design-first 規約(#737・原則12)は導入済み。draft 段階の議論を残す仕組み(ADR 等)は依然として無い |
-| KA3 | Software Design(設計) | レビュー: `/ddd-review`(集約・値オブジェクトの配置)、`DESIGN.md`(画面の見た目)、`docs/domain/wireframes/`(画面設計の一部) | ⚠️ | 同じく (c) の影響を受ける。新規画面にレイアウト仕様を要求する ready 基準の追加(#738)も未導入で、画面設計が着手承認の時点で担保されていない |
+| KA3 | Software Design(設計) | レビュー: `/ddd-review`(集約・値オブジェクトの配置)、`DESIGN.md`(画面の見た目)、`docs/domain/wireframes/`(画面設計の一部) | ⚠️ | 同じく (c) の影響を受ける。新規画面にレイアウト仕様を要求する ready 基準の追加(#738)は導入済み(基準6として反映) |
 | KA4 | Software Construction(構築) | `packages/*/README.md`(命名規約)、CI: `pnpm build` / `pnpm lint` / `pnpm typecheck`、hooks(編集後の自動整形・差分 typecheck) | ✅ | [`docs/review/README.md` §4](../review/README.md) |
 | KA5 | Software Testing(テスト) | CI: `pnpm test`・統合テスト・VRT・受入 E2E、レビュー: `/test-review` | ✅ | [`docs/review/README.md` §2・§4](../review/README.md) |
 | KA6 | Software Engineering Operations(運用) | 未整備(CD 無し) | ❌ | **既知の欠落(a) CD 不在・(b) バックアップ未定義**。マージから先(本番反映・監視・障害回復)を測る基準が `05-criteria.md` 基準11「到達性」(❌)。補助物差し: AWS WA OPS 4/6/8(可観測性・デプロイ)・REL 9(バックアップ)・REL 13(DR)。測り方は DORA Four Keys(デプロイ頻度・リードタイム・変更失敗率・復旧時間)。関連 Issue #56・#57 |
