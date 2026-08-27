@@ -4,6 +4,7 @@ import {
   BulkClassificationCompletedSchema,
   BulkClassificationSessionIdSchema,
   ClassifiedDetailsSchema,
+  ConcurrentUpdateError,
   ImportJobIdSchema,
   InvariantViolationError,
   NotFoundError,
@@ -369,7 +370,18 @@ export function classificationRoutes(deps: ClassificationRoutesDeps): Hono<AppEn
       if (transaction !== null && transaction.kind !== 'unclassified') toRecord.push(transactionId)
     }
     const advanced = advanceBulkClassificationSession(session, toRecord)
-    await deps.bulkClassificationSessionRepository.save(advanced)
+    try {
+      await deps.bulkClassificationSessionRepository.save(advanced)
+    } catch (e) {
+      // 版数競合（#609）は読み出し後に別端末からの進捗記録が先に入った一時的な競合で、
+      // 画面が次に送る累積で自己修復する。サーバ側の障害ではないため error では残さない。
+      if (e instanceof ConcurrentUpdateError) {
+        console.warn(
+          `一括分類セッションの進捗記録が並行更新で見送られた（bulkClassificationSessionId=${id}）。次の送信で回復する`,
+        )
+      }
+      throw e
+    }
     return c.json(advanced)
   })
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  advanceBulkClassificationSession,
   CategoryIdSchema,
   MerchantLearningRuleSchema,
   MoneySchema,
@@ -8,6 +9,7 @@ import {
 } from '@warimaru/domain'
 import type {
   BulkClassificationCompleted,
+  InProgressBulkClassificationSession,
   UserId,
   MerchantLearningDisabled,
   MerchantLearningReenabled,
@@ -327,6 +329,37 @@ describe('POST /api/classification/bulk-sessions/:id/progress', () => {
       ).status,
     ).toBe(400)
     expect(await remainingCountOf(t, sessionId)).toBe(2)
+  })
+
+  it('読み出し後に別端末が先に進捗を保存すると 409（並行更新の後勝ちを防ぐ。#609）', async () => {
+    const t = createTestApp()
+    const { sessionId, txIds } = await seedSession(t)
+    await classifyTx(t, txIds[0] as string)
+    await classifyTx(t, txIds[1] as string)
+
+    const repo = t.deps.bulkClassificationSessionRepository
+    const originalFindById = repo.findById.bind(repo)
+    let injected = false
+    // ルートが進捗保存の直前に読む session を横取りし、その版のまま
+    // 別端末が先に保存を終えた状態を再現する（2 台が同じ版を読んだ直後の競合）
+    repo.findById = async id => {
+      const session = await originalFindById(id)
+      if (!injected && session !== null && session.kind === 'in_progress') {
+        injected = true
+        await repo.save(
+          advanceBulkClassificationSession(session as InProgressBulkClassificationSession, [
+            TransactionIdSchema.parse(txIds[0]),
+          ]),
+        )
+      }
+      return session
+    }
+
+    const res = await recordProgress(t, sessionId, [txIds[1]])
+    expect(res.status).toBe(409)
+
+    // 拒否された要求は保存されておらず、先に保存した側の進捗だけが残る
+    expect(await remainingCountOf(t, sessionId)).toBe(1)
   })
 })
 

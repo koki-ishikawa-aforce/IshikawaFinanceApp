@@ -176,6 +176,15 @@ describe('BulkClassificationSession 集約', () => {
       expect(advanced.remainingCount).toBe(before.remainingCount)
     })
 
+    it('版数は動かない（保存時の照合に使う「読み出したときの版」のまま。#609）', () => {
+      const before = BulkClassificationSessionSchema.parse({
+        ...inProgress(),
+        common: { ...commonWithTwoTargets, version: 7 },
+      }) as InProgressBulkClassificationSession
+      const advanced = advanceBulkClassificationSession(before, [TX1])
+      expect(advanced.common.version).toBe(7)
+    })
+
     it('対象に含まれない取引は分類済みにできない', () => {
       expect(() => advanceBulkClassificationSession(inProgress(), [TX3])).toThrow(
         /対象に含まれない取引/,

@@ -41,7 +41,7 @@ Phase 4 で Core 2 コンテキスト、Phase 5 M-A で残り 6 コンテキス�
 
 ### auto-classification（自動分類・学習、08b）
 
-- 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否。`reflectManualClassification` で手動修正を T-2 軸独立に即時反映。`applicableClassification` で学習済みルールから適用可能な分類を導出。`isMerchantRuleApplicable` で次回以降その加盟店が自動で分類されるようになるかを判定（#582。api 層はこれを分類 API の応答 `merchantRuleLearned` に載せ、画面は未分類理由からの推測をしない））, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`。取込起因は `csv_import` / `single_correction` / `transaction_list`。`startBulkClassificationSession` で開始し、`advanceBulkClassificationSession` で分類し終えた対象を記録して残件数を減らす（再送に冪等））
+- 集約: `MerchantLearningRule`（`active` / `disabled`、X-1: AMAZON.CO.JP 拒否。`reflectManualClassification` で手動修正を T-2 軸独立に即時反映。`applicableClassification` で学習済みルールから適用可能な分類を導出。`isMerchantRuleApplicable` で次回以降その加盟店が自動で分類されるようになるかを判定（#582。api 層はこれを分類 API の応答 `merchantRuleLearned` に載せ、画面は未分類理由からの推測をしない））, `BulkClassificationSession`（`in_progress` / `completed` / `aborted`。取込起因は `csv_import` / `single_correction` / `transaction_list`。`startBulkClassificationSession` で開始し、`advanceBulkClassificationSession` で分類し終えた対象を記録して残件数を減らす（再送に冪等）。共通属性に楽観ロックの版数 `common.version` を持ち、保存時の版数照合は `BulkClassificationSessionRepository.save` が担う。#609）
 - 値オブジェクト: `CategoryLearningRef` ほか T-2 独立 3 軸（`LearningRefs` 束 + `deriveLearnedRefs` / `applicableClassificationFromRefs` / `isRefsApplicable`）, `ClassificationResult`, `AmazonMatchState`, `LearningAxis`, `ManualClassification`（UL「修正後分類」）+ `ReflectManualClassificationResult`
 - Repository I/F: `MerchantLearningRuleRepository`, `BulkClassificationSessionRepository`
 - Query I/F: `RetroactiveCandidateQuery`（J-3）+ `RetroactiveCandidateView`
