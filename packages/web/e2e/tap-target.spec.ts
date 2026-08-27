@@ -161,6 +161,21 @@ test('ダッシュボードの月送り・切り替え・カテゴリ行が下�
   expect(gap, '凡例の行どうしの隙間').toBeGreaterThanOrEqual(minGap)
 })
 
+test('相手の個人費の吹き出しの閉じるボタンが下限の大きさを満たす', async ({ page }) => {
+  // 吹き出し(SpousePersonalNote の .hint)自体は注意書きの薄い見た目のまま保ち、閉じる
+  // ボタンだけを絶対配置で下限まで広げている(#611)。宣言だけでは意図どおりの実寸に
+  // なっているか分からないため、右クリックでヒントを開いて実測する
+  await page.goto('/')
+  const min = await tapTargetMin(page)
+
+  await page.getByRole('note').click({ button: 'right' })
+  await expectTapTargetSize(
+    page.getByRole('button', { name: '閉じる' }),
+    '相手の個人費の吹き出しの閉じるボタン',
+    min,
+  )
+})
+
 test('下部ナビの項目が下限の大きさを満たす', async ({ page }) => {
   // 全画面に出る操作部品で、7 項目が横幅を取り合う。1 項目でも下限を割ると隣の画面へ
   // 飛ぶ誤タップになるため、実寸を全項目ぶん測る(#467)

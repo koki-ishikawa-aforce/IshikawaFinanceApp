@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 import type { Theme } from '@/theme/tokens'
 import { RoleIcon } from '@/components/ui/RoleIcon'
+import { LuX } from '@/components/ui/icons'
 import { formatMoney } from '@/lib/format'
 import { partnerOf } from '@/lib/partner'
 import ui from '@/components/ui/common.module.css'
@@ -59,10 +60,17 @@ export function SpousePersonalNote({ amount, theme, partnerNickname }: SpousePer
         <div
           className={styles.hint}
           role="tooltip"
-          onClick={() => setShowHint(false)}
           onKeyDown={e => e.key === 'Escape' && setShowHint(false)}
         >
           明細はパートナーのみ閲覧可
+          <button
+            type="button"
+            className={styles.hintClose}
+            onClick={() => setShowHint(false)}
+            aria-label="閉じる"
+          >
+            <LuX aria-hidden="true" className={ui.iconSm} />
+          </button>
         </div>
       )}
     </div>

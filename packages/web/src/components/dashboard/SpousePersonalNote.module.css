@@ -45,11 +45,35 @@
   color: var(--white);
   background: var(--text-primary);
   padding: var(--space-1) var(--space-2_5);
+  /* 閉じるボタン(.hintClose)を右側に重ねて置く分の逃げ */
+  padding-right: calc(var(--space-2_5) + var(--icon-sm) + var(--space-1));
   border-radius: var(--radius-sm);
   pointer-events: auto;
-  cursor: pointer;
   z-index: 10;
   animation: fadeIn 0.15s ease-out;
+}
+
+/*
+ * 閉じるボタン。吹き出し自体は注意書き(role="tooltip")のまま 1 行ぶんの薄さを保ち(見た目は
+ * 変えない)、押せる受け皿だけをタップ下限(usability §4-3)まで広げる(#611 選択肢B)。
+ * `.hint` が `position: absolute` で作る包含ブロックに対して自身も絶対配置にすることで、
+ * 通常フローから外れて `.hint` の高さに影響を与えないまま、見た目の × アイコンより
+ * 大きい受け皿を上下にはみ出させて確保する
+ */
+.hintClose {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
+  min-width: var(--tap-target-min);
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
 }
 
 @keyframes fadeIn {
