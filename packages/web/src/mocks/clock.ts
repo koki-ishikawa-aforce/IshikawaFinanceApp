@@ -21,8 +21,8 @@ export const MOCK_NOW = '2026-07-24T12:00:00+09:00'
 export const MOCK_DEFAULT_MONTH = '2026-07'
 
 /**
- * VRT の撮影中に固定する時間帯。日付の表示は端末の時間帯で決まるため、実行環境まかせに
- * すると CI（UTC）と手元（JST）で違う日付の基準画像ができ、撮った環境と違う環境で赤くなる。
- * 利用者の時間帯である JST に揃える（ユニットテストの `vitest.config.ts` と同じ理由・同じ値）。
+ * VRT の撮影中に固定する時間帯。日付の表示自体は端末の時間帯によらず JST になる(#639)が、
+ * 実行環境をあえて揃えておくことで、CI（UTC）と手元（JST）で違う基準画像ができる事故を
+ * 構造的に防ぐ(ユニットテストの `vitest.config.ts` と同じ理由・同じ値)。
  */
 export const MOCK_TIMEZONE = 'Asia/Tokyo'
