@@ -105,7 +105,7 @@
 .progressTrack {
   height: var(--space-1_5);
   border-radius: var(--radius-sm);
-  background: var(--surface-track);
+  background: var(--surface-strong);
   overflow: hidden;
 }
 
