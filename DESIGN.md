@@ -82,7 +82,7 @@ UI の見た目に関わる変更はこのドキュメントに従う。Living �
 
 単独で置くアイコン（隣に大きさの連動する文字が無いもの）は、相対値の基準となる `font-size` を**アイコン自身、またはアイコンだけを内包する親要素**に明示する（アイコン自身の例: `AppNav.module.css` の `.icon`・`app/balances/page.module.css` の `.balanceIcon`。親要素の例: `app/transactions/page.module.css` の `.fab`・`MonthNavigator.module.css` の `.button`）。基準を書かずに周囲の文字サイズへ委ねると、無関係な文字サイズの変更でアイコンの大きさが動く。
 
-スケールの逸脱は `packages/web/src/test/icon-size-scale.test.ts` が機械的に検出する（width / height はレイアウト用途と区別できず stylelint で縛れないため、アイコンに限ってテストで縛っている）。
+スケールの逸脱（トークンの選び方そのもの）は `packages/web/src/test/icon-size-scale.test.ts` が機械的に検出する（width / height はレイアウト用途と区別できず stylelint で縛れないため、アイコンに限ってテストで縛っている）。ただしトークンは相対値のため、同じ段階を選んでもこのテストは基準の `font-size` の食い違いまでは検出できない（#502）。同じ役目のアイコンの実寸(px)が画面をまたいで一致しているかは、タップターゲット下限の実測（`tap-target.spec.ts`）と同じ考え方で `packages/web/e2e/icon-rendered-size.spec.ts` が実際の描画から確認する（#633）。
 
 同じ理由で、金額カードの文字色（`--text-on-kpi`）と背景（`--kpi-*`）のコントラストは `packages/web/src/test/kpi-contrast.test.ts` が両テーマぶん機械的に検出する。トークンの色を動かしただけで 4.5:1 を割ったかどうかは、見た目の差分では判定できないため。
 
