@@ -39,7 +39,46 @@ const TRANSFER_TARGET_LABELS = {
   personal_darling: '個人(Darling)',
 } as const
 
-function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
+/**
+ * レポートの「ステータス」カードのみ。月切り替えの live region(`ReportsPageContent`)に
+ * 直接包まれるため、独立した live region を持つ `BalanceFreshnessCard` はここに含めない
+ * (含めると role="status" が入れ子になり、鮮度データの更新がどちらの live region に
+ * 通知されるか支援技術ごとに一貫しなくなる)。
+ */
+function ReportStatusCard({ report }: { report: MonthlyReportViewWire }) {
+  const finalized = report.status === 'finalized'
+
+  return (
+    <div className={ui.card}>
+      <div className={ui.rowBetween}>
+        <span className={ui.sectionTitle}>ステータス</span>
+        <span className={finalized ? ui.badgeAccent : ui.badge}>
+          {finalized ? '確定済み' : 'CSV確認済み'}
+        </span>
+      </div>
+      <div className={styles.statusDates}>
+        <span>CSV確認: {formatDateWithYear(report.csvConfirmedAt)}</span>
+        {report.finalizedAt !== null && <span>確定: {formatDateWithYear(report.finalizedAt)}</span>}
+        {isIncompleteMonthReport(report.common) && (
+          <span className={styles.incomplete}>
+            <LuTriangleAlert
+              aria-hidden="true"
+              className={`${ui.iconSm} ${styles.incompleteIcon}`}
+            />
+            データが不完全な月です
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * ステータス以下の残りのカード群。`BalanceFreshnessCard`(月に依存しない独立した
+ * live region)を挟んだ後段のため、`ReportStatusCard` とは別の live region で包む
+ * (`ReportsPageContent`)。
+ */
+function ReportBody({ report }: { report: MonthlyReportViewWire }) {
   const categoriesQuery = useQuery({
     queryKey: ['categories'],
     queryFn: () => apiFetch('/api/categories', CategoryListWireSchema),
@@ -57,32 +96,6 @@ function ReportDetail({ report }: { report: MonthlyReportViewWire }) {
 
   return (
     <>
-      <div className={ui.card}>
-        <div className={ui.rowBetween}>
-          <span className={ui.sectionTitle}>ステータス</span>
-          <span className={finalized ? ui.badgeAccent : ui.badge}>
-            {finalized ? '確定済み' : 'CSV確認済み'}
-          </span>
-        </div>
-        <div className={styles.statusDates}>
-          <span>CSV確認: {formatDateWithYear(report.csvConfirmedAt)}</span>
-          {report.finalizedAt !== null && (
-            <span>確定: {formatDateWithYear(report.finalizedAt)}</span>
-          )}
-          {isIncompleteMonthReport(report.common) && (
-            <span className={styles.incomplete}>
-              <LuTriangleAlert
-                aria-hidden="true"
-                className={`${ui.iconSm} ${styles.incompleteIcon}`}
-              />
-              データが不完全な月です
-            </span>
-          )}
-        </div>
-      </div>
-
-      <BalanceFreshnessCard />
-
       <div className={ui.card}>
         <span className={ui.sectionTitle}>世帯支出（カテゴリ別）</span>
         {report.common.householdCategoryTotals.length === 0 ? (
@@ -189,7 +202,8 @@ function ReportsPageContent() {
 
       {/* 月切り替えで入れ替わる領域(docs/design/usability.md 8-4)。ページ遷移を伴わないため
           role="status" をこの器に常設する。入れ替わる側は announce={false} で live region
-          の入れ子を避ける */}
+          の入れ子を避ける。BalanceFreshnessCard は月に依存しない独立した live region を
+          自前で持つため、下の器の外に置く(ここに含めると role="status" が入れ子になる) */}
       <div role="status" className={styles.liveRegion}>
         {reportQuery.isLoading && <LoadingState announce={false} />}
         {reportQuery.error && (
@@ -206,8 +220,16 @@ function ReportsPageContent() {
             </EmptyState>
           </div>
         )}
-        {reportQuery.data != null && <ReportDetail report={reportQuery.data} />}
+        {reportQuery.data != null && <ReportStatusCard report={reportQuery.data} />}
       </div>
+
+      {reportQuery.data != null && <BalanceFreshnessCard />}
+
+      {reportQuery.data != null && (
+        <div role="status" className={styles.liveRegion}>
+          <ReportBody report={reportQuery.data} />
+        </div>
+      )}
     </main>
   )
 }

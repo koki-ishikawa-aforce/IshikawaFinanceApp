@@ -270,7 +270,7 @@ export default function ExpenseSettlementPage() {
         {/* 月切り替えで入れ替わる領域(docs/design/usability.md 8-4)。ページ遷移を伴わないため
             role="status" をこの器に常設する。入れ替わる側は announce={false} で live region
             の入れ子を避ける */}
-        <div role="status">
+        <div role="status" className={styles.liveRegion}>
           {cycleQuery.isLoading && <LoadingState announce={false} />}
           {cycleQuery.error && (
             <ErrorState announce={false}>
@@ -348,7 +348,7 @@ export default function ExpenseSettlementPage() {
         {/* 月切り替えで入れ替わる領域(docs/design/usability.md 8-4)。ページ遷移を伴わないため
             role="status" をこの器に常設する。入れ替わる側は announce={false} で live region
             の入れ子を避ける */}
-        <div role="status">
+        <div role="status" className={styles.liveRegion}>
           {viewQuery.isLoading && <LoadingState announce={false} />}
           {viewQuery.error && (
             <ErrorState announce={false}>
@@ -376,11 +376,12 @@ export default function ExpenseSettlementPage() {
 
       <div className={ui.card}>
         <span className={ui.sectionTitle}>按分子取引</span>
-        {/* 直上の「費用区分別の累計」と同じ 3 状態を出す(同一画面で扱いを混在させない)。
-            月切り替えで入れ替わる領域(docs/design/usability.md 8-4)。ページ遷移を伴わないため
-            role="status" をこの器に常設する。入れ替わる側は announce={false} で live region
-            の入れ子を避ける */}
-        <div role="status">
+        {/* 直上の「費用区分別の累計」と同じ 3 状態・同じ viewQuery を出す(同一画面で扱いを
+            混在させない)。通知(role="status")は直上の器が同じ viewQuery の状態変化を
+            既に読み上げるため、ここでは重ねない(同一文言が二重に読み上げられるのを避ける。
+            docs/design/usability.md 8-4)。見た目の入れ替わりは変わらず announce={false} で
+            揃える */}
+        <div className={styles.liveRegion}>
           {viewQuery.isLoading && <LoadingState announce={false} />}
           {viewQuery.error && (
             <ErrorState announce={false}>
