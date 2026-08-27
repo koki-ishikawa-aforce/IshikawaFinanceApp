@@ -28,6 +28,8 @@ description: 無人運用(Routine による /issue-work・/pr-steward)の失敗�
 
 無人運用の痕跡を、以下の観点で網羅的に集める。各収集の結果は件数と代表例をメモに残す。
 
+**第一の収集手段: tracking Issue のレコード集計。** 本文にマーカー `<!-- fire-record-tracking -->` を含む open Issue を検索する(`.claude/skills/issue-work/SKILL.md`「手順8: fire 終了時の記録」がレコード形式とコード表の唯一の定義)。見つかれば、収集期間内のコメントを取得し(`gh issue view <番号> --comments` または GitHub MCP `issue_read` method `get_comments`)、各コメント本文の JSON Lines をパースして `kind` / `result` / `reason_code` / `ci_retries` / `gate_fail_conditions` / `filed_issues` を集計する。これで下記1〜5の観点の大半(撤退理由の内訳・CI リトライ回数・マージゲート落ち条件・起票 Issue との対応)が grep + 集計で得られる。tracking Issue が無い、または収集期間の記録が薄い(運用開始直後で蓄積が少ない等)場合は、その旨を記録した上で下記の**テキスト発掘をフォールバック**として実行し、集計を補う。
+
 1. **マージ済み / クローズされた PR**(Routine 起点):
 
    収集期間内に**作成された** PR に加え、起点より前に作られて**期間内にマージ / クローズされた** PR(長く滞留した PR ほど失敗データとして重要)も拾う。`created` だけで絞ると後者を取りこぼすため、`created` / `merged` / `closed` の 3 つの検索を実行し、PR 番号で重複を除いて 1 つの集合にまとめる:
