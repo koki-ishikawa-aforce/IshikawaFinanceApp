@@ -68,23 +68,6 @@
   padding: var(--space-1) 0;
 }
 
-.backLink {
-  /* 「スキップ」など短い文字だけのボタン。文字の大きさでは縦横とも下限に届かない（§4-3） */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--tap-target-min);
-  min-width: var(--tap-target-min);
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  cursor: pointer;
-  padding: var(--space-1) 0;
-  text-align: center;
-}
-
 .sectionRow {
   display: flex;
   flex-direction: column;

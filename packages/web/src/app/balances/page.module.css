@@ -143,36 +143,6 @@
   color: var(--text-secondary);
 }
 
-.rangeToggle {
-  display: flex;
-  gap: var(--space-0_5);
-  background: var(--surface-well);
-  border-radius: var(--radius-md);
-  padding: var(--space-0_5);
-}
-
-.rangeButton {
-  /* 「1年」など 2〜3 文字しか無く、文字とパディングでは縦横とも下限に届かない（§4-3） */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--tap-target-min);
-  min-width: var(--tap-target-min);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
-.rangeActive {
-  background: var(--accent);
-  color: var(--white);
-}
-
 /*
  * 口座 1 件の行を押せる導線にする（#406 の口座詳細へ）。行そのものが押す対象なので、
  * 文字色・下線はリンクの既定に任せず、囲っている行の見た目をそのまま保つ

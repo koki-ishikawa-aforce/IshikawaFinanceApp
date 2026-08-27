@@ -18,9 +18,10 @@ test.use({ viewport: { width: 390, height: 844 } })
  *
  * 対象は共通の操作部品(`components/ui/common.module.css` の 5 クラスと、それを
  * 使うボタン風リンク)と、共通部品であるモーダルの閉じるボタン・2 択の切り替え
- * (`components/ui/SegmentedControl.tsx`)。これに加えて、画面固有のスタイルを持つ
- * 部品(ダッシュボードの月送り・世帯/個人の切り替え・カテゴリ行は #366、下部ナビ・
- * 設定のタブ・残高の期間切り替え・精算の小ボタン・チェック行は #467)も測る。
+ * (`components/ui/SegmentedControl.tsx`。世帯/個人の切り替えは #366、資産推移の
+ * 期間切り替え・取込の「閉じる」・オンボーディングの「スキップ」は #612 でこちらに
+ * 寄せた)。これに加えて、画面固有のスタイルを持つ部品(ダッシュボードの月送り・
+ * カテゴリ行は #366、下部ナビ・設定のタブ・精算の小ボタン・チェック行は #467)も測る。
  */
 
 /** 下限の値は `globals.css` の `--tap-target-min` が正。ここに数値を書き写さない */
@@ -211,9 +212,11 @@ test('残高の期間切り替えと精算の小ボタンが下限の大きさ�
   await page.goto('/balances')
   const min = await tapTargetMin(page)
 
+  // 資産推移の期間切り替えは共通部品(SegmentedControl)に寄せたので、押せる受け皿はラジオ
+  const range = page.getByRole('radiogroup', { name: '期間' })
   for (const label of ['6ヶ月', '1年', '2年']) {
     await expectTapTargetSize(
-      page.getByRole('button', { name: label, exact: true }),
+      range.getByRole('radio', { name: label, exact: true }),
       `資産推移の期間（${label}）`,
       min,
     )

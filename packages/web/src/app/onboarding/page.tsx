@@ -866,7 +866,7 @@ export default function OnboardingPage() {
                     </button>
                   )}
                   <button
-                    className={styles.backLink}
+                    className={ui.textButton}
                     disabled={finishSectionF.isPending}
                     onClick={() => finishSectionF.mutate({ kind: 'skipped' })}
                   >

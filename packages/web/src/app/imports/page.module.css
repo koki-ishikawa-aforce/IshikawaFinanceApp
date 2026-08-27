@@ -90,18 +90,3 @@
   align-items: flex-end;
   gap: var(--space-0_5);
 }
-
-.smallGhost {
-  /* 「閉じる」の 3 文字だけで背景も無く、文字の大きさでは縦横とも下限に届かない（§4-3） */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--tap-target-min);
-  min-width: var(--tap-target-min);
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  cursor: pointer;
-}
