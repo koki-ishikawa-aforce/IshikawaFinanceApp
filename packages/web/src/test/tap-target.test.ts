@@ -121,9 +121,11 @@ const CONTROLS: readonly {
 /**
  * ボタンに乗るが、それ自身は下限を左右しない CSS モジュールのクラス(#613)。
  *
- * 常に CONTROLS 側の(下限を宣言する)クラスと組み合わせて使う装飾・色の修飾子で、
- * 単独では押す受け皿の大きさを決めない。下の「登録漏れ」検査がここにも
- * CONTROLS にも無いクラスを見つけたら、CONTROLS へ登録するか、理由つきでここへ足す。
+ * 常に CONTROLS 側の(下限を宣言する)クラスと組み合わせて使う装飾・色などの修飾子で、
+ * 単独では押す受け皿の大きさを決めない。下の「登録漏れ」検査は、ここに載せたクラスが
+ * 実際に CONTROLS 側のクラスと同じボタンで併用されているかまでを見る(単独で
+ * 使われていたら、それ自体を登録漏れと同じ扱いで違反にする)。CONTROLS にも
+ * ここにも無いクラスを見つけたら、CONTROLS へ登録するか、理由つきでここへ足す。
  */
 const TAP_TARGET_MODIFIER_ONLY: readonly { css: string; selectors: readonly string[] }[] = [
   {
@@ -279,15 +281,22 @@ function cssModuleImports(path: string, content: string): Map<string, string> {
 }
 
 /**
- * ボタンに使っている CSS モジュールのクラスのうち、CONTROLS にも
- * TAP_TARGET_MODIFIER_ONLY にも登録されていないものを返す(`ファイル:CSS:セレクタ` 形式)。
+ * ボタンに使っている CSS モジュールのクラスの登録漏れを返す(`ファイル:CSS:セレクタ` 形式)。
  *
  * 新しく作った画面固有のボタンを CONTROLS への登録なしに残すと、この検査が拾う(#613)。
+ * 違反とみなすのは次の 2 パターン:
+ * 1. CONTROLS にも TAP_TARGET_MODIFIER_ONLY にも無いクラス(まったくの登録漏れ)
+ * 2. TAP_TARGET_MODIFIER_ONLY のクラスだけが使われ、CONTROLS のクラスが同じボタンに
+ *    1 つも無い(修飾子は単独では下限を保証しない約束のため、併用が無ければ
+ *    そのボタンは事実上どこにも下限を宣言していない)
  * className の無いボタンは、下限を宣言する手段そのものが無いとみなして違反にする。
  */
 function findUnregisteredButtonClasses(sources: readonly Source[]): string[] {
-  const known = new Set(
-    [...CONTROLS, ...TAP_TARGET_MODIFIER_ONLY].flatMap(({ css, selectors }) =>
+  const controlsKnown = new Set(
+    CONTROLS.flatMap(({ css, selectors }) => selectors.map(selector => `${css}::${selector}`)),
+  )
+  const modifierKnown = new Set(
+    TAP_TARGET_MODIFIER_ONLY.flatMap(({ css, selectors }) =>
       selectors.map(selector => `${css}::${selector}`),
     ),
   )
@@ -298,11 +307,17 @@ function findUnregisteredButtonClasses(sources: readonly Source[]): string[] {
       if (value === null) return [`${path}:<button> に className が無い`]
       const refs = [...value.matchAll(CLASS_REF)].flatMap(([, alias, name]) => {
         const css = imports.get(alias ?? '')
-        return css ? [{ css, selector: `.${name}` }] : []
+        return css ? [{ css, selector: `.${name}`, key: `${css}::.${name}` }] : []
       })
-      return refs
-        .filter(({ css, selector }) => !known.has(`${css}::${selector}`))
-        .map(({ css, selector }) => `${path}:${css}:${selector}`)
+      const unregistered = refs.filter(
+        ({ key }) => !controlsKnown.has(key) && !modifierKnown.has(key),
+      )
+      const modifiersOnly = refs.some(({ key }) => controlsKnown.has(key))
+        ? []
+        : refs.filter(({ key }) => modifierKnown.has(key))
+      return [...unregistered, ...modifiersOnly].map(
+        ({ css, selector }) => `${path}:${css}:${selector}`,
+      )
     })
   })
 }
@@ -441,7 +456,12 @@ describe('タップターゲットの検査対象の登録漏れ(#613)', () => {
         content: [
           "import ui from '@/components/ui/common.module.css'",
           "import styles from './offender.module.css'",
+          // 完全な未登録クラス
           '<button className={styles.mystery}>OK</button>',
+          // 除外一覧のクラス(.card)はあるが、下限を宣言する CONTROLS 側のクラスが無い
+          // (修飾子は併用が前提のため、これも登録漏れと同じ扱いにする)
+          '<button className={ui.card}>単独</button>',
+          // 未登録クラスと除外クラスが混ざっていても両方拾う
           '<button className={`${ui.card} ${styles.unregistered}`}>OK</button>',
           '<button>ラベルだけ</button>',
         ].join('\n'),
@@ -449,7 +469,9 @@ describe('タップターゲットの検査対象の登録漏れ(#613)', () => {
     ]
     expect(findUnregisteredButtonClasses(offending)).toEqual([
       'offender.tsx:offender.module.css:.mystery',
+      'offender.tsx:components/ui/common.module.css:.card',
       'offender.tsx:offender.module.css:.unregistered',
+      'offender.tsx:components/ui/common.module.css:.card',
       'offender.tsx:<button> に className が無い',
     ])
   })
@@ -471,5 +493,22 @@ describe('タップターゲットの検査対象の登録漏れ(#613)', () => {
       },
     ]
     expect(findUnregisteredButtonClasses(valid)).toEqual([])
+  })
+
+  it('TAP_TARGET_MODIFIER_ONLY のクラスは実際には下限を自分で宣言していない', () => {
+    // 「単独では下限を左右しない」という前提そのものを固定する。ここが崩れると、
+    // 実は下限を持つクラスを除外一覧へ誤って載せても両方のテストが緑のまま通り、
+    // #613 が防ごうとした静かな素通りがこの一覧経由で再発する
+    const stylesheets = collectSources(isModuleCss)
+    const offenders = TAP_TARGET_MODIFIER_ONLY.flatMap(({ css, selectors }) => {
+      const content = stylesheets.find(({ path }) => path === css)?.content ?? ''
+      expect(content, `${css} を読み取れている`).not.toBe('')
+      return selectors
+        .filter(
+          selector => findControlsWithoutMin(content, [selector], HEIGHT_AND_WIDTH).length < 2,
+        )
+        .map(selector => `${css}:${selector}`)
+    })
+    expect(offenders).toEqual([])
   })
 })
