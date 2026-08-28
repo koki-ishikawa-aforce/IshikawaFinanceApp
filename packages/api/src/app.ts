@@ -193,14 +193,10 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
   // ok は本体プロセスの生存(liveness)のみを示す。許可リストの縮退運転(#650)はプロセス自体を
   // 止めないため ok を false にはしないが、外形監視が気づけるよう allowlist に反映する。
-  app.get('/health', c => {
-    const allowlistHealth = deps.allowlistHealth()
-    return c.json({
-      ok: true,
-      allowlist: allowlistHealth.status,
-      ...(allowlistHealth.detail !== undefined ? { allowlistDetail: allowlistHealth.detail } : {}),
-    })
-  })
+  // health().detail(縮退開始時刻・理由)は認証不要のこの経路では返さない。攻撃者に
+  // 「あと何分で fail-closed に戻るか」の正確なカウントダウンを与えてしまうため（詳細は
+  // サーバーログ(console.error)にのみ残す）
+  app.get('/health', c => c.json({ ok: true, allowlist: deps.allowlistHealth().status }))
 
   return app
 }

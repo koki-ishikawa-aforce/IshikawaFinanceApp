@@ -15,6 +15,7 @@ import type { AllowlistQuery } from '@warimaru/domain'
 import { PermissionDeniedError, judgeRole } from '@warimaru/domain'
 import type { AppEnv } from '../env.js'
 import { traceIdOf } from '../trace-id.js'
+import { loggable, errorDetailOf } from '../log-format.js'
 
 /**
  * 自前で許可リストを照合し、判定結果をドメインイベント（RoleJudged / AccessDenied）として
@@ -24,24 +25,9 @@ import { traceIdOf } from '../trace-id.js'
  */
 const SELF_JUDGING_PATHS: ReadonlySet<string> = new Set(['/api/onboarding/register'])
 
-/**
- * ログに載せる文字列を1行に収める。要求パスは要求者が決める文字列で、hono は `%` を含む
- * パスを復号するため改行を紛れ込ませられる。そのまま出すとログ行を分割して偽の警告行を
- * 作れるので、制御文字を潰し、長さも切る。
- */
-function loggable(value: string, maxLength: number): string {
-  // eslint-disable-next-line no-control-regex -- 制御文字を潰すことが目的
-  return value.replace(/[\u0000-\u001f\u007f]/g, '?').slice(0, maxLength)
-}
-
+/** 要求パスは要求者が決める文字列で、hono は `%` を含むパスを復号するため改行を紛れ込ませられる */
 function loggablePath(path: string): string {
   return loggable(path, 100)
-}
-
-/** 取得失敗の種別と理由。許可リスト側のエラーは PII を含まない（構成名・パラメータのパス） */
-function errorDetailOf(e: unknown): string {
-  if (!(e instanceof Error)) return 'unknown'
-  return `${e.name}: ${loggable(e.message, 200)}`
 }
 
 export interface AllowlistGuardDeps {

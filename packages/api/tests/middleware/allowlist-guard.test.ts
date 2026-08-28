@@ -195,8 +195,8 @@ describe('許可リスト照合ガード — 許可リストを取得できな�
    * 縮退運転そのものの規則（猶予時間の境界など）は createCachingAllowlistQuery 側の単体テストで
    * 固定済み。ここでは「ガードと組み合わせたときに実際に要求が通り続けるか」だけを見る（#650）。
    */
-  it('猶予時間内なら、取得できなくなった後も世帯の利用者は通り続ける（縮退運転、#650）', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  it('猶予時間内なら、取得できなくなった後も世帯の利用者は通り続け、縮退運転に入ったことがログに残る（縮退運転、#650）', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     let shouldFail = false
     let current = new Date('2026-08-24T00:00:00Z')
     const t = createTestApp({
@@ -220,6 +220,42 @@ describe('許可リスト照合ガード — 許可リストを取得できな�
     shouldFail = true
     current = new Date('2026-08-24T00:20:00Z') // ttl 切れの後、猶予時間(30分)以内
     expect((await request(t.app, 'GET', '/api/me', { viewerId: VIEWER_ID })).status).toBe(200)
+    // 通り続けていても、無言のまま縮退運転に入らない（#650 の信頼性レビュー指摘）
+    const logged = error.mock.calls.flat().join(' ')
+    expect(logged).toContain('Parameter Store が未構成')
+    expect(logged).toContain('縮退運転')
+  })
+
+  it('猶予時間内でも、書き込み要求(口座作成)は実際に成功する（縮退運転、#650）', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let shouldFail = false
+    let current = new Date('2026-08-24T00:00:00Z')
+    const t = createTestApp({
+      allowlistQuery: createCachingAllowlistQuery(
+        {
+          fetch: () =>
+            shouldFail
+              ? Promise.reject(new Error('Parameter Store が未構成'))
+              : Promise.resolve(
+                  AllowlistSchema.parse({
+                    honeyLineUserId: VIEWER_ID,
+                    darlingLineUserId: SPOUSE_ID,
+                  }),
+                ),
+        },
+        { ttlMs: 60_000, staleGraceMs: 30 * 60_000, now: () => current },
+      ),
+    })
+    await request(t.app, 'GET', '/api/me', { viewerId: VIEWER_ID })
+
+    shouldFail = true
+    current = new Date('2026-08-24T00:20:00Z') // ttl 切れの後、猶予時間(30分)以内
+    const res = await request(t.app, 'POST', '/api/accounts', {
+      viewerId: VIEWER_ID,
+      body: NEW_ACCOUNT_BODY,
+    })
+    expect(res.status).toBe(201)
+    expect(await t.deps.accountRepository.findByOwner(VIEWER_ID)).toHaveLength(1)
   })
 
   it('猶予時間を過ぎると世帯の利用者も通らなくなる（否定形、#650）', async () => {
