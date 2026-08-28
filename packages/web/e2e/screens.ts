@@ -27,6 +27,13 @@ export const SCREENS = [
     name: 'settings-accounts-none',
     path: '/settings?section=accounts&mockScenario=accounts-none',
   },
+  // Gmail 連携タブ（#392）。既定の fixture は連携中なので、OAuth 失効通知の DM から
+  // 開いたときの失効状態（警告 + 再認可ボタン）を別シーンとして撮る
+  { name: 'settings-oauth', path: '/settings?section=oauth' },
+  {
+    name: 'settings-oauth-revoked',
+    path: '/settings?section=oauth&mockGmailLink=revoked',
+  },
   // 同じシナリオは残高画面の見え方も変える（貯蓄・NISA の行が消え、鮮度の知らせが
   // 空になり、推移グラフの系列が減る）。撮っておかないとその状態だけ見張られない
   { name: 'balances-accounts-unregistered', path: '/balances?mockScenario=accounts-unregistered' },

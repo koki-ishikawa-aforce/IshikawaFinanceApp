@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { GmailOAuthTokenSchema, ParameterStorePathSchema } from '@warimaru/domain'
+import type { UserId } from '@warimaru/domain'
 import type { TestApp } from '../helpers/test-app.js'
 import { createTestApp, request, VIEWER_ID, SPOUSE_ID } from '../helpers/test-app.js'
 
@@ -126,5 +128,82 @@ describe('GET /api/settings/spouse-profile', () => {
     const res = await request(t.app, 'GET', '/api/settings/spouse-profile')
     const { profile } = await json<{ profile: Record<string, unknown> }>(res)
     expect(Object.keys(profile)).toEqual(['nickname'])
+  })
+})
+
+describe('GET /api/settings/gmail-link', () => {
+  async function saveToken(t: TestApp, userId: UserId, revoked: boolean): Promise<void> {
+    await t.deps.gmailOAuthTokenRepository.save(
+      GmailOAuthTokenSchema.parse(
+        revoked
+          ? {
+              kind: 'revocation_detected',
+              userId,
+              tokenStoreRef: ParameterStorePathSchema.parse(`/warimaru/gmail/${userId}`),
+              authorizedAt: new Date('2026-05-01T09:00:00Z'),
+              revocationDetectedAt: new Date('2026-07-10T21:00:00Z'),
+              revocationReason: 'api_call_failure',
+            }
+          : {
+              kind: 'valid',
+              userId,
+              tokenStoreRef: ParameterStorePathSchema.parse(`/warimaru/gmail/${userId}`),
+              authorizedAt: new Date('2026-05-01T09:00:00Z'),
+              lastVerifiedAt: new Date('2026-05-01T09:00:00Z'),
+            },
+      ),
+    )
+  }
+
+  it('未連携なら not_linked を返す', async () => {
+    const t = createTestApp()
+    const res = await request(t.app, 'GET', '/api/settings/gmail-link')
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({ gmailLink: { kind: 'not_linked' } })
+  })
+
+  it('連携中なら valid と認可日時を返す', async () => {
+    const t = createTestApp()
+    await saveToken(t, VIEWER_ID, false)
+    const res = await request(t.app, 'GET', '/api/settings/gmail-link')
+    expect(await json(res)).toEqual({
+      gmailLink: { kind: 'valid', authorizedAt: '2026-05-01T09:00:00.000Z' },
+    })
+  })
+
+  it('失効検知済みなら revocation_detected と検知日時を返す', async () => {
+    const t = createTestApp()
+    await saveToken(t, VIEWER_ID, true)
+    const res = await request(t.app, 'GET', '/api/settings/gmail-link')
+    expect(await json(res)).toEqual({
+      gmailLink: {
+        kind: 'revocation_detected',
+        revocationDetectedAt: '2026-07-10T21:00:00.000Z',
+      },
+    })
+  })
+
+  it('トークンの保管参照（Parameter Store パス）は応答に含めない', async () => {
+    const t = createTestApp()
+    await saveToken(t, VIEWER_ID, false)
+    const res = await request(t.app, 'GET', '/api/settings/gmail-link')
+    const body = await json<{ gmailLink: Record<string, unknown> }>(res)
+    expect(Object.keys(body.gmailLink).sort()).toEqual(['authorizedAt', 'kind'])
+  })
+
+  it('返るのは閲覧者本人の状態のみ（相手の失効は自分の応答に現れない）', async () => {
+    const t = createTestApp()
+    await saveToken(t, VIEWER_ID, false)
+    await saveToken(t, SPOUSE_ID, true)
+    const viewer = await request(t.app, 'GET', '/api/settings/gmail-link')
+    expect(await json(viewer)).toEqual({
+      gmailLink: { kind: 'valid', authorizedAt: '2026-05-01T09:00:00.000Z' },
+    })
+    const spouse = await request(t.app, 'GET', '/api/settings/gmail-link', {
+      viewerId: SPOUSE_ID,
+    })
+    expect(await json<{ gmailLink: { kind: string } }>(spouse)).toMatchObject({
+      gmailLink: { kind: 'revocation_detected' },
+    })
   })
 })

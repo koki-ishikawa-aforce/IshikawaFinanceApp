@@ -11,6 +11,8 @@ import { apiFetch, apiMutate, describeRequestFailure } from '@/lib/api-client'
 import {
   CategoryListWireSchema,
   ExpenseTypeListWireSchema,
+  GmailAuthorizeResponseSchema,
+  GmailLinkWireSchema,
   MonthlyLimitListWireSchema,
   SettingsProfileWireSchema,
   UnknownResponseSchema,
@@ -21,6 +23,8 @@ import {
 } from '@/lib/api-schemas'
 import { EXPENSE_CLASS_LABELS } from '@/lib/labels'
 import { formatMoney } from '@/lib/format'
+import { formatDateWithYear } from '@/lib/month'
+import { openExternal } from '@/lib/liff'
 import { RoleIcon } from '@/components/ui/RoleIcon'
 import { LuRocket, LuReceipt, LuDownload } from '@/components/ui/icons'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -29,7 +33,14 @@ import ui from '@/components/ui/common.module.css'
 import listStyles from '@/components/settings/settingsList.module.css'
 import styles from './page.module.css'
 
-type Tab = 'profile' | 'accounts' | 'categories' | 'expense-types' | 'limits' | 'classification'
+type Tab =
+  | 'profile'
+  | 'accounts'
+  | 'categories'
+  | 'expense-types'
+  | 'limits'
+  | 'classification'
+  | 'oauth'
 
 // ---------- プロフィール（#48） ----------
 
@@ -679,6 +690,121 @@ function LimitsTab() {
   )
 }
 
+// ---------- Gmail 連携（#392） ----------
+
+/**
+ * Gmail 連携の状態表示と再認可（OAuth 失効通知の LINE DM が
+ * `/settings?section=oauth&provider=gmail` でこのタブへ誘導する — 論点57 ④）。
+ *
+ * 認可はオンボーディングの Gmail 連携（Section A）と同じ経路（OQ-7: 外部ブラウザで
+ * 認可 → この画面に戻って状態を更新）。`provider` パラメータは Gmail しか無い現状では
+ * 読まない（Deep Link マップの表記に合わせて送り側が付けている）。
+ */
+function GmailLinkTab() {
+  const queryClient = useQueryClient()
+  const gmailLinkQuery = useQuery({
+    queryKey: ['settings-gmail-link'],
+    queryFn: () => apiFetch('/api/settings/gmail-link', GmailLinkWireSchema),
+  })
+
+  const authorize = useMutation({
+    mutationFn: () =>
+      apiMutate(
+        '/api/onboarding/gmail/authorize',
+        { method: 'POST' },
+        GmailAuthorizeResponseSchema,
+      ),
+    onSuccess: result => {
+      openExternal(result.authorizationUrl)
+    },
+  })
+
+  const link = gmailLinkQuery.data?.gmailLink
+
+  return (
+    <div className={ui.card}>
+      <span className={ui.sectionTitle}>Gmail 連携</span>
+      <p className={ui.note}>
+        カード・銀行の利用明細メールを自動で取り込むための連携です。連携が切れると、カード利用が家計簿に反映されなくなります。
+      </p>
+      {gmailLinkQuery.isLoading && <LoadingState />}
+      {gmailLinkQuery.isError && (
+        <ErrorState
+          onRetry={() => void gmailLinkQuery.refetch()}
+          isRetrying={gmailLinkQuery.isFetching}
+        >
+          {describeRequestFailure(gmailLinkQuery.error, 'Gmail 連携の状態を取得できませんでした')}
+        </ErrorState>
+      )}
+      {link && (
+        <>
+          <div className={ui.row}>
+            <span className={ui.fieldLabel}>連携の状態</span>
+            {link.kind === 'valid' && <span className={ui.badgeAccent}>連携中</span>}
+            {link.kind === 'revocation_detected' && (
+              <span className={ui.badgeWarning}>連携が切れています</span>
+            )}
+            {link.kind === 'not_linked' && <span className={ui.badge}>未連携</span>}
+          </div>
+          {link.kind === 'valid' && (
+            <p className={ui.note}>
+              連携した日: {formatDateWithYear(link.authorizedAt)}
+              。明細メールは毎日自動で取り込まれます。
+            </p>
+          )}
+          {link.kind === 'revocation_detected' && (
+            <p className={ui.warning}>
+              {formatDateWithYear(link.revocationDetectedAt)}
+              から自動取込が止まっています。連携し直すと再開します。
+            </p>
+          )}
+          {link.kind === 'not_linked' && (
+            <p className={ui.note}>
+              Gmail が連携されていません。連携すると利用明細メールの自動取込が始まります。
+            </p>
+          )}
+          {link.kind !== 'valid' && (
+            <>
+              <p className={ui.note}>
+                認可は外部ブラウザで行います。完了後にこの画面へ戻って「連携状態を更新」を押してください。
+              </p>
+              <div className={ui.row}>
+                <button
+                  className={ui.button}
+                  disabled={authorize.isPending}
+                  onClick={() => authorize.mutate()}
+                >
+                  {authorize.isPending
+                    ? '連携準備中...'
+                    : link.kind === 'revocation_detected'
+                      ? 'Gmail を連携し直す'
+                      : 'Gmail 連携をはじめる'}
+                </button>
+                <button
+                  className={ui.buttonGhost}
+                  onClick={() =>
+                    void queryClient.invalidateQueries({ queryKey: ['settings-gmail-link'] })
+                  }
+                >
+                  連携状態を更新
+                </button>
+              </div>
+              {authorize.isError && (
+                <ErrorState>
+                  {describeRequestFailure(
+                    authorize.error,
+                    'Gmail の連携を開始できませんでした。通信状況を確かめて、もう一度お試しください。',
+                  )}
+                </ErrorState>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ---------- ページ ----------
 
 const TABS: { id: Tab; label: string }[] = [
@@ -688,6 +814,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'expense-types', label: '経費種別' },
   { id: 'limits', label: '月次上限' },
   { id: 'classification', label: '学習' },
+  { id: 'oauth', label: 'Gmail連携' },
 ]
 
 const VALID_TABS = new Set<string>(TABS.map(t => t.id))
@@ -724,6 +851,7 @@ function SettingsPageContent() {
       {tab === 'expense-types' && <ExpenseTypesTab />}
       {tab === 'limits' && <LimitsTab />}
       {tab === 'classification' && <LearningRulesTab />}
+      {tab === 'oauth' && <GmailLinkTab />}
 
       {/*
         精算・取込は #614 で下部ナビから外した2画面への入り口。押しやすさの下限(§4-3)を

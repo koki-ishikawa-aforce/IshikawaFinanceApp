@@ -624,6 +624,20 @@ export function settingsProfileFixture(role: UserRole): unknown {
   }
 }
 
+/**
+ * GET /api/settings/gmail-link（#392）
+ *
+ * 既定は連携中。失効状態の画面は URL クエリ `?mockGmailLink=revoked` で再現できる
+ * （{@link ./gmail-link} が解決する。失効通知の DM から開いた画面のプレビュー用）。
+ */
+export function gmailLinkFixture(revoked: boolean): unknown {
+  return {
+    gmailLink: revoked
+      ? { kind: 'revocation_detected', revocationDetectedAt: '2026-07-10T21:00:00.000Z' }
+      : { kind: 'valid', authorizedAt: '2026-05-01T09:00:00.000Z' },
+  }
+}
+
 /** GET /api/settings/spouse-profile（閲覧者から見た相手のニックネーム） */
 export function spouseProfileFixture(viewerRole: UserRole): unknown {
   const spouseRole: UserRole = viewerRole === 'honey' ? 'darling' : 'honey'

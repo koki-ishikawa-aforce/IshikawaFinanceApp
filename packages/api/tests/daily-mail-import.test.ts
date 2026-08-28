@@ -493,6 +493,51 @@ describe('日次メール取込ワーカー: 取得できないときの結末',
     expect(gateway.requests).toHaveLength(0)
   })
 
+  it('失効検知済みの実行は失効検知イベントを元の検知日時で再発行する（#392 の再送機会）', async () => {
+    // 失効通知の個人 DM が送信に失敗したとき、検知イベントが失効の瞬間の 1 回きりだと
+    // 再送の機会が二度と来ない。通知側の冪等性キー（ユーザー × 検知日時）が配信済みを
+    // 弾くため、検知日時は実行時刻ではなく token の失効検知日時のままでなければならない
+    const t = createTestApp()
+    await revokeToken(t)
+    const revocationEvents = collect<GmailOauthRevocationDetected>(
+      t,
+      'GmailOauthRevocationDetected',
+    )
+    const laterRun = new Date('2026-07-12T00:00:00+09:00')
+
+    await runDailyMailImportForUser(
+      {
+        ...t.deps,
+        gmailMailFetchGateway: fetchGatewayReturning([mailBody('gmail-1')]),
+        parseSmbcNotificationMail: cardUsageParser(),
+      },
+      { userId: VIEWER_ID, at: laterRun },
+    )
+
+    expect(revocationEvents).toHaveLength(1)
+    expect(revocationEvents[0]?.userId).toBe(VIEWER_ID)
+    expect(revocationEvents[0]?.detectedAt).toEqual(AT)
+  })
+
+  it('未連携（トークン無し）の実行では失効検知イベントを発行しない', async () => {
+    const t = createTestApp()
+    const revocationEvents = collect<GmailOauthRevocationDetected>(
+      t,
+      'GmailOauthRevocationDetected',
+    )
+
+    await runDailyMailImportForUser(
+      {
+        ...t.deps,
+        gmailMailFetchGateway: fetchGatewayReturning([mailBody('gmail-1')]),
+        parseSmbcNotificationMail: cardUsageParser(),
+      },
+      { userId: VIEWER_ID, at: AT },
+    )
+
+    expect(revocationEvents).toHaveLength(0)
+  })
+
   it('連携が切れたとき、残っている取込中バッチは終端化せずそのまま残す', async () => {
     // 失敗として閉じてしまうと、そのバッチが持っていた対象期間（連携が切れた当時の窓）は
     // 二度と走査されない。連携が無いあいだは誰もこのロックを待っていないので、再認可後の

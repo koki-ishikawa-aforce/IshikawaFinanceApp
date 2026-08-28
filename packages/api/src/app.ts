@@ -121,6 +121,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     '/api/settings',
     settingsRoutes({
       appUserRepository: deps.appUserRepository,
+      gmailOAuthTokenRepository: deps.gmailOAuthTokenRepository,
       resolveViewerRole: deps.resolveViewerRole,
       fetchAllowlist: () => deps.allowlistQuery.fetch(),
       eventBus: deps.eventBus,

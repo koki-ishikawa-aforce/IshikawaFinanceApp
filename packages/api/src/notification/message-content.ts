@@ -157,6 +157,40 @@ export function buildCsvImportReminderContent(
 }
 
 /**
+ * OAuth 失効通知の本文（08g §2「OAuth失効通知を個人DMに配信する」— #392）。
+ *
+ * 失効した本人の個人 DM にだけ届く（OQ-2。メールフェイルセーフ対象外）。金額・明細は
+ * 一切載せず、「自動取込が止まっている事実」と再認可への導線だけを伝える。
+ * リンク先は設定画面の Gmail 連携タブ（論点57 の Deep Link マップ ④）。
+ */
+export function buildOauthRevocationNoticeContent(links: DeepLinkBuilder): DeliveryContent {
+  const reauthorizationUrl = links.gmailReauthorization()
+  return DeliveryContentSchema.parse({
+    kind: 'flex_message',
+    flexPayloadJson: JSON.stringify(
+      flexBubble({
+        title: 'Gmail 連携が切れています',
+        subtitle: 'このメッセージはあなたにだけ届いています',
+        rows: [
+          {
+            type: 'text',
+            text:
+              '利用明細メールの自動取込が止まっています。' +
+              'このままだとカード利用が家計簿に反映されません。' +
+              'ボタンから設定画面を開いて、Gmail を連携し直してください。',
+            size: 'sm',
+            wrap: true,
+          },
+        ],
+        linkLabel: 'Gmail を連携し直す',
+        linkUrl: reauthorizationUrl,
+      }),
+    ),
+    linkUrl: reauthorizationUrl,
+  })
+}
+
+/**
  * カテゴリの表示ラベル。名前を解決できないカテゴリは ID をそのまま出さず「その他」に丸め、
  * 長すぎる名前は切り詰める（削除済みカテゴリの ID 露出と payload 肥大の両方を防ぐ）。
  */

@@ -51,6 +51,11 @@ beforeEach(() => {
         schema.parse({ profile: { userId: 'U_HONEY', role: 'honey', nickname: null } }),
       )
     }
+    if (path === '/api/settings/gmail-link') {
+      return Promise.resolve(
+        schema.parse({ gmailLink: { kind: 'valid', authorizedAt: '2026-05-01T09:00:00.000Z' } }),
+      )
+    }
     return Promise.resolve(schema.parse({ items: [] }))
   })
 })
@@ -70,6 +75,8 @@ describe('設定画面のタブと中身の結線', () => {
         ),
     ],
     ['classification', () => screen.findByText('加盟店の学習')],
+    // OAuth 失効通知の Deep Link（/settings?section=oauth&provider=gmail、論点57 ④）の受け側
+    ['oauth', () => screen.findByText('連携の状態')],
   ])('?section=%s ではその中身が出る', async (value, findContent) => {
     section.mockReturnValue(value)
     renderPage()

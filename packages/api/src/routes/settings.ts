@@ -14,7 +14,14 @@ import {
   changeNickname,
   resolveSpouseUserId,
 } from '@warimaru/domain'
-import type { Allowlist, AppUserRepository, EventBus, UserId, UserRole } from '@warimaru/domain'
+import type {
+  Allowlist,
+  AppUserRepository,
+  EventBus,
+  GmailOAuthTokenRepository,
+  UserId,
+  UserRole,
+} from '@warimaru/domain'
 import type { AppEnv } from '../env.js'
 import { domainEventBase } from '../event-handlers/index.js'
 import { readJsonObjectBody } from '../read-request-body.js'
@@ -23,6 +30,7 @@ const NicknameBodySchema = z.object({ nickname: NicknameSchema.nullable() })
 
 export interface SettingsRoutesDeps {
   appUserRepository: AppUserRepository
+  gmailOAuthTokenRepository: GmailOAuthTokenRepository
   resolveViewerRole: (viewerId: UserId) => Promise<UserRole>
   fetchAllowlist: () => Promise<Allowlist>
   eventBus: EventBus
@@ -38,6 +46,31 @@ export function settingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
     const role = user?.common.role ?? (await deps.resolveViewerRole(viewerId))
     return c.json({
       profile: { userId: viewerId, role, nickname: user?.common.nickname ?? null },
+    })
+  })
+
+  /**
+   * 自分の Gmail 連携状態（#392、設定画面の Gmail 連携タブが読む）。
+   *
+   * 返すのは閲覧者本人の連携状態のみ（相手の連携状態は返さない — 個人の外部連携は
+   * プライバシー3段階ルールの「個人」に準じて本人だけが見る）。日時を添えるのは、
+   * 失効通知の DM を後から開いた利用者が「いつから止まっているか」を画面で確かめる
+   * ため。トークンの保管参照（Parameter Store パス）は画面に不要なので露出しない。
+   */
+  app.get('/gmail-link', async c => {
+    const viewerId = c.get('viewerId')
+    const token = await deps.gmailOAuthTokenRepository.findByUserId(viewerId)
+    if (token === null) {
+      return c.json({ gmailLink: { kind: 'not_linked' } })
+    }
+    return c.json({
+      gmailLink:
+        token.kind === 'valid'
+          ? { kind: 'valid', authorizedAt: token.authorizedAt.toISOString() }
+          : {
+              kind: 'revocation_detected',
+              revocationDetectedAt: token.revocationDetectedAt.toISOString(),
+            },
     })
   })
 

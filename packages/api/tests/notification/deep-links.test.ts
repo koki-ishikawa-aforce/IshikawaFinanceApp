@@ -23,6 +23,12 @@ describe('createDeepLinkBuilder', () => {
     expect(links.monthlyReport(month)).not.toContain('view=')
   })
 
+  it('Gmail 再認可は論点57 ④ の契約どおり /settings?section=oauth&provider=gmail を生成する', () => {
+    expect(links.gmailReauthorization()).toBe(
+      'https://liff.line.me/1234567890-abcdefgh/settings?section=oauth&provider=gmail',
+    )
+  })
+
   it('base の末尾スラッシュがあってもパスが二重スラッシュにならない', () => {
     const withSlash = createDeepLinkBuilder('https://example.com/app/')
     expect(withSlash.monthlyReport(month)).toBe('https://example.com/app/reports?month=2026-07')
@@ -31,8 +37,7 @@ describe('createDeepLinkBuilder', () => {
   it('明細の取得元サイト URL は持たない（#472: ドメインの statementSiteUrl が単一実装）', () => {
     expect(links).not.toHaveProperty('smbcCardStatement')
     expect(links).not.toHaveProperty('smbcBankStatement')
-    expect(JSON.stringify(Object.values(links).map(build => build(month)))).not.toContain(
-      'smbc-card.com',
-    )
+    const all = [links.monthlyReport(month), links.csvImport(month), links.gmailReauthorization()]
+    expect(JSON.stringify(all)).not.toContain('smbc-card.com')
   })
 })

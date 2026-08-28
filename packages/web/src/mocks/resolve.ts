@@ -7,6 +7,7 @@
  */
 import { YearMonthSchema, type DashboardMode, type YearMonth } from '@warimaru/domain'
 import { MOCK_DEFAULT_MONTH } from './clock'
+import { getMockGmailLink } from './gmail-link'
 import { getMockRole } from './role'
 import { getMockScenario } from './scenario'
 import {
@@ -24,6 +25,7 @@ import {
   dashboardKpisFixture,
   expenseSettlementViewFixture,
   expenseTypeListFixture,
+  gmailLinkFixture,
   importStatusFixture,
   meFixture,
   merchantLearningRuleListFixture,
@@ -118,6 +120,8 @@ export function resolveMock(method: string, path: string): unknown {
         return monthlyReportFixture(parseMonth(params))
       case '/api/settings/profile':
         return settingsProfileFixture(getMockRole())
+      case '/api/settings/gmail-link':
+        return gmailLinkFixture(getMockGmailLink() === 'revoked')
       case '/api/settings/spouse-profile':
         return spouseProfileFixture(getMockRole())
       case '/api/accounts':

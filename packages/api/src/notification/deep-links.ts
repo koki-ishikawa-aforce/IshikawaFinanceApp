@@ -5,14 +5,11 @@
  * 送り側がそれに従う」と決めている。本モジュールがその送り側の単一実装で、
  * 契約は次の 3 本に限られる（パス形式の新ルートは Static Export と相性が悪く作らない）:
  *
- *   - 月次レポート: `<base>/reports?month=YYYY-MM`
- *   - CSV 取込:     `<base>/imports?month=YYYY-MM`
- *
- * OQ-54 が例示する `settings?section=oauth` は生成しない。受け側の設定画面が受理する
- * section は profile / accounts / categories / expense-types / limits のみで `oauth` を
- * 受け付けず（未知値はプロフィールに落ちる）、Gmail 連携の UI 自体が設定画面に無いため、
- * 生成しても再認可へ誘導できない。この URL が要るのは OAuth 失効通知（別 Issue）の実装時で、
- * そのとき受け側と同時に契約を決める。
+ *   - 月次レポート:   `<base>/reports?month=YYYY-MM`
+ *   - CSV 取込:       `<base>/imports?month=YYYY-MM`
+ *   - Gmail 再認可:   `<base>/settings?section=oauth&provider=gmail`
+ *     （論点57 の Deep Link マップ ④。受け側は設定画面の Gmail 連携タブ。`provider` は
+ *     現状 gmail のみで受け側は読まないが、マップの表記どおりに送る — #392）
  *
  * レポートのビュー切替（`view=household|personal`）は OQ-54 ③ で「作らない」と決着済みのため、
  * 生成しない（受け側も受理しない）。
@@ -35,6 +32,8 @@ export interface DeepLinkBuilder {
   monthlyReport(month: YearMonth): string
   /** CSV 取込画面（OQ-54 ①） */
   csvImport(month: YearMonth): string
+  /** 設定画面の Gmail 連携タブ（論点57 ④。OAuth 失効通知の再認可導線 — #392） */
+  gmailReauthorization(): string
 }
 
 /**
@@ -47,5 +46,6 @@ export function createDeepLinkBuilder(baseUrl: string): DeepLinkBuilder {
   return {
     monthlyReport: month => `${base}/reports?month=${month}`,
     csvImport: month => `${base}/imports?month=${month}`,
+    gmailReauthorization: () => `${base}/settings?section=oauth&provider=gmail`,
   }
 }

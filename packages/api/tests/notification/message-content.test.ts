@@ -11,6 +11,7 @@ import { createDeepLinkBuilder } from '../../src/notification/deep-links.js'
 import {
   buildCsvImportReminderContent,
   buildHouseholdSummaryContent,
+  buildOauthRevocationNoticeContent,
   buildPersonalSummaryContent,
 } from '../../src/notification/message-content.js'
 
@@ -318,5 +319,25 @@ describe('buildPersonalSummaryContent', () => {
     expect(flexTexts(content.flexPayloadJson).some(t => t.includes('データが不完全な月です'))).toBe(
       false,
     )
+  })
+})
+
+describe('buildOauthRevocationNoticeContent', () => {
+  it('Flex Message で、本文とボタンの両方が設定画面の Gmail 連携タブを指す（論点57 ④）', () => {
+    const content = buildOauthRevocationNoticeContent(links)
+    expect(content.kind).toBe('flex_message')
+    if (content.kind !== 'flex_message') return
+    expect(content.linkUrl).toBe('https://liff.example/app/settings?section=oauth&provider=gmail')
+    const payload = JSON.parse(content.flexPayloadJson) as Record<string, unknown>
+    expect(JSON.stringify(payload)).toContain(
+      'https://liff.example/app/settings?section=oauth&provider=gmail',
+    )
+  })
+
+  it('金額・明細・個人を辿れる情報を載せない（01-overview §6.4: サマリ + リンクのみ）', () => {
+    const content = buildOauthRevocationNoticeContent(links)
+    if (content.kind !== 'flex_message') return
+    expect(content.flexPayloadJson).not.toMatch(/[0-9,]+円/)
+    expect(content.flexPayloadJson).not.toContain('@')
   })
 })

@@ -746,6 +746,19 @@ export const SpouseProfileWireSchema = z.object({
 })
 export type SpouseProfileWire = z.infer<typeof SpouseProfileWireSchema>
 
+/**
+ * 自分の Gmail 連携状態（#392。設定画面の Gmail 連携タブが読む）。
+ * 返るのは閲覧者本人の状態のみで、相手の連携状態はこの API に無い。
+ */
+export const GmailLinkWireSchema = z.object({
+  gmailLink: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('not_linked') }),
+    z.object({ kind: z.literal('valid'), authorizedAt: IsoDate }),
+    z.object({ kind: z.literal('revocation_detected'), revocationDetectedAt: IsoDate }),
+  ]),
+})
+export type GmailLinkWire = z.infer<typeof GmailLinkWireSchema>
+
 export const BrokerageNameWireSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('sbi') }),
   z.object({ kind: z.literal('rakuten') }),

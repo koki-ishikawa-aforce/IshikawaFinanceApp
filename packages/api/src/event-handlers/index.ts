@@ -22,6 +22,7 @@ import { registerExpenseProrationRecalcEventHandlers } from './expense-proration
 import { registerMonthlyLimitSeedEventHandlers } from './monthly-limit-seed.js'
 import { registerMonthlyReportDeliveryEventHandlers } from './monthly-report-delivery.js'
 import { registerNotificationDeliveryEventHandlers } from './notification-delivery.js'
+import { registerOauthRevocationNoticeEventHandlers } from './oauth-revocation-notice.js'
 import { createDeepLinkBuilder } from '../notification/deep-links.js'
 import { registerUnpaidBalanceUpdateEventHandlers } from './unpaid-balance-update.js'
 import { registerBalanceHistoryRecordEventHandlers } from './balance-history-record.js'
@@ -99,6 +100,7 @@ export function registerEventHandlers(deps: AppDeps): void {
   registerHouseholdNotificationActivationEventHandlers(deps.eventBus, {
     householdNotificationActivationRepository: deps.householdNotificationActivationRepository,
   })
+  const deepLinks = createDeepLinkBuilder(deps.webBaseUrl)
   // 月次レポートCSV確定 → 世帯サマリ / 個人サマリの LINE 配信 (#389)
   registerMonthlyReportDeliveryEventHandlers(deps.eventBus, {
     notificationDeliveryService,
@@ -107,6 +109,11 @@ export function registerEventHandlers(deps: AppDeps): void {
     sharedTalkRoomRepository: deps.sharedTalkRoomRepository,
     csvImportStatusQuery: deps.csvImportStatusQuery,
     categoryMasterRepository: deps.categoryMasterRepository,
-    deepLinks: createDeepLinkBuilder(deps.webBaseUrl),
+    deepLinks,
+  })
+  // Gmail OAuth 失効検知 → 失効通知の LINE 個人 DM 配信（再認可導線 #392）
+  registerOauthRevocationNoticeEventHandlers(deps.eventBus, {
+    notificationDeliveryService,
+    deepLinks,
   })
 }
