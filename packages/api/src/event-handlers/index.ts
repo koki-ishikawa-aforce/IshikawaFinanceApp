@@ -12,6 +12,7 @@
 import type { EventBus } from '@warimaru/domain'
 import type { AppDeps } from '../composition-root.js'
 import { createNotificationDeliveryService } from '../notification/delivery-service.js'
+import { registerAccessDenialRecordEventHandlers } from './access-denial-record.js'
 import { registerAutoClassificationEventHandlers } from './auto-classification.js'
 import { registerHouseholdNotificationActivationEventHandlers } from './household-notification-activation.js'
 import { registerMasterDataRemapEventHandlers } from './master-data-remap.js'
@@ -37,6 +38,10 @@ export function registerEventHandlers(deps: AppDeps): void {
   registeredBuses.add(deps.eventBus)
   registerAutoClassificationEventHandlers(deps.eventBus, {
     merchantLearningRuleRepository: deps.merchantLearningRuleRepository,
+  })
+  // 許可リスト不一致による拒否 → LINE_userID ごとの拒否カウンタへ集約 (#651)
+  registerAccessDenialRecordEventHandlers(deps.eventBus, {
+    accessDenialCounterRepository: deps.accessDenialCounterRepository,
   })
   // マスタ削除リマップ: 各コンテキストが付け替えて完了通知を発行する（#89 / #223）
   registerMasterDataRemapEventHandlers(deps.eventBus, {

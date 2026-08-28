@@ -1,3 +1,4 @@
+export * from './AccessDenialCounter'
 export * from './Nickname'
 export * from './GmailOAuthTokenRef'
 export * from './InitialBalanceRegistrationRef'

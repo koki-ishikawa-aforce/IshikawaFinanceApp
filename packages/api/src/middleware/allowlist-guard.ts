@@ -7,15 +7,17 @@
  * 世帯外のユーザーが自分名義のデータ行を作れてしまう（P1-2 の入口を全ルートに広げる）。
  *
  * 判定そのものはドメイン関数 `judgeRole` に委ね、api 層では再実装しない。
+ * 拒否は `AccessDenied` イベントとして発行し、LINE_userID ごとの拒否カウンタへ集約する（#651）。
  *
  * @see docs/domain/08f-ul-オンボーディング認証.md §2
  */
 import type { MiddlewareHandler } from 'hono'
-import type { AllowlistQuery } from '@warimaru/domain'
-import { PermissionDeniedError, judgeRole } from '@warimaru/domain'
+import type { AllowlistQuery, EventBus } from '@warimaru/domain'
+import { AccessDeniedSchema, PermissionDeniedError, judgeRole } from '@warimaru/domain'
 import type { AppEnv } from '../env.js'
 import { traceIdOf } from '../trace-id.js'
 import { loggable, errorDetailOf } from '../log-format.js'
+import { domainEventBase } from '../event-handlers/event-base.js'
 
 /**
  * 自前で許可リストを照合し、判定結果をドメインイベント（RoleJudged / AccessDenied）として
@@ -32,6 +34,7 @@ function loggablePath(path: string): string {
 
 export interface AllowlistGuardDeps {
   allowlistQuery: AllowlistQuery
+  eventBus: EventBus
   /** テストから時刻を差し込むための注入点（既定は実時刻） */
   now?: () => Date
 }
@@ -70,9 +73,18 @@ export function createAllowlistGuardMiddleware(
       )
     }
 
-    if (judgeRole(viewerId, allowlist, now()).kind === 'rejected') {
+    const judgment = judgeRole(viewerId, allowlist, now())
+    if (judgment.kind === 'rejected') {
       console.warn(
         `許可リストに無い利用者からの要求を拒否した（user=${traceIdOf(viewerId)}, path=${loggablePath(c.req.path)}）`,
+      )
+      await deps.eventBus.publish(
+        AccessDeniedSchema.parse({
+          ...domainEventBase(judgment.rejectedAt),
+          type: 'AccessDenied',
+          lineUserId: viewerId,
+          reason: judgment.reason,
+        }),
       )
       // ドメインエラー → HTTP の写像は error-handler に集約する（文言とステータスを複製しない）
       throw new PermissionDeniedError('このアプリは特定ユーザー専用です（許可リスト不一致）')

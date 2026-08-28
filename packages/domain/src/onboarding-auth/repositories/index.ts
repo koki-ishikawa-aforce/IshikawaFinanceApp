@@ -1,3 +1,4 @@
+export * from './AccessDenialCounterRepository'
 export * from './AppUserRepository'
 export * from './GmailOAuthTokenRepository'
 export * from './HouseholdNotificationActivationRepository'

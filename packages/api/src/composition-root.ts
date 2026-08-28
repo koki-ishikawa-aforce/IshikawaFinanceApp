@@ -1,4 +1,5 @@
 import type {
+  AccessDenialCounterRepository,
   AccountBalanceQuery,
   AccountDetailQuery,
   AccountRepository,
@@ -61,6 +62,7 @@ import {
   createDb,
   PostgresAccountRepository,
   PostgresBalanceHistoryRepository,
+  PostgresAccessDenialCounterRepository,
   PostgresBankDepositRepository,
   PostgresEmployerRemitterDirectoryRepository,
   PostgresAllowlistQuery,
@@ -161,6 +163,7 @@ import {
   createMockExpenseTypeDeletionRequestRepository,
   createMockExpenseTypeMasterRepository,
   createMockMerchantLearningRuleRepository,
+  createMockAccessDenialCounterRepository,
   createMockConsecutiveFailureCounterRepository,
   createMockDeliveryMessageRepository,
   createMockFailsafeEmailRepository,
@@ -283,6 +286,8 @@ export interface AppDeps {
   lineDeliveryLogRepository: LineDeliveryLogRepository
   failsafeEmailRepository: FailsafeEmailRepository
   consecutiveFailureCounterRepository: ConsecutiveFailureCounterRepository
+  /** 見知らぬ相手からのアクセス拒否カウンタ（LINE_userID ごとに集約、Issue #651 決定 A-1） */
+  accessDenialCounterRepository: AccessDenialCounterRepository
   lineMessagingGateway: LineMessagingGateway
   failsafeEmailGateway: FailsafeEmailGateway
   /** フェイルセーフメールの宛先（FAILSAFE_EMAIL_TO、カンマ区切り。未設定なら発火を保留） */
@@ -545,6 +550,7 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     lineDeliveryLogRepository: createMockLineDeliveryLogRepository(),
     failsafeEmailRepository: createMockFailsafeEmailRepository(),
     consecutiveFailureCounterRepository: createMockConsecutiveFailureCounterRepository(),
+    accessDenialCounterRepository: createMockAccessDenialCounterRepository(),
     lineMessagingGateway: createMockLineMessagingGateway(),
     failsafeEmailGateway: createMockFailsafeEmailGateway(),
     failsafeEmailRecipients: parseFailsafeRecipients(env.FAILSAFE_EMAIL_TO),
@@ -737,6 +743,7 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     lineDeliveryLogRepository: new PostgresLineDeliveryLogRepository(db),
     failsafeEmailRepository: new PostgresFailsafeEmailRepository(db),
     consecutiveFailureCounterRepository: new PostgresConsecutiveFailureCounterRepository(db),
+    accessDenialCounterRepository: new PostgresAccessDenialCounterRepository(db),
     lineMessagingGateway,
     lineFriendshipGateway,
     lineTalkRoomMembershipGateway,

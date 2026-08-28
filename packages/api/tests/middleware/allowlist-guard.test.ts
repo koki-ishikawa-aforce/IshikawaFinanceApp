@@ -98,6 +98,30 @@ describe('許可リスト照合ガード', () => {
     const t = createTestApp()
     expect((await t.app.request('/health')).status).toBe(200)
   })
+
+  it('拒否は AccessDenied イベントとして発行され、LINE_userID ごとの拒否カウンタに集約される（#651）', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const t = createTestApp()
+    const denied: unknown[] = []
+    t.deps.eventBus.subscribe('AccessDenied', e => {
+      denied.push(e)
+    })
+    await request(t.app, 'GET', '/api/me', { viewerId: STRANGER_ID })
+    await request(t.app, 'GET', '/api/balances', { viewerId: STRANGER_ID })
+    expect(denied).toHaveLength(2)
+    const counter = await t.deps.accessDenialCounterRepository.findByLineUserId(STRANGER_ID)
+    expect(counter?.deniedCount).toBe(2)
+  })
+
+  it('別の相手からの拒否は別カウンタとして数える（同じ相手の分と混ざらない、否定形）', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const t = createTestApp()
+    const anotherStrangerId = UserIdSchema.parse('user-another-stranger')
+    await request(t.app, 'GET', '/api/me', { viewerId: STRANGER_ID })
+    await request(t.app, 'GET', '/api/me', { viewerId: anotherStrangerId })
+    const counter = await t.deps.accessDenialCounterRepository.findByLineUserId(STRANGER_ID)
+    expect(counter?.deniedCount).toBe(1)
+  })
 })
 
 describe('許可リスト照合ガード — 素通しする登録要求', () => {

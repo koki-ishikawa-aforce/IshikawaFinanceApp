@@ -1,3 +1,4 @@
+export * from './PostgresAccessDenialCounterRepository'
 export * from './PostgresAppUserRepository'
 export * from './PostgresGmailOAuthTokenRepository'
 export * from './PostgresHouseholdNotificationActivationRepository'

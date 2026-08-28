@@ -15,6 +15,8 @@ import {
 import type {
   Account,
   AccountId,
+  AccessDenialCounter,
+  AccessDenialCounterRepository,
   BalanceAxis,
   AccountRepository,
   MitsuiSumitomoUnpaid,
@@ -832,6 +834,18 @@ export function createMockConsecutiveFailureCounterRepository(): ConsecutiveFail
     },
     async save(counter: ConsecutiveFailureCounter) {
       store.set(keyOf(counter.counterRef), counter)
+    },
+  }
+}
+
+export function createMockAccessDenialCounterRepository(): AccessDenialCounterRepository {
+  const store = new Map<string, AccessDenialCounter>()
+  return {
+    async findByLineUserId(lineUserId) {
+      return store.get(lineUserId) ?? null
+    },
+    async save(counter: AccessDenialCounter) {
+      store.set(counter.lineUserId, counter)
     },
   }
 }
