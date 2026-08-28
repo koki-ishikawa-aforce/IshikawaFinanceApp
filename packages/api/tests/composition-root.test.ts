@@ -45,6 +45,9 @@ describe('createDeps モックフォールバックの環境ガード (#47)', ()
 
     expect(deps.dashboardQuery).toBeDefined()
     expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('development only'))
+    // allowlistHealth は allowlistQuery(createCachingAllowlistQuery)の health() への委譲。
+    // まだ一度も fetch() していないので healthy のまま（#650）
+    expect(deps.allowlistHealth()).toEqual({ status: 'healthy' })
   })
 
   // createMockDeps は createDeps 経由だけでなくテストのアプリ組み立てからも直接呼ばれる (#349)。

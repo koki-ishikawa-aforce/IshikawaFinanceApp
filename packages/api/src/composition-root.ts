@@ -133,7 +133,7 @@ import {
   createMockLineMessagingGateway,
 } from './notification/mock.js'
 import { createMockDashboardQuery } from './mock-dashboard-query.js'
-import { createCachingAllowlistQuery } from './caching-allowlist-query.js'
+import { createCachingAllowlistQuery, type AllowlistHealth } from './caching-allowlist-query.js'
 import {
   createMockTransactionListQuery,
   createMockMonthlyReportQuery,
@@ -247,6 +247,8 @@ export interface AppDeps {
   householdNotificationActivationRepository: HouseholdNotificationActivationRepository
   spouseCompletionQuery: SpouseCompletionQuery
   allowlistQuery: AllowlistQuery
+  /** 許可リストが直近取得できた内容で縮退運転しているか（#650）。/health が参照する */
+  allowlistHealth: () => AllowlistHealth
   gmailOAuthGateway: GmailOAuthGateway
   /**
    * 日次メール取込の Gmail 取得（#412）。取込対象期間の SMBC 通知メール / Amazon 注文確認
@@ -488,6 +490,8 @@ export function createMockDeps(env: CompositionEnv): AppDeps {
     householdNotificationActivationRepository:
       createMockHouseholdNotificationActivationRepository(),
     allowlistQuery: createMockAllowlistQuery(devAllowlist),
+    // モック経路は縮退運転の対象になる外部呼び出しを持たないため常に健全
+    allowlistHealth: () => ({ status: 'healthy' }),
     spouseCompletionQuery: createMockSpouseCompletionQuery(appUserRepository, devAllowlist),
     gmailOAuthGateway: createMockGmailOAuthGateway(
       createGmailOAuthStateCodec(env.GMAIL_OAUTH_STATE_SECRET ?? 'dev-state-secret'),
@@ -679,6 +683,7 @@ export async function createDeps(env: CompositionEnv): Promise<AppDeps> {
     householdNotificationActivationRepository:
       new PostgresHouseholdNotificationActivationRepository(db),
     allowlistQuery,
+    allowlistHealth: () => allowlistQuery.health(),
     spouseCompletionQuery: new PostgresSpouseCompletionQuery(db, {
       fetchAllowlist: () => allowlistQuery.fetch(),
       now,
