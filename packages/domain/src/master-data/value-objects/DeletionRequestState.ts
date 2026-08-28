@@ -20,9 +20,9 @@ export type RemapTargetContext = z.infer<typeof RemapTargetContextSchema>
  * 影響取引数は取引を扱うコンテキスト、影響学習ルール数は自動分類・学習が報告する
  * （報告しない側は 0）。物理削除時に全コンテキスト分を合算して remap_completed に記録する。
  *
- * 完了通知は requestedContexts の部分集合でなければならない（依頼していないコンテキストからの
- * 完了通知は記録しない）。記録すると合算する影響件数に依頼外の申告分が混ざり、削除完了の記録
- * として残ったあとから真偽を確かめられないため。
+ * 完了通知は requestedContexts の部分集合でなければならず、同じコンテキストが2件以上並んではならない
+ * （依頼していない、または重複したコンテキストからの完了通知は記録しない）。記録すると合算する影響件数に
+ * 依頼外・二重の申告分が混ざり、削除完了の記録として残ったあとから真偽を確かめられないため。
  */
 export const CompletedRemapContextSchema = z.object({
   context: RemapTargetContextSchema,
@@ -56,13 +56,23 @@ export const DeletionRequestStateSchema = z
   .superRefine((state, ctx) => {
     if (state.kind !== 'remap_requested') return
     const requested = new Set(state.requestedContexts)
+    const seen = new Set<RemapTargetContext>()
     state.completedContexts.forEach((completion, index) => {
-      if (requested.has(completion.context)) return
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '依頼していないコンテキストからの完了通知は記録できない',
-        path: ['completedContexts', index, 'context'],
-      })
+      if (!requested.has(completion.context)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '依頼していないコンテキストからの完了通知は記録できない',
+          path: ['completedContexts', index, 'context'],
+        })
+      }
+      if (seen.has(completion.context)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '同じコンテキストからの完了通知は重複して記録できない',
+          path: ['completedContexts', index, 'context'],
+        })
+      }
+      seen.add(completion.context)
     })
   })
 export type DeletionRequestState = z.infer<typeof DeletionRequestStateSchema>
