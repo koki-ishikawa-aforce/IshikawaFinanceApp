@@ -43,7 +43,13 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   // 閲覧者が確定した直後に許可リストを照合する（#533）。認証は「LINE の正規利用者か」しか
   // 見ないため、これが無いと世帯外のユーザーが API を直接呼んで自分名義のデータを作れる。
   // 環境で有効・無効を切り替えない（dev だけ素通しにすると、素通しの経路がテストされない）。
-  app.use('/api/*', createAllowlistGuardMiddleware({ allowlistQuery: deps.allowlistQuery }))
+  app.use(
+    '/api/*',
+    createAllowlistGuardMiddleware({
+      allowlistQuery: deps.allowlistQuery,
+      eventBus: deps.eventBus,
+    }),
+  )
   app.onError(errorHandler)
 
   app.route('/api/me', meRoutes(deps.resolveViewerRole))
