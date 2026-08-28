@@ -714,7 +714,17 @@ export const SpouseCompletionResultWireSchema = z.discriminatedUnion('kind', [
 ])
 export type SpouseCompletionResultWire = z.infer<typeof SpouseCompletionResultWireSchema>
 
-export const GmailAuthorizeResponseSchema = z.object({ authorizationUrl: z.string() })
+/**
+ * 認可 URL は `openExternal`(外部ブラウザ)にそのまま渡すため、https の URL であることを
+ * ここで固定する。API は自前オリジンだが、URL の組み立てが将来変わったときに
+ * `javascript:` 等の非 https URL を開いてしまう窓を残さない(#392 セキュリティレビュー)。
+ */
+export const GmailAuthorizeResponseSchema = z.object({
+  authorizationUrl: z
+    .string()
+    .url()
+    .refine(url => url.startsWith('https://'), 'authorizationUrl は https で始まる必要がある'),
+})
 
 // ---------- 共通 ----------
 
