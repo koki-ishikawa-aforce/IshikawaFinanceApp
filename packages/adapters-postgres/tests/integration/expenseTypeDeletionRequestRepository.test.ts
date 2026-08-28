@@ -25,6 +25,10 @@ async function selectStateKind(id: ExpenseTypeDeletionRequestId): Promise<string
 }
 
 describe('PostgresExpenseTypeDeletionRequestRepository', () => {
+  // completedContexts の重複拒否は DeletionRequestState の共有 superRefine（カテゴリ・経費種別で
+  // 同一実装）であり、payload 破損時の読み戻し検証は categoryDeletionRequestRepository.test.ts
+  // 側で1本カバー済み（機構としての検証に経費種別側の追加は不要）。
+
   it('save → findById の往復同一性（pending_remap）', async () => {
     const request = expenseTypeDeletionRequest()
     await repo.save(request)

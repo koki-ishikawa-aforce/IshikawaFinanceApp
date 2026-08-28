@@ -86,6 +86,29 @@ describe('CategoryDeletionRequest', () => {
       }),
     ).toThrow(/依頼していないコンテキストからの完了通知/)
   })
+
+  it('同じコンテキストの完了通知が2件並ぶ状態は parse できない', () => {
+    const completion = (context: string, affectedTransactionCount: number) => ({
+      context,
+      affectedTransactionCount,
+      affectedLearningRuleCount: 0,
+      completedAt: new Date(),
+    })
+
+    expect(() =>
+      pendingRequest({
+        state: {
+          kind: 'remap_requested',
+          requestedAt: new Date(),
+          requestedContexts: ['household_analysis'],
+          completedContexts: [
+            completion('household_analysis', 3),
+            completion('household_analysis', 5),
+          ],
+        },
+      }),
+    ).toThrow(/同じコンテキストからの完了通知は重複して記録できない/)
+  })
 })
 
 describe('CategoryDeletionRequest 状態遷移', () => {
