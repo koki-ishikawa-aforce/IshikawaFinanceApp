@@ -65,7 +65,7 @@ export function registerMonthlyLimitSeedEventHandlers(
       )
       await eventBus.publish(
         MonthlyLimitSeedInsertedSchema.parse({
-          ...domainEventBase(),
+          ...domainEventBase(judgedAt),
           type: 'MonthlyLimitSeedInserted',
           monthlyLimitId,
           userId,
