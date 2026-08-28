@@ -49,7 +49,7 @@ export function registerAutoClassificationEventHandlers(
       for (const axis of result.updatedAxes) {
         await eventBus.publish(
           LearningRuleUpdatedSchema.parse({
-            ...domainEventBase(),
+            ...domainEventBase(event.occurredAt),
             type: 'LearningRuleUpdated',
             userId: event.userId,
             merchantName: event.merchantName,

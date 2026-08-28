@@ -91,6 +91,8 @@ describe('役割確定 → 規定経費種別の月次上限 seed 投入 (#56)',
     // 適用開始は役割確定日時
     expect((await limitOf('ai_usage'))!.effectiveFrom).toEqual(JUDGED_AT)
     expect(log).toHaveLength(5)
+    // 発行イベントの occurredAt は処理実行時刻ではなく役割確定日時（#658）
+    expect(log.map(e => e.occurredAt)).toEqual(log.map(() => JUDGED_AT))
   })
 
   it('Darling の役割確定では AI 利用費が 3,000円になる（ジム・新聞図書費は共通 5,000円）', async () => {

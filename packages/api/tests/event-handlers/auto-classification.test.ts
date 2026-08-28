@@ -52,6 +52,11 @@ describe('registerAutoClassificationEventHandlers', () => {
     })
     // カテゴリ・費用区分の 2 軸が未学習から学習済みへ変わる（T-2 軸独立）
     expect(updated.map(e => e.axis).sort()).toEqual(['category', 'expense_class'])
+    // 発行イベントの occurredAt は処理実行時刻ではなく手動分類の発生日時（#658）
+    expect(updated.map(e => e.occurredAt)).toEqual([
+      new Date('2026-07-25T00:00:00Z'),
+      new Date('2026-07-25T00:00:00Z'),
+    ])
   })
 
   it('冪等: 同一加盟店・同一分類の再配信では二重書きせず追加イベントも出さない', async () => {
