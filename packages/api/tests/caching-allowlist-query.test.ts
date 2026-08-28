@@ -97,4 +97,85 @@ describe('createCachingAllowlistQuery', () => {
     // 上限時間で決着した取得を掴んだままにしない（次の要求は引き直せる）
     await expect(caching.fetch()).rejects.toMatchObject({ name: 'TimeoutError' })
   })
+
+  it('健全なときは health() が healthy を返す', async () => {
+    const { query } = countingQuery()
+    const caching = createCachingAllowlistQuery(query)
+    expect(caching.health()).toEqual({ status: 'healthy' })
+    await caching.fetch()
+    expect(caching.health()).toEqual({ status: 'healthy' })
+  })
+
+  it('猶予時間内なら、取得できなくなっても直近の内容で応答し続ける（縮退運転、#650）', async () => {
+    let shouldFail = false
+    let current = new Date('2026-08-24T00:00:00Z')
+    const caching = createCachingAllowlistQuery(
+      {
+        fetch: () =>
+          shouldFail
+            ? Promise.reject(new Error('Parameter Store が未構成'))
+            : Promise.resolve(ALLOWLIST),
+      },
+      { ttlMs: 60_000, staleGraceMs: 30 * 60_000, now: () => current },
+    )
+    expect(await caching.fetch()).toEqual(ALLOWLIST)
+
+    shouldFail = true
+    current = new Date('2026-08-24T00:20:00Z') // ttl 切れの後、猶予時間(30分)以内
+    await expect(caching.fetch()).resolves.toEqual(ALLOWLIST)
+    expect(caching.health()).toEqual({
+      status: 'degraded',
+      detail: expect.stringContaining('猶予 30 分') as unknown as string,
+    })
+  })
+
+  it('猶予時間を過ぎたら fail-closed に戻る（否定形）', async () => {
+    let shouldFail = false
+    let current = new Date('2026-08-24T00:00:00Z')
+    const caching = createCachingAllowlistQuery(
+      {
+        fetch: () =>
+          shouldFail
+            ? Promise.reject(new Error('Parameter Store が未構成'))
+            : Promise.resolve(ALLOWLIST),
+      },
+      { ttlMs: 60_000, staleGraceMs: 30 * 60_000, now: () => current },
+    )
+    await caching.fetch()
+
+    shouldFail = true
+    current = new Date('2026-08-24T00:31:00Z') // 猶予時間(30分)を過ぎた
+    await expect(caching.fetch()).rejects.toThrow('Parameter Store が未構成')
+  })
+
+  it('直近の取得が一度も無ければ猶予時間があっても縮退運転しない', async () => {
+    const caching = createCachingAllowlistQuery(
+      { fetch: () => Promise.reject(new Error('初回から取得できない')) },
+      { staleGraceMs: 30 * 60_000 },
+    )
+    await expect(caching.fetch()).rejects.toThrow('初回から取得できない')
+    expect(caching.health()).toEqual({ status: 'healthy' })
+  })
+
+  it('縮退運転から回復すると healthy に戻る', async () => {
+    let shouldFail = false
+    let current = new Date('2026-08-24T00:00:00Z')
+    const caching = createCachingAllowlistQuery(
+      {
+        fetch: () =>
+          shouldFail ? Promise.reject(new Error('一時的な取得失敗')) : Promise.resolve(ALLOWLIST),
+      },
+      { ttlMs: 60_000, staleGraceMs: 30 * 60_000, now: () => current },
+    )
+    await caching.fetch()
+    shouldFail = true
+    current = new Date('2026-08-24T00:20:00Z')
+    await caching.fetch()
+    expect(caching.health().status).toBe('degraded')
+
+    shouldFail = false
+    current = new Date('2026-08-24T00:21:00Z')
+    await caching.fetch()
+    expect(caching.health()).toEqual({ status: 'healthy' })
+  })
 })

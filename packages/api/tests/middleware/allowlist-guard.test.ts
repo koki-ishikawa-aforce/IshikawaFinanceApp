@@ -8,6 +8,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { AllowlistSchema, UserIdSchema, type AllowlistQuery } from '@warimaru/domain'
 import { createTestApp, request, VIEWER_ID, SPOUSE_ID } from '../helpers/test-app.js'
 import { traceIdOf } from '../../src/trace-id.js'
+import { createCachingAllowlistQuery } from '../../src/caching-allowlist-query.js'
 
 const STRANGER_ID = UserIdSchema.parse('user-stranger')
 const DENIED_MESSAGE = 'このアプリは特定ユーザー専用です（許可リスト不一致）'
@@ -188,5 +189,63 @@ describe('許可リスト照合ガード — 許可リストを取得できな�
     expect((await request(t.app, 'GET', '/api/me')).status).toBe(503)
     shouldFail = false
     expect((await request(t.app, 'GET', '/api/me')).status).toBe(200)
+  })
+
+  /**
+   * 縮退運転そのものの規則（猶予時間の境界など）は createCachingAllowlistQuery 側の単体テストで
+   * 固定済み。ここでは「ガードと組み合わせたときに実際に要求が通り続けるか」だけを見る（#650）。
+   */
+  it('猶予時間内なら、取得できなくなった後も世帯の利用者は通り続ける（縮退運転、#650）', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let shouldFail = false
+    let current = new Date('2026-08-24T00:00:00Z')
+    const t = createTestApp({
+      allowlistQuery: createCachingAllowlistQuery(
+        {
+          fetch: () =>
+            shouldFail
+              ? Promise.reject(new Error('Parameter Store が未構成'))
+              : Promise.resolve(
+                  AllowlistSchema.parse({
+                    honeyLineUserId: VIEWER_ID,
+                    darlingLineUserId: SPOUSE_ID,
+                  }),
+                ),
+        },
+        { ttlMs: 60_000, staleGraceMs: 30 * 60_000, now: () => current },
+      ),
+    })
+    expect((await request(t.app, 'GET', '/api/me', { viewerId: VIEWER_ID })).status).toBe(200)
+
+    shouldFail = true
+    current = new Date('2026-08-24T00:20:00Z') // ttl 切れの後、猶予時間(30分)以内
+    expect((await request(t.app, 'GET', '/api/me', { viewerId: VIEWER_ID })).status).toBe(200)
+  })
+
+  it('猶予時間を過ぎると世帯の利用者も通らなくなる（否定形、#650）', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let shouldFail = false
+    let current = new Date('2026-08-24T00:00:00Z')
+    const t = createTestApp({
+      allowlistQuery: createCachingAllowlistQuery(
+        {
+          fetch: () =>
+            shouldFail
+              ? Promise.reject(new Error('Parameter Store が未構成'))
+              : Promise.resolve(
+                  AllowlistSchema.parse({
+                    honeyLineUserId: VIEWER_ID,
+                    darlingLineUserId: SPOUSE_ID,
+                  }),
+                ),
+        },
+        { ttlMs: 60_000, staleGraceMs: 30 * 60_000, now: () => current },
+      ),
+    })
+    await request(t.app, 'GET', '/api/me', { viewerId: VIEWER_ID })
+
+    shouldFail = true
+    current = new Date('2026-08-24T00:31:00Z') // 猶予時間(30分)を過ぎた
+    expect((await request(t.app, 'GET', '/api/me', { viewerId: VIEWER_ID })).status).toBe(503)
   })
 })
