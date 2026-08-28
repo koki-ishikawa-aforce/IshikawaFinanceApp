@@ -70,9 +70,10 @@ function setup(lineGateway: LineMessagingGateway) {
     return Promise.resolve()
   })
 
+  const lineDeliveryLogRepository = createMockLineDeliveryLogRepository()
   const notificationDeliveryService = createNotificationDeliveryService({
     deliveryMessageRepository: createMockDeliveryMessageRepository(),
-    lineDeliveryLogRepository: createMockLineDeliveryLogRepository(),
+    lineDeliveryLogRepository,
     consecutiveFailureCounterRepository: createMockConsecutiveFailureCounterRepository(),
     failsafeEmailRepository: createMockFailsafeEmailRepository(),
     lineMessagingGateway: lineGateway,
@@ -85,13 +86,13 @@ function setup(lineGateway: LineMessagingGateway) {
     deepLinks: createDeepLinkBuilder(BASE_URL),
   })
 
-  return { eventBus, delivered }
+  return { eventBus, delivered, lineDeliveryLogRepository }
 }
 
 describe('registerOauthRevocationNoticeEventHandlers', () => {
   it('失効検知で本人の個人 DM に配信し、OauthRevocationNoticeDelivered を発行する', async () => {
     const gateway = stubLineGateway([success])
-    const { eventBus, delivered } = setup(gateway)
+    const { eventBus, delivered, lineDeliveryLogRepository } = setup(gateway)
 
     await eventBus.publish(revocationDetectedEvent(DETECTED_AT))
 
@@ -99,7 +100,24 @@ describe('registerOauthRevocationNoticeEventHandlers', () => {
     expect(gateway.calls[0]?.target).toEqual({ kind: 'personal_dm', userId: USER_ID })
     expect(delivered).toHaveLength(1)
     expect(delivered[0]?.userId).toBe(USER_ID)
-    expect(delivered[0]?.deliveryMessageId).toBeTruthy()
+    // イベントが指す配信メッセージは、保存された配信ログのものと同一（誤った ID を弾く）
+    const logs = await lineDeliveryLogRepository.findAllByIdempotencyKey(
+      `oauth_revocation_notice:${USER_ID}:${DETECTED_AT.toISOString()}`,
+    )
+    expect(logs).toHaveLength(1)
+    expect(delivered[0]?.deliveryMessageId).toBe(logs[0]?.deliveryMessageId)
+  })
+
+  it('通知機能が有効化されていなくても届く（復旧の唯一の呼びかけ。有効化状態を見ない）', async () => {
+    // setup は通知有効化の記録を一切持たない。それでも配信されることが、
+    // 月次サマリ・テストメッセージ（有効化済みが事前条件）との意図的な違い（08g §2 注記）
+    const gateway = stubLineGateway([success])
+    const { eventBus, delivered } = setup(gateway)
+
+    await eventBus.publish(revocationDetectedEvent(DETECTED_AT))
+
+    expect(gateway.calls).toHaveLength(1)
+    expect(delivered).toHaveLength(1)
   })
 
   it('本文の導線が設定画面の Gmail 連携タブ（論点57 ④）を指す', async () => {

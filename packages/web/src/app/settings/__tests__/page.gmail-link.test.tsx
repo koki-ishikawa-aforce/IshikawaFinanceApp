@@ -100,6 +100,37 @@ describe('Gmail 連携タブ', () => {
     expect(screen.getByRole('button', { name: 'Gmail 連携をはじめる' })).toBeInTheDocument()
   })
 
+  it('状態の取得に失敗したらエラーと再読み込みを出し、再読み込みで回復できる', async () => {
+    apiFetch.mockImplementation((path: string, schema: { parse: (input: unknown) => unknown }) => {
+      if (path === '/api/settings/gmail-link') {
+        return Promise.reject(new Error('network down'))
+      }
+      return Promise.resolve(schema.parse({ items: [] }))
+    })
+    renderPage()
+
+    expect(await screen.findByText(/Gmail 連携の状態を取得できませんでした/)).toBeInTheDocument()
+
+    // 復旧後の再読み込みで状態表示に戻る（失効通知の DM から来た人の復旧導線）
+    mockGmailLink({ kind: 'valid', authorizedAt: '2026-05-01T09:00:00.000Z' })
+    await userEvent.click(screen.getByRole('button', { name: '再読み込み' }))
+
+    expect(await screen.findByText('連携中')).toBeInTheDocument()
+  })
+
+  it('外部ブラウザで再認可して戻り「連携状態を更新」を押すと、連携中の表示に変わる', async () => {
+    mockGmailLink({ kind: 'revocation_detected', revocationDetectedAt: '2026-07-10T21:00:00.000Z' })
+    renderPage()
+    expect(await screen.findByText('連携が切れています')).toBeInTheDocument()
+
+    // 外部ブラウザでの再認可が完了し、サーバ側の状態が valid に変わったことを模す
+    mockGmailLink({ kind: 'valid', authorizedAt: '2026-08-28T09:00:00.000Z' })
+    await userEvent.click(screen.getByRole('button', { name: '連携状態を更新' }))
+
+    expect(await screen.findByText('連携中')).toBeInTheDocument()
+    expect(screen.queryByText('連携が切れています')).not.toBeInTheDocument()
+  })
+
   it('認可 URL の発行に失敗したらエラーを表示し、外部ブラウザを開かない', async () => {
     mockGmailLink({ kind: 'revocation_detected', revocationDetectedAt: '2026-07-10T21:00:00.000Z' })
     apiMutate.mockRejectedValue(new Error('network down'))

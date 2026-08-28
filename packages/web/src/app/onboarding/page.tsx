@@ -638,8 +638,9 @@ export default function OnboardingPage() {
                   利用明細メールの自動取込に使います。認可は外部ブラウザで行い、完了後にこの画面へ戻って「連携状態を更新」を押してください。
                 </p>
                 <div className={ui.row}>
+                  {/* 主操作は塗り + 補助の更新はゴースト。設定画面の Gmail 連携タブと同じ階層(#392) */}
                   <button
-                    className={ui.buttonGhost}
+                    className={ui.button}
                     disabled={gmailAuthorize.isPending}
                     onClick={() => gmailAuthorize.mutate()}
                   >

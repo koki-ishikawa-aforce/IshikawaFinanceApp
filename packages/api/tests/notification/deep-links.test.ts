@@ -38,6 +38,8 @@ describe('createDeepLinkBuilder', () => {
     expect(links).not.toHaveProperty('smbcCardStatement')
     expect(links).not.toHaveProperty('smbcBankStatement')
     const all = [links.monthlyReport(month), links.csvImport(month), links.gmailReauthorization()]
+    // ビルダーを追加したら all にも足すこと（漏れをここで検出する）
+    expect(Object.keys(links)).toHaveLength(all.length)
     expect(JSON.stringify(all)).not.toContain('smbc-card.com')
   })
 })

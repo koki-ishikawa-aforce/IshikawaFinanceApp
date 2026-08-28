@@ -44,11 +44,17 @@ export function registerOauthRevocationNoticeEventHandlers(
         idempotencyKey: `oauth_revocation_notice:${event.userId}:${event.detectedAt.toISOString()}`,
       })
       if (outcome.kind === 'failed') {
-        // 単発失敗はログのみ（論点23）。未達が確定した失敗なら、日次バッチの再発行が翌日の
-        // 再送機会になる（このハンドラーのモジュールコメントを参照）
+        // 単発失敗はログのみ（論点23）。未達が確定した失敗（line_api_failure）だけが
+        // 日次バッチの再発行で再送される（このハンドラーのモジュールコメントを参照）。
+        // 復旧の唯一の呼びかけなので、このログだけで再送の有無を判断できるように
+        // 失敗理由と配信ログ ID（ULID。ユーザーID は出さない）を添える
+        const willRetry = outcome.message.failureReason === 'line_api_failure'
         console.warn(
-          '[notification] OAuth 失効通知の配信に失敗した。' +
-            '未達が確定した失敗なら日次バッチの再発行で再送される',
+          `[notification] OAuth 失効通知の配信に失敗した（失敗理由 ${outcome.message.failureReason}` +
+            ` / 配信ログ ${outcome.log.deliveryLogId} / event=${event.eventId}）。` +
+            (willRetry
+              ? '未達が確定しているため日次バッチの再発行で再送される'
+              : 'この失敗は配信を確定させるため、この検知日時では再送されない（設定画面の Gmail 連携タブが復旧導線になる）'),
         )
       }
       if (outcome.kind !== 'sent') return

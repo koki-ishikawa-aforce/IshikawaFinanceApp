@@ -318,15 +318,24 @@ export async function runDailyMailImportForUser(
       // 失効通知の個人 DM（#392）が失効時点の 1 回きりだと、その送信に失敗したとき再送の
       // 機会が二度と来ない — 検知イベントは失効の瞬間にしか出ず、以後の実行はここで返る。
       // 再発行なら通知側の冪等性キー（ユーザー × 検知日時）が配信済みを弾き、未達が確定した
-      // 失敗（#441-A）だけが翌日の実行で送り直される
-      await deps.eventBus.publish(
-        GmailOauthRevocationDetectedSchema.parse({
-          ...domainEventBase(at),
-          type: 'GmailOauthRevocationDetected',
-          userId: token.userId,
-          detectedAt: token.revocationDetectedAt,
-        }),
-      )
+      // 失敗（#441-A）だけが翌日の実行で送り直される。
+      // 再発行に失敗してもこの実行の結末（対象外）は変えない（recordTokenRevocation と同じ
+      // 方針。ここで例外を投げると対象外が実装エラーにすり替わる）。翌日の実行が再送機会になる
+      try {
+        await deps.eventBus.publish(
+          GmailOauthRevocationDetectedSchema.parse({
+            ...domainEventBase(at),
+            type: 'GmailOauthRevocationDetected',
+            userId: token.userId,
+            detectedAt: token.revocationDetectedAt,
+          }),
+        )
+      } catch (e) {
+        console.warn(
+          '[transaction-import] 失効検知イベントの再発行に失敗した' +
+            `（error=${e instanceof Error ? e.name : 'unknown'}）— 翌日の実行で再発行される`,
+        )
+      }
     }
     const reason: DailyMailImportNotLaunchedReason =
       token === null ? 'not_linked' : 'revocation_detected'
