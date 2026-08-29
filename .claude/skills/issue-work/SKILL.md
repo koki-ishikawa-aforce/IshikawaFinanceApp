@@ -222,7 +222,7 @@ Routine のセットアップ手順は `docs/automation/backlog-routine.md`、�
 
 以下を**すべて**、コマンド出力で機械的に確定させる。**自然言語の判断で条件を緩めてはならない**(ゴミロック回収と同じ規律)。1つでも満たさなければマージせず、理由を最終報告に記す。
 
-1. **Routine 起点の PR である** — 次のいずれかを満たす(この列挙が判別基準の正。`/pr-steward` と `/retro` もこれを参照する): PR 本文に「無人モードの選定理由」節が含まれている / head ブランチが `feat/issue-N-` で始まる / head ブランチが `claude/issue-N-` で始まる / head ブランチが `chore/cleanup-pr-screenshots` で始まる(`/pr-steward` のスクリーンショット残骸削除 PR)。**判別できない PR・人間が手動作成した PR・`/decide` の docs PR には触れない**
+1. **Routine 起点の PR である** — 次のいずれかを満たす(この列挙が判別基準の正。`/pr-steward` と `/retro` もこれを参照する): PR 本文に「無人モードの選定理由」節が含まれている / head ブランチが `feat/issue-N-` で始まる / head ブランチが `claude/issue-N-` で始まる / head ブランチが `chore/cleanup-pr-screenshots` で始まる(`/pr-steward` のスクリーンショット残骸削除 PR)/ head ブランチが `revert/main-failure-` で始まる(`notify-main-failure` の自動 revert PR。#739)。**判別できない PR・人間が手動作成した PR・`/decide` の docs PR には触れない**
 2. **`needs-decision` が PR にも対象 Issue にも付いていない** — このラベルが個別 PR の停止スイッチを兼ねる(専用ラベルは作らない)。人間がマージを止めたい PR には `needs-decision` を付ければよい
 3. **コンフリクトしていない** — `mergeable == MERGEABLE`(`gh` / GraphQL)または `mergeable_state == clean`(REST / MCP)。`unknown`(計算中)は2〜3秒間隔で最大3回再照会し、確定しなければマージを見送る
 4. **head commit の `verify` が success** — `.github/workflows/ci.yml` の `verify` はブランチ保護の必須チェックであり、これがマージ可否の判定そのもの。**完了するまで待つ**(pending をマージ可とみなさない)。

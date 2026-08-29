@@ -10,6 +10,11 @@ on:
   # cron は UTC 表記(月曜 06:00 JST 相当)。
   schedule:
     - cron: '0 21 * * 0'
+  # auto-revert-main-failure が GITHUB_TOKEN で作った revert PR の CI を明示的に
+  # 起動するためのトリガー。GITHUB_TOKEN による push/PR 作成はイベントを発火しない
+  # (GitHub Actions 全般の再帰防止仕様)が、workflow_dispatch だけはこの制限の
+  # 例外として GITHUB_TOKEN でも新しい実行を作れる(#739)。
+  workflow_dispatch:
 
 # 同じ PR に push が続いたとき、追い越された run を捨てて実行枠の空費を防ぐ。
 #
@@ -315,3 +320,150 @@ jobs:
               issue_number: created.number,
               body: `@${owner} main の CI が失敗しています。放置すると以降の PR が全て赤くなるため、優先して確認してください。`,
             });
+
+  # main を壊したコミットの revert PR を自動作成し、復旧を forward-fix より速くする
+  # (#508 は人間が needs-decision に気づくまで約11時間かかった)。対象は push
+  # イベントのみ(schedule の失敗は「壊した1コミット」を指せないため revert できない)。
+  #
+  # GITHUB_TOKEN で作った PR には push/pull_request イベントが自動発火しない
+  # (GitHub Actions の再帰防止仕様)。このジョブが workflow_dispatch を明示的に
+  # 起動することで CI を回す(Issue #739 の決定: 案 A)。
+  auto-revert-main-failure:
+    needs: [verify, notify-main-failure]
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine target commit and branch
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:8}"
+          BRANCH="revert/main-failure-${SHORT_SHA}"
+          SUBJECT="$(git log -1 --format=%s "${SHA}")"
+          # squash マージの PR タイトルは末尾に (#NNN) を含む(このリポジトリの
+          # マージ方式は squash に統一されている)。無ければ元 PR は不明のまま進める。
+          ORIG_PR="$(echo "${SUBJECT}" | grep -oE '\(#[0-9]+\)$' | grep -oE '[0-9]+' || true)"
+
+          {
+            echo "sha=${SHA}"
+            echo "short_sha=${SHORT_SHA}"
+            echo "branch=${BRANCH}"
+            echo "subject=${SUBJECT}"
+            echo "orig_pr=${ORIG_PR}"
+          } >>"${GITHUB_OUTPUT}"
+
+          # 冪等性: 同じコミットに対する revert PR が既に open なら何もしない
+          existing="$(gh pr list --state open --head "${BRANCH}" --json number --jq 'length')"
+          if [ "${existing}" != '0' ]; then
+            echo "::notice::${BRANCH} 向けの revert PR が既に open のため何もしない"
+            echo 'skip=true' >>"${GITHUB_OUTPUT}"
+          else
+            echo 'skip=false' >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Attempt revert
+        id: revert
+        if: steps.target.outputs.skip == 'false'
+        run: |
+          set -uo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          SHA="${{ steps.target.outputs.sha }}"
+          git switch -c "${{ steps.target.outputs.branch }}"
+
+          # squash マージは通常1親だが、念のため親数を見て通常マージ(2親)にも対応する。
+          PARENTS="$(git show -s --format=%P "${SHA}" | wc -w)"
+          if [ "${PARENTS}" -gt 1 ]; then
+            REVERT_OK=0
+            git revert --no-edit -m 1 "${SHA}" && REVERT_OK=1
+          else
+            REVERT_OK=0
+            git revert --no-edit "${SHA}" && REVERT_OK=1
+          fi
+
+          if [ "${REVERT_OK}" = '1' ]; then
+            echo 'conflict=false' >>"${GITHUB_OUTPUT}"
+          else
+            git revert --abort 2>/dev/null || true
+            echo 'conflict=true' >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Push revert branch
+        if: steps.target.outputs.skip == 'false' && steps.revert.outputs.conflict == 'false'
+        run: git push origin "${{ steps.target.outputs.branch }}"
+
+      - name: Create revert PR
+        id: pr
+        if: steps.target.outputs.skip == 'false' && steps.revert.outputs.conflict == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBJECT: ${{ steps.target.outputs.subject }}
+          SHORT_SHA: ${{ steps.target.outputs.short_sha }}
+          BRANCH: ${{ steps.target.outputs.branch }}
+          ORIG_PR: ${{ steps.target.outputs.orig_pr }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'main 復旧のための自動 revert PR です(`notify-main-failure` / `auto-revert-main-failure` ジョブ、Issue #739)。'
+            echo ''
+            echo '## 対象'
+            echo ''
+            echo "- 元コミット: ${SHORT_SHA} ${SUBJECT}"
+            if [ -n "${ORIG_PR}" ]; then
+              echo "- 元 PR: #${ORIG_PR}"
+            fi
+            echo "- 失敗した run: ${RUN_URL}"
+            echo ''
+            echo 'CI が green になればマージゲート経由でマージされます。revert 後に元 PR の対応が'
+            echo '必要な場合(仕様変更として正しい変更だった場合など)は、原因を直した別 PR を'
+            echo '出してください。'
+          } >body.md
+
+          gh pr create \
+            --title "revert: main 復旧のための自動 revert (${SHORT_SHA})" \
+            --body-file body.md \
+            --base main \
+            --head "${BRANCH}"
+
+      - name: Trigger CI for revert branch
+        if: steps.target.outputs.skip == 'false' && steps.revert.outputs.conflict == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref "${{ steps.target.outputs.branch }}"
+
+      - name: Report revert conflict on main-red issue
+        if: steps.target.outputs.skip == 'false' && steps.revert.outputs.conflict == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHORT_SHA: ${{ steps.target.outputs.short_sha }}
+          SUBJECT: ${{ steps.target.outputs.subject }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          issue_number="$(gh issue list --state open --json number,body --limit 100 \
+            --jq '[.[] | select(.body != null and (.body | contains("<!-- main-ci-failure -->")))][0].number')"
+          if [ -z "${issue_number}" ] || [ "${issue_number}" = 'null' ]; then
+            echo '::warning::main 赤 Issue が見つからず、revert コンフリクトのコメントを残せなかった'
+            exit 0
+          fi
+          {
+            echo '自動 revert がコンフリクトしたため、revert PR は作成しませんでした。手動で対処してください。'
+            echo ''
+            echo "- 対象コミット: ${SHORT_SHA} ${SUBJECT}"
+            echo "- 失敗した run: ${RUN_URL}"
+          } >comment.md
+          gh issue comment "${issue_number}" --body-file comment.md

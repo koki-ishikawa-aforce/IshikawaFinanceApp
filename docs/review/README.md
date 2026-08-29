@@ -116,6 +116,8 @@ push/PR が無い週でも新しい advisory で `pnpm audit` が落ちる状態
 
 マージ後の検証が失敗したときは `notify-main-failure` ジョブが Issue を立て、オーナーを assign して @メンションする(メール通知)。CI は「`main` と合体させた状態」を検証するため、**`main` が赤いままだと以降の全ての PR が同じ失敗で赤くなる**。気づくのが遅れるほど巻き添えが増えるので、`main` の赤は最優先で直す。
 
+`push` イベントでの失敗時は、続く `auto-revert-main-failure` ジョブが失敗したコミットの revert ブランチ・PR を自動作成し、`workflow_dispatch` で CI を明示的に起動する(`GITHUB_TOKEN` で作った PR には push/pull_request イベントが自動発火しないため)。CI green ならマージゲート経由でマージされ、人間の判断を待たずに `main` が復旧しうる。revert がコンフリクトする場合は PR を作らず、`[main 赤]` Issue にコメントして人間に委ねる。
+
 ### `main` のブランチ保護
 
 CI が判定した結果を**マージの可否に効かせる**ための設定。GitHub の設定画面(Settings → Branches)で管理しており、リポジトリのファイルには現れないのでここに記録する。
