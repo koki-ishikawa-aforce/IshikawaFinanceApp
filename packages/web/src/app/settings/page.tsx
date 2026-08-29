@@ -727,18 +727,25 @@ function SettingsPageContent() {
 
       {/*
         精算・取込は #614 で下部ナビから外した2画面への入り口。押しやすさの下限(§4-3)を
-        満たす受け皿はオンボーディングへのリンクと同じ共通クラス(entryLink)で確保する
+        満たす受け皿はオンボーディングへのリンクと同じ共通クラス(entryLink)で確保する。
+        3本並ぶとタブの内容とは別カテゴリの導線群だと伝わりにくいため、見出しでまとめる
+        (#728、選択肢A)
       */}
-      <Link href="/expense-settlement" className={styles.entryLink}>
-        <LuReceipt aria-hidden="true" className={ui.iconInline} /> 経費精算を開く
-      </Link>
-      <Link href="/imports" className={styles.entryLink}>
-        <LuDownload aria-hidden="true" className={ui.iconInline} /> 取込画面を開く
-      </Link>
-      <Link href="/onboarding" className={styles.entryLink}>
-        <LuRocket aria-hidden="true" className={ui.iconInline} />{' '}
-        はじめての設定（オンボーディング）を開く
-      </Link>
+      <section className={styles.otherLinks} aria-labelledby="settings-other-links-title">
+        <h2 id="settings-other-links-title" className={ui.sectionTitle}>
+          その他
+        </h2>
+        <Link href="/expense-settlement" className={styles.entryLink}>
+          <LuReceipt aria-hidden="true" className={ui.iconInline} /> 経費精算を開く
+        </Link>
+        <Link href="/imports" className={styles.entryLink}>
+          <LuDownload aria-hidden="true" className={ui.iconInline} /> 取込画面を開く
+        </Link>
+        <Link href="/onboarding" className={styles.entryLink}>
+          <LuRocket aria-hidden="true" className={ui.iconInline} />{' '}
+          はじめての設定（オンボーディング）を開く
+        </Link>
+      </section>
     </main>
   )
 }
