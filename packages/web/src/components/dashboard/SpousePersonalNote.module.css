@@ -31,11 +31,22 @@
   color: var(--text-secondary);
 }
 
-.hint {
+/*
+ * 吹き出しの位置決め・出現アニメーションを担う受け皿。閉じるボタン(.hintClose)を
+ * `role="tooltip"` の `.hint` の外側(兄弟要素)に出すための構造(#723)。role="tooltip" は
+ * 仕様上フォーカス可能な要素を内包できないため、位置決めの絶対配置(このラッパー)と
+ * 見た目のバブル(.hint)を分離し、ボタンをラッパー直下の兄弟要素にする
+ */
+.hintWrapper {
   position: absolute;
   bottom: calc(100% + var(--space-1_5));
   left: 50%;
   transform: translateX(-50%);
+  z-index: 10;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.hint {
   white-space: nowrap;
   font-size: var(--text-xs);
   /*
@@ -55,16 +66,15 @@
   padding-right: calc((var(--tap-target-min) + var(--text-base)) / 2 + var(--space-1));
   border-radius: var(--radius-sm);
   pointer-events: auto;
-  z-index: 10;
-  animation: fadeIn 0.15s ease-out;
 }
 
 /*
- * 閉じるボタン。吹き出し自体は注意書き(role="tooltip")のまま 1 行ぶんの薄さを保ち(見た目は
+ * 閉じるボタン。吹き出し自体(.hint)は注意書きのまま 1 行ぶんの薄さを保ち(見た目は
  * 変えない)、押せる受け皿だけをタップ下限(usability §4-3)まで広げる(#611 選択肢B)。
- * `.hint` が `position: absolute` で作る包含ブロックに対して自身も絶対配置にすることで、
- * 通常フローから外れて `.hint` の高さに影響を与えないまま、見た目の × アイコンより
- * 大きい受け皿を上下・左にはみ出させて確保する(右端は `.hint` の右端に揃える)
+ * `.hintWrapper` が `position: absolute` で作る包含ブロックに対して自身も絶対配置にする
+ * ことで、通常フローから外れて `.hint` の高さに影響を与えないまま、見た目の × アイコンより
+ * 大きい受け皿を上下・左にはみ出させて確保する(右端は `.hintWrapper`(= `.hint` と同じ幅)の
+ * 右端に揃える)
  */
 .hintClose {
   position: absolute;

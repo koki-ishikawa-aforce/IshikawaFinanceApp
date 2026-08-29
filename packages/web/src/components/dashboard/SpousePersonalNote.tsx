@@ -58,11 +58,12 @@ export function SpousePersonalNote({ amount, theme, partnerNickname }: SpousePer
       <span className={styles.amount}>{formatMoney(amount)}</span>
       {showHint && (
         <div
-          className={styles.hint}
-          role="tooltip"
+          className={styles.hintWrapper}
           onKeyDown={e => e.key === 'Escape' && setShowHint(false)}
         >
-          明細はパートナーのみ閲覧可
+          <div className={styles.hint} role="tooltip">
+            明細はパートナーのみ閲覧可
+          </div>
           <button
             type="button"
             className={styles.hintClose}
