@@ -76,6 +76,14 @@
   cursor: pointer;
 }
 
+/* タブの内容とは別カテゴリの導線群であることを見出しで伝える受け皿(#728)。
+   ui.card と同じ見出し-本文間の gap(--space-2)に揃える */
+.otherLinks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 /* 他画面への入り口リンク(精算・取込・オンボーディング)に共通の見た目。`<a>` の既定は
    inline で下限が効かないため、受け皿になる表示形式を明示する（§4-3） */
 .entryLink {
