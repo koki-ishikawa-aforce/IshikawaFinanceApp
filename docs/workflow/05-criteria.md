@@ -49,7 +49,7 @@
 
 **測り方** — `[main 赤]` Issue の件数 / マージ数(change failure rate 相当)。`main` 赤から復旧までの時間。1件の赤が巻き添えにした PR・fire の数。ガード(hooks・ブランチ保護)が実際にブロックした件数。
 
-**現状評価** — ○。予防は7層のゲート([01-lifecycle.md](./01-lifecycle.md) §3)と実行時ガード(hooks)、封じ込めは「`main` が赤い間はバックログを止める」preflight、検知は `notify-main-failure` のメール通知が担う。既知のギャップは semantic conflict を**予防ではなく検知でカバー**していること([04-principles.md](./04-principles.md) 未解決課題)。プロダクト品質の担保そのもの(何を CI とレビューが見るか)は `docs/review/README.md` §2 を正とする。
+**現状評価** — ○。予防は7層のゲート([01-lifecycle.md](./01-lifecycle.md) §3)と実行時ガード(hooks)、封じ込めは「`main` が赤い間はバックログを止める」preflight、検知は `notify-main-failure` のメール通知が担う。復旧は `push` イベントでの失敗に限り `auto-revert-main-failure` が forward-fix を待たず revert PR を自動作成・マージまで進める(`docs/review/README.md` §4、#739)。既知のギャップは semantic conflict を**予防ではなく検知でカバー**していること([04-principles.md](./04-principles.md) 未解決課題)。プロダクト品質の担保そのもの(何を CI とレビューが見るか)は `docs/review/README.md` §2 を正とする。
 
 ### 基準3: 回復性 — ○
 

@@ -377,7 +377,7 @@ jobs:
         id: revert
         if: steps.target.outputs.skip == 'false'
         run: |
-          set -uo pipefail
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
 
@@ -388,13 +388,13 @@ jobs:
           PARENTS="$(git show -s --format=%P "${SHA}" | wc -w)"
           if [ "${PARENTS}" -gt 1 ]; then
             REVERT_OK=0
-            git revert --no-edit -m 1 "${SHA}" && REVERT_OK=1
+            git revert --no-edit -m 1 "${SHA}" || REVERT_OK=1
           else
             REVERT_OK=0
-            git revert --no-edit "${SHA}" && REVERT_OK=1
+            git revert --no-edit "${SHA}" || REVERT_OK=1
           fi
 
-          if [ "${REVERT_OK}" = '1' ]; then
+          if [ "${REVERT_OK}" = '0' ]; then
             echo 'conflict=false' >>"${GITHUB_OUTPUT}"
           else
             git revert --abort 2>/dev/null || true
@@ -454,7 +454,9 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          issue_number="$(gh issue list --state open --json number,body --limit 100 \
+          # notify-main-failure(github.paginate で open Issue を全件走査)と同じ
+          # 網羅性にするため、既定の30件で打ち切らないよう十分大きい limit を指定する。
+          issue_number="$(gh issue list --state open --json number,body --limit 1000 \
             --jq '[.[] | select(.body != null and (.body | contains("<!-- main-ci-failure -->")))][0].number')"
           if [ -z "${issue_number}" ] || [ "${issue_number}" = 'null' ]; then
             echo '::warning::main 赤 Issue が見つからず、revert コンフリクトのコメントを残せなかった'

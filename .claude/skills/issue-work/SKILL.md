@@ -228,8 +228,8 @@ Routine のセットアップ手順は `docs/automation/backlog-routine.md`、�
 4. **head commit の `verify` が success** — `.github/workflows/ci.yml` の `verify` はブランチ保護の必須チェックであり、これがマージ可否の判定そのもの。**完了するまで待つ**(pending をマージ可とみなさない)。
    `pr-preview` のチェック(`publish` / `deploy` / `comment`)は**マージを止めない**: 配信は画面確認の補助であって検証の関門ではなく(ワークフロー側も `continue-on-error` でそう扱っている)、`concurrency: pr-preview` でリポジトリ全体が直列化されるため長く pending しうる。待たず、failure でもマージするが、failure だった事実は最終報告に記す
 5. **レビューがマージを止めていない** — `CHANGES_REQUESTED` のレビュー・未解決のレビュースレッドが無い
-6. **PR 本文の `Closes #<番号>` が生きている** — 行頭に番号付きで存在し、本文(API の生データ)にリテラルの `\n`(バックスラッシュ + n の2文字)を含まない。**マージ後に本文を直しても auto-close は遡って発動しない**ため、異常があれば先に本文を修正 push し、修正後に再判定する(手順は `/pr-steward` 手順 2a-2 と同じ)
-7. **対象 Issue が open で `ready-to-implement` が付いている** — 着手承認が生きていることの確認。スクリーンショット削除 PR のように対象 Issue を持たない PR はこの条件を適用しない
+6. **PR 本文の `Closes #<番号>` が生きている** — 行頭に番号付きで存在し、本文(API の生データ)にリテラルの `\n`(バックスラッシュ + n の2文字)を含まない。**マージ後に本文を直しても auto-close は遡って発動しない**ため、異常があれば先に本文を修正 push し、修正後に再判定する(手順は `/pr-steward` 手順 2a-2 と同じ)。スクリーンショット削除 PR・revert PR(`revert/main-failure-` ブランチ)のように対象 Issue を持たない PR はこの条件を適用しない
+7. **対象 Issue が open で `ready-to-implement` が付いている** — 着手承認が生きていることの確認。スクリーンショット削除 PR・revert PR のように対象 Issue を持たない PR はこの条件を適用しない
 
 #### マージの実行
 

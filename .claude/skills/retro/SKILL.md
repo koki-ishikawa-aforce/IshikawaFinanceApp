@@ -42,7 +42,7 @@ description: 無人運用(Routine による /issue-work・/pr-steward)の失敗�
 
    (GitHub MCP の場合は `search_pull_requests` に `repo:<owner>/<repo> created:>=<起点>` / `merged:>=<起点>` / `closed:>=<起点>` の 3 クエリを投げ、`number` で重複排除する。)
 
-   Routine 起点の判別基準は `/issue-work` の「マージゲート」条件1と同じ(本文に「無人モードの選定理由」セクションがある / head ブランチが `feat/issue-N-`・`claude/issue-N-`・`chore/cleanup-pr-screenshots` で始まる)。各 PR について次を読み取る:
+   Routine 起点の判別基準は `/issue-work` の「マージゲート」条件1と同じ(本文に「無人モードの選定理由」セクションがある / head ブランチが `feat/issue-N-`・`claude/issue-N-`・`chore/cleanup-pr-screenshots`・`revert/main-failure-` で始まる)。各 PR について次を読み取る:
    - **マージまでの往復回数**: コミット数・force-push 回数・「コンフリクト解消」「CI 修復」を示す本文/コミットの記述
    - **マージされずにクローズされた PR**: 却下理由(あればレビューコメント)
    - **本文の異常**: リテラル `\n` の混入、`Closes #` の番号欠落(auto-close 不発の兆候)
