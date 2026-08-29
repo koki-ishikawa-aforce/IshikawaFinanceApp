@@ -23,7 +23,7 @@ GitHub MCP の場合、一覧 API(`list_pull_requests`)には mergeable が含�
 
 > **mergeable は照会して初めて計算される**: GitHub は PR の mergeable 状態を要求されて初めて算出するため、直後の照会では `mergeable` が `null`(REST)/ `UNKNOWN`(`gh`・GraphQL)、`mergeable_state` が `unknown` を返すことがある。**`unknown` が返った PR は数秒待って再照会する**(例: 2〜3秒間隔で最大3回程度)。リトライしても `unknown` のまま確定しない PR は、手順 2c のコンフリクト判定を保留し、その旨を手順4の完了報告に記す(確定できないものを誤って「問題なし」と扱わない)。
 
-Routine 起点の判別基準(`/issue-work` の「マージゲート」条件1と同一): PR 本文に「無人モードの選定理由」セクションが含まれている、または head ブランチが `feat/issue-N-`・`claude/issue-N-`・`chore/cleanup-pr-screenshots` で始まる。判別できないものは対象外とする。
+Routine 起点の判別基準(`/issue-work` の「マージゲート」条件1と同一): PR 本文に「無人モードの選定理由」セクションが含まれている、または head ブランチが `feat/issue-N-`・`claude/issue-N-`・`chore/cleanup-pr-screenshots`・`revert/main-failure-` で始まる。判別できないものは対象外とする。
 
 ### 2. 各 PR の点検
 
