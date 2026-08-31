@@ -137,7 +137,7 @@ GitHub MCP の場合は `create_pull_request` で作成する。PR 本文には�
 
 ### 5. fire 終了時の記録(tracking Issue への定型レコード)
 
-`/issue-work` 無人モードと同じ記録元を共有する(`.claude/skills/issue-work/SKILL.md`「手順8: fire 終了時の記録」がレコード形式とコード表の唯一の定義。ここでは複製しない)。本文にマーカー `<!-- fire-record-tracking -->` を含む open Issue を検索し(無ければ同スキルの初回作成手順に従って作成し)、この fire で発生した出来事(修正 push・コンフリクト解消・重複検知・needs-decision への切り出しなど)ごとに `kind: "pr-steward"` の JSON 行を組み立て、fire の終わりに1コメントとしてまとめて投稿する。対象 PR が全て green で何もしなかった fire も `result: "空振り"` の1行を投稿する。スクリーンショット残骸の削除や孤児マージ判断 Issue の回収のような Issue 番号に紐付かない出来事は `issue: null` とする。
+`/issue-work` 無人モードと同じ記録元を共有する(`.claude/skills/issue-work/SKILL.md`「手順8: fire 終了時の記録」がレコード形式とコード表の唯一の定義。ここでは複製しない)。本文にマーカー `<!-- fire-record-tracking -->` を含む open Issue を検索し(無ければ同スキルの初回作成手順に従って作成し)、この fire で発生した出来事(修正 push・コンフリクト解消・重複検知・needs-decision への切り出しなど)ごとに `kind: "pr-steward"` の JSON 行を組み立て、fire の終わりに1コメントとしてまとめて投稿する。対象 PR が全て green で何もしなかった fire も `result: "空振り"` の1行を投稿する。スクリーンショット残骸の削除や孤児マージ判断 Issue の回収のような Issue 番号に紐付かない出来事は `issue: null` とする。**`at` は各出来事の記録時に `date -u +%Y-%m-%dT%H:%M:%SZ` を実際に実行し、その出力をそのまま使う**(日付だけ合わせた `00:00:00Z` の仮値や推測値を書かない)。
 
 `result` は「そのイベントの結果、対象 PR がどうなったか」で選ぶ(pr-steward はマージしないため `"merged"` は使わない): CI 修正 push・コンフリクト解消が成功して PR が green のまま open で残る場合は `"pr-open"`、重複検知や3回リトライ失敗で `needs-decision` を付けて次へ進んだ場合は `"撤退"`、点検したが問題なく何もしなかった場合は `"空振り"`。
 

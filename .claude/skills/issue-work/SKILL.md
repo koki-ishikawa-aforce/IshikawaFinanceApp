@@ -488,4 +488,4 @@ GitHub MCP の場合は `list_pull_requests` で open PR を取得し、各 PR �
 
    </details>
 
-2. **レコードの投稿**: fire 内で発生した出来事(候補ループでのスキップ・撤退・PR 作成・マージ・マージゲート落ちなど)ごとに1行の JSON を組み立て、fire の終わりにまとめて1コメントとして tracking Issue へ投稿する(`gh issue comment <tracking Issue番号> --body <JSON Lines文字列>`、または GitHub MCP `add_issue_comment`)。候補なしで即終了した fire も `result: "空振り"` の1行を投稿する(空振り自体が基準10「資源効率」の測定対象のため、記録を省かない)。
+2. **レコードの投稿**: fire 内で発生した出来事(候補ループでのスキップ・撤退・PR 作成・マージ・マージゲート落ちなど)ごとに1行の JSON を組み立て、fire の終わりにまとめて1コメントとして tracking Issue へ投稿する(`gh issue comment <tracking Issue番号> --body <JSON Lines文字列>`、または GitHub MCP `add_issue_comment`)。候補なしで即終了した fire も `result: "空振り"` の1行を投稿する(空振り自体が基準10「資源効率」の測定対象のため、記録を省かない)。**`at` は各出来事の記録時に `date -u +%Y-%m-%dT%H:%M:%SZ` を実際に実行し、その出力をそのまま使う**(日付だけ合わせた `00:00:00Z` の仮値や推測値を書かない。2026-08-31 の `/retro` で tracking Issue #766 のコメント11件がこの仮値になっていたことが判明している)。
