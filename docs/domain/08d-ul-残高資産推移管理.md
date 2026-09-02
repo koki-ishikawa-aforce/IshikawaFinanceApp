@@ -159,6 +159,7 @@ data 表示用振込元名 = 振込元名  // 明細に載る生の表記。利�
 
 data 残高変動 = 入金変動 OR 出金変動 OR 引落消込変動 OR 手入力変動
 
+// aggregate root
 data 入金変動 = 口座ID AND 取引ID AND 金額 AND 発生日時 AND 入金用途判別結果
 data 出金変動 = 口座ID AND 取引ID AND 金額 AND 発生日時 AND 出金用途
 data 引落消込変動 = 口座ID AND 引落確定通知ID AND 消込合計金額 AND 発生日時
